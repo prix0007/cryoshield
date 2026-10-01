@@ -1,0 +1,16 @@
+node_modules/
+dist/
+build/
+coverage/
+.env
+.env.*
+!.env.example
+# foundry
+contracts/out/
+contracts/cache/
+contracts/broadcast/*/31337/
+# python
+__pycache__/
+.venv/
+*.egg-info/
+.DS_Store
