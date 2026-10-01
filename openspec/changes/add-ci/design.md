@@ -34,3 +34,26 @@ Monorepo with pnpm workspace (`packages/*`, `apps/*`), Foundry project in `contr
 ## Migration Plan
 
 Add workflow; push to a branch; confirm all jobs green; enable branch protection requiring `ci-ok` (manual repo setting, documented in README). Rollback: delete the workflow file.
+
+## Implementation notes (assumptions, recorded during apply)
+
+These are labelled assumptions made while implementing; the overwatcher may revise them.
+
+- **Assumption A1: Slither triage lives in `.github/slither-triage.json`.** The CI engineer does not own `contracts/`, so decision 4's `contracts/slither.config.json` / inline `slither-disable` could not be added. Slither's `--triage-database` reads that file and hides only findings whose `id` matches (the id hashes the finding description, including line numbers), so any edit to the flagged code resurfaces the finding for re-triage. Each entry links to the add-vault-registry-contract design.md triage. Slither runs with `--filter-paths "lib/|test/|script/"`, the same as the triage run. Moving the suppression inline later only needs the contracts owner's change and deleting this file.
+- **Assumption A2: push to `main` runs every area job.** The path filter (`dorny/paths-filter`) runs only on `pull_request`, where it reads changed files from the API without a checkout (job permission `pull-requests: read`). On `push` the area jobs ignore the filter. Main is then always fully verified, and no git fetch with credentials is needed.
+- **Assumption A3: E2E is in scope after all.** The overwatcher asked for a separate `web-e2e` job (Playwright Chromium + anvil). It supersedes the proposal's "Playwright E2E out of scope". The `web` job also runs `test:int` (anvil) and `verify-build`. Both web jobs install Foundry 1.1.0 and run `forge build`, because the local chain stack deploys `contracts/out`.
+- **Assumption A4: the vault-crypto job also runs `test:browser`**, the same suite in headless Chromium, as well as `test`.
+- **Assumption A5: the recover job installs Foundry**, so `tests/test_anvil_e2e.py` runs instead of auto-skipping. Lint and type checks follow `tools/recover/README.md`: `ruff check src tests` and `mypy`, which is strict and covers `src` per pyproject. `mypy --strict .` errors on `tests/support/vectors.py` being found under two module names. The path filter includes `contracts/src/**`, because the anvil test builds the registry.
+- **Assumption A6: the OpenSpec CLI is installed from a committed lockfile** (`.github/openspec-cli/package-lock.json`, `npm ci --ignore-scripts`) instead of an ad-hoc `npm install -g`. This keeps integrity hashes and passes zizmor's `adhoc-packages` audit. The job asserts the version is 1.14.0.
+- **Assumption A7: no dependency caches** in any job. They are a cache-poisoning surface on PRs, and runtime is acceptable without them.
+- **Assumption A8: lint tools are run without extra actions.** actionlint runs from its Docker image pinned by digest (`rhysd/actionlint:1.7.12@sha256:…`). zizmor runs via `uvx zizmor==1.30.1 --offline` with `.github/zizmor.yml`, which requires a hash pin for every action, first-party ones included.
+
+## Security review follow-up (2026-10-02)
+
+The review returned APPROVE with one MEDIUM: `forge test` silently rewrites the per-call gas snapshots in `contracts/snapshots/`, so a per-call regression could pass. Fixed by adding a `Per-call gas snapshot check` step (`git diff --exit-code -- snapshots/`) after `forge snapshot --check`; it was verified clean locally and passes actionlint.
+
+LOWs accepted for the MVP:
+- mypy covers `src` only;
+- Node and Python are pinned to a version line, not a patch release;
+- Playwright and Foundry downloads are not hash-checked;
+- Dependabot covers GitHub Actions only.

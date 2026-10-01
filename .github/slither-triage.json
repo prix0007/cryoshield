@@ -1,0 +1,10 @@
+[
+  {
+    "id": "0385e2463101f50a846976ee9e41b1a2d60b633d5b9b4e29573facf5a22fe569",
+    "check": "uninitialized-state",
+    "impact": "High",
+    "confidence": "High",
+    "description": "VaultRegistry._locatorIndex (src/VaultRegistry.sol#46) is never initialized. It is used in:\n\t- VaultRegistry.resolveLocator(bytes32) (src/VaultRegistry.sol#113-115)\n\t- VaultRegistry._appendLocators(bytes32,bytes32[]) (src/VaultRegistry.sol#134-147)",
+    "triage": "False positive. Triaged in openspec/changes/add-vault-registry-contract/design.md, section 'Static analysis (Slither)': _locatorIndex is a mapping written through a storage reference; an unset key reads as an empty array by design. Slither matches this entry by id, so any edit to the flagged code changes the id and the finding must be re-triaged."
+  }
+]

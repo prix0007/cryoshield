@@ -1,0 +1,15 @@
+# Keeps SHA-pinned GitHub Actions current (OpenSpec change add-ci). Dependabot proposes SHA bumps with the
+# version comment updated; each bump is reviewed like any other change. No secrets are configured.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      github-actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: "ci"
