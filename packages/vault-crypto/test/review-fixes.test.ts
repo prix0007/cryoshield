@@ -101,20 +101,21 @@ describe('LOW: a reused payload nonce is refused under the same data key', () =>
     const a = { id: rand(32), prf: rand(32) };
     const b = { id: rand(32), prf: rand(32) };
     const prfA = a.prf.slice();
-    const { blob } = await createVault({ rpId: 'cryoshield.app', credentials: [a, b], secret: rand(20) });
-    return { blob, prfA, oldNonce: decodeVault(blob).payloadNonce };
+    const vaultId = rand(32);
+    const { blob } = await createVault({ vaultId, rpId: 'cryoshield.app', credentials: [a, b], secret: rand(20) });
+    return { blob, prfA, vaultId, oldNonce: decodeVault(blob).payloadNonce };
   }
 
   it('updatePayload throws when the RNG repeats the current payload nonce', async () => {
-    const { blob, prfA, oldNonce } = await vault();
+    const { blob, prfA, vaultId, oldNonce } = await vault();
     await expect(
-      updatePayload(blob, { prf: prfA }, rand(5), { rng: testing.replayRng(oldNonce) }),
+      updatePayload(blob, { prf: prfA }, vaultId, rand(5), { rng: testing.replayRng(oldNonce) }),
     ).rejects.toThrow(/nonce/);
   });
 
   it('addKey throws when the RNG repeats the current payload nonce', async () => {
-    const { blob, prfA, oldNonce } = await vault();
+    const { blob, prfA, vaultId, oldNonce } = await vault();
     const rng = testing.replayRng(new Uint8Array([...rand(12), ...oldNonce]));
-    await expect(addKey(blob, { prf: prfA }, { id: rand(32), prf: rand(32) }, { rng })).rejects.toThrow(/nonce/);
+    await expect(addKey(blob, { prf: prfA }, vaultId, { id: rand(32), prf: rand(32) }, { rng })).rejects.toThrow(/nonce/);
   });
 });

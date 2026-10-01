@@ -84,6 +84,7 @@ describe('vaults (byte-identical creation)', () => {
       const rng = replayRng(hex(v.rng));
       const res = await createVault(
         {
+          vaultId: hex(v.vaultId),
           rpId: v.rpId,
           credentials: v.credentials.map((c) => ({ id: hex(c.id), prf: hex(c.prf) })),
           secret: hex(v.secret),
@@ -126,9 +127,9 @@ describe('open cases', () => {
     it(`${c.name}`, async () => {
       const keys = c.keys.map(keyOf);
       if ('expectedError' in c && c.expectedError) {
-        await expectCode(openVault(hex(c.blob), keys), c.expectedError);
+        await expectCode(openVault(hex(c.blob), keys, hex(c.vaultId)), c.expectedError);
       } else {
-        expect(toHex(await openVault(hex(c.blob), keys))).toBe((c as { expectedSecret: string }).expectedSecret);
+        expect(toHex(await openVault(hex(c.blob), keys, hex(c.vaultId)))).toBe((c as { expectedSecret: string }).expectedSecret);
       }
     });
   }
@@ -140,6 +141,7 @@ describe('create cases (refusals)', () => {
       const e = await expectCode(
         createVault(
           {
+            vaultId: hex(c.vaultId),
             rpId: c.rpId,
             credentials: c.credentials.map((k) => ({ id: hex(k.id), prf: hex(k.prf) })),
             secret: hex(c.secret),
@@ -161,7 +163,7 @@ describe('create cases (refusals)', () => {
 describe('add-key cases', () => {
   for (const c of vectors.addKeyCases) {
     it(`${c.name}`, async () => {
-      const p = addKey(hex(c.blob), keyOf(c.key), { id: hex(c.newCredential.id), prf: hex(c.newCredential.prf) }, {
+      const p = addKey(hex(c.blob), keyOf(c.key), hex(c.vaultId), { id: hex(c.newCredential.id), prf: hex(c.newCredential.prf) }, {
         rng: replayRng(hex(c.rng)),
       });
       if ('expectedError' in c && c.expectedError) {
@@ -178,7 +180,7 @@ describe('add-key cases', () => {
 describe('update-payload cases', () => {
   for (const c of vectors.updatePayloadCases) {
     it(`${c.name}`, async () => {
-      const p = updatePayload(hex(c.blob), c.keys.map(keyOf), hex(c.newSecret), { rng: replayRng(hex(c.rng)) });
+      const p = updatePayload(hex(c.blob), c.keys.map(keyOf), hex(c.vaultId), hex(c.newSecret), { rng: replayRng(hex(c.rng)) });
       if ('expectedError' in c && c.expectedError) {
         const e = await expectCode(p, c.expectedError);
         if ('maxPayloadBytes' in c && typeof c.maxPayloadBytes === 'number') {
@@ -194,12 +196,16 @@ describe('update-payload cases', () => {
 describe('select cases', () => {
   for (const c of vectors.selectCases) {
     it(`${c.name}`, async () => {
-      const p = selectVault(c.candidates.map(hex), hex(c.prf));
+      const p = selectVault(
+        c.candidates.map((x) => ({ vaultId: hex(x.vaultId), blob: hex(x.blob) })),
+        hex(c.prf),
+      );
       if ('expectedError' in c && c.expectedError) {
         await expectCode(p, c.expectedError);
       } else {
         const r = await p;
         expect(r.index).toBe((c as { expectedIndex: number }).expectedIndex);
+        expect(toHex(r.vaultId)).toBe((c as { expectedVaultId: string }).expectedVaultId);
         expect(toHex(r.secret)).toBe((c as { expectedSecret: string }).expectedSecret);
       }
     });

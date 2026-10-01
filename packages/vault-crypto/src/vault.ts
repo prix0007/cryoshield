@@ -18,9 +18,11 @@ import { assertPrf, deriveLocator, deriveWrapKey } from './derive.js';
 import { VaultError } from './errors.js';
 import {
   assertCredIds,
+  assertVaultId,
   decodeVault,
   fixedHeader,
   maxPayloadForBytes,
+  payloadAad,
   rpIdBytes,
   wrapAad,
   type DecodedVault,
@@ -42,6 +44,12 @@ export interface UnlockKey {
 }
 
 export interface CreateVaultParams {
+  /**
+   * 32-byte, non-zero on-chain vaultId the blob will be registered under (client-chosen;
+   * see the registry). Bound into every AAD; NOT stored in the blob. If registration
+   * reverts (vaultId taken), create again under a fresh vaultId.
+   */
+  vaultId: Uint8Array;
   rpId: string;
   /** In enrollment order; 2..8 keys. */
   credentials: readonly Credential[];
@@ -64,9 +72,17 @@ export interface CreateVaultResult {
   locators: Uint8Array[];
 }
 
+/** A blob together with the vaultId it was read under (registry key or Arweave `CryoShield-Vault-Id` tag). */
+export interface VaultCandidate {
+  vaultId: Uint8Array;
+  blob: Uint8Array;
+}
+
 export interface SelectVaultResult {
   /** Index of the selected candidate. */
   index: number;
+  /** The selected candidate's vaultId: use it for every later update. */
+  vaultId: Uint8Array;
   secret: Uint8Array;
 }
 
@@ -111,7 +127,8 @@ interface Opened {
 }
 
 /** Decode + unwrap + decrypt. Does not wipe caller PRFs; caller wipes secret/dataKey. */
-async function openCore(blob: Uint8Array, keys: readonly UnlockKey[]): Promise<Opened> {
+async function openCore(blob: Uint8Array, keys: readonly UnlockKey[], vaultId: Uint8Array): Promise<Opened> {
+  assertVaultId(vaultId);
   const v = decodeVault(blob);
   if (keys.length === 0) throw new VaultError('NO_MATCHING_KEY');
   for (const k of keys) assertPrf(k?.prf);
@@ -126,7 +143,7 @@ async function openCore(blob: Uint8Array, keys: readonly UnlockKey[]): Promise<O
           const e = v.entries[i]!;
           if (k.credId !== undefined && !equalPublic(k.credId, e.credId)) continue;
           if (unwrapped.has(i)) continue;
-          const pt = unseal(wk, e.wrapNonce, wrapAad(v.mode, rp, v.wrapSalt, i, e.credId), e.wrapped);
+          const pt = unseal(wk, e.wrapNonce, wrapAad(v.mode, rp, v.wrapSalt, vaultId, i, e.credId), e.wrapped);
           if (pt) {
             unwrapped.set(i, pt);
             if (v.mode === MODE_ANY_OF_N) break;
@@ -146,7 +163,7 @@ async function openCore(blob: Uint8Array, keys: readonly UnlockKey[]): Promise<O
       dataKey = await combineShares(chosen.map((i) => unwrapped.get(i)!));
     }
     if (dataKey.length !== KEY_BYTES) throw new VaultError('MALFORMED');
-    const padded = unseal(dataKey, v.payloadNonce, blob.subarray(0, v.payloadOffset), v.payloadCt);
+    const padded = unseal(dataKey, v.payloadNonce, payloadAad(blob.subarray(0, v.payloadOffset), vaultId), v.payloadCt);
     if (!padded) throw new VaultError('AUTH_FAILED');
     try {
       const secret = unpad(padded);
@@ -171,11 +188,12 @@ export async function createVault(params: CreateVaultParams, options: RngOptions
   let plaintexts: Uint8Array[] = [];
   let padded: Uint8Array | null = null;
   try {
-    const { rpId, credentials, secret } = params;
+    const { vaultId, rpId, credentials, secret } = params;
     const mode = params.mode ?? MODE_ANY_OF_N;
     const n = credentials?.length ?? 0;
     if (n < MIN_KEYS) throw new VaultError('TOO_FEW_KEYS');
     if (n > MAX_KEYS) throw new VaultError('TOO_MANY_KEYS');
+    assertVaultId(vaultId);
     if (mode !== MODE_ANY_OF_N && mode !== MODE_SHAMIR) throw new VaultError('INVALID_ARGUMENT', { hint: 'unknown mode' });
     const m = mode === MODE_ANY_OF_N ? (params.threshold ?? 1) : (params.threshold ?? -1);
     if (!Number.isInteger(m) || (mode === MODE_ANY_OF_N ? m !== 1 : m < 2 || m > n)) {
@@ -200,7 +218,7 @@ export async function createVault(params: CreateVaultParams, options: RngOptions
       const nonce = draw(rng, NONCE_BYTES);
       const wk = deriveWrapKey(c.prf, wrapSalt);
       try {
-        parts.push(Uint8Array.of(c.id.length), c.id, nonce, seal(wk, nonce, wrapAad(mode, rp, wrapSalt, i, c.id), plaintexts[i]!));
+        parts.push(Uint8Array.of(c.id.length), c.id, nonce, seal(wk, nonce, wrapAad(mode, rp, wrapSalt, vaultId, i, c.id), plaintexts[i]!));
       } finally {
         wipe(wk);
       }
@@ -208,7 +226,7 @@ export async function createVault(params: CreateVaultParams, options: RngOptions
     const body = concat(...parts);
     const payloadNonce = draw(rng, NONCE_BYTES);
     padded = pad(secret);
-    const blob = concat(body, payloadNonce, seal(dataKey, payloadNonce, body, padded));
+    const blob = concat(body, payloadNonce, seal(dataKey, payloadNonce, payloadAad(body, vaultId), padded));
     const locators = credentials.map((c) => deriveLocator(c.prf));
     return { blob, locators };
   } finally {
@@ -217,13 +235,18 @@ export async function createVault(params: CreateVaultParams, options: RngOptions
 }
 
 /**
- * Opens a vault with one key (mode 0x01) or at least M keys (mode 0x02).
- * Returns the secret. Wipes every supplied PRF buffer.
+ * Opens a vault with one key (mode 0x01) or at least M keys (mode 0x02), under
+ * the vaultId the blob was read from. A blob under any other vaultId (a clone)
+ * fails with NO_MATCHING_KEY. Returns the secret. Wipes every supplied PRF buffer.
  */
-export async function openVault(blob: Uint8Array, keys: UnlockKey | readonly UnlockKey[]): Promise<Uint8Array> {
+export async function openVault(
+  blob: Uint8Array,
+  keys: UnlockKey | readonly UnlockKey[],
+  vaultId: Uint8Array,
+): Promise<Uint8Array> {
   const list = toKeyList(keys);
   try {
-    const { secret, dataKey } = await openCore(blob, list);
+    const { secret, dataKey } = await openCore(blob, list, vaultId);
     wipe(dataKey);
     return secret;
   } finally {
@@ -232,22 +255,24 @@ export async function openVault(blob: Uint8Array, keys: UnlockKey | readonly Unl
 }
 
 /**
- * Squatting-tolerant lookup (spec §8). Tries `candidates` in the given order
- * (the on-chain index order) and returns the FIRST one that opens completely
- * with this PRF output, together with its `index` in `candidates`. Malformed
- * or forged candidates are skipped silently. Later candidates are not tried,
+ * Squatting-tolerant lookup (spec §8). Tries `candidates` ({ vaultId, blob }
+ * pairs) in the given order (the on-chain index order) and returns the FIRST
+ * one that opens completely with this PRF output under its own vaultId,
+ * together with its `index` and `vaultId`. Malformed or forged candidates, and
+ * blobs cloned under a foreign vaultId, are skipped silently. Later candidates are not tried,
  * so if the same key legitimately opens several vaults (duplicates), only the
  * first is returned, and the caller (frontend) decides how to handle duplicates.
  * Wipes `prf`, on success and on failure.
  */
-export async function selectVault(candidates: readonly Uint8Array[], prf: Uint8Array): Promise<SelectVaultResult> {
+export async function selectVault(candidates: readonly VaultCandidate[], prf: Uint8Array): Promise<SelectVaultResult> {
   try {
     assertPrf(prf);
     for (let i = 0; i < (candidates?.length ?? 0); i++) {
       try {
-        const { secret, dataKey } = await openCore(candidates[i]!, [{ prf }]);
+        const c = candidates[i];
+        const { secret, dataKey } = await openCore(c?.blob as Uint8Array, [{ prf }], c?.vaultId as Uint8Array);
         wipe(dataKey);
-        return { index: i, secret };
+        return { index: i, vaultId: c!.vaultId.slice(), secret };
       } catch (e) {
         if (!(e instanceof VaultError)) throw e;
       }
@@ -266,6 +291,7 @@ export async function selectVault(candidates: readonly Uint8Array[], prf: Uint8A
 export async function addKey(
   blob: Uint8Array,
   existingKey: UnlockKey,
+  vaultId: Uint8Array,
   newCredential: Credential,
   options: RngOptions = {},
 ): Promise<AddKeyResult> {
@@ -273,6 +299,7 @@ export async function addKey(
   let padded: Uint8Array | null = null;
   let wk: Uint8Array | null = null;
   try {
+    assertVaultId(vaultId);
     const v = decodeVault(blob);
     if (v.mode !== MODE_ANY_OF_N) throw new VaultError('INVALID_ARGUMENT', { hint: 'addKey supports mode 0x01 only' });
     const n = v.keyCount + 1;
@@ -280,7 +307,7 @@ export async function addKey(
     const ids = [...v.entries.map((e) => e.credId), newCredential?.id];
     assertCredIds(ids);
     assertPrf(newCredential.prf);
-    opened = await openCore(blob, [existingKey]);
+    opened = await openCore(blob, [existingKey], vaultId);
     const rp = ascii(v.rpId);
     const max = maxPayloadForBytes(rp, ids as Uint8Array[], v.mode);
     if (opened.secret.length > max) throw new VaultError('VAULT_TOO_LARGE', { maxPayloadBytes: max });
@@ -288,7 +315,7 @@ export async function addKey(
     const rng = options.rng ?? webCryptoRng;
     const nonce = draw(rng, NONCE_BYTES);
     wk = deriveWrapKey(newCredential.prf, v.wrapSalt);
-    const wrapped = seal(wk, nonce, wrapAad(v.mode, rp, v.wrapSalt, n - 1, newCredential.id), opened.dataKey);
+    const wrapped = seal(wk, nonce, wrapAad(v.mode, rp, v.wrapSalt, vaultId, n - 1, newCredential.id), opened.dataKey);
     const body = concat(
       fixedHeader(v.mode, v.threshold, n, rp, v.wrapSalt),
       blob.subarray(v.headerLength, v.payloadOffset),
@@ -299,7 +326,7 @@ export async function addKey(
     );
     const payloadNonce = drawFreshPayloadNonce(rng, v.payloadNonce);
     padded = pad(opened.secret);
-    const out = concat(body, payloadNonce, seal(opened.dataKey, payloadNonce, body, padded));
+    const out = concat(body, payloadNonce, seal(opened.dataKey, payloadNonce, payloadAad(body, vaultId), padded));
     return { blob: out, locator: deriveLocator(newCredential.prf) };
   } finally {
     wipe(wk, padded, opened?.dataKey, opened?.secret, existingKey?.prf, newCredential?.prf);
@@ -313,6 +340,7 @@ export async function addKey(
 export async function updatePayload(
   blob: Uint8Array,
   keys: UnlockKey | readonly UnlockKey[],
+  vaultId: Uint8Array,
   newSecret: Uint8Array,
   options: RngOptions = {},
 ): Promise<Uint8Array> {
@@ -320,7 +348,7 @@ export async function updatePayload(
   let opened: Opened | null = null;
   let padded: Uint8Array | null = null;
   try {
-    opened = await openCore(blob, list);
+    opened = await openCore(blob, list, vaultId);
     assertSecret(newSecret);
     const v = opened.vault;
     const max = maxPayloadForBytes(ascii(v.rpId), v.entries.map((e) => e.credId), v.mode);
@@ -329,7 +357,7 @@ export async function updatePayload(
     const payloadNonce = drawFreshPayloadNonce(rng, v.payloadNonce);
     const body = blob.slice(0, v.payloadOffset);
     padded = pad(newSecret);
-    return concat(body, payloadNonce, seal(opened.dataKey, payloadNonce, body, padded));
+    return concat(body, payloadNonce, seal(opened.dataKey, payloadNonce, payloadAad(body, vaultId), padded));
   } finally {
     wipe(padded, opened?.dataKey, opened?.secret, ...prfsOf(list));
   }

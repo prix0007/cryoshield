@@ -19,6 +19,7 @@ import {
   SHARE_BYTES,
   SUITE_HKDF_SHA256_AES256GCM,
   TAG_BYTES,
+  VAULT_ID_BYTES,
   WRAP_SALT_BYTES,
   type VaultMode,
 } from './constants.js';
@@ -87,18 +88,39 @@ export function fixedHeader(mode: VaultMode, threshold: number, count: number, r
 }
 
 /**
- * Wrap AAD (spec §6.3): immutable header fields plus the entry's index and
- * credential ID. Excludes N and M so entries can be appended (addKey).
+ * Wrap AAD (spec §6.3): immutable header fields, the vault's vaultId, then the
+ * entry's index and credential ID. Excludes N and M so entries can be appended
+ * (addKey).
  */
-export function wrapAad(mode: VaultMode, rpId: Uint8Array, wrapSalt: Uint8Array, index: number, credId: Uint8Array): Uint8Array {
+export function wrapAad(
+  mode: VaultMode,
+  rpId: Uint8Array,
+  wrapSalt: Uint8Array,
+  vaultId: Uint8Array,
+  index: number,
+  credId: Uint8Array,
+): Uint8Array {
   return concat(
     MAGIC,
     Uint8Array.of(FORMAT_VERSION, SUITE_HKDF_SHA256_AES256GCM, mode, rpId.length),
     rpId,
     wrapSalt,
+    vaultId,
     Uint8Array.of(index, credId.length),
     credId,
   );
+}
+
+/** Payload AAD (spec §6.2): every blob byte before the payload nonce, then the vaultId. */
+export function payloadAad(blobBeforePayload: Uint8Array, vaultId: Uint8Array): Uint8Array {
+  return concat(blobBeforePayload, vaultId);
+}
+
+/** Spec §4.1: a vaultId is exactly 32 bytes and not all zeros (INVALID_ARGUMENT otherwise). */
+export function assertVaultId(vaultId: unknown): asserts vaultId is Uint8Array {
+  if (!(vaultId instanceof Uint8Array) || vaultId.length !== VAULT_ID_BYTES || vaultId.every((b) => b === 0)) {
+    throw new VaultError('INVALID_ARGUMENT', { hint: 'vaultId must be 32 bytes and non-zero' });
+  }
 }
 
 /** Bytes of a blob that are not secret payload (header, entries, nonce, tag). */

@@ -21,6 +21,8 @@ const toHex = (b: Uint8Array): string => Array.from(b, (x) => x.toString(16).pad
 const rand = (n: number): Uint8Array => crypto.getRandomValues(new Uint8Array(n));
 const isZero = (b: Uint8Array): boolean => b.every((x) => x === 0);
 const RP = 'cryoshield.app';
+/** Every vault in these tests lives under this vaultId unless a test says otherwise. */
+const VID = rand(32);
 const cred = (idLen = 64) => ({ id: rand(idLen), prf: rand(32) });
 const enc = (s: string) => new TextEncoder().encode(s);
 const dec = (b: Uint8Array) => new TextDecoder().decode(b);
@@ -37,7 +39,7 @@ async function code(p: Promise<unknown>): Promise<string> {
 
 /** Creates a vault without consuming the given credentials' PRFs (copies them). */
 async function make(creds: { id: Uint8Array; prf: Uint8Array }[], secret: Uint8Array, mode: 1 | 2 = 1, threshold?: number) {
-  const params = { rpId: RP, credentials: creds.map((c) => ({ id: c.id, prf: c.prf.slice() })), secret, mode, ...(threshold ? { threshold } : {}) };
+  const params = { vaultId: VID, rpId: RP, credentials: creds.map((c) => ({ id: c.id, prf: c.prf.slice() })), secret, mode, ...(threshold ? { threshold } : {}) };
   return createVault(params);
 }
 
@@ -45,10 +47,10 @@ describe('task 3.3: zeroization of caller PRF buffers', () => {
   it('createVault wipes every PRF on success and on failure', async () => {
     const a = cred();
     const b = cred();
-    await createVault({ rpId: RP, credentials: [a, b], secret: enc('s') });
+    await createVault({ vaultId: VID, rpId: RP, credentials: [a, b], secret: enc('s') });
     expect(isZero(a.prf) && isZero(b.prf)).toBe(true);
     const c = cred();
-    expect(await code(createVault({ rpId: RP, credentials: [c], secret: enc('s') }))).toBe('TOO_FEW_KEYS');
+    expect(await code(createVault({ vaultId: VID, rpId: RP, credentials: [c], secret: enc('s') }))).toBe('TOO_FEW_KEYS');
     expect(isZero(c.prf)).toBe(true);
   });
 
@@ -57,13 +59,13 @@ describe('task 3.3: zeroization of caller PRF buffers', () => {
     const b = cred();
     const { blob } = await make([a, b], enc('hello'));
     const p1 = a.prf.slice();
-    expect(dec(await openVault(blob, { prf: p1 }))).toBe('hello');
+    expect(dec(await openVault(blob, { prf: p1 }, VID))).toBe('hello');
     expect(isZero(p1)).toBe(true);
     const wrong = rand(32);
-    expect(await code(openVault(blob, { prf: wrong }))).toBe('NO_MATCHING_KEY');
+    expect(await code(openVault(blob, { prf: wrong }, VID))).toBe('NO_MATCHING_KEY');
     expect(isZero(wrong)).toBe(true);
     const p2 = b.prf.slice();
-    expect(await code(openVault(blob.subarray(0, 10), [{ prf: p2 }]))).toBe('MALFORMED');
+    expect(await code(openVault(blob.subarray(0, 10), [{ prf: p2 }], VID))).toBe('MALFORMED');
     expect(isZero(p2)).toBe(true);
   });
 
@@ -72,26 +74,26 @@ describe('task 3.3: zeroization of caller PRF buffers', () => {
     const b = cred();
     const { blob } = await make([a, b], enc('x'));
     const s1 = a.prf.slice();
-    await selectVault([blob], s1);
+    await selectVault([{ vaultId: VID, blob }], s1);
     expect(isZero(s1)).toBe(true);
     const s2 = rand(32);
-    expect(await code(selectVault([blob], s2))).toBe('NO_MATCHING_VAULT');
+    expect(await code(selectVault([{ vaultId: VID, blob }], s2))).toBe('NO_MATCHING_VAULT');
     expect(isZero(s2)).toBe(true);
 
     const e1 = a.prf.slice();
     const n1 = cred();
-    await addKey(blob, { prf: e1 }, n1);
+    await addKey(blob, { prf: e1 }, VID, n1);
     expect(isZero(e1) && isZero(n1.prf)).toBe(true);
     const e2 = rand(32);
     const n2 = cred();
-    expect(await code(addKey(blob, { prf: e2 }, n2))).toBe('NO_MATCHING_KEY');
+    expect(await code(addKey(blob, { prf: e2 }, VID, n2))).toBe('NO_MATCHING_KEY');
     expect(isZero(e2) && isZero(n2.prf)).toBe(true);
 
     const u1 = b.prf.slice();
-    await updatePayload(blob, { prf: u1 }, enc('y'));
+    await updatePayload(blob, { prf: u1 }, VID, enc('y'));
     expect(isZero(u1)).toBe(true);
     const u2 = rand(32);
-    expect(await code(updatePayload(blob, { prf: u2 }, enc('y')))).toBe('NO_MATCHING_KEY');
+    expect(await code(updatePayload(blob, { prf: u2 }, VID, enc('y')))).toBe('NO_MATCHING_KEY');
     expect(isZero(u2)).toBe(true);
   });
 
@@ -156,7 +158,7 @@ describe('task 5.1: padding hides length; header AAD', () => {
     for (let i = 0; i < d.payloadOffset; i++) {
       const t = blob.slice();
       t[i]! ^= 0x01;
-      const c = await code(openVault(t, { prf: b.prf.slice() }));
+      const c = await code(openVault(t, { prf: b.prf.slice() }, VID));
       expect(c, `byte ${i}`).not.toBe('OK');
     }
   });
@@ -181,7 +183,8 @@ describe('spec scenarios', () => {
     for (const v of vectors.vaults) {
       const d = decodeVault(hex(v.blob));
       v.credentials.forEach((c, i) => {
-        const aad = wrapAad(d.mode, new TextEncoder().encode(d.rpId), d.wrapSalt, i, d.entries[i]!.credId);
+        const aad = wrapAad(d.mode, new TextEncoder().encode(d.rpId), d.wrapSalt, hex(v.vaultId), i, d.entries[i]!.credId);
+        expect(toHex(aad)).toContain(v.vaultId);
         expect(toHex(aad)).toBe(c.wrapAad);
         // bytes 4..6 are version, suite, mode; M/N would sit at 7..8 in the header but not here
         expect(aad[7]).toBe(d.rpId.length);
@@ -194,20 +197,20 @@ describe('task 5.5: addKey', () => {
   it('adds key C with only key A; A, B, C each open; existing entries byte-identical', async () => {
     const [a, b, c] = [cred(), cred(), cred(48)];
     const { blob } = await make([a, b], enc('seed words'));
-    const res = await addKey(blob, { prf: a.prf.slice() }, { id: c.id, prf: c.prf.slice() });
+    const res = await addKey(blob, { prf: a.prf.slice() }, VID, { id: c.id, prf: c.prf.slice() });
     const before = decodeVault(blob);
     const after = decodeVault(res.blob);
     expect(after.keyCount).toBe(3);
     expect(toHex(res.blob.subarray(before.headerLength, before.payloadOffset))).toBe(
       toHex(blob.subarray(before.headerLength, before.payloadOffset)),
     );
-    for (const k of [a, b, c]) expect(dec(await openVault(res.blob, { prf: k.prf.slice() }))).toBe('seed words');
+    for (const k of [a, b, c]) expect(dec(await openVault(res.blob, { prf: k.prf.slice() }, VID))).toBe('seed words');
   });
 
   it('refuses mode 0x02 vaults', async () => {
     const [a, b, c] = [cred(), cred(), cred()];
     const { blob } = await make([a, b, c], enc('s'), 2, 2);
-    expect(await code(addKey(blob, { prf: a.prf.slice() }, cred()))).toBe('INVALID_ARGUMENT');
+    expect(await code(addKey(blob, { prf: a.prf.slice() }, VID, cred()))).toBe('INVALID_ARGUMENT');
   });
 });
 
@@ -215,10 +218,10 @@ describe('task 5.6: updatePayload', () => {
   it('one key edits; every enrolled key opens and gets the new secret', async () => {
     const [a, b, c] = [cred(), cred(), cred()];
     const { blob } = await make([a, b, c], enc('old'));
-    const out = await updatePayload(blob, { prf: b.prf.slice() }, enc('new secret'));
+    const out = await updatePayload(blob, { prf: b.prf.slice() }, VID, enc('new secret'));
     const d0 = decodeVault(blob);
     expect(toHex(out.subarray(0, d0.payloadOffset))).toBe(toHex(blob.subarray(0, d0.payloadOffset)));
-    for (const k of [a, b, c]) expect(dec(await openVault(out, { prf: k.prf.slice() }))).toBe('new secret');
+    for (const k of [a, b, c]) expect(dec(await openVault(out, { prf: k.prf.slice() }, VID))).toBe('new secret');
   });
 });
 
@@ -258,8 +261,56 @@ describe('task 6.2: Shamir share codec', () => {
     const creds = Array.from({ length: 5 }, () => cred(32));
     const { blob } = await make(creds, enc('threshold'), 2, 3);
     for (const sub of subsets(creds, 3)) {
-      expect(dec(await openVault(blob, sub.map((c) => ({ prf: c.prf.slice() }))))).toBe('threshold');
+      expect(dec(await openVault(blob, sub.map((c) => ({ prf: c.prf.slice() })), VID))).toBe('threshold');
     }
-    expect(await code(openVault(blob, creds.slice(0, 2).map((c) => ({ prf: c.prf.slice() }))))).toBe('INSUFFICIENT_SHARES');
+    expect(await code(openVault(blob, creds.slice(0, 2).map((c) => ({ prf: c.prf.slice() })), VID))).toBe('INSUFFICIENT_SHARES');
+  });
+});
+
+describe('bind-vault-id-to-ciphertext: a blob only authenticates under its own vaultId', () => {
+  const other = rand(32);
+  it('a byte-identical clone under another vaultId fails open, addKey and updatePayload with NO_MATCHING_KEY', async () => {
+    const [a, b] = [cred(), cred()];
+    const { blob } = await make([a, b], enc('victim secret'));
+    expect(await code(openVault(blob, { prf: a.prf.slice() }, other))).toBe('NO_MATCHING_KEY');
+    expect(await code(addKey(blob, { prf: a.prf.slice() }, other, cred()))).toBe('NO_MATCHING_KEY');
+    expect(await code(updatePayload(blob, { prf: b.prf.slice() }, other, enc('x')))).toBe('NO_MATCHING_KEY');
+    expect(dec(await openVault(blob, { prf: b.prf.slice() }, VID))).toBe('victim secret');
+  });
+
+  it('selectVault skips a clone listed first and returns the genuine vaultId', async () => {
+    const [a, b] = [cred(), cred()];
+    const { blob } = await make([a, b], enc('genuine'));
+    const r = await selectVault([{ vaultId: other, blob }, { vaultId: VID, blob }], a.prf.slice());
+    expect(r.index).toBe(1);
+    expect(toHex(r.vaultId)).toBe(toHex(VID));
+    expect(dec(r.secret)).toBe('genuine');
+  });
+
+  it('rejects a vaultId that is not 32 bytes or is all zeros (and still wipes the PRF)', async () => {
+    const [a, b] = [cred(), cred()];
+    const { blob } = await make([a, b], enc('s'));
+    for (const bad of [new Uint8Array(32), rand(31), rand(33)]) {
+      const p = a.prf.slice();
+      expect(await code(openVault(blob, { prf: p }, bad))).toBe('INVALID_ARGUMENT');
+      expect(isZero(p)).toBe(true);
+      const c = cred();
+      expect(await code(createVault({ vaultId: bad, rpId: RP, credentials: [c, cred()], secret: enc('s') }))).toBe('INVALID_ARGUMENT');
+      expect(isZero(c.prf)).toBe(true);
+    }
+  });
+
+  it('a Shamir vault also refuses another vaultId', async () => {
+    const creds = [cred(), cred(), cred()];
+    const { blob } = await make(creds, enc('t'), 2, 2);
+    expect(await code(openVault(blob, creds.slice(0, 2).map((c) => ({ prf: c.prf.slice() })), other))).toBe('NO_MATCHING_KEY');
+  });
+
+  it('a Shamir vault refuses updatePayload under another vaultId', async () => {
+    const creds = [cred(), cred(), cred()];
+    const { blob } = await make(creds, enc('t'), 2, 2);
+    const keys = () => [creds[0]!, creds[2]!].map((c) => ({ prf: c.prf.slice() }));
+    expect(await code(updatePayload(blob, keys(), other, enc('hijacked')))).toBe('NO_MATCHING_KEY');
+    expect(dec(await openVault(blob, keys(), VID))).toBe('t');
   });
 });

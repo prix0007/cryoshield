@@ -13,6 +13,7 @@ export {
   type CreateVaultParams,
   type CreateVaultResult,
   type SelectVaultResult,
+  type VaultCandidate,
   type AddKeyResult,
   type RngOptions,
 } from './vault.js';
@@ -40,6 +41,7 @@ export {
   MAX_BLOB_BYTES,
   MIN_KEYS,
   MAX_KEYS,
+  VAULT_ID_BYTES,
   USER_VERIFICATION,
   type VaultMode,
 } from './constants.js';

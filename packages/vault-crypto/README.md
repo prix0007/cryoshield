@@ -33,18 +33,23 @@ import {
 | `locatorSalt()` / `ctapSalt()` | the single PRF input, and its CTAP2 `hmac-secret` equivalent | n/a |
 | `deriveLocator(prf)` | the 32-byte on-chain locator for one key | **no** (you still need `prf` for the open) |
 | `deriveWrapKey(prf, wrapSalt)` | low-level; you must wipe the result | no |
-| `createVault({ rpId, credentials, secret, mode?, threshold? }, { rng? })` | → `{ blob, locators }` | yes |
-| `selectVault(candidates, prf)` | squatting-tolerant unlock → `{ index, secret }` | yes |
-| `openVault(blob, key \| keys)` | → `secret`; `key = { prf, credId? }` | yes |
-| `addKey(blob, existingKey, { id, prf }, { rng? })` | mode 0x01 only → `{ blob, locator }` | yes (both) |
-| `updatePayload(blob, key \| keys, newSecret, { rng? })` | → new `blob` (same data key, fresh nonce) | yes |
+| `createVault({ vaultId, rpId, credentials, secret, mode?, threshold? }, { rng? })` | → `{ blob, locators }`, bound to `vaultId` | yes |
+| `selectVault(candidates: { vaultId, blob }[], prf)` | squatting- and clone-tolerant unlock → `{ index, vaultId, secret }` | yes |
+| `openVault(blob, key \| keys, vaultId)` | → `secret`; `key = { prf, credId? }` | yes |
+| `addKey(blob, existingKey, vaultId, { id, prf }, { rng? })` | mode 0x01 only → `{ blob, locator }` | yes (both) |
+| `updatePayload(blob, key \| keys, vaultId, newSecret, { rng? })` | → new `blob` (same data key, fresh nonce) | yes |
+
+**`vaultId` (32 bytes, non-zero) binds the blob to its registry slot.**
+- It is never stored in the blob. Pass the id you **read the blob from**: the registry's `vaultId` key, or the Arweave `CryoShield-Vault-Id` tag.
+- A byte-identical clone under another `vaultId` fails with `NO_MATCHING_KEY`, and `selectVault` skips it.
+- At creation, choose a random `vaultId` before encrypting. If registration reverts because the id is taken, create a fresh blob under a new `vaultId`; this needs every key's PRF output again.
 | `decodeVault(blob)` / `encodeVault(fields)` | byte layout only, no crypto | n/a |
 | `maxPayloadBytes(rpId, credIds, mode?)` | capacity to show in the UI before saving | n/a |
 
 Test-only helpers live in a separate entry point, `@cryoshield/vault-crypto/testing`: `replayRng` and `RngExhaustedError`, a deterministic RNG for reproducing vectors. Never import it in production.
 
-Constants: `MODE_ANY_OF_N`, `MODE_SHAMIR`, `MAX_BLOB_BYTES`, `MIN_KEYS`, `MAX_KEYS`, `FORMAT_VERSION`, `SUITE_HKDF_SHA256_AES256GCM`, and `USER_VERIFICATION`.
-Types: `Credential`, `UnlockKey`, `CreateVaultParams`, `CreateVaultResult`, `SelectVaultResult`, `AddKeyResult`, `RngOptions`, `DecodedVault`, `VaultEntry`, `VaultFields`, `VaultMode`, `VaultErrorCode`, `WebAuthnPrfCreateOptions`, `WebAuthnPrfGetOptions`, `PrfExtensionInput`, `Rng`.
+Constants: `MODE_ANY_OF_N`, `MODE_SHAMIR`, `MAX_BLOB_BYTES`, `VAULT_ID_BYTES`, `MIN_KEYS`, `MAX_KEYS`, `FORMAT_VERSION`, `SUITE_HKDF_SHA256_AES256GCM`, and `USER_VERIFICATION`.
+Types: `Credential`, `UnlockKey`, `CreateVaultParams`, `CreateVaultResult`, `VaultCandidate`, `SelectVaultResult`, `AddKeyResult`, `RngOptions`, `DecodedVault`, `VaultEntry`, `VaultFields`, `VaultMode`, `VaultErrorCode`, `WebAuthnPrfCreateOptions`, `WebAuthnPrfGetOptions`, `PrfExtensionInput`, `Rng`.
 
 Every failure is a `VaultError` with a stable `code`:
 - `BAD_MAGIC`, `UNSUPPORTED_VERSION`, `UNSUPPORTED_SUITE`, `UNSUPPORTED_MODE`, `MALFORMED`;
@@ -69,12 +74,14 @@ declare const authDataA: Uint8Array, authDataB: Uint8Array;
 assertUserVerified(authDataA); // throws VaultError('USER_NOT_VERIFIED') without UV
 assertUserVerified(authDataB);
 const request = { create: webauthnPrfCreateOptions(), get: webauthnPrfGetOptions() };
+const vaultId = crypto.getRandomValues(new Uint8Array(32)); // client-chosen registry id
 const { blob, locators } = await createVault({
+  vaultId,
   rpId: 'cryoshield.app',
   credentials: [{ id: credIdA, prf: prfA }, { id: credIdB, prf: prfB }],
   secret: new TextEncoder().encode('abandon abandon … art'),
 });
-// prfA and prfB are now all zeros. Store `blob`; register each of `locators` on chain.
+// prfA and prfB are now all zeros. Register `blob` on chain under exactly this `vaultId`, with `locators`.
 console.log(request.create.authenticatorSelection.userVerification, request.get.userVerification, blob.length, locators.length);
 ```
 
@@ -84,10 +91,12 @@ console.log(request.create.authenticatorSelection.userVerification, request.get.
 import { deriveLocator, selectVault, VaultError } from '@cryoshield/vault-crypto';
 
 declare const prf: Uint8Array; // one get() with webauthnPrfGetOptions(), after assertUserVerified()
-declare function fetchBlobsByLocator(locator: Uint8Array): Promise<Uint8Array[]>;
+// Resolve the locator to vaultIds, then read each vault's blob. Keep every blob paired with
+// the vaultId it was READ under; never take a vaultId from the blob's own content.
+declare function fetchBlobsByLocator(locator: Uint8Array): Promise<{ vaultId: Uint8Array; blob: Uint8Array }[]>;
 
 const locator = deriveLocator(prf);               // prf is NOT wiped yet
-let candidates: Uint8Array[];
+let candidates: { vaultId: Uint8Array; blob: Uint8Array }[];
 try {
   candidates = await fetchBlobsByLocator(locator);
 } catch (e) {
@@ -95,8 +104,9 @@ try {
   throw e;
 }
 try {
-  const { index, secret } = await selectVault(candidates, prf); // prf wiped here
-  console.log(`vault #${index}:`, new TextDecoder().decode(secret));
+  const { index, vaultId, secret } = await selectVault(candidates, prf); // prf wiped here
+  // use `vaultId` for every later addKey/updatePayload and on-chain update
+  console.log(`vault #${index}`, vaultId.length, new TextDecoder().decode(secret));
 } catch (e) {
   if (e instanceof VaultError && e.code === 'NO_MATCHING_VAULT') console.log('no vault for this key');
   else throw e;
@@ -108,14 +118,15 @@ try {
 ```ts
 import { addKey, updatePayload, maxPayloadBytes, decodeVault } from '@cryoshield/vault-crypto';
 
-declare const blob: Uint8Array, prfExisting: Uint8Array, newCredId: Uint8Array, prfNew: Uint8Array, prfAny: Uint8Array;
+declare const blob: Uint8Array, vaultId: Uint8Array; // from selectVault
+declare const prfExisting: Uint8Array, newCredId: Uint8Array, prfNew: Uint8Array, prfAny: Uint8Array;
 
-const added = await addKey(blob, { prf: prfExisting }, { id: newCredId, prf: prfNew });
+const added = await addKey(blob, { prf: prfExisting }, vaultId, { id: newCredId, prf: prfNew });
 // register added.locator on chain; store added.blob
 
 const d = decodeVault(added.blob);
 const room = maxPayloadBytes(d.rpId, d.entries.map((e) => e.credId), d.mode);
-const edited = await updatePayload(added.blob, { prf: prfAny }, new TextEncoder().encode('new codes'));
+const edited = await updatePayload(added.blob, { prf: prfAny }, vaultId, new TextEncoder().encode('new codes'));
 console.log(room, edited.length);
 ```
 
@@ -125,12 +136,12 @@ console.log(room, edited.length);
 import { createVault, openVault, MODE_SHAMIR } from '@cryoshield/vault-crypto';
 
 declare const keys: { id: Uint8Array; prf: Uint8Array }[]; // 3 credentials
-declare const prfA: Uint8Array, prfC: Uint8Array;
+declare const prfA: Uint8Array, prfC: Uint8Array, vaultId: Uint8Array;
 
 const { blob } = await createVault({
-  rpId: 'cryoshield.app', credentials: keys, secret: new Uint8Array([1, 2, 3]), mode: MODE_SHAMIR, threshold: 2,
+  vaultId, rpId: 'cryoshield.app', credentials: keys, secret: new Uint8Array([1, 2, 3]), mode: MODE_SHAMIR, threshold: 2,
 });
-const secret = await openVault(blob, [{ prf: prfA }, { prf: prfC }]); // any 2 of the 3
+const secret = await openVault(blob, [{ prf: prfA }, { prf: prfC }], vaultId); // any 2 of the 3
 console.log(secret.length);
 ```
 
@@ -162,7 +173,7 @@ A 24-word BIP39 seed phrase (≈ 150–220 bytes) plus ten TOTP backup codes fit
 - **Nonces.** `updatePayload` and `addKey` keep the data key and draw a fresh payload nonce. They throw if the RNG returns the blob's current nonce.
 - **Zeroization is best effort.** JavaScript engines and WebCrypto may keep copies.
 - **Authentication failures.** These surface as `NO_MATCHING_KEY` (no entry unwraps; tampering inside a wrap AAD looks the same) or `AUTH_FAILED` (the payload did not authenticate).
-- **Locators are public.** Anyone can append blobs under them on chain, which is why `selectVault` exists. Always use it for lookups.
+- **Locators are public.** Anyone can append blobs under them on chain, including byte-identical clones of your blob under their own `vaultId`. `selectVault` skips both junk and clones, so always use it for lookups, and always pair each blob with the `vaultId` it was read under.
 
 ## Reimplementing the format
 
@@ -203,7 +214,7 @@ All byte strings are **lowercase hex**. Integers are JSON numbers, and `null` me
   ],
   "vaults": [                 // positive vectors: creation must reproduce `blob` byte for byte
     {
-      "name", "description",
+      "name", "description", "vaultId": hex,   // bound into every AAD, not stored in the blob
       "mode": 1 | 2, "threshold": int, "rpId": string, "keys": ["A", …],
       "secret": hex, "secretUtf8": string | null,
       "wrapSalt", "dataKey", "payloadNonce": hex,
@@ -214,7 +225,7 @@ All byte strings are **lowercase hex**. Integers are JSON numbers, and `null` me
         { "id", "prf", "prfInput", "ctapSalt", "locator", "wrapKey",
           "wrapNonce", "wrapAad", "wrapPlaintext", "wrapped": hex }
       ],
-      "paddedPlaintext", "payloadAad": hex,
+      "paddedPlaintext", "payloadAad": hex,  // payloadAad = blob[0..P) || vaultId
       "maxPayloadBytes": int, "blob": hex, "blobLength": int
     }
   ],
@@ -223,30 +234,30 @@ All byte strings are **lowercase hex**. Integers are JSON numbers, and `null` me
       "expected"?: { "mode", "threshold", "rpId", "wrapSalt", "credIds": [hex], "headerLength", "payloadOffset" },
       "expectedError"?: CODE }
   ],
-  "openCases": [              // openVault(blob, keys)
-    { "name", "description", "vault": string | null, "blob": hex,
+  "openCases": [              // openVault(blob, keys, vaultId)
+    { "name", "description", "vault": string | null, "vaultId": hex, "blob": hex,
       "keys": [ { "prf", "credId": hex | null, "prfInput", "ctapSalt" } ],
       "expectedSecret"?: hex, "expectedError"?: CODE }
   ],
   "createCases": [            // createVault refusals; nothing random is drawn
-    { "name", "description", "rpId", "mode", "threshold",
+    { "name", "description", "vaultId": hex, "rpId", "mode", "threshold",
       "credentials": [ { "id", "prf" } ], "secret": hex,
       "expectedError": CODE, "maxPayloadBytes"?: int }
   ],
-  "addKeyCases": [            // addKey(blob, key, newCredential), rng = wrapNonce(12) || payloadNonce(12)
-    { "name", "description", "vault", "blob": hex,
+  "addKeyCases": [            // addKey(blob, key, vaultId, newCredential), rng = wrapNonce(12) || payloadNonce(12)
+    { "name", "description", "vault", "vaultId": hex, "blob": hex,
       "key": { "prf", "credId", "prfInput", "ctapSalt" },
       "newCredential": { "id", "prf", "locator" }, "rng": hex,
       "expectedBlob"?: hex, "expectedBlobLength"?: int, "expectedError"?: CODE }
   ],
-  "updatePayloadCases": [     // updatePayload(blob, keys, newSecret), rng = payloadNonce(12)
-    { "name", "description", "vault", "blob": hex, "keys": [ … ], "newSecret": hex, "rng": hex,
+  "updatePayloadCases": [     // updatePayload(blob, keys, vaultId, newSecret), rng = payloadNonce(12)
+    { "name", "description", "vault", "vaultId": hex, "blob": hex, "keys": [ … ], "newSecret": hex, "rng": hex,
       "expectedBlob"?: hex, "expectedError"?: CODE, "maxPayloadBytes"?: int }
   ],
   "selectCases": [            // selectVault(candidates, prf)
     { "name", "description", "prf", "credId": null, "prfInput", "ctapSalt",
-      "candidateKinds": [string], "candidates": [hex],
-      "expectedIndex"?: int, "expectedSecret"?: hex, "expectedError"?: CODE }
+      "candidateKinds": [string], "candidates": [ { "vaultId": hex, "blob": hex } ],
+      "expectedIndex"?: int, "expectedVaultId"?: hex, "expectedSecret"?: hex, "expectedError"?: CODE }
   ],
   "authenticatorDataCases": [ // assertUserVerified(authenticatorData)
     { "name", "description", "authenticatorData": hex, "expectedError": CODE | null /* null = accepted */ }

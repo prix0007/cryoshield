@@ -186,10 +186,16 @@ def fixed_header(mode: int, m: int, n: int, rp_id: bytes, wrap_salt: bytes) -> b
     return MAGIC + bytes([VERSION, SUITE, mode, m, n, len(rp_id)]) + rp_id + wrap_salt
 
 
-def wrap_aad(mode: int, rp_id: bytes, wrap_salt: bytes, index: int, cred_id: bytes) -> bytes:
-    """Immutable header fields + entry identity; excludes M and N (spec §6.3)."""
-    return (MAGIC + bytes([VERSION, SUITE, mode, len(rp_id)]) + rp_id + wrap_salt
+def wrap_aad(mode: int, rp_id: bytes, wrap_salt: bytes, vault_id: bytes, index: int, cred_id: bytes) -> bytes:
+    """Immutable header fields + vaultId + entry identity; excludes M and N (spec §6.3)."""
+    return (MAGIC + bytes([VERSION, SUITE, mode, len(rp_id)]) + rp_id + wrap_salt + vault_id
             + bytes([index, len(cred_id)]) + cred_id)
+
+
+def check_vault_id(vault_id: bytes) -> None:
+    """Spec §4.1: 32 bytes, not all zero."""
+    if len(vault_id) != 32 or not any(vault_id):
+        raise VaultError("INVALID_ARGUMENT")
 
 
 def overhead(rp_id: bytes, cred_ids: list[bytes], mode: int) -> int:
@@ -214,7 +220,7 @@ def unpad(padded: bytes) -> bytes:
     return padded[2 : 2 + n]
 
 
-def create_vault(rp_id: bytes, creds: list[dict], secret: bytes, mode: int, m: int,
+def create_vault(vault_id: bytes, rp_id: bytes, creds: list[dict], secret: bytes, mode: int, m: int,
                  rng: bytes, shamir_rng: bytes | None) -> dict:
     """Mirrors createVault; `rng` is consumed in the spec §11 order."""
     n = len(creds)
@@ -222,6 +228,7 @@ def create_vault(rp_id: bytes, creds: list[dict], secret: bytes, mode: int, m: i
         raise VaultError("TOO_FEW_KEYS")
     if n > MAX_KEYS:
         raise VaultError("TOO_MANY_KEYS")
+    check_vault_id(vault_id)
     if not (1 <= len(rp_id) <= 64) or any(b < 0x21 or b > 0x7E for b in rp_id):
         raise VaultError("INVALID_ARGUMENT")
     ids = [c["id"] for c in creds]
@@ -260,7 +267,7 @@ def create_vault(rp_id: bytes, creds: list[dict], secret: bytes, mode: int, m: i
     for idx, (c, pt) in enumerate(zip(creds, plaintexts)):
         nonce = take(12)
         wk = derive_wrap_key(c["prf"], wrap_salt)
-        aad = wrap_aad(mode, rp_id, wrap_salt, idx, c["id"])
+        aad = wrap_aad(mode, rp_id, wrap_salt, vault_id, idx, c["id"])
         wrapped = gcm_enc(wk, nonce, aad, pt)
         body += bytes([len(c["id"])]) + c["id"] + nonce + wrapped
         cred_out.append({
@@ -278,7 +285,7 @@ def create_vault(rp_id: bytes, creds: list[dict], secret: bytes, mode: int, m: i
     payload_nonce = take(12)
     assert pos == len(rng), "rng not fully consumed"
     padded = pad(secret)
-    ct = gcm_enc(data_key, payload_nonce, body, padded)
+    ct = gcm_enc(data_key, payload_nonce, body + vault_id, padded)
     blob = body + payload_nonce + ct
     assert len(blob) <= MAX_BLOB
     return {
@@ -288,7 +295,7 @@ def create_vault(rp_id: bytes, creds: list[dict], secret: bytes, mode: int, m: i
         "credentials": cred_out,
         "shares": shares,
         "padded": padded,
-        "payloadAad": body,
+        "payloadAad": body + vault_id,
         "blob": blob,
         "maxPayloadBytes": mx,
     }
@@ -354,12 +361,13 @@ def decode(blob: bytes) -> dict:
     }
 
 
-def open_vault(blob: bytes, keys: list[dict]) -> bytes:
-    return open_full(blob, keys)[0]
+def open_vault(blob: bytes, keys: list[dict], vault_id: bytes) -> bytes:
+    return open_full(blob, keys, vault_id)[0]
 
 
-def open_full(blob: bytes, keys: list[dict]) -> tuple[bytes, bytes, dict]:
+def open_full(blob: bytes, keys: list[dict], vault_id: bytes) -> tuple[bytes, bytes, dict]:
     """Returns (secret, dataKey, decoded)."""
+    check_vault_id(vault_id)
     v = decode(blob)
     unwrapped: dict[int, bytes] = {}
     for k in keys:
@@ -369,7 +377,7 @@ def open_full(blob: bytes, keys: list[dict]) -> tuple[bytes, bytes, dict]:
                 continue
             if idx in unwrapped:
                 continue
-            aad = wrap_aad(v["mode"], v["rpId"], v["wrapSalt"], idx, e["credId"])
+            aad = wrap_aad(v["mode"], v["rpId"], v["wrapSalt"], vault_id, idx, e["credId"])
             pt = gcm_dec(wk, e["nonce"], aad, e["wrapped"])
             if pt is not None:
                 unwrapped[idx] = pt
@@ -386,7 +394,7 @@ def open_full(blob: bytes, keys: list[dict]) -> tuple[bytes, bytes, dict]:
             raise VaultError("INSUFFICIENT_SHARES")
         chosen = [unwrapped[i] for i in sorted(unwrapped)[: v["threshold"]]]
         data_key = shamir_combine([(s[0], s[1:]) for s in chosen])
-    padded = gcm_dec(data_key, v["payloadNonce"], v["payloadAad"], v["payloadCt"])
+    padded = gcm_dec(data_key, v["payloadNonce"], v["payloadAad"] + vault_id, v["payloadCt"])
     if padded is None:
         raise VaultError("AUTH_FAILED")
     return unpad(padded), data_key, v
@@ -396,8 +404,9 @@ def entry_bytes(e: dict) -> bytes:
     return bytes([len(e["credId"])]) + e["credId"] + e["nonce"] + e["wrapped"]
 
 
-def add_key(blob: bytes, key: dict, new: dict, rng: bytes) -> bytes:
+def add_key(blob: bytes, key: dict, vault_id: bytes, new: dict, rng: bytes) -> bytes:
     """Spec §6.6; `rng` = newWrapNonce(12) || payloadNonce(12)."""
+    check_vault_id(vault_id)
     v = decode(blob)
     if v["mode"] != MODE_ANY:
         raise VaultError("INVALID_ARGUMENT")
@@ -407,34 +416,37 @@ def add_key(blob: bytes, key: dict, new: dict, rng: bytes) -> bytes:
     ids = [e["credId"] for e in v["entries"]]
     if not (1 <= len(new["id"]) <= 128) or new["id"] in ids or len(new["prf"]) != 32:
         raise VaultError("INVALID_ARGUMENT")
-    secret, data_key, v = open_full(blob, [key])
+    secret, data_key, v = open_full(blob, [key], vault_id)
     if len(secret) > max_payload_bytes(v["rpId"], ids + [new["id"]], v["mode"]):
         raise VaultError("VAULT_TOO_LARGE")
     assert len(rng) == 24
     header = fixed_header(v["mode"], v["threshold"], n, v["rpId"], v["wrapSalt"])
     wk = derive_wrap_key(new["prf"], v["wrapSalt"])
-    wrapped = gcm_enc(wk, rng[:12], wrap_aad(v["mode"], v["rpId"], v["wrapSalt"], n - 1, new["id"]), data_key)
+    wrapped = gcm_enc(wk, rng[:12], wrap_aad(v["mode"], v["rpId"], v["wrapSalt"], vault_id, n - 1, new["id"]), data_key)
     body = header + b"".join(entry_bytes(e) for e in v["entries"])
     body += bytes([len(new["id"])]) + new["id"] + rng[:12] + wrapped
-    return body + rng[12:] + gcm_enc(data_key, rng[12:], body, pad(secret))
+    assert rng[12:] != v["payloadNonce"]
+    return body + rng[12:] + gcm_enc(data_key, rng[12:], body + vault_id, pad(secret))
 
 
-def update_payload(blob: bytes, keys: list[dict], new_secret: bytes, rng: bytes) -> bytes:
+def update_payload(blob: bytes, keys: list[dict], vault_id: bytes, new_secret: bytes, rng: bytes) -> bytes:
     """Spec §6.7; `rng` = payloadNonce(12)."""
-    _, data_key, v = open_full(blob, keys)
+    _, data_key, v = open_full(blob, keys, vault_id)
     if len(new_secret) == 0:
         raise VaultError("INVALID_ARGUMENT")
     if len(new_secret) > max_payload_bytes(v["rpId"], [e["credId"] for e in v["entries"]], v["mode"]):
         raise VaultError("VAULT_TOO_LARGE")
     assert len(rng) == 12
     body = v["payloadAad"]
-    return body + rng + gcm_enc(data_key, rng, body, pad(new_secret))
+    assert rng != v["payloadNonce"]
+    return body + rng + gcm_enc(data_key, rng, body + vault_id, pad(new_secret))
 
 
-def select_vault(candidates: list[bytes], prf: bytes) -> tuple[int, bytes]:
-    for i, c in enumerate(candidates):
+def select_vault(candidates: list[tuple[bytes, bytes]], prf: bytes) -> tuple[int, bytes, bytes]:
+    """candidates = [(vaultId, blob)]; returns (index, vaultId, secret)."""
+    for i, (vid, c) in enumerate(candidates):
         try:
-            return i, open_vault(c, [{"prf": prf}])
+            return i, vid, open_vault(c, [{"prf": prf}], vid)
         except VaultError:
             continue
     raise VaultError("NO_MATCHING_VAULT")
@@ -490,6 +502,9 @@ def build() -> dict:
         ("shamir-2-of-3", "Mode 0x02 (experimental), 2-of-3 over keys A+B+C.", MODE_SHAMIR, 2,
          ["A", "B", "C"], b"correct horse battery staple"),
     ]
+    VID = {name: det(f"vault/{name}/vaultId", 32) for name, *_ in vaults_spec}
+    VID["inline"] = det("vault/eight/vaultId", 32)
+    ATTACKER_VID = det("attacker/vaultId", 32)
     vaults = []
     blobs: dict[str, bytes] = {}
     meta: dict[str, dict] = {}
@@ -503,13 +518,13 @@ def build() -> dict:
         if mode == MODE_SHAMIR:
             shamir_rng = det(f"vault/{name}/shamir/coords", 255) + nonzero(
                 det(f"vault/{name}/shamir/coefficients", 32 * (m - 1)))
-        r = create_vault(RP_ID, creds, secret, mode, m, rng, shamir_rng)
+        r = create_vault(VID[name], RP_ID, creds, secret, mode, m, rng, shamir_rng)
         blobs[name] = r["blob"]
         meta[name] = r
         # self-check: every single key (mode 1) / every M-subset (mode 2) opens
         if mode == MODE_ANY:
             for c in creds:
-                assert open_vault(r["blob"], [{"prf": c["prf"]}]) == secret
+                assert open_vault(r["blob"], [{"prf": c["prf"]}], VID[name]) == secret
         try:
             text = secret.decode("utf-8")
         except UnicodeDecodeError:
@@ -517,6 +532,7 @@ def build() -> dict:
         vaults.append({
             "name": name,
             "description": desc,
+            "vaultId": VID[name].hex(),
             "mode": mode,
             "threshold": m,
             "rpId": RP_ID.decode(),
@@ -588,10 +604,12 @@ def build() -> dict:
     # ------------------------------------------------------------ open cases
     open_cases = []
 
-    def add_open(name: str, desc: str, vault: str | None, blob: bytes, keys: list[tuple[dict, bool]]) -> None:
+    def add_open(name: str, desc: str, vault: str | None, blob: bytes, keys: list[tuple[dict, bool]],
+                 vid: bytes | None = None) -> None:
         ks = [{"prf": c["prf"], "credId": c["id"] if w else None} for c, w in keys]
-        o = outcome(lambda: open_vault(blob, ks))
-        case = {"name": name, "description": desc, "vault": vault, "blob": blob.hex(),
+        vault_id = vid if vid is not None else VID[vault]
+        o = outcome(lambda: open_vault(blob, ks, vault_id))
+        case = {"name": name, "description": desc, "vault": vault, "vaultId": vault_id.hex(), "blob": blob.hex(),
                 "keys": [key_json(c, w) for c, w in keys]}
         if "error" in o:
             case["expectedError"] = o["error"]
@@ -637,17 +655,25 @@ def build() -> dict:
              [(A, False), (A, False)])
     add_open("shamir-wrong-key", "2-of-3 with unenrolled key D.", "shamir-2-of-3", sv,
              [(UNENROLLED_D, False)])
+    add_open("wrong-vault-id", "Genuine any-of-2 blob and key A, but opened under another vaultId (a clone).",
+             "any-of-2", v1, [(A, False)], ATTACKER_VID)
+    add_open("shamir-wrong-vault-id", "Genuine 2-of-3 blob and keys A+B, but under another vaultId (a clone).",
+             "shamir-2-of-3", sv, [(A, False), (B, False)], ATTACKER_VID)
+    add_open("invalid-vault-id-zero", "All-zero vaultId.", "any-of-2", v1, [(A, False)], bytes(32))
+    add_open("invalid-vault-id-short", "31-byte vaultId.", "any-of-2", v1, [(A, False)], VID["any-of-2"][:31])
 
     # ---------------------------------------------------------- create cases
     create_cases = []
 
     def add_create(name: str, desc: str, keys: list[dict], secret: bytes, mode: int = MODE_ANY,
-                   m: int = 1, rp_id: bytes = RP_ID) -> None:
-        o = outcome(lambda: create_vault(rp_id, keys, secret, mode, m, b"", None))
+                   m: int = 1, rp_id: bytes = RP_ID, vault_id: bytes | None = None) -> None:
+        vault_id = vault_id if vault_id is not None else det(f"create/{name}/vaultId", 32)
+        o = outcome(lambda: create_vault(vault_id, rp_id, keys, secret, mode, m, b"", None))
         assert "error" in o, name
         ids = [k["id"] for k in keys]
         case = {
-            "name": name, "description": desc, "rpId": rp_id.decode(), "mode": mode, "threshold": m,
+            "name": name, "description": desc, "vaultId": vault_id.hex(), "rpId": rp_id.decode(),
+            "mode": mode, "threshold": m,
             "credentials": [{"id": k["id"].hex(), "prf": k["prf"].hex()} for k in keys],
             "secret": secret.hex(), "expectedError": o["error"],
         }
@@ -668,15 +694,17 @@ def build() -> dict:
     add_create("duplicate-cred-id", "Same credential twice.", [A, A], b"secret")
     add_create("shamir-threshold-too-high", "Mode 0x02 with M = 4 > N = 3.", [A, B, C], b"secret",
                MODE_SHAMIR, 4)
+    add_create("zero-vault-id", "All-zero vaultId.", [A, B], b"secret", vault_id=bytes(32))
 
     # ------------------------------------------------------- add-key cases
     add_key_cases = []
 
     def add_add(name: str, desc: str, vault: str, blob: bytes, key: tuple[dict, bool], new: dict,
-                rng: bytes) -> None:
+                rng: bytes, vid: bytes | None = None) -> None:
         k = {"prf": key[0]["prf"], "credId": key[0]["id"] if key[1] else None}
-        o = outcome(lambda: add_key(blob, k, new, rng))
-        case = {"name": name, "description": desc, "vault": vault, "blob": blob.hex(),
+        vault_id = vid if vid is not None else VID[vault]
+        o = outcome(lambda: add_key(blob, k, vault_id, new, rng))
+        case = {"name": name, "description": desc, "vault": vault, "vaultId": vault_id.hex(), "blob": blob.hex(),
                 "key": key_json(*key), "newCredential": {"id": new["id"].hex(), "prf": new["prf"].hex(),
                                                          "locator": derive_locator(new["prf"]).hex()},
                 "rng": rng.hex()}
@@ -687,9 +715,10 @@ def build() -> dict:
             case["expectedBlob"] = out.hex()
             case["expectedBlobLength"] = len(out)
             # self-checks: every key opens; existing entries byte-identical
-            secret = open_vault(blob, [k])
+            secret = open_vault(blob, [k], vault_id)
             for c in [CREDS[x] for x in ("A", "B")] + [new]:
-                assert open_vault(out, [{"prf": c["prf"]}]) == secret
+                assert open_vault(out, [{"prf": c["prf"]}], vault_id) == secret
+                assert outcome(lambda: open_vault(out, [{"prf": c["prf"]}], ATTACKER_VID))["error"] == "NO_MATCHING_KEY"
             d_in = decode(blob)
             hh, pp = len(d_in["header"]), len(d_in["payloadAad"])
             assert out[hh:pp] == blob[hh:pp], "existing entries must be byte-identical"
@@ -708,18 +737,21 @@ def build() -> dict:
     # 9th key: build an 8-key vault (short credIds) and try to add one more
     eight = [{"id": det(f"eight/{i}/id", 16), "prf": det(f"eight/{i}/prf", 32)} for i in range(8)]
     eight_rng = det("vault/eight/rng", 32 + 32 + 12 * 8 + 12)
-    eight_blob = create_vault(RP_ID, eight, b"eight keys", MODE_ANY, 1, eight_rng, None)["blob"]
+    eight_blob = create_vault(VID["inline"], RP_ID, eight, b"eight keys", MODE_ANY, 1, eight_rng, None)["blob"]
     add_add("add-ninth-key", "Add a 9th key to an 8-key vault.", "inline", eight_blob, (eight[0], False),
             C, add_rng)
+    add_add("add-wrong-vault-id", "Add key C to the any-of-2 blob under another vaultId (a clone).", "any-of-2",
+            v1, (A, False), C, add_rng, ATTACKER_VID)
 
     # -------------------------------------------------- update-payload cases
     update_cases = []
 
     def add_update(name: str, desc: str, vault: str, blob: bytes, keys: list[tuple[dict, bool]],
-                   new_secret: bytes, rng: bytes) -> None:
+                   new_secret: bytes, rng: bytes, vid: bytes | None = None) -> None:
         ks = [{"prf": c["prf"], "credId": c["id"] if w else None} for c, w in keys]
-        o = outcome(lambda: update_payload(blob, ks, new_secret, rng))
-        case = {"name": name, "description": desc, "vault": vault, "blob": blob.hex(),
+        vault_id = vid if vid is not None else VID[vault]
+        o = outcome(lambda: update_payload(blob, ks, vault_id, new_secret, rng))
+        case = {"name": name, "description": desc, "vault": vault, "vaultId": vault_id.hex(), "blob": blob.hex(),
                 "keys": [key_json(c, w) for c, w in keys], "newSecret": new_secret.hex(), "rng": rng.hex()}
         if "error" in o:
             case["expectedError"] = o["error"]
@@ -728,10 +760,10 @@ def build() -> dict:
                 case["maxPayloadBytes"] = max_payload_bytes(d["rpId"], [e["credId"] for e in d["entries"]], d["mode"])
         else:
             case["expectedBlob"] = o["ok"].hex()
-            assert open_vault(o["ok"], ks) == new_secret
+            assert open_vault(o["ok"], ks, vault_id) == new_secret
             if decode(blob)["mode"] == MODE_ANY:
                 for c in (A, B):
-                    assert open_vault(o["ok"], [{"prf": c["prf"]}]) == new_secret
+                    assert open_vault(o["ok"], [{"prf": c["prf"]}], vault_id) == new_secret
         update_cases.append(case)
 
     up_rng = det("update/payloadNonce", 12)
@@ -743,6 +775,11 @@ def build() -> dict:
                det("update/oversize", 639), up_rng)
     add_update("update-shamir-A-C", "Keys A and C update the 2-of-3 secret.", "shamir-2-of-3",
                blobs["shamir-2-of-3"], [(A, False), (C, False)], b"rotated shamir secret", up_rng)
+    add_update("update-wrong-vault-id", "Key B updates the any-of-2 blob under another vaultId (a clone).",
+               "any-of-2", v1, [(B, False)], b"hijacked", up_rng, ATTACKER_VID)
+    add_update("update-shamir-wrong-vault-id",
+               "Keys A and C update the 2-of-3 blob under another vaultId (a clone).", "shamir-2-of-3",
+               blobs["shamir-2-of-3"], [(A, False), (C, False)], b"hijacked", up_rng, ATTACKER_VID)
 
     # ---------------------------------------------------------- select cases
     junk_garbage = det("select/garbage", 200)
@@ -755,22 +792,30 @@ def build() -> dict:
     assert outcome(lambda: decode(replay)).get("ok") is not None
     select_cases = []
 
-    def add_select(name: str, desc: str, cands: list[tuple[str, bytes]], c: dict) -> None:
-        o = outcome(lambda: select_vault([b for _, b in cands], c["prf"]))
+    def add_select(name: str, desc: str, cands: list[tuple[str, bytes, bytes]], c: dict) -> None:
+        o = outcome(lambda: select_vault([(vid, b) for _, vid, b in cands], c["prf"]))
         case = {"name": name, "description": desc, **key_json(c, False),
-                "candidateKinds": [k for k, _ in cands], "candidates": [b.hex() for _, b in cands]}
+                "candidateKinds": [k for k, _, _ in cands],
+                "candidates": [{"vaultId": vid.hex(), "blob": b.hex()} for _, vid, b in cands]}
         if "error" in o:
             case["expectedError"] = o["error"]
         else:
-            case["expectedIndex"], sec = o["ok"]
+            case["expectedIndex"], vid, sec = o["ok"]
+            case["expectedVaultId"] = vid.hex()
             case["expectedSecret"] = sec.hex()
         select_cases.append(case)
 
-    squat = [("garbage", junk_garbage), ("forged-entries", forged), ("replayed-header", replay)]
+    squat = [("garbage", det("select/vid/garbage", 32), junk_garbage),
+             ("forged-entries", det("select/vid/forged", 32), forged),
+             ("replayed-header", det("select/vid/replay", 32), replay),
+             ("cloned-blob", ATTACKER_VID, v1)]
     add_select("squatted-locator",
-               "Genuine any-of-2 blob after three junk blobs, followed by the genuine any-of-3 blob.",
-               squat + [("genuine", v1), ("genuine-other", blobs["any-of-3"])], A)
-    add_select("no-genuine-candidate", "Only junk blobs under the locator.", squat, A)
+               "Genuine any-of-2 vault after junk and a byte-identical clone under an attacker vaultId, "
+               "followed by the genuine any-of-3 vault.",
+               squat + [("genuine", VID["any-of-2"], v1), ("genuine-other", VID["any-of-3"], blobs["any-of-3"])], A)
+    add_select("no-genuine-candidate", "Only junk and a clone under an attacker vaultId.", squat, A)
+    add_select("clone-only", "Only the byte-identical clone under an attacker vaultId.",
+               [("cloned-blob", ATTACKER_VID, v1)], A)
     add_select("empty-candidate-list", "Locator resolves to no vaultIds.", [], A)
 
     # ------------------------------------------- authenticator-data cases

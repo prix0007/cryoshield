@@ -20,6 +20,8 @@ export const NONCE_BYTES = 12;
 export const TAG_BYTES = 16;
 export const PAD_BLOCK = 64;
 export const SHARE_BYTES = 1 + KEY_BYTES;
+/** On-chain vault identifier (registry bytes32); bound into every AAD, never stored in the blob. */
+export const VAULT_ID_BYTES = 32;
 
 export const LOCATOR_SALT_INPUT = 'cryoshield/v1/locator-salt';
 export const INFO_LOCATOR = 'cryoshield/v1/locator';
