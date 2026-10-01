@@ -20,7 +20,7 @@ The vault format (`vault-crypto`) and the on-chain store (`vault-registry`) are 
   - a Coinbase Smart Wallet whose owners are the enrolled keys' WebAuthn P-256 public keys, driven by `viem/account-abstraction`;
   - submitted through the Pimlico bundler, with gas sponsored by a CryoShield-funded Pimlico paymaster under a sponsorship policy;
   - flows: create vault, edit secrets, add a key.
-- **Arweave mirror:** after every successful vault write, the app uploads the exact blob through ArDrive Turbo, tagged so the recovery tool can find it via Arweave GraphQL. It re-uploads on unlock if the current version is missing.
+- **Arweave mirror:** after every successful vault write, the app uploads the exact blob through ArDrive Turbo's upload API (an in-tree ANS-104 builder, no Turbo SDK; design D8), tagged so the recovery tool can find it via Arweave GraphQL. It re-uploads on unlock if the current version is missing.
 - **Vault payload encoding v1:** a small versioned format for the list of labelled secrets inside the encrypted payload. It is published so the recovery tool can display secrets.
 - **Plain-language, WCAG 2.2 AA UI** for four flows: create vault, add key, unlock, and view/copy secrets.
 - **Security posture:**
@@ -44,7 +44,7 @@ The vault format (`vault-crypto`) and the on-chain store (`vault-registry`) are 
 - Pimlico bundler + paymaster API (writes; CryoShield pays Pimlico);
 - ArDrive Turbo upload service and an Arweave gateway (GraphQL + data).
 
-npm dependencies: `react`, `react-dom`, `viem`, `permissionless`, `@ardrive/turbo-sdk`, and the workspace packages `@cryoshield/vault-crypto` and the VaultRegistry ABI. **This is not a CryoShield-operated backend.**
+npm dependencies: `react`, `react-dom`, `viem`, `permissionless`, and the workspace packages `@cryoshield/vault-crypto` and the VaultRegistry ABI. **This is not a CryoShield-operated backend.**
 
 ## Capabilities
 

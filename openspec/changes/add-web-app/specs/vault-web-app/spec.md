@@ -81,11 +81,15 @@ The unlock flow SHALL be one button and one key tap. It then lists secrets with 
 - **THEN** the app shows "We couldn't find a vault for this key" with a "Create a vault" action
 
 ### Requirement: Add-key flow
-After unlocking, the user SHALL be able to add another key (up to 8 total). The flow MUST ask them to tap each already-enrolled key and the new key. It MUST explain why every existing key is needed.
+After unlocking, the user SHALL be able to add another key (up to 8 total) using ONE current key and the new key. Whenever the user must swap physical keys, the flow MUST wait for an explicit Continue before starting the next ceremony, and MUST name which key to touch.
 
 #### Scenario: Add a third key
-- **WHEN** a user with keys A and B adds key C and taps A, B, and C as asked
-- **THEN** the vault saves and can be unlocked by C
+- **WHEN** a user with keys A and B adds key C, touching A, then C after Continue, then A after Continue
+- **THEN** the vault saves and can be unlocked by C alone
+
+#### Scenario: Vault already has 8 keys
+- **WHEN** a user opens Add a key on an 8-key vault
+- **THEN** the app says the maximum is reached and offers no add action
 
 ### Requirement: Secrets in memory only with auto-lock
 Decrypted secrets SHALL exist only in component memory. They MUST be cleared on the Lock action, after 5 minutes without user interaction, and on page hide or unload. The app MUST NOT persist any vault data, secret, label, or key material to browser storage.

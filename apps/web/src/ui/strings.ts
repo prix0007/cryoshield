@@ -1,0 +1,165 @@
+/**
+ * Every user-facing string of the default flow. Plain language: no "gas", "wallet", "transaction",
+ * "smart account", "bundler", "paymaster" or "ETH" (checked by test/ui/jargon.test.ts).
+ */
+export const S = {
+  appName: 'CryoShield',
+  tagline: 'Keep your most important secrets safe, unlocked only by your security keys.',
+
+  home: {
+    unlock: 'Unlock my vault',
+    create: 'Create a new vault',
+    explain:
+      'Your secrets are locked with your security keys before they leave this page. Nobody else, including CryoShield, can read them.',
+  },
+
+  misconfigured: 'This site is set up incorrectly, so security keys can’t be used here. Please use the official CryoShield address.',
+  browserUnsupported:
+    'This browser can’t use security keys for encryption. Please use a recent version of Chrome, Edge, or Firefox on a computer, or Safari 26.4 or newer.',
+  supportedBrowsers: ['Chrome 118 or newer', 'Edge 118 or newer', 'Firefox 148 or newer', 'Safari 26.4 or newer'],
+
+  keyErrors: {
+    CANCELLED: 'The key request was cancelled or timed out. Try again when you’re ready.',
+    DUPLICATE_KEY: 'That key is already set up for this vault. Please use a different key.',
+    PRF_UNSUPPORTED_KEY:
+      'This key is too old or doesn’t support the feature CryoShield needs (YubiKey 5 with firmware 5.2 or newer works). Please try a different key.',
+    PRF_UNSUPPORTED_BROWSER: 'This browser can’t use security keys for encryption.',
+    PRF_UNAVAILABLE: 'Your key didn’t return what we need. Please try again, or try a different browser.',
+    USER_NOT_VERIFIED: 'Your key’s PIN wasn’t checked. Please try again and enter your key’s PIN when asked.',
+    WRONG_ALGORITHM: 'This key type isn’t supported. Please use a FIDO2 security key such as a YubiKey 5.',
+    WRONG_KEY: 'That’s a different key from the one we asked for. Please touch the key named on screen.',
+    MISCONFIGURED: 'This site is set up incorrectly, so security keys can’t be used here.',
+  } as Record<string, string>,
+
+  create: {
+    title: 'Create your vault',
+    introTitle: 'How it works',
+    intro: [
+      'You’ll set up at least two security keys. Either one can open your vault.',
+      'Your secrets are locked on this device, then stored permanently in a public place where only your keys can open them.',
+      'Keep your keys in different places. If you lose one, the other still works.',
+      'Each key needs a PIN. If yours doesn’t have one yet, your browser will help you set it.',
+    ],
+    start: 'Get started',
+    keysTitle: 'Set up your keys',
+    keyN: (n: number) => `Key ${n}`,
+    addKey: (n: number) => `Set up key ${n}`,
+    addAnother: 'Set up another key (optional)',
+    insertKey: (n: number) => `Insert key ${n} and touch it when it blinks.`,
+    touchAgain: (n: number) => `Touch key ${n} once more to finish setting it up.`,
+    keyReady: (n: number) => `Key ${n} is ready.`,
+    needSecond: 'Add a second key so you’re never locked out',
+    continue: 'Continue',
+    secretsTitle: 'Add your secrets',
+    savingTitle: 'Saving your vault',
+    touchToSave: 'Touch key 1 to save your vault.',
+    retrying:
+      'Someone else’s save happened to use the same vault number at the same moment, so nothing was saved. We’ve prepared your vault again with a new number; touch key 1 once more to finish.',
+    doneTitle: 'Your vault is saved',
+    done: [
+      'Your secrets are now stored permanently, and only your keys can open them.',
+      'Keep your keys in separate places, for example one at home and one somewhere else safe.',
+    ],
+    idleReset: 'Setup was cancelled because nothing happened for 5 minutes. For your safety, please set up your keys again.',
+    freshKeys:
+      'One of your keys can’t be used for a new vault right now (someone filled its slot). Please set up your keys again; this creates fresh, unused slots.',
+  },
+
+  editor: {
+    label: 'Name',
+    labelHint: 'For example “Bitcoin seed” or “GitHub recovery codes”',
+    secret: 'Secret',
+    addItem: 'Add another secret',
+    removeItem: (label: string) => `Remove ${label || 'this secret'}`,
+    space: (remaining: number, max: number) => `${Math.max(remaining, 0)} of ${max} characters of space left`,
+    tooBig: (over: number) => `Too much text: remove about ${over} characters to save.`,
+    save: 'Save',
+    cancel: 'Cancel',
+    needOne: 'Add at least one secret.',
+  },
+
+  unlock: {
+    title: 'Unlock your vault',
+    touch: 'Insert one of your keys and touch it when it blinks.',
+    button: 'Unlock with my key',
+    working: 'Opening your vault…',
+    notFound: 'We couldn’t find a vault for this key.',
+    createInstead: 'Create a vault',
+    tryAgain: 'Try again',
+    newerVersion: 'This vault was made by a newer version of CryoShield. Please update and try again.',
+    several: 'This key opens more than one vault. Choose which one to open:',
+    severalWarning:
+      'This is unusual. Each of these vaults was created with this key. If you don’t recognise one, open the other, and keep using that one.',
+    vaultChoice: (i: number, version: number) => `Vault ${i + 1} (saved ${version} time${version === 1 ? '' : 's'})`,
+    networkError: 'We couldn’t reach the network. Check your connection and try again.',
+  },
+
+  vault: {
+    title: 'Your vault',
+    show: 'Show',
+    hide: 'Hide',
+    copy: 'Copy',
+    copied: 'Copied. It will be cleared from your clipboard in 30 seconds.',
+    lock: 'Lock',
+    edit: 'Edit secrets',
+    addKey: 'Add a key',
+    details: 'Vault details',
+    hidden: '••••••••',
+    idleWarning: 'For your safety, your vault will lock in 30 seconds.',
+    stillHere: 'I’m still here',
+    locked: 'Your vault is locked.',
+  },
+
+  edit: {
+    touchAny: 'Touch one of your keys to unlock editing.',
+    touchSame: 'Touch the same key again to save your changes.',
+    notInVault: 'That key isn’t part of this vault. Please use one of this vault’s keys.',
+  },
+
+  addKey: {
+    title: 'Add a key',
+    explain: [
+      'You’ll need one key you already use for this vault, and the new key.',
+      'Your current key unlocks the vault so the new key can be added. Nothing else changes.',
+    ],
+    max: 'This vault already has the maximum of 8 keys.',
+    start: 'Add a key',
+    touchCurrent: 'Touch one of your current keys.',
+    insertNew: 'Now insert your new key. Press Continue, then touch the new key when it blinks.',
+    touchNewAgain: 'Touch the new key once more to finish setting it up.',
+    touchCurrentAgain: 'Put your current key back. Press Continue, then touch it to save.',
+    done: 'Your new key is ready. It can open this vault on its own.',
+  },
+
+  save: {
+    waitingForKey: 'Waiting for your key…',
+    saving: 'Saving… this can take up to a minute.',
+    saved: 'Saved.',
+    nothingSaved: 'Nothing was saved. Your changes are still here, so you can try again.',
+    paused: 'Saving is paused right now. Your existing vault is safe; please try again later.',
+    tooMany: 'This vault can’t hold more keys.',
+    tooLarge: 'This is too much to store. Please shorten your secrets.',
+    notConfirmed: 'We couldn’t confirm the save yet. Please unlock again in a minute to check.',
+    retry: 'Try again',
+  },
+
+  mirror: {
+    saved: 'Backup copy saved.',
+    pending: 'Saving an extra backup copy…',
+    failed: 'Extra backup copy not saved yet.',
+    retry: 'Retry',
+  },
+
+  details: {
+    title: 'Vault details',
+    vaultId: 'Vault ID',
+    download: 'Download encrypted backup file',
+    downloadHint:
+      'This file is your vault exactly as stored, still locked. It is useless without one of your keys, and lets the CryoShield recovery tool open your vault even if this website is gone.',
+    close: 'Close',
+  },
+
+  continue: 'Continue',
+  back: 'Back',
+  busy: 'Working…',
+} as const;

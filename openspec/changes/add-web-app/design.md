@@ -79,9 +79,12 @@ Facts below marked **(verified)** were checked against upstream sources on 2026-
 - Use permissionless.js `createSmartAccountClient` with a Pimlico client as bundler and paymaster, and `paymasterContext: { sponsorshipPolicyId }`. **(verified)** This is the documented way to pass a policy.
 - **(verified)** Policies support global, per-user, and per-user-operation spend limits.
 - **(verified)** API keys can be restricted by origin/domain, user agent, IP, and method allowlist.
-- **(assumption, task 1.4)** The policy can also restrict sponsored targets or calldata to the VaultRegistry and account self-calls. Pimlico's docs mention allowlists but don't document target-contract rules.
-  - If target restriction is unavailable, the bound is the global cap plus the per-account cap, together with the client-side target check (spec).
+- **(task 1.4 result: NOT verifiable, treated as unavailable)** Pimlico's docs don't document a policy rule that restricts sponsored targets or calldata to one contract or selector. **The global and per-account caps are therefore the real server-side backstop.**
+  - The client-side allowlist (`src/account/policy.ts`) enforces value 0 plus allowlisted registry selectors and self `addOwnerPublicKey`, on both the calls and the decoded `execute`/`executeBatch` callData, inside the paymaster hook. It constrains honest clients only.
   - Pimlico sponsorship webhooks are **rejected**, because they need a server we operate.
+  - Details and the settings to apply: `apps/web/docs/paymaster-policy.md`.
+- **(task 1.4, verified with `cast code`)** The CBSW v1.1 factory (`0xBA5ED110…5842`) and EntryPoint v0.6 (`0x5FF137D4…2789`) have identical bytecode on Arbitrum Sepolia and Arbitrum One. Implementation: `0x00000110…534d`.
+- **Private bundler endpoint:** operations go only to `VITE_BUNDLER_URL` (Pimlico) over HTTPS and never to a public ERC-4337 p2p mempool. Arbitrum's sequencer has no public pending-transaction pool. The protocol tolerates front-running anyway: a non-exclusive locator index, a `vaultId` retry, and a fresh credential on `LocatorFull`.
 - Policy settings to apply in the dashboard (an operations step):
   - chain Arbitrum One / Sepolia, EntryPoint v0.6;
   - per-sender limit: 10 operations and $0.50 lifetime;
@@ -99,12 +102,12 @@ Facts below marked **(verified)** were checked against upstream sources on 2026-
   - ox builds the request options and calls `getFn(options)`, then reads only `credential.response`. It does not call `getClientExtensionResults`.
   - So a wrapping `getFn` can inject `publicKey.extensions.prf`, force `userVerification: 'required'`, call `navigator.credentials.get`, capture `getClientExtensionResults().prf.results.first`, and return the credential unchanged.
 - **But it rarely saves a tap.** The userOp hash covers the new blob, and the new blob needs the PRF output first. So the signing ceremony can only capture PRF for a key whose output is already known.
-- **Decision:** writes use a dedicated signing tap. The PRF-capturing `getFn` (`prfCapturingGetFn`) is implemented and used for one purpose: verifying, at signing time, that the signing key's PRF output still equals the unlock output. This catches a different key being tapped, and the check is cheap.
+- **Decision:** writes use a dedicated signing tap. The PRF-capturing `getFn` (`prfCapturingGetFn`) adds the PRF extension and UV "required" to the signing ceremony. It then checks UV and verifies that the derived locator equals the expected key's locator, which catches a different key being tapped. The captured output is wiped immediately and never returned.
 - **Resulting tap counts:**
   - unlock: 1;
-  - edit: 1 (if the unlock session is still live) + 1 sign;
-  - create, per key: 1 create + 1 PRF get (skipped when the browser returns PRF results at create, which happens on YubiKey firmware 5.8+ with `hmac-secret-mc`), then 1 sign. That is 3–5 taps total for 2 keys;
-  - add key: 1 per existing key + 1–2 for the new key + 1 sign.
+  - edit: 2 (PRF tap with any vault key, then a sign tap with the same key). PRF outputs are not kept for the whole session;
+  - create, per key: 1 create + 1 PRF get (skipped when the browser returns PRF results at create; Chromium's virtual authenticator and YubiKey 5.8+ do), then 1 sign. That is 3–5 taps for 2 keys;
+  - add key: 1 current-key PRF tap + 1–2 for the new key + 1 sign. Each physical key swap waits for an explicit **Continue** button. This prevents the wrong plugged-in key from answering, which matters for real USB keys and for E2E alike.
 
 ### D6. Enrollment details
 - `navigator.credentials.create` with:
@@ -126,9 +129,17 @@ Facts below marked **(verified)** were checked against upstream sources on 2026-
 - **Unlock:** `deriveLocator(prf)`, then `resolveLocator`, then `getVault` for each candidate (blob and owner), then `selectVault(candidates, prf)`, then `decodePayloadV1`.
 - **Edit:** requires the requested crypto API `updatePayload(blob, prf, newSecret)`. It keeps the header, entries, and wrap salt, and re-encrypts only the payload under the same data key with a fresh nonce. The payload AAD (all preceding bytes) stays valid.
   - The registry `updateVault(vaultId, newBlob)` call is signed by the unlocking key.
-- **Add key:** requires every existing key's PRF output, because the wrap AAD includes the fixed header with count N, so a new N invalidates every existing wrap.
-  - Uses `createVault` with all N+1 credentials. It creates a fresh wrap salt; locators are unchanged because the locator HKDF has an empty salt.
+- **Add key (updated at apply):** vault-crypto now ships `addKey(blob, existingKey, newCredential)`, which needs **one** existing key in any-of-N mode. Existing entries are copied byte for byte.
   - One batched userOp: `executeBatch([self.addOwnerPublicKey(x, y), registry.addLocators(vaultId, [newLoc]), registry.updateVault(vaultId, blob)])`. It is atomic.
+- **Preflight:** every registry call is `eth_call`-ed from the account address before any signing tap. Custom errors are decoded to `WriteError` codes:
+  - `VaultIdTaken`: retry once with a fresh random id;
+  - `LocatorFull`: drop that key and set it up again as a fresh credential, since a new PRF output gives a new locator;
+  - `OwnerAlreadyHasVault`, `TooManyLocators`, `InvalidBlobSize`, `NotVaultOwner`, `DuplicateLocator`: plain messages.
+  
+  A revert after inclusion (`UserOperationRevertReason`) is decoded the same way.
+- **Vault binding (security-review fix, `bind-vault-id-to-ciphertext`):** every vault-crypto call takes the on-chain vaultId (wrap and payload AAD), so a byte-identical clone under another vaultId never opens. Create builds the blob per vaultId; on `VaultIdTaken` it re-encrypts under a fresh random id from the PRF outputs already held for the setup (no re-tap of every key), and the user touches key 1 once more with a plain-language explanation. Identical (vaultId, blob) candidates are collapsed before trying them.
+- **Several genuine vaults for one credential:** `selectVault` returns only the first authenticating candidate, so the adapter calls it per candidate with a PRF copy and collects every match. The UI shows a picker, newest (last appended) first.
+- **UV:** vault-crypto's `webauthnPrfCreateOptions()` / `webauthnPrfGetOptions()` build the options. `assertUserVerified(authenticatorData)` runs on every create and get response before the PRF output is used.
 - `maxPayloadBytes(rpId, credIds, 0x01)` drives the capacity meter.
 - Payload v1 is compact JSON (spec), at about 640 bytes usable for 2 keys. JSON was chosen over a binary TLV because the recovery tool and humans can read it directly. Its overhead is about 15 bytes per item.
 
@@ -142,7 +153,11 @@ Facts below marked **(verified)** were checked against upstream sources on 2026-
   - The per-subnet allowance is about 3,000+ uploads per subnet. It could bind behind a shared NAT or CGNAT.
   - Fallback when the upload is refused for the allowance: keep the vault saved (non-blocking warning), and retry on the next unlock (self-healing).
   - A CryoShield-funded credit share needs an approval from our wallet to each upload signer, which in turn needs a server, so it is **deferred**. It is listed in Open Questions.
-- Uses `@ardrive/turbo-sdk/web`, `TurboFactory.authenticated({ privateKey: ephemeral, token: 'ethereum' })` and `uploadFile` with tags. **(assumption, task 7.1)** It works under the strict CSP without `'wasm-unsafe-eval'`. If not, add `'wasm-unsafe-eval'` only, and record it.
+- **Changed at apply: no `@ardrive/turbo-sdk` in the bundle.** Its dependency tree (ethers, @solana/web3.js, axios, arweave-js, bignumber.js, …) is a large supply-chain surface for one POST.
+  - Instead, `src/mirror/ans104.ts` (about 120 lines) builds an ANS-104 data item with an Ethereum (type 3) signature from an ephemeral in-memory viem account, and POSTs it to Turbo's upload API (`POST {VITE_TURBO_UPLOAD_URL}/v1/tx/ethereum`, `application/octet-stream`), the same endpoint the SDK uses.
+  - A unit test checks the bytes and id against `@dha-team/arbundles` (a dev dependency only).
+  - No WASM or `eval`, so the CSP needs no relaxation.
+- Locators for the tags come from `LocatorAdded` logs (indexed `vaultId`, from `deployBlock`), merged with the locators the client already knows. If log queries fail (RPC range limits), the known locators are used.
 - **Tags:** exactly recovery-tool D5 (spec). There is no `Content-Type` tag, so gateways serve it as `application/octet-stream`.
 - **Self-heal on unlock:**
   - GraphQL `transactions(tags: [App-Name, CryoShield-Vault-Id, CryoShield-Version])`;
@@ -168,12 +183,17 @@ Facts below marked **(verified)** were checked against upstream sources on 2026-
   - config validation, payload codec, the WebAuthn wrapper with a fake `navigator.credentials`, registry read/candidate logic against a mocked viem transport, the userOp target allowlist, mirror tag builder, flows, and a11y (`vitest-axe`);
   - vault-crypto integration tests run against the real package and its `test-vectors/v1.json`.
 - **E2E (Playwright, Chromium):**
-  - a CDP session per page: `WebAuthn.enable` plus `WebAuthn.addVirtualAuthenticator({ protocol: 'ctap2', transport: 'usb', hasResidentKey: true, hasUserVerification: true, isUserVerified: true, hasPrf: true })`. **(verified)** `hasPrf` is a documented `VirtualAuthenticatorOptions` field;
-  - two authenticators simulate two keys (switch with `setUserVerified` / remove and add);
-  - local stack via `prool`: anvil (no RIP-7212, which exercises the FCL fallback), Pimlico Alto bundler, a mock verifying paymaster, and deployments of EntryPoint v0.6, the CBSW factory, and the VaultRegistry;
+  - a CDP session per page: `WebAuthn.enable` plus `WebAuthn.addVirtualAuthenticator({ protocol: 'ctap2', transport: 'usb', hasResidentKey: true, hasUserVerification: true, isUserVerified: true, hasPrf: true })`. **(verified at apply)** PRF works, including results at create; the shim fallback was not needed;
+  - each key is its own authenticator, and only the "touched" one has `automaticPresenceSimulation` enabled;
+  - **local stack (choice made at apply): anvil + a minimal dev bundler, not Alto/prool.**
+    - The canonical EntryPoint v0.6, SenderCreator, and CBSW v1.1 factory and implementation runtime code are copied from Arbitrum Sepolia into a hash-pinned fixture and placed with `anvil_setCode`.
+    - The VaultRegistry is deployed with the same CREATE2 salt as `contracts/script/deploy.sh`, so its address matches `contracts/deployments/31337.json`. An accept-all E2E paymaster is deposited in the EntryPoint.
+    - A ~300-line Node JSON-RPC server implements the bundler, ERC-7677 paymaster, and `pimlico_getUserOperationGasPrice` methods. It submits via `handleOps`, so WebAuthn P-256 verification (FCL fallback), account deployment, and registry calls run on-chain for real.
+    - Rationale: no Docker, offline, deterministic, and CBSW available. Not covered: ERC-7562 simulation and Pimlico's gas estimation, which the Sepolia hardware run covers;
+  - the same stack backs Vitest integration tests (`test-int/`) using the software fake authenticator;
   - Arweave and Turbo are stubbed by `page.route` with an in-memory GraphQL and data store;
   - axe-core on every screen; a network-origin allowlist assertion; a CSP violation test.
-- **Fallback if `hasPrf` is unavailable or broken** in the pinned Chromium (checked in task 2.4): an E2E-only init script that wraps `navigator.credentials` to add PRF results computed as HMAC-SHA256 over a per-authenticator secret. It lives in `e2e/fixtures` and is never imported by `src`; a build test asserts that the production bundle doesn't contain it.
+- **Fallback if `hasPrf` is unavailable:** not needed (task 2.4). A build check still asserts that no E2E-only code (`prf-shim`, test RPC controls, `__recordPrf`) reaches the bundle. The bundle also has every `console` call stripped (`dropConsole`), and it builds reproducibly.
 - **Firefox and WebKit** have no CDP virtual authenticator, so they get smoke E2E with the shim only. A manual hardware checklist (`apps/web/docs/hardware-test.md`) covers 2 real YubiKeys on desktop Chrome, which is the PRD success signal.
 
 ## Threat / Abuse Considerations
@@ -201,8 +221,8 @@ Facts below marked **(verified)** were checked against upstream sources on 2026-
 
 - [Pimlico policy can't restrict targets] → Rely on caps. Documented residual risk; revisit with another provider if abuse appears.
 - [Turbo per-subnet allowance exhausted] → Non-blocking warning plus self-heal. A future change can add a credit-sharing approach that needs no server.
-- [`@cryoshield/vault-crypto` lacks `updatePayload`] → Until delivered, edit falls back to the add-key style (all keys present, `createVault`). The edit task is marked as depending on it.
-- [The add-key flow needs every existing key present] → Explained in the UI. A crypto format change (AAD excluding N) would be a v2 decision, not here.
+- [Pimlico target restriction unavailable] → The caps are the backstop (documented). A provider offering target allowlists could be swapped in at `src/account/writes.ts`.
+- [Bundle size: about 640 KB minified, mostly viem] → Acceptable for MVP. Code-splitting the write path is a later optimisation.
 - [Browser PRF gaps: Safari bugs, older Firefox] → Capability detection plus a clear message. The support matrix lives in Phase 6.
 - [YubiKey PIN friction] → UV is mandatory for recovery-tool parity. Plain-language PIN guidance.
 - [CBSW factory not deployed on the target chain] → Verified in task 1.4. If missing, deploy the canonical factory via its deterministic deployer (an operations step).
@@ -218,14 +238,11 @@ Rollback: redeploy the previous static build. On-chain data is unaffected.
 
 ## Dependencies on other engineers
 
-- **Crypto engineer:**
-  1. `updatePayload(blob, prf, newSecret)` (payload-only re-encrypt, entries unchanged), with vectors.
-  2. Confirm the exported API names: `locatorSalt`, `deriveLocator`, `createVault`, `selectVault`, `maxPayloadBytes`.
-  3. Adopt recovery-tool D3 (UV required) in the "Single PRF input" requirement.
-- **Solidity engineer:**
-  1. `contracts/deployments/<chainId>.json` with `{address, deployBlock, txHash, abiHash}`, and the ABI JSON at a stable path, plus how `abiHash` is computed.
-  2. Error selectors for "vaultId exists", "owner already has vault", and the caps, so the UI can map them.
-  3. An anvil deploy script reusable by E2E.
+All were delivered before apply:
+- **Crypto:** `updatePayload`, one-key `addKey`, `webauthnPrfCreateOptions` / `webauthnPrfGetOptions`, `assertUserVerified`, and UV-required in the spec.
+- **Solidity:** `contracts/abi/VaultRegistry.json`, `contracts/deployments/31337.json` (keccak of the ABI bytes as `abiHash`), the 10 custom errors, and an indexed `vaultId` on all events.
+
+The E2E stack reads `contracts/out` and does not run `deploy.sh`, so it writes nothing under `contracts/`.
 
 ## Open Questions
 

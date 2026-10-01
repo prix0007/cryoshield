@@ -32,7 +32,7 @@ Enrollment SHALL create discoverable (resident) credentials, so that unlock work
 - **THEN** the ceremony succeeds without the app supplying any credential ID
 
 ### Requirement: Fixed user-verification policy
-Every ceremony that evaluates PRF SHALL request user verification as "required" and SHALL reject any result whose authenticator data lacks the UV flag. This keeps the hmac-secret output identical across browsers and the desktop recovery tool, which MUST also use UV.
+Every ceremony that evaluates PRF SHALL request user verification as "required", and every create and get response SHALL pass the vault-crypto UV check (`assertUserVerified`) before its PRF output is used. This keeps the hmac-secret output identical across browsers and the desktop recovery tool, which MUST also use UV.
 
 #### Scenario: UV missing
 - **WHEN** an assertion returns without the UV flag set

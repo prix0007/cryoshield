@@ -1,0 +1,27 @@
+import { defineConfig, loadEnv } from 'vite';
+import react from '@vitejs/plugin-react';
+import { cryoshield, defaultContractsDir } from './vite-plugins/cryoshield.ts';
+
+export default defineConfig(({ mode }) => {
+  const root = import.meta.dirname;
+  const env = { ...loadEnv(mode, root, 'VITE_'), ...pick(process.env) };
+  return {
+    plugins: [react(), cryoshield(env, process.env.CRYOSHIELD_CONTRACTS_DIR ?? defaultContractsDir(root))],
+    // Always build against the vault-crypto source (never a stale dist/).
+    resolve: { alias: [{ find: /^@cryoshield\/vault-crypto$/, replacement: `${root}/../../packages/vault-crypto/src/index.ts` }] },
+    build: {
+      sourcemap: false,
+      modulePreload: { polyfill: false },
+      assetsInlineLimit: 0,
+      target: 'es2022',
+      // Strip every console call from the shipped bundle (our code is also lint-banned from using console).
+      rolldownOptions: { output: { minify: { compress: { dropConsole: true } } } },
+    },
+    server: { host: 'localhost', port: 5173, strictPort: true },
+    preview: { host: 'localhost', port: 4173, strictPort: true },
+  };
+});
+
+function pick(env: NodeJS.ProcessEnv): Record<string, string> {
+  return Object.fromEntries(Object.entries(env).filter(([k, v]) => k.startsWith('VITE_') && v !== undefined)) as Record<string, string>;
+}

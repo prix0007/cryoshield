@@ -21,11 +21,15 @@ Create, edit, and add-key writes SHALL be submitted as sponsored user operations
 - **THEN** the operation is included on-chain with the paymaster paying gas, and the account balance stays zero
 
 ### Requirement: Sponsorship scope
-The app SHALL only build sponsored operations whose calls target the VaultRegistry (create, update, add locators) or the account itself (add owner). The sponsorship policy MUST enforce per-account and global spending caps.
+Every call in a sponsored operation SHALL have value 0 and target either the VaultRegistry with selector createVault, updateVault or addLocators, or the account itself with addOwnerPublicKey. The app MUST check this on the calls and again on the decoded execute/executeBatch callData before any paymaster request. The policy MUST enforce per-account and global caps.
 
 #### Scenario: Out-of-scope call refused client-side
-- **WHEN** code attempts to build a sponsored operation calling any other address
-- **THEN** the app throws before contacting the bundler
+- **WHEN** code attempts to build a sponsored operation calling any other address, a non-allowlisted selector, or with a non-zero value
+- **THEN** the app throws before contacting the bundler or paymaster
+
+#### Scenario: Server-side backstop
+- **WHEN** a script uses the public bundler API key directly, outside the app
+- **THEN** only the sponsorship policy's per-account and global caps bound the spend, as documented in `apps/web/docs/paymaster-policy.md`
 
 #### Scenario: Cap reached
 - **WHEN** the paymaster refuses sponsorship because a cap is reached
@@ -38,6 +42,10 @@ Vault creation SHALL deploy the account (if undeployed) and call the registry's 
 - **WHEN** the create call reverts because the vaultId already exists
 - **THEN** the app re-signs with a new random vaultId, and on second failure reports an error without retrying further
 
+#### Scenario: Locator full (possibly front-run)
+- **WHEN** a create or add-locator call would revert with LocatorFull for one key's locator
+- **THEN** the app detects it in an eth_call preflight before any signing tap, tells the user in plain language, and asks them to set up that key again as a fresh credential (new PRF output, new locator)
+
 ### Requirement: Edit secrets with one key
 Editing secrets SHALL replace the vault blob through the registry update call, signed by one enrolled key. The new blob MUST keep the same wrapped-key entries and locators and MUST be produced by `@cryoshield/vault-crypto`.
 
@@ -46,7 +54,7 @@ Editing secrets SHALL replace the vault blob through the registry update call, s
 - **THEN** key B shows the added secret and the vault version has increased by 1
 
 ### Requirement: Add a key atomically
-Adding a key SHALL, in one user operation, add the new key as an account owner, register its locator, and replace the blob with one that lets the new key unlock. All currently enrolled keys MUST be present, since the vault is re-wrapped for every key. The total MUST NOT exceed 8 keys.
+Adding a key SHALL, in one user operation, add the new key as an account owner, register its locator, and replace the blob with one that lets the new key unlock. One current key MUST unlock and sign; the other enrolled keys need not be present. The total MUST NOT exceed 8 keys.
 
 #### Scenario: New key unlocks
 - **WHEN** a 2-key vault adds key C and the operation succeeds
@@ -55,6 +63,13 @@ Adding a key SHALL, in one user operation, add the new key as an account owner, 
 #### Scenario: Partial failure impossible
 - **WHEN** any call in the add-key operation reverts
 - **THEN** none of its effects persist, and the vault still unlocks with the original keys
+
+### Requirement: Private bundler endpoint
+User operations SHALL be sent only to the configured bundler endpoint (Pimlico in production) over HTTPS. The client MUST NOT broadcast them to a public ERC-4337 p2p mempool or any other relay.
+
+#### Scenario: Single submission path
+- **WHEN** any write is sent
+- **THEN** the only network requests carrying the user operation go to the configured bundler URL
 
 ### Requirement: Clear write status
 Every write SHALL show progress states (waiting for key, saving, confirmed) and SHALL report "Saved" only after the operation receipt shows success and the stored blob read back via public RPC equals the submitted blob.
