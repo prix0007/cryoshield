@@ -1,0 +1,203 @@
+# Spec Delta
+
+## Purpose
+
+Lets a user recover and decrypt a CryoShield vault with only an enrolled FIDO2 hardware key and public infrastructure (public chain RPCs and Arweave gateways), without the CryoShield website, domain, or any CryoShield-operated service.
+
+## ADDED Requirements
+
+### Requirement: Infrastructure independence
+The recovery tool SHALL complete a recovery without contacting any CryoShield-operated host or domain. Its only network traffic SHALL be read-only JSON-RPC calls to public chain endpoints and reads from Arweave gateways. It MUST NOT send transactions, PRF outputs, derived keys, or plaintext over the network.
+
+#### Scenario: CryoShield offline
+- **WHEN** every CryoShield domain is unreachable and the user runs a recovery with an enrolled key
+- **THEN** the vault is located, decrypted, and shown using only public RPC and Arweave endpoints
+
+#### Scenario: No secret material on the wire
+- **WHEN** the tool's network traffic during a recovery is captured in the integration test
+- **THEN** it contains only `eth_chainId`, `eth_call`, `eth_getLogs`, GraphQL queries, and gateway GETs, and no PRF output, derived key, or plaintext bytes
+
+### Requirement: Built-in defaults with overrides
+The tool SHALL ship with a built-in RP ID, registry address, chain ID, a list of at least three independent public RPC endpoints, and at least two Arweave GraphQL/gateway endpoints. Every one of these SHALL be overridable by a command-line flag, without editing code.
+
+#### Scenario: Override registry and RPC
+- **WHEN** the user passes `--rpc <url>` (repeatable), `--registry <address>`, and `--rp-id <id>`
+- **THEN** the tool uses only those values and reports them in its startup summary
+
+#### Scenario: Defaults used
+- **WHEN** the user passes no overrides
+- **THEN** the tool uses the built-in defaults and prints which endpoints it will contact before contacting any
+
+### Requirement: CTAP2 PRF evaluation
+The tool SHALL obtain each credential's PRF output via CTAP2 `hmac-secret`, with salt = SHA-256("WebAuthn PRF" || 0x00 || SHA-256("cryoshield/v1/locator-salt")) as defined by `vault-crypto`, and with user verification (PIN or built-in UV) always performed, so the output equals the browser's PRF output. It MUST NOT request a second salt.
+
+#### Scenario: CTAP salt matches vectors
+- **WHEN** the tool computes its hmac-secret salt
+- **THEN** it equals the CTAP-salt field in `packages/vault-crypto/test-vectors/v1.json`
+
+#### Scenario: Same output as the browser
+- **WHEN** a credential created and evaluated by the web app with user verification is evaluated by the tool on the same key
+- **THEN** both produce the same locator, and the tool decrypts the web-created vault
+
+#### Scenario: Key without hmac-secret
+- **WHEN** the connected authenticator does not advertise `hmac-secret`
+- **THEN** the tool stops with a message saying the key is unsupported (e.g. YubiKey firmware below 5.2), and nothing is decrypted
+
+### Requirement: Keyless discovery via discoverable credentials
+Without user-supplied identifiers, the tool SHALL request an assertion for the RP ID with an empty allow list. It SHALL obtain a PRF output for every discoverable credential the key returns from that one ceremony, and SHALL derive one locator per credential.
+
+#### Scenario: One credential on the key
+- **WHEN** the key holds one discoverable CryoShield credential and the user taps once and enters the PIN
+- **THEN** the tool derives that credential's locator and proceeds to lookup
+
+#### Scenario: Several credentials on the key
+- **WHEN** the key holds several discoverable credentials for the RP ID
+- **THEN** the tool derives a locator for each from the same ceremony, without another tap, and tries all of them
+
+#### Scenario: No discoverable credential
+- **WHEN** the key returns no credential for the RP ID
+- **THEN** the tool explains that the key has no discoverable CryoShield credential and how to recover by `--vault-id`, `--credential-id`, or `--blob-file`
+
+### Requirement: Recovery with known identifiers
+The tool SHALL accept `--vault-id`, `--credential-id` (repeatable), and `--blob-file`. With a vault ID or blob file, it SHALL read the blob first and use the credential IDs recorded in the blob as the allow list. With a credential ID, it SHALL use that ID as the allow list. Either path SHALL then need only one tap.
+
+#### Scenario: Recover by vault ID
+- **WHEN** the user passes `--vault-id` for a vault whose credentials are not discoverable
+- **THEN** the tool fetches the blob, builds the allow list from its credential IDs, takes one tap, and decrypts
+
+#### Scenario: Recover from a saved blob, fully offline
+- **WHEN** the user passes `--blob-file` and `--offline`
+- **THEN** the tool makes no network request and decrypts using the key alone
+
+#### Scenario: Blob RP ID differs from configured RP ID
+- **WHEN** the blob's recorded RP ID differs from the configured RP ID
+- **THEN** the tool uses the blob's RP ID for the ceremony and tells the user it did so
+
+### Requirement: Chain lookup through public RPCs
+For each locator, the tool SHALL call the registry's `resolveLocator` and then `getVault` for each candidate using `eth_call`. It SHALL query at least two configured RPCs when available and take the union of their candidates. It SHALL reject any RPC whose `eth_chainId` differs from the configured chain ID.
+
+#### Scenario: Candidates resolved
+- **WHEN** a locator is registered on-chain
+- **THEN** the tool retrieves every candidate `vaultId` and its blob without sending a transaction
+
+#### Scenario: Wrong chain endpoint
+- **WHEN** a configured RPC reports a chain ID other than the configured one
+- **THEN** that RPC is ignored with a warning and its answers are not used
+
+#### Scenario: One RPC withholds results
+- **WHEN** one RPC returns an empty candidate list and another returns the genuine vault
+- **THEN** the genuine vault is still found
+
+### Requirement: ABI decoding is bounded
+The tool SHALL decode RPC responses defensively: it MUST bounds-check every ABI offset and length, reject blobs over 1024 bytes and candidate lists over 16 entries, and treat malformed responses as an RPC failure rather than crashing.
+
+#### Scenario: Malicious RPC response
+- **WHEN** an RPC returns an ABI payload with out-of-range offsets or a 1 MB blob length
+- **THEN** that response is discarded with a warning and recovery continues with other sources
+
+### Requirement: Arweave fallback
+When no RPC is usable, or no on-chain candidate authenticates, the tool SHALL query Arweave GraphQL for transactions tagged `App-Name: CryoShield` and `CryoShield-Locator: <lowercase 0x-prefixed hex locator>`, fetch each transaction's data from a gateway, and treat each blob as a candidate.
+
+#### Scenario: Chain unreachable
+- **WHEN** every RPC fails and the vault is mirrored to Arweave
+- **THEN** the tool finds the blob through GraphQL, decrypts it, and states that the result came from Arweave
+
+#### Scenario: Oversized Arweave data
+- **WHEN** a tagged transaction's data exceeds 1024 bytes
+- **THEN** it is skipped without being fully downloaded
+
+### Requirement: Arweave integrity against chain events
+When a chain RPC is reachable, the tool SHALL compare `keccak256` of each Arweave blob with the hashes in the registry's `VaultCreated`/`VaultUpdated` events for that `vaultId`, and SHALL report whether the blob is verified, outdated, or unverifiable. It SHALL prefer the on-chain current blob when both authenticate.
+
+#### Scenario: Hash matches the latest event
+- **WHEN** an Arweave blob's keccak256 equals the latest event hash for its vault
+- **THEN** the tool reports it as verified and current
+
+#### Scenario: Older version
+- **WHEN** the hash matches an earlier event but not the latest
+- **THEN** the tool decrypts it but warns that a newer version exists on-chain
+
+#### Scenario: No chain available
+- **WHEN** no RPC is reachable
+- **THEN** the tool relies on AES-GCM authentication alone and warns that freshness could not be verified
+
+### Requirement: Format v1 conformance
+The tool SHALL implement vault format v1 decoding, locator and wrap-key derivation, unwrapping, and payload decryption for modes 0x01 and 0x02, as specified by `vault-crypto`. It MUST pass every positive and negative case in `packages/vault-crypto/test-vectors/v1.json`. A disagreement with the vectors MUST be reported, never patched over.
+
+#### Scenario: All vectors pass
+- **WHEN** the test suite runs against `v1.json`
+- **THEN** every positive vector reproduces the expected locator, wrap key, and plaintext, and every negative vector yields its specified error class
+
+#### Scenario: Vector file missing or changed
+- **WHEN** `v1.json` is absent or its recorded SHA-256 differs from the pinned value in the tool's tests
+- **THEN** the test suite fails, rather than skipping, until the pin is consciously updated
+
+### Requirement: Candidate selection
+Given all candidates from every source and every derived PRF output, the tool SHALL select the candidates whose wrapped key authenticates. If several authenticate, it SHALL prefer the on-chain current blob, then the latest verified Arweave blob. Junk and malformed candidates SHALL be ignored silently, except for a count.
+
+#### Scenario: Squatted locator
+- **WHEN** a locator resolves to the genuine vault plus junk blobs, as in the candidate-list vector
+- **THEN** the tool selects the genuine vault and reports how many candidates it ignored
+
+#### Scenario: Nothing authenticates
+- **WHEN** no candidate authenticates under any derived key
+- **THEN** the tool reports "no matching vault" with next steps and shows no plaintext
+
+### Requirement: Shamir multi-key recovery
+For a mode 0x02 vault, the tool SHALL prompt the user to tap additional enrolled keys one at a time until it holds M shares, and SHALL then reconstruct the data key compatibly with the `vault-crypto` share encoding.
+
+#### Scenario: Two of three keys
+- **WHEN** a 2-of-3 vault is recovered by tapping two different enrolled keys
+- **THEN** the secret is decrypted and matches the 2-of-3 vector behaviour
+
+#### Scenario: Same key tapped twice
+- **WHEN** the user taps a key whose share is already held
+- **THEN** the tool says so and asks for a different key
+
+### Requirement: Explicit confirmation before showing secrets
+The tool SHALL NOT print plaintext until the user explicitly confirms at an interactive prompt after a warning about shoulder-surfing and screen capture. `--output <file>` SHALL instead write the plaintext to a new file with owner-only permissions. In non-interactive mode without `--output`, it SHALL refuse to print.
+
+#### Scenario: User declines
+- **WHEN** the user answers anything other than the confirmation word
+- **THEN** no plaintext is printed and the tool exits successfully after zeroizing secrets
+
+#### Scenario: Piped output
+- **WHEN** stdin or stdout is not a terminal and `--output` is not given
+- **THEN** the tool refuses to print the secret and explains `--output`
+
+#### Scenario: Output file
+- **WHEN** `--output secrets.txt` is given and the file does not exist
+- **THEN** the plaintext is written with mode 0600 (or the platform equivalent), and an existing file is never overwritten
+
+### Requirement: Secret hygiene in process
+The tool SHALL keep PRF outputs, derived keys, and plaintext in mutable buffers, overwrite them after use on both success and failure, and never write them to logs, tracebacks, temporary files, or verbose/debug output.
+
+#### Scenario: Debug mode
+- **WHEN** the tool runs with `--verbose` through a full recovery
+- **THEN** the captured log output contains no PRF output, derived key, PIN, or plaintext bytes
+
+#### Scenario: Crash path
+- **WHEN** an unexpected exception occurs after the PRF output was obtained
+- **THEN** the buffers are zeroized and the error shown contains no secret values
+
+### Requirement: Clear guidance for non-technical users
+Every user-facing failure SHALL produce a plain-language message with a next step, and SHALL exit with a documented non-zero exit code. Failures covered include: no key found, wrong PIN, PIN blocked, no credential, network unavailable, no matching vault, and unsupported key.
+
+#### Scenario: Wrong PIN
+- **WHEN** the user enters a wrong PIN
+- **THEN** the tool shows the remaining retries and lets the user try again without restarting
+
+#### Scenario: No key connected
+- **WHEN** no FIDO2 device is found over USB or NFC
+- **THEN** the tool asks the user to insert or tap the key and, on Linux, points to the udev permission instructions
+
+### Requirement: Installable and reproducible distribution
+The tool SHALL be installable with `pipx install` and runnable with `uvx`. Single-file executables SHALL be built reproducibly from a hash-locked lockfile, so that two clean builds of the same commit on the same platform produce identical SHA-256 hashes. Those hashes SHALL be published with each release.
+
+#### Scenario: uvx run
+- **WHEN** a user with only uv installed runs `uvx cryoshield-recover --version` (from PyPI or `--from git+<repo>`)
+- **THEN** the tool runs and prints its version and the format versions it supports
+
+#### Scenario: Reproducible build
+- **WHEN** CI builds the Linux single-file executable twice from the same commit in clean environments
+- **THEN** both artifacts have the same SHA-256
