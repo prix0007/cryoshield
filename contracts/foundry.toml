@@ -1,0 +1,42 @@
+[profile.default]
+src = "src"
+out = "out"
+libs = ["lib"]
+test = "test"
+script = "script"
+
+# Pinned compiler. `cancun` is supported by Arbitrum (ArbOS >= 20) and Ethereum L1,
+# so the same bytecode deploys to both. No chain-specific precompiles are used.
+solc_version = "0.8.28"
+evm_version = "cancun"
+optimizer = true
+optimizer_runs = 10_000
+auto_detect_solc = false
+
+# The static immutability check (test/Immutability.t.sol) reads the contract source.
+fs_permissions = [{ access = "read", path = "./src" }]
+
+[fuzz]
+runs = 1_000
+
+[invariant]
+runs = 256
+depth = 200
+fail_on_revert = false
+
+# Mainnet-equivalent EVM settings (task 6.2): same compiler and bytecode,
+# chain id 1 and an L1-sized block gas limit.
+[profile.mainnet]
+chain_id = 1
+gas_limit = 36_000_000
+block_base_fee_per_gas = 1_000_000_000
+
+[fmt]
+line_length = 120
+
+[rpc_endpoints]
+anvil = "http://127.0.0.1:8545"
+arbitrum_sepolia = "${ARBITRUM_SEPOLIA_RPC_URL}"
+
+# Explorer verification key is passed on the command line (`--etherscan-api-key "$ARBISCAN_API_KEY"`) rather than
+# an [etherscan] table, which would require the env var for every command once chain_id is set.

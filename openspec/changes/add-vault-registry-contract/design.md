@@ -41,7 +41,7 @@ Writes arrive from ERC-4337 passkey smart accounts via a sponsored paymaster, so
 4. **Non-exclusive, append-only locator index; independent `vaultId`.**
    - `resolveLocator` returns every `vaultId` registered under a locator, and the client keeps the one that decrypts.
    - `vaultId` is client-chosen (random 32 bytes, or `keccak256(owner, nonce)`), must be unique, and reverts on collision. A front-run `vaultId` just means retrying with a fresh one.
-   - Registration is never exclusive, so seeing a pending operation can't let anyone block a user.
+   - Registration is never exclusive, so seeing a pending operation can't let anyone claim a locator or displace a user's entry. A front-runner can still grief a pending registration by filling its locators to the cap (see Threat / Abuse Analysis, Pre-registration locator stuffing).
    
    *Alternative rejected:* an exclusive locator→vaultId map. A front-runner who copied a locator from a pending operation could permanently claim it.
 
@@ -55,17 +55,54 @@ Writes arrive from ERC-4337 passkey smart accounts via a sponsored paymaster, so
 
 9. **Gas measurement as an acceptance artifact.** Record `forge snapshot` / gas-report figures for create with a 1024-byte blob and 2 locators, update with 1024 bytes, and add one locator. Estimate expected L2 cost at current Arbitrum gas and the L1 equivalent. Ballpark: about 32 storage slots for 1 KB is roughly 700k L2 gas for create. Real numbers come from the snapshot.
 
+10. **Deployment record.** The deploy flow (`contracts/script/deploy.sh`) writes `contracts/deployments/<chainId>.json` with `{chainId, address, deployBlock, txHash, abiHash}`. `abiHash` is keccak256 of the exact bytes of `contracts/abi/VaultRegistry.json`. Log readers (the recovery tool, the Arweave mirror) start scans at `deployBlock`. A local anvil deploy writes `31337.json` for the web app's E2E tests. Requested by the recovery and frontend engineers through the overwatcher.
+
+## Implementation Notes (as built)
+
+These are choices the spec leaves open. Each is labelled **Assumption** where it is not dictated by the spec.
+
+- **Compiler and EVM:** solc `0.8.28`, `evm_version = cancun`, optimizer 10,000 runs. Cancun is live on Ethereum L1 and on Arbitrum (ArbOS ≥ 20). The mainnet profile (`FOUNDRY_PROFILE=mainnet`: chain id 1, 36M gas limit) produces identical bytecode and passes the full suite.
+- **Duplicate-locator detection without extra storage:** before appending, the contract scans the locator's existing list (at most 15 entries) for this `vaultId`. One check covers both "duplicate within one call" and "already on this vault", and avoids a per-vault locator set (about 22k gas per locator). Worst-case scan cost is bounded by the 16-entry cap.
+- **`LocatorAdded` is also emitted for the initial locators at creation,** so indexers see every locator through a single event type.
+- **All events index `vaultId` as the first topic** (spec: Change events).
+- **Assumption:** `addLocators` with an empty list reverts with `TooFewLocators(0)` instead of being a silent no-op.
+- **Assumption:** `getVault` on an unknown id returns `(address(0), "", 0)` and does not revert, mirroring `resolveLocator`.
+- **Assumption:** `vaultOf(address)` is exposed as a public view (design decision 1 lists the mapping), so a smart account can find its own vault.
+- **Assumption:** SPDX license `MIT`. The repo has no LICENSE file yet, so the overwatcher should confirm.
+- **Custom errors:** `ZeroVaultId`, `ZeroLocator`, `VaultIdTaken(bytes32)`, `OwnerAlreadyHasVault(address)`, `InvalidBlobSize(uint256)`, `TooFewLocators(uint256)`, `TooManyLocators(uint256)`, `DuplicateLocator(bytes32)`, `LocatorFull(bytes32)`, `NotVaultOwner(bytes32,address)`. The selectors are listed in `contracts/README.md`, and all errors are in the exported ABI.
+
+## Measured Gas
+
+Measured with forge 1.1.0 (`test/Gas.t.sol`, isolated). Figures are full-transaction L2 execution gas, including the 21k intrinsic gas and calldata. Details and USD estimates are in `contracts/GAS.md`.
+
+| Operation | Gas |
+|---|---:|
+| create: 1024-byte blob, 2 locators | 912,617 |
+| update: 1024-byte blob | 212,039 |
+| add 1 locator | 74,667 |
+| deploy (runtime 3,845 bytes) | 871,075 |
+
+The ballpark in decision 9 (~700k for create) was low by about 30%. The extra cost is the 21k intrinsic gas, about 16k for 1 KB of calldata, the two index appends with their events, and the owner mapping. The estimated cost at 0.01 gwei and ETH = $3,000 is about $0.027 per create on Arbitrum, plus the unmeasured L1 data component. On L1 the same create costs about $2.7 at 1 gwei. The PRD target of ≤ $1 per vault holds on Arbitrum.
+
 ## Threat / Abuse Analysis
 
 - **[Paymaster drain via spam vaults]** Anyone can make fresh passkey accounts, and each can create one vault.
   → The contract bounds per-call gas (size and locator caps) and limits each owner to one vault. The paymaster policy (separate change) restricts sponsored calls to this contract address and these three selectors, with per-sender and global daily caps. Caps on the number of updates per owner are left to the paymaster, since the contract has no clock-based rate limit.
 - **[Front-running a registration]** A pending user operation reveals `vaultId` and the locators.
-  - A copied locator gains the attacker nothing, because the index is non-exclusive and the victim's append still succeeds.
+  - A copied locator cannot be *claimed*, because the index is non-exclusive, and a single junk append does not stop the victim's append. Filling the locator to the 16-entry cap first *does* make the victim's call revert. See Pre-registration locator stuffing below.
   - A copied `vaultId` only makes the victim's create revert; the client retries with a fresh random `vaultId`.
 - **[Locator-list stuffing (spam/DoS)]** Once a victim registers, their locators are public, and an attacker can append junk `vaultId`s under them. The worst case is bounded:
   - **Lookup still works.** The index is append-only, so the victim's existing entry can never be removed or displaced. Resolving the locator still returns it, and junk candidates simply fail to decrypt client-side.
   - **Filling the 16-entry cap only blocks future registrations under that same locator.** That's accepted. The mitigation is to enroll a fresh credential, which produces a new locator.
-  - **Each junk entry costs the attacker a vault**, and each owner may hold only one vault, so filling a cap needs about 16 smart accounts. Locators carry no owner, so the paymaster cannot police which locators a caller registers. It only sponsors calls to the VaultRegistry, under per-account and global caps (separate change).
+  - **Each junk entry costs the attacker a vault**, and each owner may hold only one vault, so filling a cap needs 16 owner addresses. Those need not be sponsored smart accounts: one unsponsored transaction to an attacker factory can create 16 throwaway contracts that each create a vault with a 1-byte blob. On Arbitrum that costs only a few cents. Locators carry no owner, so the paymaster cannot police which locators a caller registers. It only sponsors calls to the VaultRegistry, under per-account and global caps (separate change).
+- **[Pre-registration locator stuffing (griefing)]** *(security review, MEDIUM; accepted for the MVP by overwatcher decision)* A victim's pending `createVault`/`addLocators` user operation exposes their locators before inclusion. An attacker who watches the mempool can front-run it with the factory transaction above, filling each exposed locator to 16 entries. The victim's call then reverts with `LocatorFull`. This corrects the earlier claim that front-running "cannot block a user".
+  - **Preconditions:** visibility of the pending operation (a shared/public mempool) and a few cents of attacker gas per locator set.
+  - **Impact: griefing only.** No vault data is altered, no secret or key material is exposed (locators are HKDF outputs and blobs are ciphertext), and no existing entry is displaced. The victim loses the attempt and the sponsored gas for it.
+  - **Mitigations (MVP):**
+    1. The client handles `LocatorFull` (selector `0xcfe5bd5b`) by enrolling a fresh credential, which yields a new, never-published locator, and retrying. The overwatcher is coordinating this with the frontend.
+    2. Writes are submitted through a **private (non-shared-mempool) bundler endpoint**, so pending user operations are not visible to arbitrary watchers.
+  - **Residual risk:** a bundler or sequencer insider, or a leak from the private endpoint, can still grief. Repeated griefing costs the attacker a few cents per attempt and the victim a credential re-enrollment.
+  - **Post-MVP option: commit-reveal registration.** First commit `keccak256(vaultId, locators, owner, salt)`, then reveal in a later block; reveals are only accepted for a prior commitment, and a short window gives committed locators priority. This hides locators until the commitment is final. The cost is a second transaction and therefore a second user signature (a second hardware-key tap) plus extra sponsored gas. Not adopted for the MVP.
 - **[Malicious owner key]** A compromised enrolled key controls the smart account and can overwrite the blob with garbage.
   - Old versions survive via the Arweave mirror and event hashes.
   - Smart-account key management is out of scope here.
@@ -75,6 +112,16 @@ Writes arrive from ERC-4337 passkey smart accounts via a sponsored paymaster, so
   - no external calls, so reentrancy is not possible;
   - full branch coverage and fuzz tests on caps and index append-only behaviour;
   - a security-review task before deploy.
+
+### Static analysis (Slither)
+
+`uv tool run --from slither-analyzer slither contracts/ --filter-paths "lib/|test/|script/"` with Slither 0.11.6 ran 102 detectors over 1 contract and reported 1 result:
+
+| Detector | Location | Triage |
+|---|---|---|
+| `uninitialized-state` (High impact, by detector default) | `VaultRegistry._locatorIndex` (VaultRegistry.sol:46), used in `resolveLocator` and `_appendLocators` | **False positive.** The mapping is written through a storage reference (`bytes32[] storage ids = _locatorIndex[locator]; ids.push(vaultId);`), which Slither does not track as initialization. Mappings need no initialization: an unset key reads as an empty array, which is the specified behaviour for an unknown locator. Covered by `test_resolveLocator_unknownReturnsEmptyList`, `test_create_appendsVaultIdUnderEachLocator`, and `invariant_locatorIndexIsAppendOnlyLog`. No code change. |
+
+No reentrancy, access-control, arbitrary-send, delegatecall, or low-level-call findings: the contract makes no external calls.
 
 ## Risks / Trade-offs
 

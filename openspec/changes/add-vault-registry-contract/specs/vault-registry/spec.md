@@ -101,9 +101,15 @@ The registry SHALL expose read-only functions that return a vault's owner, blob,
 ### Requirement: Change events
 The registry SHALL emit `VaultCreated` on creation and `VaultUpdated` on every blob update. Each event SHALL carry the `vaultId`, the new version, and `keccak256` of the stored blob. Adding a locator SHALL emit an event carrying the `vaultId` and the locator.
 
+Every event SHALL carry `vaultId` as an indexed topic, so log readers (the recovery tool, the Arweave mirror) can filter by `vaultId`.
+
 #### Scenario: Event hash matches stored blob
 - **WHEN** a vault is created or updated
 - **THEN** the emitted hash equals `keccak256` of the blob returned by get-vault for that version
+
+#### Scenario: Filter logs by vaultId
+- **WHEN** a reader filters the registry's logs on the first indexed topic equal to a `vaultId`
+- **THEN** it receives that vault's `VaultCreated`, every `VaultUpdated`, and every locator-added event, and no other vault's events
 
 ### Requirement: Immutability and no privileged control
 The registry SHALL have no upgrade mechanism, no admin or owner role, no pause, and no self-destruct. No address other than a vault's owner SHALL be able to change, freeze, or delete that vault.

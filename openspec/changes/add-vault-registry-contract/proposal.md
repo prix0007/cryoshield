@@ -14,7 +14,7 @@ CryoShield needs a permanent, public, company-independent home for encrypted vau
 - The vault owner is the caller (`msg.sender`). In the default flow, that is the user's ERC-4337 passkey smart account.
 - Add read functions usable through plain `eth_call` on any public RPC:
   - fetch a vault by `vaultId`;
-  - resolve a locator to its list of candidate `vaultId`s. Locators form an append-only, non-exclusive index capped at 16 entries each, so front-running a registration cannot block a user.
+  - resolve a locator to its list of candidate `vaultId`s. Locators form an append-only, non-exclusive index capped at 16 entries each. A front-runner cannot claim a locator or remove an existing entry. They can, however, grief a *pending* registration: by filling the victim's locators to the 16-entry cap first, they make that registration revert with `LocatorFull`. The attack needs mempool visibility and a few cents. The only impact is griefing; no secret is ever exposed. The client recovers by enrolling a fresh credential, and writes go through a private bundler endpoint (see design.md, Threat / Abuse Analysis).
 - Emit `VaultCreated` and `VaultUpdated` events carrying `vaultId` and `keccak256(blob)`, so the Arweave mirror and the L1 hash anchor can follow later.
 - Enforce bounded writes: blob size cap, a cap on locators per vault, 16 entries per locator, one vault per `vaultId`, one vault per owner, and no removal or overwrite of index entries.
 - **No upgradeability, no admin or owner role, no pause, no self-destruct.** CryoShield cannot alter, freeze, or delete any vault once deployed.
