@@ -1,0 +1,72 @@
+[project]
+name = "cryoshield-recover"
+version = "0.1.0"
+description = "Recover a CryoShield vault with only your FIDO2 hardware key and public infrastructure."
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "CryoShield contributors" }]
+requires-python = ">=3.10"
+dependencies = [
+    "fido2>=2.0,<3",
+    "cryptography>=42",
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Environment :: Console",
+    "Topic :: Security :: Cryptography",
+]
+
+[project.optional-dependencies]
+nfc = ["pyscard>=2.0"]
+
+[project.scripts]
+cryoshield-recover = "cryoshield_recover.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "hypothesis>=6.100",
+    "ruff>=0.5",
+    "mypy>=1.10",
+]
+# Pinned exactly: single-file executables must be reproducible (scripts/build-binary.sh).
+build = [
+    "pyinstaller==6.22.3",
+]
+
+[build-system]
+requires = ["hatchling==1.32.4"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/cryoshield_recover"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+markers = [
+    "hardware: needs a real FIDO2 key (opt-in: -m hardware)",
+    "network: talks to public internet endpoints (opt-in: -m network)",
+    "anvil: needs anvil + forge from Foundry on PATH (auto-skipped if missing)",
+    "release: release-build checks (opt-in: -m release)",
+]
+
+[tool.ruff]
+line-length = 110
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "S"]
+ignore = ["S101", "S603", "S607", "S310", "E501"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S105", "S106", "S108", "S311"]
+
+[tool.mypy]
+strict = true
+python_version = "3.10"
+files = ["src"]
+
+[[tool.mypy.overrides]]
+module = ["fido2.*", "smartcard.*"]
+ignore_missing_imports = true

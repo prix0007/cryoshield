@@ -59,19 +59,40 @@ Without user-supplied identifiers, the tool SHALL request an assertion for the R
 - **THEN** the tool explains that the key has no discoverable CryoShield credential and how to recover by `--vault-id`, `--credential-id`, or `--blob-file`
 
 ### Requirement: Recovery with known identifiers
-The tool SHALL accept `--vault-id`, `--credential-id` (repeatable), and `--blob-file`. With a vault ID or blob file, it SHALL read the blob first and use the credential IDs recorded in the blob as the allow list. With a credential ID, it SHALL use that ID as the allow list. Either path SHALL then need only one tap.
+The tool SHALL accept `--vault-id`, `--credential-id` (repeatable), and `--blob-file`. With a vault ID or blob file, it SHALL read the candidate blobs first and use their recorded credential IDs as the allow list. With a credential ID, it SHALL use that ID as the allow list. When every candidate shares one RP ID, either path SHALL need only one tap.
 
 #### Scenario: Recover by vault ID
 - **WHEN** the user passes `--vault-id` for a vault whose credentials are not discoverable
 - **THEN** the tool fetches the blob, builds the allow list from its credential IDs, takes one tap, and decrypts
 
 #### Scenario: Recover from a saved blob, fully offline
-- **WHEN** the user passes `--blob-file` and `--offline`
+- **WHEN** the user passes `--blob-file`, its `--vault-id`, and `--offline`
 - **THEN** the tool makes no network request and decrypts using the key alone
+
+#### Scenario: Saved blob without a vault ID
+- **WHEN** the user passes `--blob-file` without `--vault-id`
+- **THEN** the tool exits with a usage error explaining that a vault only decrypts under the vault ID it was registered under, and no ceremony takes place
 
 #### Scenario: Blob RP ID differs from configured RP ID
 - **WHEN** the blob's recorded RP ID differs from the configured RP ID
 - **THEN** the tool uses the blob's RP ID for the ceremony and tells the user it did so
+
+### Requirement: Safe RP ID choice for known-identifier recovery
+Candidate RP IDs are attacker-influenced, since anyone can tag an Arweave transaction with a victim's vault ID. The tool SHALL try distinct RP IDs in this order:
+1. the configured RP ID;
+2. RP IDs of on-chain copies;
+3. the RP ID of the user's file;
+4. Arweave copies.
+
+It SHALL announce each non-configured RP ID and SHALL try at most 3.
+
+#### Scenario: Attacker-tagged Arweave copy with a foreign RP ID
+- **WHEN** `--vault-id` finds a genuine copy for the configured RP ID and a newer Arweave copy tagged with the same vault ID but created for another RP ID
+- **THEN** the first ceremony uses the configured RP ID and the genuine vault is recovered
+
+#### Scenario: First RP ID has no credential
+- **WHEN** the key has no credential for the first RP ID tried
+- **THEN** the tool says so and tries the next RP ID
 
 ### Requirement: Chain lookup through public RPCs
 For each locator, the tool SHALL call the registry's `resolveLocator` and then `getVault` for each candidate using `eth_call`. It SHALL query at least two configured RPCs when available and take the union of their candidates. It SHALL reject any RPC whose `eth_chainId` differs from the configured chain ID.
@@ -87,6 +108,42 @@ For each locator, the tool SHALL call the registry's `resolveLocator` and then `
 #### Scenario: One RPC withholds results
 - **WHEN** one RPC returns an empty candidate list and another returns the genuine vault
 - **THEN** the genuine vault is still found
+
+### Requirement: Hostile responses are contained
+Any failure to parse or interpret a response from one RPC, GraphQL server, or gateway SHALL be confined to that source. This includes deeply nested JSON, non-finite numbers (NaN, Infinity, 1e999), oversized integers, invalid encodings, and unexpected types. The source SHALL be discarded with a warning, and recovery SHALL continue with the other sources.
+
+#### Scenario: Deeply nested JSON
+- **WHEN** one RPC answers with `[` repeated 60,000 times (under the size cap) and another RPC answers correctly
+- **THEN** the hostile answer is discarded with a warning and the vault is recovered
+
+#### Scenario: Non-finite size from GraphQL
+- **WHEN** one GraphQL server reports a transaction size of `Infinity` or `NaN`
+- **THEN** that entry is ignored and a genuine transaction from another server is still found and fetched
+
+### Requirement: Whole-request deadline
+Every HTTP request SHALL be bounded both by a per-read timeout and by a deadline for the whole request, so that a server trickling bytes cannot stall recovery.
+
+#### Scenario: Trickling server
+- **WHEN** a server sends one byte every 100 ms with a 0.5 s timeout configured
+- **THEN** the request fails with a deadline error within about 1.5 s
+
+### Requirement: Remote text is made inert
+Before any text from a remote source is printed, the tool SHALL remove control characters, ANSI/OSC escape introducers, and Unicode format characters from it. Remote text includes error messages, transaction IDs, and host-reported values. Newlines and tabs are kept.
+
+#### Scenario: Escape sequence in an RPC error
+- **WHEN** an RPC returns an error message containing `ESC ] 0 ; … BEL` and `ESC [ 2 J`
+- **THEN** the terminal output contains no ESC or BEL bytes, and the message text is shown inertly
+
+### Requirement: Disagreeing chain sources
+When RPCs return different blobs for the same vault ID, the tool SHALL compare each blob's keccak256 with the latest `VaultCreated`/`VaultUpdated` hash. It SHALL keep "current" only for a matching blob and demote the others. It SHALL warn visibly in every case. If the history cannot be confirmed, it SHALL mark the copies unverifiable and prefer the higher on-chain version.
+
+#### Scenario: One RPC serves a stale genuine blob
+- **WHEN** the first RPC serves version 1 of a vault and another serves version 2, and the event history agrees that version 2 is latest
+- **THEN** version 2 is shown as current, version 1 is demoted, and a security warning is printed
+
+#### Scenario: Lagging node with stale history
+- **WHEN** RPCs disagree on both the blob and the event history
+- **THEN** the history is treated as unverifiable, the higher-version copy is preferred, and the user is warned that it may not be the latest
 
 ### Requirement: ABI decoding is bounded
 The tool SHALL decode RPC responses defensively: it MUST bounds-check every ABI offset and length, reject blobs over 1024 bytes and candidate lists over 16 entries, and treat malformed responses as an RPC failure rather than crashing.
@@ -107,7 +164,7 @@ When no RPC is usable, or no on-chain candidate authenticates, the tool SHALL qu
 - **THEN** it is skipped without being fully downloaded
 
 ### Requirement: Arweave integrity against chain events
-When a chain RPC is reachable, the tool SHALL compare `keccak256` of each Arweave blob with the hashes in the registry's `VaultCreated`/`VaultUpdated` events for that `vaultId`, and SHALL report whether the blob is verified, outdated, or unverifiable. It SHALL prefer the on-chain current blob when both authenticate.
+When a chain RPC is reachable, the tool SHALL compare `keccak256` of each Arweave blob with the hashes in the registry's `VaultCreated`/`VaultUpdated` events for that `vaultId`. It SHALL report whether the blob is verified, outdated, unmatched, or unverifiable, and SHALL prefer the on-chain current blob when both authenticate. The event history counts only when at least two usable RPCs (or the only one configured) return identical histories; otherwise it is unverifiable.
 
 #### Scenario: Hash matches the latest event
 - **WHEN** an Arweave blob's keccak256 equals the latest event hash for its vault
@@ -121,6 +178,10 @@ When a chain RPC is reachable, the tool SHALL compare `keccak256` of each Arweav
 - **WHEN** no RPC is reachable
 - **THEN** the tool relies on AES-GCM authentication alone and warns that freshness could not be verified
 
+#### Scenario: RPC histories disagree
+- **WHEN** two RPCs return different event histories for the vault
+- **THEN** the copy is reported as unverifiable (never verified, never unmatched) and a warning is printed
+
 ### Requirement: Format v1 conformance
 The tool SHALL implement vault format v1 decoding, locator and wrap-key derivation, unwrapping, and payload decryption for modes 0x01 and 0x02, as specified by `vault-crypto`. It MUST pass every positive and negative case in `packages/vault-crypto/test-vectors/v1.json`. A disagreement with the vectors MUST be reported, never patched over.
 
@@ -131,6 +192,26 @@ The tool SHALL implement vault format v1 decoding, locator and wrap-key derivati
 #### Scenario: Vector file missing or changed
 - **WHEN** `v1.json` is absent or its recorded SHA-256 differs from the pinned value in the tool's tests
 - **THEN** the test suite fails, rather than skipping, until the pin is consciously updated
+
+### Requirement: Candidates are opened under their own vault ID
+Following vault-format-v1 §4.1, each candidate SHALL be opened under the vault ID it was found under, and that vault ID SHALL never come from the blob or its neighbouring data:
+- the registry vault ID, for chain copies;
+- the exact `CryoShield-Vault-Id` tag value, for Arweave copies;
+- `--vault-id`, for a file.
+
+Copies without a valid vault ID SHALL be ignored. Candidates SHALL be distinguished by (vault ID, blob), so a byte-identical clone never replaces the genuine copy.
+
+#### Scenario: Clone listed before the genuine vault
+- **WHEN** a locator resolves first to an attacker's vault ID holding a byte-identical copy of the victim's blob, then to the victim's vault ID
+- **THEN** the clone fails authentication and is ignored, and the genuine vault is recovered and reported with its own vault ID
+
+#### Scenario: Only a clone exists
+- **WHEN** the only copies found are clones under other vault IDs (on-chain or Arweave-tagged), even with their own consistent event history
+- **THEN** recovery fails with "no matching vault" and no plaintext is shown
+
+#### Scenario: Wrong vault ID for a file
+- **WHEN** `--blob-file` is used with a vault ID other than the one the blob was created for
+- **THEN** no plaintext is shown
 
 ### Requirement: Candidate selection
 Given all candidates from every source and every derived PRF output, the tool SHALL select the candidates whose wrapped key authenticates. If several authenticate, it SHALL prefer the on-chain current blob, then the latest verified Arweave blob. Junk and malformed candidates SHALL be ignored silently, except for a count.

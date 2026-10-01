@@ -45,11 +45,14 @@ Library facts this design relies on, verified Oct 2026:
 ## Decisions
 
 ### D1. Package layout (`tools/recover/src/cryoshield_recover/`)
-- `format.py`: decode v1, with bounds checks.
+- `format.py`: decode v1, with bounds checks (the §5.1 check order and error codes).
 - `derive.py`: CTAP salt, locator, wrap key.
-- `decrypt.py`: unwrap, payload, padding.
+- `vault.py`: unwrap, payload, padding, `open_vault`, and `select_vault` (§6.5, §8).
+- `authdata.py`: UV-flag check on authenticator data (`USER_NOT_VERIFIED`, §3.1).
 - `shamir.py`: GF(2^8) combine only.
-- `select.py`: candidate selection.
+- `candidates.py`: candidate sources, freshness classes, and ranking.
+- `secure.py`: buffer wiping and core-dump disabling.
+- `net.py`: urllib with no redirects, HTTPS only (except loopback), timeouts, and byte caps.
 - `keccak.py`: see D6.
 - `abi.py`: minimal codec for `bytes32`, `bytes32[]`, and `(address, bytes, uint32)`.
 - `rpc.py`: JSON-RPC over `urllib` with timeouts and size caps.
@@ -58,21 +61,29 @@ Library facts this design relies on, verified Oct 2026:
 - `authenticator.py`: python-fido2 wrapper behind a `PrfSource` protocol.
 - `ui.py`: prompts, confirmation, messages, exit codes.
 - `config.py`: baked-in defaults and flag parsing.
+- `recover.py`: the orchestrator (flows of D4, D5, D7).
 - `cli.py`: `argparse` entry point.
+
+The vault *writer* used to check the create/addKey/update vectors lives only in `tests/support/writer.py`; it is not shipped.
 
 *Alternative rejected:* `web3.py` and `eth-abi`. They are a large dependency tree for two `eth_call`s and one `eth_getLogs`, and they make reproducible builds harder.
 
 ### D2. PRF via python-fido2's `prf` extension, with the salt asserted
-- Use `Fido2Client(device, DefaultClientDataCollector("https://" + rp_id), extensions=[HmacSecretExtension(allow_hmac_secret=True)], user_interaction=CliInteraction())`.
+- Use `Fido2Client(device, DefaultClientDataCollector("https://" + rp_id), extensions=[HmacSecretExtension()], user_interaction=...)`, using the `prf` path only.
 - Request `extensions={"prf": {"eval": {"first": SHA-256("cryoshield/v1/locator-salt")}}}`.
 - The library applies the WebAuthn→CTAP salt mapping. A unit test pins that mapping against the vectors' CTAP-salt field and against python-fido2's `_prf_salt`, so a library change can't silently diverge.
-- *Alternative rejected:* raw `hmacGetSecret` with our own salt. It is equivalent but duplicates the mapping. That path is kept as a tested fallback only if the `prf` path misbehaves on some key.
+- *Alternative rejected:* raw `hmacGetSecret` with our own salt. It is equivalent but duplicates the mapping.
+- A software CTAP2 authenticator in the tests (PIN protocol 1 + hmac-secret) sits below the real python-fido2 client and returns the vector PRF output only for the exact `ctapSalt`. This proves end to end, without hardware, that the salt actually sent is the spec's.
 - Windows: non-admin processes cannot open FIDO HID devices directly, so on Windows the tool uses python-fido2's `WindowsClient` (webauthn.dll) with the same `prf` input. The OS supplies the PIN UI.
 
-### D3. Always perform user verification (needs an upstream spec change)
+### D3. Always perform user verification (adopted upstream in vault-format-v1 §3.1)
 hmac-secret returns a different output with and without UV. The tool always sets `user_verification="required"`, which makes the YubiKey use CredRandomWithUV.
 
-The browser must therefore do the same. **Request to the crypto engineer:** add to the `vault-crypto` "Single PRF input" requirement that every PRF ceremony (create and unlock) MUST use `userVerification: "required"`, and add a vector note. Without this, a vault created with UV "preferred" on a key with no PIN would derive from CredRandomWithoutUV, and the tool could not reproduce it.
+The browser must therefore do the same. This was requested from the crypto engineer and adopted:
+- vault-format-v1 §3.1 requires `userVerification: "required"`;
+- clients must check the UV flag in the authenticator data and fail with `USER_NOT_VERIFIED` (pinned by `authenticatorDataCases`).
+
+The tool applies the same check to every assertion. There is no `--uv` override: an output obtained without UV can never open a vault.
 
 Discoverable-credential creation on YubiKey already requires a PIN, so this costs users nothing extra.
 
@@ -85,7 +96,7 @@ Default flow:
 Explicit fallbacks, for keys whose credentials are not resident or were created by a future non-discoverable flow:
 - `--vault-id <hex>`: `getVault` (or Arweave tag `CryoShield-Vault-Id`), then use the blob's credential IDs and RP ID as the allow list.
 - `--credential-id <b64url|hex>`: use it as the allow list, then derive the locator and look up.
-- `--blob-file <path>`: read locally, then use its credential IDs (fully offline with `--offline`).
+- `--blob-file <path> --vault-id <id>`: read locally, then use its credential IDs (fully offline with `--offline`). The vault ID is mandatory, because blobs are bound to it (vault-format-v1 §4.1, from `bind-vault-id-to-ciphertext`).
 
 The blob always records credential IDs, so the vault ID or a saved blob is enough. The web app should show and offer to save the vault ID and blob (a web-app request, non-blocking).
 
@@ -176,9 +187,23 @@ The blob always records credential IDs, so the vault ID or a saved blob is enoug
 - **Error oracles:** these are irrelevant because everything is local, but the tool still reports only "no matching vault", not per-candidate reasons, to keep output clean.
 - **Network privacy:** RPC and Arweave providers see the locator, and so learn that someone is recovering that vault from that IP. This is documented. `--rpc` can point to the user's own node or a Tor-routed endpoint (via `HTTPS_PROXY`).
 
+- **Vault cloning** (from the web-app review; fixed by `bind-vault-id-to-ciphertext`):
+  - Anyone can copy a public blob into their own vault ID, with its own consistent events, so the latest-event-hash check alone could show a stale or attacker-held clone.
+  - Blobs are now bound to their vault ID through both AADs. The tool opens each candidate only under the vault ID it was found under: the registry key, the exact Arweave tag, or `--vault-id` for files.
+  - Untagged copies are ignored.
+  - Candidates are deduplicated by (vault ID, blob). Deduplicating by blob alone would let a clone listed first displace the genuine copy; a regression test caught exactly that.
+- **Review round 1 hardening:**
+  - **Hostile parse inputs.** Deep nesting, non-finite numbers and oversized integers can't escape the network layer; each source is contained individually.
+  - **Rollback by one RPC.** Disagreeing copies are reconciled against an event history that several RPCs agree on, or flagged as unverifiable with the higher version preferred.
+  - **Terminal injection.** All status output is sanitized.
+  - **RP ID redirection through `--vault-id`.** The configured RP ID is tried first, then on-chain, file, and Arweave, capped at 3.
+  - **Slow-drip servers.** A whole-request deadline stops them.
+  - **Build inputs.** These are pinned by digest or hash.
+  - **Residual risk.** If every RPC lies consistently about both state and history, the user can be shown an older genuine version. The countermeasures are `--rpc` with a trusted node, and the L1 anchor (future).
+
 ## Risks / Trade-offs
 
-- [The vault-crypto spec doesn't adopt the UV-required rule (D3)] → The tool can't open vaults created without UV. Blocking: escalate before mainnet. Meanwhile, the tool offers `--uv discouraged` as a diagnostic.
+- [A vault was created by a client that ignored the UV rule (D3)] → The tool cannot open it, and no flag can help. Mitigated upstream by the spec's mandatory UV-flag check in the web app.
 - [Vectors change while being produced in parallel] → The SHA-256 pin makes changes deliberate. The vector-runner tasks start only after the crypto engineer marks v1.json stable.
 - [Public RPC rate limits or `eth_getLogs` range limits] → Several RPCs, paged log queries, and graceful "unverifiable".
 - [Arweave tag schema not adopted by the durability change] → The fallback finds nothing, so the tag schema is a coordination item in the proposal impact.
@@ -188,14 +213,18 @@ The blob always records credential IDs, so the vault ID or a saved blob is enoug
 
 ## Dependencies on sibling changes (requests)
 
-1. **vault-crypto (crypto engineer):**
-   - Mandate `userVerification: "required"` for every PRF ceremony.
-   - Specify the GF(2^8) polynomial and share byte order for mode 0x02 in `docs/spec/vault-format-v1.md`.
-   - Include `ctapSalt` and per-credential `credId` fields in v1.json.
-   - Add named error codes for the negative vectors, so the Python error classes map 1:1.
-2. **vault-registry (solidity engineer):**
-   - Index `vaultId` in all events.
-   - Publish the exact event signatures, the ABI JSON, and the deployment block alongside the address.
+1. **vault-crypto (crypto engineer), all resolved:**
+   - `userVerification: "required"` is mandated, and the UV-flag check pins it;
+   - the GF(2^8) polynomial 0x11B and the `x || y` share layout are specified;
+   - `ctapSalt` and `credId` are in v1.json;
+   - error codes are named.
+
+   The tool pins v1.json by SHA-256.
+2. **vault-registry (solidity engineer), resolved:**
+   - `vaultId` is indexed in all events;
+   - the ABI JSON and `deployments/<chainId>.json` (`address`, `deployBlock`, `abiHash`) are published.
+
+   Still needed: Arbitrum One and Sepolia deployment records, to fill in D8 at release.
 3. **Durability layer (future):** adopt the Arweave tag schema in D5.
 4. **Web app (future, non-blocking):** let the user view and save the vault ID and blob file, and use the production RP ID baked into D8.
 

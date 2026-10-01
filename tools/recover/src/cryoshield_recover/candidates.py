@@ -1,0 +1,64 @@
+"""Vault candidates from any source, and how they are ranked."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from enum import Enum
+
+
+class Freshness(str, Enum):
+    CURRENT = "current"  # read from on-chain state (getVault)
+    VERIFIED = "verified"  # Arweave copy whose keccak256 equals the latest on-chain event hash
+    OUTDATED = "outdated"  # Arweave copy matching an older on-chain event hash
+    UNMATCHED = "unmatched"  # Arweave copy whose hash matches no on-chain event for its vault
+    UNVERIFIABLE = "unverifiable"  # no chain available to compare against
+    LOCAL = "local"  # a file supplied by the user
+
+
+_RANK = {
+    Freshness.CURRENT: 0,
+    Freshness.VERIFIED: 1,
+    Freshness.LOCAL: 2,
+    Freshness.UNVERIFIABLE: 3,
+    Freshness.OUTDATED: 4,
+    Freshness.UNMATCHED: 5,
+}
+
+
+@dataclass
+class Candidate:
+    blob: bytes
+    source: str  # "chain" | "arweave" | "file"
+    origin: str  # RPC host, Arweave tx id, or file path (public info only)
+    vault_id: bytes | None = None
+    version: int | None = None
+    freshness: Freshness = Freshness.UNVERIFIABLE
+    height: int | None = None
+
+    @property
+    def rank(self) -> tuple[int, int, int]:
+        # Within one freshness class: higher claimed version first (a lagging RPC's older copy loses),
+        # then newer Arweave copies (higher block height).
+        return _RANK[self.freshness], -(self.version or 0), -(self.height or 0)
+
+
+def dedupe(cands: list[Candidate]) -> list[Candidate]:
+    """Keep the best-ranked copy of each distinct (vaultId, blob), preserving order otherwise.
+
+    The key MUST include the vaultId: a byte-identical clone under another vaultId is a different
+    candidate (it fails authentication), and merging the two could drop the genuine one (§4.1).
+    """
+    best: dict[tuple[bytes | None, bytes], Candidate] = {}
+    order: list[tuple[bytes | None, bytes]] = []
+    for c in cands:
+        key = (c.vault_id, c.blob)
+        if key not in best:
+            best[key] = c
+            order.append(key)
+        elif c.rank < best[key].rank:
+            best[key] = c
+    return [best[k] for k in order]
+
+
+def ranked(cands: list[Candidate]) -> list[Candidate]:
+    return sorted(dedupe(cands), key=lambda c: c.rank)
