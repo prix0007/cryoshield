@@ -28,7 +28,7 @@ CryoShield's promise is that a secret stored today can be decrypted decades from
 - Smart contracts and paymaster (contract change)
 - Arweave and L1 anchoring
 - The desktop recovery tool itself (it consumes this spec and these vectors)
-- Key add/replace flows
+- Key removal and rotation flows (adding a key and updating the payload with one enrolled key are in scope)
 - Any public-key or elliptic-curve encryption (ECIES/RSA/ECDH)
 
 **Runtime dependencies:** none beyond the browser/Node WebCrypto API and the three libraries above. This adds no CryoShield-operated backend.

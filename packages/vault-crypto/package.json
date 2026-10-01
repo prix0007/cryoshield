@@ -1,0 +1,54 @@
+{
+  "name": "@cryoshield/vault-crypto",
+  "version": "0.1.0",
+  "description": "CryoShield vault format v1: PRF -> HKDF-SHA256 -> AES-256-GCM envelope encryption, any-of-N and Shamir M-of-N unlock, deterministic test vectors.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./testing": {
+      "types": "./dist/testing.d.ts",
+      "import": "./dist/testing.js"
+    },
+    "./test-vectors/v1.json": "./test-vectors/v1.json",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "test-vectors",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "pretest": "node scripts/extract-readme-snippets.mjs",
+    "test": "vitest run --typecheck",
+    "pretest:browser": "node scripts/extract-readme-snippets.mjs",
+    "test:browser": "vitest run --config vitest.browser.config.ts",
+    "vectors": "scripts/.venv/bin/python scripts/gen-vectors.py",
+    "vectors:check": "scripts/.venv/bin/python scripts/gen-vectors.py --check"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@noble/ciphers": "2.4.0",
+    "@noble/hashes": "2.4.0",
+    "shamir-secret-sharing": "0.0.4"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.4",
+    "@vitest/browser-playwright": "5.0.3",
+    "fast-check": "4.10.2",
+    "playwright": "1.63.0",
+    "typescript": "5.9.3",
+    "vite": "8.3.2",
+    "vitest": "5.0.3"
+  }
+}
