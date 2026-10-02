@@ -44,7 +44,7 @@ Write each test first, and confirm it fails before implementing.
 ## 5. Project docs [ow]
 
 - [x] 5.1 [ow] Update `openspec/config.yaml` context: "Testnet: OP Sepolia; mainnet chain TBD (Arbitrum One or OP Mainnet); contracts must stay portable across OP Stack, Arbitrum and Ethereum L1." Verify: `openspec validate --all --strict`.
-- [ ] 5.2 [ow] Update the PRD (decisions log, architecture notes, open questions: add "mainnet chain") and the root README (testnet name, faucet pointer). Verify: a grep finds no remaining "Arbitrum Sepolia" claim of being the testnet outside archives and the Arbitrum presets.
+- [x] 5.2 [ow] Update the PRD (decisions log, architecture notes, open questions: add "mainnet chain") and the root README (testnet name, faucet pointer). Verify: a grep finds no remaining "Arbitrum Sepolia" claim of being the testnet outside archives and the Arbitrum presets.
 
 ## 6. Review
 

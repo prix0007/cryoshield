@@ -49,7 +49,8 @@ We'll know we're right when 10,000 users have created vaults and ≥95% of test 
 - [ ] GDPR: does on-chain ciphertext make CryoShield a data controller? EDPB Guidelines 02/2025 v2 advise against putting even encrypted personal data on-chain. Needs legal review.
 - [ ] iOS Safari PRF reliability with external keys: WebKit bugs 311099 and 314934 are open.
 - [ ] Domain strategy: a long-lived domain plus ENS, and how to protect the RP ID against domain lapse or hijack.
-- [ ] Arbitrum long-term data availability: what is the archive story if Arbitrum stops operating? This is mitigated by the Arweave mirror.
+- [ ] **Mainnet chain:** Arbitrum One or OP Mainnet? The testnet is OP Sepolia (2026-10-02). Both chains support everything the MVP needs; OP Mainnet is estimated at ~$0.004 per 1 KB sponsored create vs ~$0.03 on Arbitrum.
+- [ ] Rollup long-term data availability: what is the archive story if the chosen L2 stops operating? This is mitigated by the Arweave mirror.
 - [ ] Shipping without an audit while protecting high-value secrets: what is the disclosure, cap, or bug-bounty plan?
 - [ ] Revenue model: CryoShield pays gas, so how does it make money?
 
@@ -164,7 +165,7 @@ Web app: create a vault → enroll 2 YubiKeys → store ≤1 KB of secrets on Ar
 
 **Phase 2: Vault contract**
 - **Goal**: Durable on-chain storage.
-- **Scope**: Contract to create/update/read a vault blob with a size cap; Foundry tests; Arbitrum Sepolia deploy.
+- **Scope**: Contract to create/update/read a vault blob with a size cap; Foundry tests; OP Sepolia deploy (testnet pivot, 2026-10-02).
 - **Success signal**: Store and read back a 1 KB blob on testnet; gas per vault measured.
 
 **Phase 3: Web app**
@@ -202,7 +203,8 @@ Phases 1 and 2 are independent once the vault blob is defined as opaque bytes. P
 
 | Decision | Choice | Alternatives | Rationale |
 |----------|--------|--------------|-----------|
-| Chain | Arbitrum One | Ethereum L1, Starknet | Cents per KB; EVM so moving to L1 is straightforward; mature tooling. Starknet is not EVM (Cairo) and has no permanence advantage |
+| Testnet | OP Sepolia (pivot from Arbitrum Sepolia, 2026-10-02) | Arbitrum Sepolia | Founder choice: Arbitrum Sepolia test ETH was hard to get. The P-256 precompile, EntryPoint v0.6, CBSW v1.1 and Pimlico are all verified on OP Sepolia; the stack is chain-configurable via presets |
+| Chain (mainnet, TBD) | Arbitrum One (original) or OP Mainnet | Ethereum L1, Starknet | Cents per KB; EVM so moving to L1 is straightforward; mature tooling. Starknet is not EVM (Cairo) and has no permanence advantage |
 | Permanence | Arweave mirror + L1 hash | Arbitrum only | Data survives if any copy survives |
 | Crypto | FIDO2 PRF + AES-256-GCM (symmetric only) | ECIES, hybrid ML-KEM | FIDO keys can't do ECIES; elliptic-curve encryption is quantum-vulnerable while the ciphertext is public forever |
 | Threshold | 1-of-N, at least 2 keys; SSS-capable format | 2-of-3 with paper, user-chosen M-of-N | Simplest for non-technical users; a paper share risks theft |
@@ -226,7 +228,7 @@ No live product found that combines hardware-key PRF unlock with permanent on-ch
 - Browser support: Chrome/Edge good; Firefox 139+/148+; Safari 26.4+ (March 2026) with open bugs.
 - The PRF output is scoped to the RP ID (domain), which motivates the desktop recovery tool.
 - Ethereum L1 contract storage costs ~$3.30/KB at 1.8 gwei. Blobs are pruned after ~18 days; calldata/log history may expire (EIP-4444).
-- Arbitrum costs an estimated ~$0.02–0.10/KB (unverified).
+- Arbitrum costs an estimated ~$0.02–0.10/KB (unverified); OP Mainnet an estimated ~$0.004 per sponsored 1 KB create (target-op-sepolia design).
 - Arweave costs ~$7–14/GB, one-time.
 - SOC 2 costs $25–80k and takes 6–12 months.
 
