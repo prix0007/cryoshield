@@ -42,7 +42,7 @@
 
 ## 5. Reviews
 
-- [ ] 5.1 Security review:
+- [x] 5.1 Security review:
   - CSP unchanged;
   - landing sink grep;
   - no new origins or dependencies;
@@ -50,7 +50,7 @@
   - honest-copy enforcement.
 
   Record it in `apps/web/docs/security-review-cinematic-landing.md`, and verify that there are no open CRITICAL/HIGH findings.
-- [ ] 5.2 Accessibility review:
+- [x] 5.2 Accessibility review:
   - reduced motion;
   - flashing (≤ 3/s);
   - no scroll traps;
