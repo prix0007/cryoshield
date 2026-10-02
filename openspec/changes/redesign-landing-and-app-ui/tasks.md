@@ -2,8 +2,8 @@
 
 ## 1. Dependencies, assets and tokens
 
-- [ ] 1.1 Add `motion@13.5.0` (exact pin) to `apps/web` dependencies. Vendor `inter-latin-wght-normal.woff2` from `@fontsource-variable/inter@5.3.0` into `src/ui/fonts/` together with `OFL.txt`. Write `docs/design/ASSETS.md` (each item's source URL, version, license and SHA-256). Verify with `pnpm install --frozen-lockfile` and a unit test that the woff2's SHA-256 matches ASSETS.md.
-- [ ] 1.2 Write a failing `test/ui/tokens.test.ts`:
+- [x] 1.1 Add `motion@13.5.0` (exact pin) to `apps/web` dependencies. Vendor `inter-latin-wght-normal.woff2` from `@fontsource-variable/inter@5.3.0` into `src/ui/fonts/` together with `OFL.txt`. Write `docs/design/ASSETS.md` (each item's source URL, version, license and SHA-256). Verify with `pnpm install --frozen-lockfile` and a unit test that the woff2's SHA-256 matches ASSETS.md.
+- [x] 1.2 Write a failing `test/ui/tokens.test.ts`:
   - it parses `src/ui/tokens.css`;
   - every declared text pair is ≥ 4.5:1 and every boundary pair is ≥ 3:1, in light and dark;
   - no colour literal appears outside the token file;
