@@ -37,6 +37,7 @@ We'll know we're right when 10,000 users have created vaults and ≥95% of test 
 |--------|--------|--------------|
 | Vaults created | 10,000 | On-chain vault-creation events |
 | Unlock success rate | ≥95% | Manual compatibility test matrix (no backend, so no telemetry) |
+| Landing visits | (directional) | Cookieless page-view count on `/` only (Plausible); never on `/app` |
 | Recovery without CryoShield | 100% of test vaults | Desktop tool unlocks vaults with the website offline |
 | Cost per vault to user | ≤ $1 | Gas paid per create, measured on-chain |
 
@@ -46,7 +47,13 @@ We'll know we're right when 10,000 users have created vaults and ≥95% of test 
 - [ ] Which bundler/paymaster provider (Pimlico, Alchemy, Coinbase CDP), and which smart-account implementation with multi-owner WebAuthn support (Coinbase Smart Wallet, Kernel, Safe passkey module)?
 - [ ] Monthly sponsorship budget cap before spam becomes a cost problem.
 - [ ] Arweave upload without a backend: user pays directly in AR, or through a third-party bundler (Irys/Turbo)? Does that count as a "backend"?
-- [ ] GDPR: does on-chain ciphertext make CryoShield a data controller? EDPB Guidelines 02/2025 v2 advise against putting even encrypted personal data on-chain. Needs legal review.
+- [ ] GDPR/DPDP: does on-chain ciphertext make CryoShield a data controller / Data Fiduciary? Researched 2026-10-02 in OpenSpec `add-privacy-and-compliance` (design D2–D3): EDPB Guidelines 02/2025 **v2.0 (adopted 7 Jul 2026)** treat encrypted data and wallet addresses as personal data and advise storing personal data off-chain (paras 26, 48–51, 104), so we are very likely a controller for the publication. Mitigations: permanence notice, crypto-shredding, DPIA. **Still needs an external lawyer's opinion before mainnet** (task 7.1).
+- [ ] Log duties vs privacy: CERT-In Directions (2022) require ICT logs for 180 days in India and a 6-hour incident report; DPDP Rule 8(3) requires 1-year logs from ~13 May 2027. Caddy currently writes no access log. Lawyer to confirm whether request logs are needed (if so: truncated IPs only).
+- [ ] PMLA/VDA: does sponsoring gas (Pimlico bills USD; we never hold ETH) or deploying user smart accounts make us a VDA service provider needing FIU-IND registration? Our analysis says very likely not (medium confidence); get a written opinion before mainnet. Never top up the paymaster with ETH bought by the company without advice.
+- [ ] EU/UK Art. 27 representative: likely needed once we target EU/UK users (permanent publication is hard to call "occasional"). Founder decision on timing and cost.
+- [ ] Sanctions: ToS clause only (testnet), or add a client-side advisory sanctions-oracle check and/or geoblocking before mainnet?
+- [ ] Landing analytics consent: EDPB Guidelines 2/2023 (para 32) treat script-sent requests as device "access", so cookieless is not automatically banner-free in the EU. Plan: no banner, a payload built only from constants, GPC/DNT honoured. Accept the residual risk, or add a one-click opt-out? Lawyer review.
+- [ ] Legal entity details, Grievance Officer, and the mail provider for privacy@/security@/grievance@ (needed before public launch).
 - [ ] iOS Safari PRF reliability with external keys: WebKit bugs 311099 and 314934 are open.
 - [ ] Domain strategy: a long-lived domain plus ENS, and how to protect the RP ID against domain lapse or hijack.
 - [x] **Mainnet chain:** decided 2026-10-02: **OP Mainnet**. No funds yet, so deployments stay on OP Sepolia only. Background: the testnet is OP Sepolia (2026-10-02). Both chains support everything the MVP needs; OP Mainnet is estimated at ~$0.004 per 1 KB sponsored create vs ~$0.03 on Arbitrum.
@@ -154,7 +161,7 @@ Web app: create a vault → enroll 2 YubiKeys → store ≤1 KB of secrets on Ar
 | 4 | Durability layer | Arweave mirror + L1 hash anchor | pending | with 3, 5 | 2 | - |
 | 5 | Desktop recovery tool | Open-source CLI: CTAP2 hmac-secret + chain/Arweave reader | pending | with 3, 4 | 1 | - |
 | 6 | Compatibility & launch | Browser/device test matrix, E2E tests, on-ramp, mainnet deploy | pending | - | 3, 4, 5 | - |
-| 7 | SOC 2 readiness | Policies, Vanta/Drata, Type I → Type II | pending | - | 6 | - |
+| 7 | SOC 2 readiness | Policies, Vanta/Drata, Type I → Type II; privacy/compliance groundwork in OpenSpec `add-privacy-and-compliance` (its P1 items gate public launch) | pending | - | 6 | - |
 
 ### Phase Details
 
@@ -216,6 +223,9 @@ Phases 1 and 2 are independent once the vault blob is defined as opaque bytes. P
 | Open source | Always public repo | Closed source | Trust for an unaudited security product; enables independent recovery |
 | Launch audience | Crypto holders + security professionals together | One first | Founder choice; risk: diluted positioning |
 | Audit | None for MVP | Audit before launch | Solo founder, ASAP timeline; compensate with open source + test vectors + bug bounty |
+| Analytics | **On-chain + cookieless** (founder, 2026-10-02): product metrics only from public on-chain events + the Pimlico dashboard; cookieless, no-PII analytics on the landing page only; no analytics on `/app`. Vendor recommended: Plausible (EU-hosted), called by a first-party client (OpenSpec `add-privacy-preserving-analytics`) | Full-site analytics; no analytics at all; Simple Analytics / Fathom / Umami | Zero user tracking fits a secrets product; on-chain data already answers the 10k-vaults metric |
+| Jurisdiction | **Indian legal entity, global users** (founder, 2026-10-02): comply with the DPDP Act 2023 + Rules 2025, GDPR/UK GDPR, US state laws (CCPA thresholds not met today), the IT Act/CERT-In, and analyse PMLA-VDA and sanctions (OpenSpec `add-privacy-and-compliance`) | Offshore entity | Founder choice; DPDP core duties start ~13 May 2027 |
+| Compliance sequencing | Privacy/terms, security.txt, inventory, permanence + 18+ acknowledgement, and the incident runbook **before public launch**; lawyer opinions, full DPIA and a mainnet gate **before mainnet**; policies + Vanta/Drata **before SOC 2 Type I** (Security + Confidentiality; Privacy criteria optional) | Do it all at SOC 2 time | Cheap now; on-chain data is permanent, so notices must precede the first real write |
 
 ---
 
