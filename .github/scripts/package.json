@@ -1,0 +1,16 @@
+{
+  "name": "cryoshield-ci-scripts",
+  "private": true,
+  "license": "MIT",
+  "description": "CI gate scripts (OpenSpec change adopt-pr-workflow). Install: npm ci --ignore-scripts --prefix .github/scripts",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test \"test/*.test.mjs\""
+  },
+  "dependencies": {
+    "yaml": "2.9.1"
+  }
+}
