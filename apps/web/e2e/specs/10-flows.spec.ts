@@ -1,5 +1,6 @@
 /** Tasks 5.3, 6.3-6.5, 7.4, 8.x: the real app, real contracts, virtual hardware keys. */
 import { expect, test } from '@playwright/test';
+import { APP } from '../fixtures/routes';
 import { ArweaveStub } from '../fixtures/arweave';
 import { VirtualKeys } from '../fixtures/webauthn';
 import { createVault, unlockWith } from '../fixtures/app';
@@ -7,7 +8,7 @@ import { createVault, unlockWith } from '../fixtures/app';
 test('create with two keys, unlock with either, edit, add a third key; every version is mirrored', async ({ page }) => {
   const arweave = new ArweaveStub();
   await arweave.install(page);
-  await page.goto('/');
+  await page.goto(APP);
   const keys = await VirtualKeys.attach(page);
   await keys.add();
   await keys.add();

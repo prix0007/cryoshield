@@ -1,9 +1,10 @@
 /** Tasks 2.2 / 2.4: the CDP virtual authenticator supports PRF, with stable output per credential+salt. */
 import { expect, test } from '@playwright/test';
+import { APP } from '../fixtures/routes';
 import { VirtualKeys } from '../fixtures/webauthn';
 
 test('virtual authenticator returns stable PRF results with UV', async ({ page }) => {
-  await page.goto('/');
+  await page.goto(APP);
   const keys = await VirtualKeys.attach(page);
   await keys.add();
   await keys.use(0);

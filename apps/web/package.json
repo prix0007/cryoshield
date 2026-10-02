@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@cryoshield/vault-crypto": "workspace:*",
+    "motion": "13.5.0",
     "permissionless": "0.4.1",
     "react": "19.3.0",
     "react-dom": "19.3.0",
@@ -27,7 +28,6 @@
   },
   "devDependencies": {
     "@axe-core/playwright": "4.13.0",
-    "@dha-team/arbundles": "1.0.4",
     "@playwright/test": "1.63.0",
     "@testing-library/jest-dom": "7.0.1",
     "@testing-library/react": "16.3.3",

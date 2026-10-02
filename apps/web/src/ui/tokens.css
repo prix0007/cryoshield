@@ -1,0 +1,125 @@
+/* CryoShield design tokens: the single source of colours, type, spacing, radii and elevation for the landing page and
+   the app (docs/design/visual-language.md; deviations for WCAG 2.2 AA are recorded in
+   openspec/changes/redesign-landing-and-app-ui/design.md D6 and checked by test/ui/tokens.test.ts). */
+
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 300 700;
+  font-display: swap;
+  src: url('./fonts/inter-latin-wght-normal.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+:root {
+  /* Accent (the only interactive colour) */
+  --color-primary: #0066cc;
+  --color-primary-focus: #0071e3;
+  --color-primary-on-dark: #2997ff;
+  --on-primary: #ffffff;
+
+  /* Surfaces */
+  --canvas: #ffffff;
+  --canvas-parchment: #f5f5f7;
+  --surface-pearl: #fafafc;
+  --surface-tile-1: #272729;
+  --surface-tile-2: #2a2a2c;
+  --surface-tile-3: #252527;
+  --surface-black: #000000;
+  --surface-chip-translucent: rgba(210, 210, 215, 0.64);
+  --frost-light: rgba(245, 245, 247, 0.8);
+  --frost-dark: rgba(29, 29, 31, 0.8);
+
+  /* Text */
+  --ink: #1d1d1f;
+  --body-on-dark: #ffffff;
+  --body-muted: #cccccc;
+  --ink-muted-80: #333333;
+  --ink-muted-48: #6e6e73; /* guide: #7a7a7a (4.29:1 on white, fails AA) */
+
+  /* Hairlines and control borders */
+  --divider-soft: #f0f0f0;
+  --hairline: #e0e0e0;
+  --hairline-soft: rgba(0, 0, 0, 0.08);
+  --input-border: #86868b; /* guide: rgba(0,0,0,.08), fails WCAG 1.4.11 for control boundaries */
+
+  /* Functional error ink (never on interactive elements; always with icon + text) */
+  --error-ink: #c4161c;
+  --error-ink-on-dark: #ff6961;
+
+  /* Elevation: the only shadow, for a visual resting on a surface */
+  --shadow-subject: rgba(0, 0, 0, 0.22) 3px 5px 30px 0;
+  --shadow-subject-svg: drop-shadow(3px 5px 15px rgba(0, 0, 0, 0.22)); /* same drop, as a filter for SVG visuals */
+  --blur-frost: saturate(180%) blur(20px);
+
+  /* Type */
+  --font-stack: system-ui, -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --hero-size: 56px;
+  --display-lg: 40px;
+  --display-md: 34px;
+  --lead-size: 28px;
+  --lead-airy: 24px;
+  --tagline-size: 21px;
+  --body-size: 17px;
+  --body-lh: 1.47;
+  --caption-size: 14px;
+  --fine-size: 12px;
+
+  /* Spacing (8px base) */
+  --space-xxs: 4px;
+  --space-xs: 8px;
+  --space-sm: 12px;
+  --space-md: 17px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+  --space-xxl: 48px;
+  --space-section: 80px;
+
+  /* Radii */
+  --radius-xs: 5px;
+  --radius-sm: 8px;
+  --radius-md: 11px;
+  --radius-lg: 18px;
+  --radius-pill: 9999px;
+
+  /* Layout */
+  --nav-h: 44px;
+  --subnav-h: 52px;
+  --bar-h: 64px;
+  --content-w: 980px;
+  --grid-w: 1440px;
+  --target: 44px;
+
+  /* App semantic tokens (light) */
+  --app-bg: var(--canvas-parchment);
+  --app-surface: var(--canvas);
+  --app-ink: var(--ink);
+  --app-muted: var(--ink-muted-48);
+  --app-hairline: var(--hairline);
+  --app-link: var(--color-primary);
+  --app-focus: var(--color-primary-focus);
+  --app-error: var(--error-ink);
+  --app-input-border: var(--input-border);
+  --app-frost: var(--frost-light);
+  --app-disabled-bg: var(--surface-pearl); /* disabled pills: Ink Muted 48 on Pearl (4.86:1) */
+  --app-disabled-ink: var(--ink-muted-48);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --app-bg: #000000;
+    --app-surface: #1d1d1f;
+    --app-ink: #f5f5f7;
+    --app-muted: #a1a1a6;
+    --app-hairline: #424245;
+    --app-link: #2997ff;
+    --app-focus: #2997ff;
+    --app-error: #ff6961;
+    --app-input-border: #86868b;
+    --app-frost: rgba(29, 29, 31, 0.8);
+    --app-disabled-bg: #2a2a2c;
+    --app-disabled-ink: #a1a1a6;
+  }
+}

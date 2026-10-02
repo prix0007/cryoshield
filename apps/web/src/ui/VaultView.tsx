@@ -5,6 +5,7 @@ import { MirrorLine } from './CreateFlow';
 import { ensureMirror, messageFor, mirrorWrite, saveAddKey, saveEdit, type MirrorStatus, type VaultSession } from './operations';
 import { useServices } from './services';
 import { S } from './strings';
+import { ActionBar, EmptyState } from './chrome';
 import { copySecret } from './clipboard';
 
 type Mode = 'view' | 'edit' | 'addKey' | 'details';
@@ -108,7 +109,7 @@ export function VaultView(props: {
   }
 
   return (
-    <section aria-labelledby="vault-title">
+    <section aria-labelledby="vault-title" className="step">
       <h1 id="vault-title">{S.vault.title}</h1>
       {error && <Notice kind="error">{error}</Notice>}
       {status && <Notice kind="success">{status}</Notice>}
@@ -120,9 +121,10 @@ export function VaultView(props: {
 
       {mode === 'view' && (
         <div>
-          <ul className="secrets" aria-label={S.vault.title}>
+          {s.items.length === 0 && <EmptyState>{S.vault.empty}</EmptyState>}
+          <ul className="secrets" aria-label={S.vault.title} hidden={s.items.length === 0}>
             {s.items.map((it, i) => (
-              <li key={i} className="secret">
+              <li key={i} className="secret card">
                 <h3>{it.label}</h3>
                 <div className="secret-value" aria-live="polite">
                   {shown.has(i) ? <pre>{it.secret}</pre> : <span aria-label="hidden">{S.vault.hidden}</span>}
@@ -154,12 +156,12 @@ export function VaultView(props: {
               </li>
             ))}
           </ul>
-          <div className="actions">
+          <ActionBar>
             <button onClick={() => { setDraft(s.items); setMode('edit'); setStatus(null); }}>{S.vault.edit}</button>
             <button className="secondary" onClick={() => { setMode('addKey'); setStatus(null); }}>{S.vault.addKey}</button>
             <button className="secondary" onClick={() => setMode('details')}>{S.vault.details}</button>
             <button className="secondary" onClick={props.onLock}>{S.vault.lock}</button>
-          </div>
+          </ActionBar>
         </div>
       )}
 
@@ -171,7 +173,7 @@ export function VaultView(props: {
       )}
 
       {mode === 'addKey' && (
-        <div>
+        <div className="card">
           <StepHeading>{S.addKey.title}</StepHeading>
           {s.credIds.length >= 8 ? (
             <p>{S.addKey.max}</p>
@@ -182,7 +184,7 @@ export function VaultView(props: {
               ))}
             </ul>
           )}
-          <div className="actions">
+          <ActionBar>
             {s.credIds.length < 8 && (
               <button onClick={addKey} disabled={busy}>
                 {S.addKey.start}
@@ -191,24 +193,24 @@ export function VaultView(props: {
             <button className="secondary" onClick={() => setMode('view')} disabled={busy}>
               {S.back}
             </button>
-          </div>
+          </ActionBar>
         </div>
       )}
 
       {mode === 'details' && (
-        <div>
+        <div className="card">
           <StepHeading>{S.details.title}</StepHeading>
           <dl>
             <dt>{S.details.vaultId}</dt>
             <dd className="mono" data-testid="vault-id">{s.vaultId}</dd>
           </dl>
           <p>{S.details.downloadHint}</p>
-          <div className="actions">
+          <ActionBar>
             <button onClick={download}>{S.details.download}</button>
             <button className="secondary" onClick={() => setMode('view')}>
               {S.details.close}
             </button>
-          </div>
+          </ActionBar>
         </div>
       )}
     </section>

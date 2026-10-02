@@ -1,4 +1,5 @@
 import { expect, type Page } from '@playwright/test';
+import { APP } from './routes';
 import type { VirtualKeys } from './webauthn';
 
 export async function rpc(method: string, params: unknown[] = [], url = 'http://127.0.0.1:4337') {
@@ -30,7 +31,7 @@ export async function createVault(page: Page, keys: VirtualKeys, items: { label:
 }
 
 export async function unlockWith(page: Page, keys: VirtualKeys, i: number) {
-  await page.goto('/');
+  await page.goto(APP);
   await keys.use(i);
   await page.getByRole('button', { name: 'Unlock my vault' }).click();
   await page.getByRole('button', { name: 'Unlock with my key' }).click();

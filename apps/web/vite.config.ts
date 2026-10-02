@@ -15,7 +15,11 @@ export default defineConfig(({ mode }) => {
       assetsInlineLimit: 0,
       target: 'es2022',
       // Strip every console call from the shipped bundle (our code is also lint-banned from using console).
-      rolldownOptions: { output: { minify: { compress: { dropConsole: true } } } },
+      rolldownOptions: {
+        // Two pages (redesign-landing-and-app-ui D1): the landing page at / and the vault app at /app/.
+        input: { landing: `${root}/index.html`, app: `${root}/app/index.html` },
+        output: { minify: { compress: { dropConsole: true } } },
+      },
     },
     server: { host: 'localhost', port: 5173, strictPort: true },
     preview: { host: 'localhost', port: 4173, strictPort: true },

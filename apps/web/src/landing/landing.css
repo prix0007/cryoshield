@@ -1,0 +1,568 @@
+/* Landing page: full-bleed tiles alternating light/dark (docs/design/visual-language.md). Colours only from tokens.
+   Every graphic's default (no JS, reduced motion) look is its FINAL, informative state; motion.ts arms them. */
+
+.landing {
+  /* The landing page is not themed: its tiles are explicitly light or dark. */
+  --app-focus: var(--color-primary-focus);
+  background: var(--canvas);
+  color: var(--ink);
+  color-scheme: light;
+}
+.landing main:focus {
+  outline: none;
+}
+
+/* ---- Tiles ---- */
+.tile {
+  padding: var(--space-section) var(--space-md);
+  text-align: center;
+  overflow: hidden;
+}
+.tile > * {
+  max-width: var(--content-w);
+  margin-left: auto;
+  margin-right: auto;
+}
+.tile-light {
+  background: var(--canvas);
+  color: var(--ink);
+}
+.tile-parchment {
+  background: var(--canvas-parchment);
+  color: var(--ink);
+}
+.tile-dark,
+.tile-dark-2,
+.tile-dark-3 {
+  color: var(--body-on-dark);
+  --app-focus: var(--color-primary-on-dark);
+}
+.tile-dark {
+  background: var(--surface-tile-1);
+}
+.tile-dark-2 {
+  background: var(--surface-tile-2);
+}
+.tile-dark-3 {
+  background: var(--surface-tile-3);
+}
+.tile-dark .pill-secondary,
+.tile-dark-2 .pill-secondary,
+.tile-dark-3 .pill-secondary {
+  color: var(--color-primary-on-dark);
+  border-color: var(--color-primary-on-dark);
+}
+
+.hero-title {
+  margin-top: var(--space-xl);
+  margin-bottom: var(--space-sm);
+  font-size: var(--hero-size);
+  line-height: 1.07;
+  letter-spacing: -0.28px;
+}
+.tile-title {
+  margin-top: 0;
+  margin-bottom: var(--space-sm);
+  font-size: var(--display-lg);
+  line-height: 1.1;
+}
+.tile-lead {
+  margin-top: 0;
+  margin-bottom: var(--space-lg);
+  font-size: var(--lead-airy);
+  font-weight: 300;
+  line-height: 1.4;
+  letter-spacing: 0;
+  max-width: 760px;
+}
+.tile-dark .tile-lead,
+.tile-dark-2 .tile-lead,
+.tile-dark-3 .tile-lead {
+  color: var(--body-muted);
+}
+.ctas {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-md);
+  margin-top: 0;
+  margin-bottom: var(--space-xxl);
+}
+
+/* Honest-status strip and warnings: plain text, never hidden. */
+.status-strip {
+  max-width: 680px;
+  margin-top: 0;
+  margin-bottom: var(--space-xxl);
+  padding: var(--space-sm) var(--space-lg);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-lg);
+  background: var(--canvas-parchment);
+  font-size: var(--caption-size);
+  letter-spacing: -0.224px;
+  line-height: 1.43;
+}
+.warning-line {
+  max-width: 680px;
+  margin-top: 0;
+  margin-bottom: var(--space-lg);
+  color: var(--body-on-dark);
+}
+.fine {
+  max-width: 680px;
+  margin-top: 0;
+  margin-bottom: var(--space-lg);
+  font-size: var(--caption-size);
+  letter-spacing: -0.224px;
+  color: var(--body-muted);
+}
+
+/* ---- Visuals (motion graphics as "product photography") ---- */
+.visual {
+  display: flex;
+  justify-content: center;
+}
+.graphic {
+  width: 100%;
+  max-width: 560px;
+  height: auto;
+  overflow: visible;
+}
+.graphic * {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.subject {
+  filter: var(--shadow-subject-svg);
+}
+
+/* Shared shape fills */
+.shape-dark,
+.node-ink,
+.lock-body-dark {
+  fill: var(--ink);
+}
+.shape-ink-soft {
+  fill: var(--canvas-parchment);
+  stroke: var(--hairline);
+  stroke-width: 2;
+}
+.shape-accent-line {
+  fill: none;
+  stroke: var(--color-primary);
+  stroke-width: 8;
+  stroke-linecap: round;
+}
+.shape-metal {
+  fill: var(--hairline);
+}
+.shape-metal-dark {
+  fill: var(--ink-muted-48);
+}
+.shape-ring {
+  fill: none;
+  stroke: var(--canvas-parchment);
+  stroke-width: 4;
+}
+.shape-pad {
+  fill: var(--color-primary-focus);
+}
+
+/* Hero: CSS-only pulse on the key's touch pad (0 bytes of JS). */
+.hero-key {
+  filter: var(--shadow-subject-svg);
+}
+.hero-pulse {
+  fill: none;
+  stroke: var(--color-primary-focus);
+  stroke-width: 3;
+  opacity: 0;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .hero-pulse {
+    animation: pulse 2.4s ease-out infinite;
+  }
+  .hero-pulse-2 {
+    animation-delay: 1.2s;
+  }
+  .hero-key {
+    animation: float 6s ease-in-out infinite;
+  }
+}
+@keyframes pulse {
+  from {
+    transform: scale(1);
+    opacity: 0.7;
+  }
+  to {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+}
+@keyframes float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+/* How it works: connector + three nodes. Final state = full progress, every node on. */
+.how-track,
+.how-progress {
+  fill: none;
+  stroke-width: 6;
+  stroke-linecap: round;
+}
+.how-track {
+  stroke: var(--ink-muted-48);
+}
+.how-progress {
+  stroke: var(--color-primary-on-dark);
+  stroke-dasharray: 1;
+  stroke-dashoffset: 0;
+}
+.g-how.armed .how-progress {
+  stroke-dashoffset: calc(1 - var(--how-p, 0));
+}
+.node-bg {
+  fill: var(--surface-black);
+  stroke: var(--color-primary-on-dark);
+  stroke-width: 3;
+}
+.node-ink {
+  fill: var(--body-on-dark);
+}
+.node-accent {
+  fill: var(--color-primary-on-dark);
+}
+.node-line {
+  fill: none;
+  stroke: var(--body-on-dark);
+  stroke-width: 6;
+  stroke-linecap: round;
+}
+.how-node {
+  transition:
+    opacity 0.3s ease,
+    transform 0.3s ease;
+}
+.g-how.armed .how-node:not(.is-on) {
+  opacity: 0.35;
+  transform: scale(0.9);
+}
+.steps {
+  list-style: none;
+  padding: 0;
+  margin-top: var(--space-xxl);
+  margin-bottom: 0;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-lg);
+  text-align: left;
+  counter-reset: step;
+}
+.steps li {
+  counter-increment: step;
+}
+.steps h3 {
+  margin: 0 0 var(--space-xs);
+  font-size: var(--tagline-size);
+  line-height: 1.19;
+}
+.steps h3::before {
+  content: counter(step) '. ';
+  color: var(--color-primary-on-dark);
+}
+.steps p {
+  margin: 0;
+  color: var(--body-muted);
+}
+
+/* Only your keys: sealed card with ciphertext rows and a lock. */
+.card-surface {
+  fill: var(--canvas);
+  stroke: var(--hairline);
+}
+.cipher-row {
+  fill: var(--hairline);
+}
+.lock-shackle {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 7;
+  stroke-linecap: round;
+}
+.lock-body {
+  fill: var(--color-primary);
+}
+.lock-hole {
+  fill: var(--canvas);
+}
+.g-sealed.armed:not(.in) .cipher-row {
+  opacity: 0;
+}
+.g-sealed.armed:not(.in) .lock-shackle {
+  transform: translateY(-14px);
+}
+
+/* Lose a key: one key gone, another opens the lock. */
+.mini-key rect {
+  fill: var(--body-on-dark);
+}
+.mini-pad {
+  fill: var(--color-primary-on-dark);
+}
+.key-lost {
+  opacity: 0.3;
+  transform: translateY(14px) rotate(-8deg);
+}
+.lost-mark {
+  fill: none;
+  stroke: var(--body-muted);
+  stroke-width: 5;
+  stroke-linecap: round;
+}
+.vault-shackle {
+  fill: none;
+  stroke: var(--body-on-dark);
+  stroke-width: 9;
+  stroke-linecap: round;
+  transform: translateY(-10px);
+}
+.lock-body-dark {
+  fill: var(--color-primary);
+}
+.check {
+  fill: none;
+  stroke: var(--body-on-dark);
+  stroke-width: 7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 0;
+}
+.g-keys.armed:not(.in) .key-lost {
+  opacity: 1;
+  transform: none;
+}
+.g-keys.armed:not(.in) .lost-mark {
+  opacity: 0;
+}
+.g-keys.armed:not(.in) .key-ok {
+  transform: translateX(-24px);
+}
+.g-keys.armed:not(.in) .vault-shackle {
+  transform: none;
+}
+.g-keys.armed:not(.in) .check {
+  stroke-dashoffset: 1;
+}
+
+/* Survives us: the website goes offline, the desktop tool still unlocks. */
+.site-offline circle,
+.site-offline path {
+  fill: none;
+  stroke: var(--ink-muted-48);
+  stroke-width: 4;
+}
+.site-offline .offline-slash {
+  stroke: var(--ink);
+  stroke-width: 6;
+  stroke-linecap: round;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 0;
+}
+.terminal {
+  fill: var(--surface-tile-1);
+}
+.terminal-dot {
+  fill: var(--ink-muted-48);
+}
+.term-line {
+  fill: var(--body-on-dark);
+  font-family: var(--font-mono);
+  font-size: 16px;
+}
+.term-dim {
+  fill: var(--body-muted);
+}
+.term-ok {
+  fill: var(--color-primary-on-dark);
+}
+.g-recover.armed:not(.in) .term-line {
+  opacity: 0;
+}
+.g-recover.armed:not(.in) .offline-slash {
+  stroke-dashoffset: 1;
+}
+
+/* Free to use: a receipt that totals $0. */
+.receipt {
+  fill: var(--canvas);
+}
+.receipt-row {
+  fill: var(--hairline);
+}
+.receipt-rule {
+  stroke: var(--hairline);
+  stroke-width: 2;
+}
+.receipt-zero {
+  fill: var(--ink);
+  font-family: var(--font-stack);
+  font-size: 72px;
+  font-weight: 600;
+}
+.g-free.armed:not(.in) .receipt,
+.g-free.armed:not(.in) .receipt-zero {
+  opacity: 0;
+}
+
+/* ---- FAQ ---- */
+.faq {
+  text-align: left;
+}
+.faq .tile-title {
+  text-align: center;
+}
+.faq-list {
+  max-width: 760px;
+  margin-top: var(--space-xl);
+}
+.faq details {
+  border-bottom: 1px solid var(--hairline);
+}
+.faq summary {
+  min-height: var(--target);
+  padding: var(--space-md) var(--space-xxl) var(--space-md) 0;
+  position: relative;
+  cursor: pointer;
+  list-style: none;
+  font-size: var(--tagline-size);
+  font-weight: 600;
+  line-height: 1.19;
+}
+.faq summary::-webkit-details-marker {
+  display: none;
+}
+.faq summary::after {
+  content: '+';
+  position: absolute;
+  right: var(--space-xs);
+  top: 50%;
+  transform: translateY(-50%);
+  font-weight: 300;
+  font-size: 28px;
+  color: var(--color-primary);
+}
+.faq details[open] summary::after {
+  content: '\2212';
+}
+.faq details p {
+  margin: 0 0 var(--space-lg);
+}
+
+/* ---- Footer (parchment, the only dense area) ---- */
+.site-footer {
+  background: var(--canvas-parchment);
+  color: var(--ink-muted-80);
+  padding: 64px var(--space-md);
+}
+.footer-inner {
+  max-width: var(--content-w);
+  margin: 0 auto;
+}
+.footer-cols {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-lg);
+}
+.footer-heading {
+  margin: 0 0 var(--space-xs);
+  font-size: var(--caption-size);
+  font-weight: 600;
+  line-height: 1.29;
+  letter-spacing: -0.224px;
+  color: var(--ink);
+}
+.footer-links {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.footer-links a {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--target);
+  color: var(--ink-muted-80);
+  text-decoration: none;
+}
+.footer-links a:hover {
+  text-decoration: underline;
+}
+.legal {
+  margin: var(--space-xl) 0 0;
+  padding-top: var(--space-md);
+  border-top: 1px solid var(--hairline);
+  font-size: var(--fine-size);
+  line-height: 1.5;
+  letter-spacing: -0.12px;
+  color: var(--ink-muted-48);
+}
+
+/* ---- Responsive (hero 56 -> 40 -> 34 -> 28) ---- */
+@media (max-width: 1068px) {
+  .landing {
+    --hero-size: 40px;
+  }
+}
+@media (max-width: 833px) {
+  .steps,
+  .footer-cols {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 735px) {
+  .tile {
+    padding-top: var(--space-xxl);
+    padding-bottom: var(--space-xxl);
+  }
+  .landing {
+    --display-lg: 32px;
+    --lead-airy: 21px;
+  }
+}
+@media (max-width: 640px) {
+  .landing {
+    --hero-size: 34px;
+  }
+  .graphic {
+    max-width: 80%;
+  }
+  .sub-nav .chip {
+    display: none;
+  }
+}
+@media (max-width: 419px) {
+  .landing {
+    --hero-size: 28px;
+  }
+}
+
+/* Reduced motion: final states, no transitions (motion.ts is never loaded either). */
+@media (prefers-reduced-motion: reduce) {
+  .how-node {
+    transition: none;
+  }
+  html {
+    scroll-behavior: auto;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}

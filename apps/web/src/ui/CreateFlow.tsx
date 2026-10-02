@@ -8,6 +8,7 @@ import { enrollWithPrf, messageFor, mirrorWrite, saveNewVault, type MirrorStatus
 import { useServices } from './services';
 import { useAutoLock } from './useAutoLock';
 import { S } from './strings';
+import { ActionBar } from './chrome';
 
 type Step = 'intro' | 'keys' | 'secrets' | 'saving' | 'done';
 const MAX_KEYS = 8;
@@ -98,30 +99,30 @@ export function CreateFlow(props: { onDone: (s: VaultSession) => void; onCancel:
   }
 
   return (
-    <section aria-labelledby="create-title">
+    <section aria-labelledby="create-title" className="step">
       <h1 id="create-title">{S.create.title}</h1>
       {error && <Notice kind="error">{error}</Notice>}
       {prompt && <KeyPrompt text={prompt} />}
 
       {step === 'intro' && (
-        <div>
+        <div className="card">
           <StepHeading>{S.create.introTitle}</StepHeading>
           <ul className="plain-list">
             {S.create.intro.map((t) => (
               <li key={t}>{t}</li>
             ))}
           </ul>
-          <div className="actions">
+          <ActionBar>
             <button onClick={() => setStep('keys')}>{S.create.start}</button>
             <button className="secondary" onClick={props.onCancel}>
               {S.back}
             </button>
-          </div>
+          </ActionBar>
         </div>
       )}
 
       {step === 'keys' && (
-        <div>
+        <div className="card">
           <StepHeading>{S.create.keysTitle}</StepHeading>
           <ol className="key-list">
             {keys.map((_, i) => (
@@ -130,7 +131,7 @@ export function CreateFlow(props: { onDone: (s: VaultSession) => void; onCancel:
               </li>
             ))}
           </ol>
-          <div className="actions">
+          <ActionBar>
             {keys.length < 2 && (
               <button onClick={addKey} disabled={busy}>
                 {S.create.addKey(keys.length + 1)}
@@ -144,7 +145,7 @@ export function CreateFlow(props: { onDone: (s: VaultSession) => void; onCancel:
             <button onClick={() => setStep('secrets')} disabled={keys.length < 2 || busy} aria-describedby={keys.length < 2 ? 'need-second' : undefined}>
               {S.create.continue}
             </button>
-          </div>
+          </ActionBar>
           {keys.length < 2 && (
             <p id="need-second" className="hint">
               {S.create.needSecond}
@@ -163,7 +164,7 @@ export function CreateFlow(props: { onDone: (s: VaultSession) => void; onCancel:
       {step === 'saving' && <StepHeading>{S.create.savingTitle}</StepHeading>}
 
       {step === 'done' && session && (
-        <div>
+        <div className="card">
           <StepHeading>{S.create.doneTitle}</StepHeading>
           <Notice kind="success">{S.save.saved}</Notice>
           {S.create.done.map((t) => (
@@ -173,9 +174,9 @@ export function CreateFlow(props: { onDone: (s: VaultSession) => void; onCancel:
             setMirror('pending');
             void mirrorWrite(svc, { vaultId: session.vaultId, version: session.version, blob: session.blob }).then(setMirror);
           }} />
-          <div className="actions">
+          <ActionBar>
             <button onClick={() => props.onDone(session)}>{S.create.continue}</button>
-          </div>
+          </ActionBar>
         </div>
       )}
     </section>

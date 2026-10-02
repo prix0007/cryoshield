@@ -2,6 +2,7 @@
  *  key without PRF (3.2), vault details download (8.6). */
 import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
+import { APP } from '../fixtures/routes';
 import { ArweaveStub } from '../fixtures/arweave';
 import { VirtualKeys } from '../fixtures/webauthn';
 import { createVault, rpc, unlockWith } from '../fixtures/app';
@@ -9,7 +10,7 @@ import { createVault, rpc, unlockWith } from '../fixtures/app';
 test('paymaster refusal shows "Saving is paused" and keeps the edits', async ({ page }) => {
   const arweave = new ArweaveStub();
   await arweave.install(page);
-  await page.goto('/');
+  await page.goto(APP);
   const keys = await VirtualKeys.attach(page);
   await keys.add();
   await keys.add();
@@ -31,7 +32,7 @@ test('mirror failure is non-blocking with Retry; the next unlock self-heals; dow
   const arweave = new ArweaveStub();
   arweave.failUploads = true;
   await arweave.install(page);
-  await page.goto('/');
+  await page.goto(APP);
   const keys = await VirtualKeys.attach(page);
   await keys.add();
   await keys.add();
@@ -65,7 +66,7 @@ test('mirror failure is non-blocking with Retry; the next unlock self-heals; dow
 });
 
 test('an unknown key finds no vault and is offered "Create a vault"', async ({ page }) => {
-  await page.goto('/');
+  await page.goto(APP);
   const keys = await VirtualKeys.attach(page);
   await keys.add();
   await keys.use(0);
@@ -89,7 +90,7 @@ test('an unknown key finds no vault and is offered "Create a vault"', async ({ p
 });
 
 test('a key without PRF is refused with a plain message', async ({ page }) => {
-  await page.goto('/');
+  await page.goto(APP);
   const keys = await VirtualKeys.attach(page);
   await keys.add({ prf: false });
   await keys.use(0);
