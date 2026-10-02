@@ -1,0 +1,10 @@
+{
+  "presets": [
+    { "name": "anvil",            "foundryKey": "anvil",            "chainId": 31337 },
+    { "name": "op-sepolia",       "foundryKey": "op_sepolia",       "chainId": 11155420 },
+    { "name": "op-mainnet",       "foundryKey": "op_mainnet",       "chainId": 10 },
+    { "name": "arbitrum-sepolia", "foundryKey": "arbitrum_sepolia", "chainId": 421614 },
+    { "name": "arbitrum-one",     "foundryKey": "arbitrum_one",     "chainId": 42161 }
+  ],
+  "defaultTestnet": "op-sepolia"
+}

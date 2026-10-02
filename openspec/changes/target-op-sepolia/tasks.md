@@ -5,7 +5,7 @@ Write each test first, and confirm it fails before implementing.
 
 ## 1. Preset parity contract [ow]
 
-- [ ] 1.1 [ow] Add `openspec/changes/target-op-sepolia/presets.json`, listing preset name (kebab-case), chain ID, and Foundry key (snake_case) for anvil, op-sepolia, op-mainnet, arbitrum-sepolia, and arbitrum-one. This is the single reference that parity tests read. Verify: the file parses, and its chain IDs match design.md D1.
+- [x] 1.1 [ow] Add `openspec/changes/target-op-sepolia/presets.json`, listing preset name (kebab-case), chain ID, and Foundry key (snake_case) for anvil, op-sepolia, op-mainnet, arbitrum-sepolia, and arbitrum-one. This is the single reference that parity tests read. Verify: the file parses, and its chain IDs match design.md D1.
 
 ## 2. Contracts deploy tooling [sol]
 
@@ -43,7 +43,7 @@ Write each test first, and confirm it fails before implementing.
 
 ## 5. Project docs [ow]
 
-- [ ] 5.1 [ow] Update `openspec/config.yaml` context: "Testnet: OP Sepolia; mainnet chain TBD (Arbitrum One or OP Mainnet); contracts must stay portable across OP Stack, Arbitrum and Ethereum L1." Verify: `openspec validate --all --strict`.
+- [x] 5.1 [ow] Update `openspec/config.yaml` context: "Testnet: OP Sepolia; mainnet chain TBD (Arbitrum One or OP Mainnet); contracts must stay portable across OP Stack, Arbitrum and Ethereum L1." Verify: `openspec validate --all --strict`.
 - [ ] 5.2 [ow] Update the PRD (decisions log, architecture notes, open questions: add "mainnet chain") and the root README (testnet name, faucet pointer). Verify: a grep finds no remaining "Arbitrum Sepolia" claim of being the testnet outside archives and the Arbitrum presets.
 
 ## 6. Review

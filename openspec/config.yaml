@@ -15,7 +15,7 @@ context: |
     Shamir M-of-N.
   - Recovery must work without CryoShield: an open-source desktop tool (CTAP2 hmac-secret) reads the vault
     from public RPCs/Arweave. Vault format records RP ID, PRF salts, credential IDs, and algorithm IDs.
-  - Chain: Arbitrum One first (Solidity, Foundry); contracts must stay portable to Ethereum L1. Vault blob <= 1 KB.
+  - Chain: testnet is OP Sepolia; mainnet chain TBD (Arbitrum One or OP Mainnet). Solidity + Foundry; contracts must stay portable across OP Stack, Arbitrum and Ethereum L1. Vault blob <= 1 KB.
   - Fully open source. No external audit for the MVP, so rely on audited libraries (WebCrypto, @noble/*),
     a published spec, and deterministic test vectors.
   - Targets non-technical users: users never handle gas, seed phrases, or wallets in the default flow.
