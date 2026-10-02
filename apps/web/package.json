@@ -28,7 +28,6 @@
   },
   "devDependencies": {
     "@axe-core/playwright": "4.13.0",
-    "@dha-team/arbundles": "1.0.4",
     "@playwright/test": "1.63.0",
     "@testing-library/jest-dom": "7.0.1",
     "@testing-library/react": "16.3.3",

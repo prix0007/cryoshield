@@ -58,3 +58,15 @@ describe('empty vault', () => {
     expect(screen.getByRole('button', { name: S.vault.edit })).toBeEnabled();
   });
 });
+
+describe('disabled actions', () => {
+  it('are native disabled buttons (exposed as disabled, out of the tab order), never aria-disabled-only', () => {
+    renderApp({ host: 'ipfs.io', rpId: 'cryoshield.app' });
+    for (const name of [S.home.unlock, S.home.create]) {
+      const b = screen.getByRole('button', { name });
+      expect(b).toBeDisabled();
+      expect(b).toHaveProperty('disabled', true);
+      expect(b).not.toHaveAttribute('aria-disabled', 'false');
+    }
+  });
+});

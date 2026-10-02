@@ -103,11 +103,13 @@ button.secondary {
   color: var(--app-link);
   border-color: var(--app-link);
 }
-button:disabled {
+/* Disabled: same pill, Pearl fill with Ink Muted 48 text (AA even though WCAG exempts disabled text), no press. */
+button:disabled,
+button.secondary:disabled {
   cursor: not-allowed;
-  background: transparent;
-  color: var(--app-muted);
-  border: 1px dashed var(--app-muted);
+  background: var(--app-disabled-bg);
+  color: var(--app-disabled-ink);
+  border-color: var(--app-hairline);
 }
 button:focus-visible {
   outline: 2px solid var(--app-focus);
@@ -139,6 +141,18 @@ button:focus-visible {
   .action-bar {
     position: static;
   }
+}
+/* Inside a card the actions sit directly on the card: spacing is the only grouping (no floating container). */
+.card .action-bar {
+  position: static;
+  min-height: 0;
+  padding: 0;
+  margin: var(--space-lg) 0 0;
+  background: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  border: 0;
+  border-radius: 0;
 }
 @media (max-width: 419px) {
   .action-bar {

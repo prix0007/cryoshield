@@ -154,6 +154,13 @@
 
   It keeps `role="status"` and the existing text and Continue button. No JS animation runs in the app, so nothing
   can delay `navigator.credentials.*`.
+- **Disabled actions (review fix):** disabled buttons keep the pill shape with a Pearl fill, Ink Muted 48 text
+  (4.86:1, AA even though WCAG exempts disabled controls), a hairline ring and no press scale. In the dark theme they
+  use #2a2a2c with #a1a1a6 (5.57:1). They stay native `disabled`, which exposes the disabled state and removes them
+  from the tab order, so `aria-disabled` is not added (it would be redundant).
+- **Action rows inside cards (review fix):** inside a card, `ActionBar` is a plain row with spacing as the only
+  grouping, and no container. The floating sticky bar is kept only where a step's content is long and outside a card
+  (the vault list and the secrets editor).
 - **`EmptyState`:** shown when an unlocked vault has zero items.
 - **Validation:** `SecretsEditor` marks secret fields `aria-invalid` and `aria-describedby` the meter when over
   capacity. The meter already uses the error ink.

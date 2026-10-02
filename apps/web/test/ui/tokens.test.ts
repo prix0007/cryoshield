@@ -52,6 +52,7 @@ const APP_TEXT: [string, string][] = [
   ['--app-error', '--app-surface'],
   ['--on-primary', '--color-primary'],
   ['--body-on-dark', '--surface-black'], // global nav
+  ['--app-disabled-ink', '--app-disabled-bg'], // disabled pills (kept AA although exempt)
 ];
 const APP_BOUNDARY: [string, string][] = [
   ['--app-focus', '--app-bg'],
@@ -152,5 +153,7 @@ describe('stylesheets use tokens only', () => {
     expect(g).toMatch(/button:active:not\(:disabled\)\s*\{\s*transform: scale\(0\.95\)/);
     expect(g).toMatch(/prefers-reduced-motion: reduce[\s\S]*transform: none/);
     expect(g).toMatch(/scroll-padding-bottom/);
+    expect(g).not.toMatch(/dashed/); // disabled pills keep the guide's solid pill shape
+    expect(g).toMatch(/\.card \.action-bar \{[^}]*background: none[^}]*border: 0/);
   });
 });
