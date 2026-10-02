@@ -13,7 +13,7 @@ The founder can't easily get Arbitrum Sepolia test ETH, which blocks the first p
   - `op-mainnet` (10)
   - `arbitrum-sepolia` (421614)
   - `arbitrum-one` (42161)
-- **Deploy script.** `contracts/script/deploy.sh` gains `op_sepolia` (and the other public presets). Explorer verification switches to a single Etherscan V2 API key (`ETHERSCAN_API_KEY`), which covers OP and Arbitrum. **BREAKING (tooling only):** `ARBISCAN_API_KEY` is replaced by `ETHERSCAN_API_KEY`.
+- **Deploy script.** `contracts/script/deploy.sh` gains `op_sepolia` (and the other public presets). Explorer verification switches to **keyless Blockscout** on every public preset (overwatcher decision; the pinned forge 1.1.0 cannot use Etherscan API V2). **BREAKING (tooling only):** `ARBISCAN_API_KEY` is removed, and no explorer key is needed.
 - **Recovery tool.**
   - Adds `op-sepolia` and `op-mainnet` presets.
   - `--testnet` now means `op-sepolia`.

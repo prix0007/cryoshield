@@ -12,7 +12,7 @@ from typing import Any
 
 import pytest
 from support import vectors, writer
-from support.fakes import FakeArweave, FakeChain
+from support.fakes import TEST_CHAIN_ID, FakeArweave, FakeChain
 from support.keys import BY_NAME, FakePrfSource, PhysicalKey
 from support.vectors import h
 from test_recover import RecUI, cfg_for
@@ -161,7 +161,7 @@ def test_disagreeing_rpcs_do_not_silently_roll_back(stale_logs: bool) -> None:
 def test_disagreement_demotes_stale_blob_in_ranking() -> None:
     liar, honest = _two_chains(stale_logs=False)
     with liar, honest:
-        reg = Registry([liar.url, honest.url], honest.address, 42161)
+        reg = Registry([liar.url, honest.url], honest.address, TEST_CHAIN_ID)
         cands = reg.fetch([VID])
     by_blob = {c.blob: c.freshness for c in cands}
     assert by_blob[BLOB2] is Freshness.CURRENT
@@ -246,13 +246,13 @@ def test_vault_id_tries_next_rp_id_when_first_has_no_credential() -> None:
 def test_event_hashes_need_agreement() -> None:
     liar, honest = _two_chains(stale_logs=True)
     with liar, honest:
-        reg = Registry([liar.url, honest.url], honest.address, 42161)
+        reg = Registry([liar.url, honest.url], honest.address, TEST_CHAIN_ID)
         assert reg.event_hashes(VID) is None
         assert any("disagree" in w for w in reg.warnings)
     with FakeChain() as a, FakeChain() as b:
         for c in (a, b):
             c.add_vault(VID, BLOB1, [LOC_A, LOC_B])
-        reg = Registry([a.url, b.url], a.address, 42161)
+        reg = Registry([a.url, b.url], a.address, TEST_CHAIN_ID)
         got = reg.event_hashes(VID)
         assert got is not None and len(got) == 1
         assert {json.loads(r.body)["method"] for r in b.requests} >= {"eth_getLogs"}, "second RPC consulted"
@@ -263,7 +263,7 @@ def test_unmatched_only_on_agreed_empty_history() -> None:
     assert classify(BLOB1, []) is Freshness.UNMATCHED
     with FakeChain() as a, FakeChain() as b:
         a.add_vault(VID, BLOB1, [LOC_A, LOC_B])  # b has no history for VID: disagreement
-        reg = Registry([a.url, b.url], a.address, 42161)
+        reg = Registry([a.url, b.url], a.address, TEST_CHAIN_ID)
         assert reg.event_hashes(VID) is None
 
 
@@ -321,7 +321,7 @@ def test_history_agreement_counts_configured_rpcs() -> None:
     with FakeChain() as a, FakeChain() as down1, FakeChain() as down2:
         a.add_vault(VID, BLOB1, [LOC_A, LOC_B])
         down1.down = down2.down = True
-        reg = Registry([a.url, down1.url, down2.url], a.address, 42161)
+        reg = Registry([a.url, down1.url, down2.url], a.address, TEST_CHAIN_ID)
         assert reg.event_hashes(VID) is None  # 1 of 3 configured answered: unverifiable
         assert any("1 of 3" in w for w in reg.warnings)
 

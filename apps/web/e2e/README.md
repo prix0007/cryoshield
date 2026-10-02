@@ -15,8 +15,10 @@ Prerequisites: Foundry (`anvil`, `forge`) on PATH, `contracts/` built (`forge bu
 
 - **anvil** (chain 31337) on :8545.
 - **Canonical contract code** placed with `anvil_setCode`, from `e2e/fixtures/chain-fixtures.json`: EntryPoint v0.6, its
-  SenderCreator, and Coinbase Smart Wallet v1.1 (factory + implementation). The fixture was read from Arbitrum Sepolia by
-  `pnpm fixtures:e2e` and pins each code hash.
+  SenderCreator, and Coinbase Smart Wallet v1.1 (factory + implementation). The fixture was read from **OP Sepolia** (the
+  testnet) by `pnpm fixtures:e2e` and pins each code hash. `chain-fixtures.arbitrum-sepolia.json` keeps the previous
+  Arbitrum Sepolia copy; `test/build/fixture-parity.test.ts` requires the two to be byte-identical. Any difference
+  blocks the change.
 - **VaultRegistry** deployed exactly like `contracts/script/deploy.sh` (CREATE2, same salt), so the address equals
   `contracts/deployments/31337.json`. The stack fails loudly if not.
 - **E2EPaymaster** (`e2e/contracts`), an accept-all v0.6 paymaster deposited in the EntryPoint.

@@ -5,7 +5,7 @@ libs = ["lib"]
 test = "test"
 script = "script"
 
-# Pinned compiler. `cancun` is supported by Arbitrum (ArbOS >= 20) and Ethereum L1,
+# Pinned compiler. `cancun` is supported by the OP Stack (since Ecotone), Arbitrum (ArbOS >= 20) and Ethereum L1,
 # so the same bytecode deploys to both. No chain-specific precompiles are used.
 solc_version = "0.8.28"
 evm_version = "cancun"
@@ -34,9 +34,14 @@ block_base_fee_per_gas = 1_000_000_000
 [fmt]
 line_length = 120
 
+# Network presets (parity with script/deploy.sh and config/chain-presets.json).
+# Testnet: op_sepolia. Mainnet chain TBD (op_mainnet or arbitrum_one).
 [rpc_endpoints]
 anvil = "http://127.0.0.1:8545"
+op_sepolia = "${OP_SEPOLIA_RPC_URL}"
+op_mainnet = "${OP_MAINNET_RPC_URL}"
 arbitrum_sepolia = "${ARBITRUM_SEPOLIA_RPC_URL}"
+arbitrum_one = "${ARBITRUM_ONE_RPC_URL}"
 
-# Explorer verification key is passed on the command line (`--etherscan-api-key "$ARBISCAN_API_KEY"`) rather than
-# an [etherscan] table, which would require the env var for every command once chain_id is set.
+# Explorer verification is keyless Blockscout (script/deploy.sh passes --verifier blockscout --verifier-url per preset).
+# No [etherscan] table: the pinned forge 1.1.0 cannot use Etherscan V2 (post-MVP, after a forge bump).

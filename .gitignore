@@ -1,10 +1,13 @@
 node_modules/
 dist/
-build/
+/build/
 coverage/
 .env
 .env.*
 !.env.example
+# non-secret local/E2E web configs (localhost endpoints only)
+!apps/web/.env.development
+!apps/web/.env.e2e
 # foundry
 contracts/out/
 contracts/cache/

@@ -28,17 +28,41 @@ class NetworkPreset:
     rpcs: tuple[str, ...]
 
 
+# Network presets (OpenSpec change target-op-sepolia, design D2). A chain is data, never code.
+# Registry address and deploy block are GENERATED at release from contracts/deployments/<chainId>.json
+# and embedded here; that file is never read at runtime (the binary must work outside the repo). A preset
+# without a deployment record keeps PLACEHOLDER_ADDRESS, which disables chain mode with a clear message.
+# Names and chain IDs must match config/chain-presets.json (parity test).
 NETWORKS = {
-    "arbitrum-one": NetworkPreset(
-        name="arbitrum-one",
-        chain_id=42161,
-        # Filled in at release from contracts/deployments/42161.json (guarded by a release test).
+    "anvil": NetworkPreset(
+        name="anvil",
+        chain_id=31337,
+        # Local development chain; deterministic CREATE2 address from contracts/deployments/31337.json.
+        registry="0xb43f58cf17e64b603ae5588a1dd17e96a0849e44",
+        deploy_block=1,
+        rpcs=("http://127.0.0.1:8545",),
+    ),
+    "op-sepolia": NetworkPreset(
+        name="op-sepolia",
+        chain_id=11155420,
+        registry=PLACEHOLDER_ADDRESS,  # until contracts/deployments/11155420.json exists
+        deploy_block=0,
+        # Verified to answer eth_chainId = 11155420 on 2026-10-02 (omniatech excluded: HTTP 521).
+        rpcs=(
+            "https://sepolia.optimism.io",
+            "https://optimism-sepolia-rpc.publicnode.com",
+            "https://optimism-sepolia.drpc.org",
+        ),
+    ),
+    "op-mainnet": NetworkPreset(
+        name="op-mainnet",
+        chain_id=10,
         registry=PLACEHOLDER_ADDRESS,
         deploy_block=0,
         rpcs=(
-            "https://arb1.arbitrum.io/rpc",
-            "https://arbitrum-one-rpc.publicnode.com",
-            "https://arbitrum.drpc.org",
+            "https://mainnet.optimism.io",
+            "https://optimism-rpc.publicnode.com",
+            "https://optimism.drpc.org",
         ),
     ),
     "arbitrum-sepolia": NetworkPreset(
@@ -52,8 +76,29 @@ NETWORKS = {
             "https://arbitrum-sepolia.drpc.org",
         ),
     ),
+    "arbitrum-one": NetworkPreset(
+        name="arbitrum-one",
+        chain_id=42161,
+        registry=PLACEHOLDER_ADDRESS,
+        deploy_block=0,
+        rpcs=(
+            "https://arb1.arbitrum.io/rpc",
+            "https://arbitrum-one-rpc.publicnode.com",
+            "https://arbitrum.drpc.org",
+        ),
+    ),
 }
-DEFAULT_NETWORK = "arbitrum-one"
+# The single default network. Changes only through an OpenSpec change (deployment-targets spec).
+DEFAULT_NETWORK = "op-sepolia"
+# What --testnet means.
+TESTNET = "op-sepolia"
+# Network name for a non-preset --chain-id (requires --rpc; never carries a built-in registry).
+CUSTOM_NETWORK = "custom"
+
+
+def preset_for_chain_id(chain_id: int) -> NetworkPreset | None:
+    return next((p for p in NETWORKS.values() if p.chain_id == chain_id), None)
+
 
 _ADDR = re.compile(r"^0x[0-9a-fA-F]{40}$")
 _HEX32 = re.compile(r"^(0x)?[0-9a-fA-F]{64}$")
@@ -114,6 +159,7 @@ class Config:
     save_blob: Path | None = None
     verbose: bool = False
     rp_id_overridden: bool = False
+    rpcs_user_supplied: bool = False
 
     @property
     def chain_configured(self) -> bool:

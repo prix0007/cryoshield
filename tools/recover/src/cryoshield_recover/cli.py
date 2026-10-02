@@ -13,12 +13,18 @@ from . import FORMAT_VERSIONS, __version__
 from .authenticator import Fido2PrfSource, PrfSource
 from .candidates import Freshness
 from .config import (
+    CUSTOM_NETWORK,
+    DEFAULT_NETWORK,
     NETWORKS,
+    PLACEHOLDER_ADDRESS,
+    TESTNET,
     Config,
+    NetworkPreset,
     is_placeholder,
     parse_address,
     parse_bytes32,
     parse_credential_id,
+    preset_for_chain_id,
 )
 from .errors import ExitCode, RecoveryError
 from .net import check_url, host_of
@@ -42,13 +48,17 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--version", action="store_true", help="print version and supported vault formats")
     g = p.add_argument_group("where to look")
-    g.add_argument("--network", choices=sorted(NETWORKS), help="chain preset (default: arbitrum-one)")
-    g.add_argument("--testnet", action="store_true", help="shorthand for --network arbitrum-sepolia")
+    g.add_argument("--network", choices=sorted(NETWORKS), help=f"chain preset (default: {DEFAULT_NETWORK})")
+    g.add_argument("--testnet", action="store_true", help=f"shorthand for --network {TESTNET}")
     g.add_argument(
         "--rpc", action="append", metavar="URL", help="JSON-RPC endpoint (repeatable; replaces defaults)"
     )
     g.add_argument("--registry", metavar="ADDRESS", help="VaultRegistry contract address")
-    g.add_argument("--chain-id", type=int, help="expected chain ID of the RPC endpoints")
+    g.add_argument(
+        "--chain-id",
+        type=int,
+        help="expected chain ID; alone, selects the preset with that ID; otherwise overrides it",
+    )
     g.add_argument("--deploy-block", type=int, help="registry deployment block (for event history)")
     g.add_argument(
         "--arweave-graphql", action="append", metavar="URL", help="Arweave GraphQL endpoint (repeatable)"
@@ -78,11 +88,44 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
-def config_from_args(a: argparse.Namespace) -> Config:
-    net_name = "arbitrum-sepolia" if a.testnet else (a.network or "arbitrum-one")
-    preset = NETWORKS[net_name]
-    cfg = Config(
-        network=net_name,
+def _select_network(a: argparse.Namespace) -> Config:
+    """Selection order (target-op-sepolia D2): --network > --testnet > --chain-id matching a preset >
+    DEFAULT_NETWORK. A preset's registry is only ever used on that preset's chain (security review):
+    a preset plus a conflicting --chain-id is refused, and a non-preset chain ID is a "custom" network
+    with no built-in registry and user-supplied --rpc endpoints only."""
+    explicit = a.network or (TESTNET if a.testnet else None)
+    preset: NetworkPreset | None
+    if explicit is not None:
+        preset = NETWORKS[explicit]
+        if a.chain_id is not None and a.chain_id != preset.chain_id:
+            raise RecoveryError(
+                ExitCode.USAGE,
+                f"--chain-id {a.chain_id} conflicts with network {explicit} (chain {preset.chain_id}). "
+                "Drop --chain-id, or for a custom chain use --chain-id with --rpc and --registry "
+                "(without --network/--testnet).",
+            )
+    elif a.chain_id is not None:
+        preset = preset_for_chain_id(a.chain_id)
+    else:
+        preset = NETWORKS[DEFAULT_NETWORK]
+    if preset is None:
+        if not a.rpc:
+            raise RecoveryError(
+                ExitCode.USAGE,
+                f"Chain {a.chain_id} is not a built-in network; pass --rpc <url> for it (and --registry), "
+                "or choose --network.",
+            )
+        return Config(
+            network=CUSTOM_NETWORK,
+            chain_id=a.chain_id,
+            registry=PLACEHOLDER_ADDRESS,
+            deploy_block=0,
+            rpcs=[],
+            timeout=a.timeout,
+            verbose=a.verbose,
+        )
+    return Config(
+        network=preset.name,
         chain_id=preset.chain_id,
         registry=preset.registry,
         deploy_block=preset.deploy_block,
@@ -90,11 +133,16 @@ def config_from_args(a: argparse.Namespace) -> Config:
         timeout=a.timeout,
         verbose=a.verbose,
     )
+
+
+def config_from_args(a: argparse.Namespace) -> Config:
+    cfg = _select_network(a)
     try:
         if a.rp_id:
             cfg.rp_id, cfg.rp_id_overridden = a.rp_id, True
         if a.rpc:
             cfg.rpcs = [check_url(u) for u in a.rpc]
+            cfg.rpcs_user_supplied = True
         if a.registry:
             cfg.registry = parse_address(a.registry)
         if a.chain_id is not None:
@@ -136,17 +184,21 @@ def startup_summary(cfg: Config, ui: Console) -> None:
     if cfg.offline:
         ui.info("Offline mode: no network connections will be made.")
         return
+    ui.info(f"Network: {cfg.network} (chain {cfg.chain_id})")
     contacts = []
     if cfg.use_chain:
         if is_placeholder(cfg.registry):
+            where = f"custom chain {cfg.chain_id}" if cfg.network == CUSTOM_NETWORK else cfg.network
             ui.warn(
-                f"no VaultRegistry address is built in for {cfg.network} yet; skipping blockchain lookup "
-                "(pass --registry to set one)."
+                f"No VaultRegistry deployment is built in for {where} in this release, so blockchain "
+                "lookup is off. Pass --registry <address> (and --deploy-block) to use a known deployment, "
+                "or --network for another chain."
             )
         else:
+            source = "user-supplied" if cfg.rpcs_user_supplied else "built-in"
             contacts.append(
-                f"blockchain ({cfg.network}, chain {cfg.chain_id}, registry {cfg.registry}): "
-                + ", ".join(host_of(u) for u in cfg.rpcs)
+                f"blockchain ({cfg.network}, chain {cfg.chain_id}, registry {cfg.registry}), "
+                f"{source} endpoints: " + ", ".join(host_of(u) for u in cfg.rpcs)
             )
     if cfg.arweave_configured:
         contacts.append(

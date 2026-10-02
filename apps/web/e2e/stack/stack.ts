@@ -2,7 +2,7 @@
  * Local E2E chain stack (design D11, "E2E bundler choice"):
  *   anvil (chain 31337)
  *   + canonical EntryPoint v0.6 / SenderCreator / Coinbase Smart Wallet v1.1 runtime code (anvil_setCode, from
- *     e2e/fixtures/chain-fixtures.json, read from Arbitrum Sepolia)
+ *     e2e/fixtures/chain-fixtures.json, read from OP Sepolia; byte-identical on Arbitrum)
  *   + VaultRegistry deployed exactly as contracts/script/deploy.sh does (CREATE2, same salt -> same address as
  *     contracts/deployments/31337.json)
  *   + E2EPaymaster (accept-all, deposited in the EntryPoint)

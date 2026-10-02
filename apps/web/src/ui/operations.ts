@@ -12,6 +12,7 @@ import { addKeyOnChain, createVaultOnChain, updateVaultOnChain, WriteError } fro
 import { bytesEqual, toHex, wipe } from '../lib/bytes';
 import { MirrorError } from '../mirror/mirror';
 import type { Services } from './services';
+import { ChainMismatchError } from '../chain/guard';
 import { S } from './strings';
 
 export interface PendingKey extends EnrolledKey {
@@ -155,6 +156,7 @@ export async function saveAddKey(
 
 /** Plain-language message for any failure. Never includes secret material. */
 export function messageFor(e: unknown): string {
+  if (e instanceof ChainMismatchError) return S.wrongNetwork;
   if (e instanceof KeyError) {
     if (e.code === 'WRONG_KEY' && e.message === 'not in vault') return S.edit.notInVault;
     return S.keyErrors[e.code] ?? S.save.nothingSaved;

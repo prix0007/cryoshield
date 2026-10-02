@@ -48,16 +48,20 @@ Every component SHALL verify a configured RPC's chain ID against the selected pr
 - **WHEN** the deploy tooling is run for `op_sepolia` with an RPC that reports a chain ID other than 11155420
 - **THEN** it exits non-zero before sending or simulating any transaction
 
-### Requirement: Explorer verification with a single key
-Deployments to public networks SHALL verify the contract source on the chain's Etherscan-family explorer, using one Etherscan V2 API key supplied only through the environment variable `ETHERSCAN_API_KEY`, never through command-line arguments. Raw private keys SHALL remain refused for public networks; only a named Foundry keystore is accepted.
+### Requirement: Keyless explorer verification
+Deployments to public networks SHALL verify the contract source on the chain's Blockscout explorer, which needs no API key. Each preset SHALL define its Blockscout verifier API URL. Verification SHALL run only after the deployment record is written: a verification failure SHALL exit non-zero, keep the record, and print a retry command. No secret SHALL ever appear in command-line arguments. Raw private keys SHALL remain refused for public networks; only a named Foundry keystore is accepted. Etherscan-family verification is deferred until the pinned forge supports Etherscan API V2 (see design.md).
 
-#### Scenario: Verification key not in argv
-- **WHEN** a broadcast deployment to `op_sepolia` runs
-- **THEN** the process arguments contain neither the API key nor any private key
+#### Scenario: No secrets in argv and no API key needed
+- **WHEN** a broadcast deployment to `op_sepolia` runs with no explorer API key in the environment
+- **THEN** it proceeds, the verify step uses `--verifier blockscout --verifier-url https://testnet-explorer.optimism.io/api/`, and the process arguments contain no API key and no private key
 
-#### Scenario: Missing key on broadcast
-- **WHEN** `BROADCAST=1` is set and `ETHERSCAN_API_KEY` is unset
-- **THEN** the tooling exits non-zero before broadcasting
+#### Scenario: Verifier per preset
+- **WHEN** the deploy tooling's broadcast plan is built for each public preset
+- **THEN** each uses that chain's own Blockscout verifier URL
+
+#### Scenario: Verification failure keeps the record
+- **WHEN** the deployment succeeds but source verification fails
+- **THEN** `contracts/deployments/<chainId>.json` is written and the tooling exits with a distinct non-zero code (2) and prints the retry command
 
 ### Requirement: Per-chain deployment records
 Each deployment SHALL write `contracts/deployments/<chainId>.json` containing `{chainId, address, deployBlock, txHash, abiHash}`. The web app and the recovery tool SHALL read the registry address and deploy block for their selected chain only from that record, or from a preset generated from it. A missing record for the selected chain SHALL be a build-time or startup error, not a silent fallback to another chain.

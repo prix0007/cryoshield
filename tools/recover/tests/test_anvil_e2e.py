@@ -226,7 +226,7 @@ def test_unenrolled_key_finds_nothing(anvil: str, stored: tuple[str, int]) -> No
 def test_wrong_chain_id_is_refused(anvil: str, stored: tuple[str, int]) -> None:
     addr, block = stored
     console, out, err = _term()
-    args = ["--rpc", anvil, "--registry", addr, "--chain-id", "42161", "--no-arweave"]
+    args = ["--rpc", anvil, "--registry", addr, "--chain-id", "11155420", "--no-arweave"]
     code = _main(args, console, _key("A"))
     assert code == ExitCode.NETWORK_UNAVAILABLE
     assert "chain 31337" in err.getvalue()

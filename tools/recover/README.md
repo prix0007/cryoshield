@@ -4,7 +4,7 @@ Unlock your CryoShield vault with **only your hardware key**, even if the CryoSh
 
 The tool works in four steps:
 1. It asks your FIDO2 security key (e.g. a YubiKey 5) for the vault's secret-derivation value, using CTAP2 `hmac-secret` with your PIN.
-2. It finds your encrypted vault on public blockchain servers (Arbitrum). If those can't be reached, it looks in the Arweave permanent archive.
+2. It finds your encrypted vault on public blockchain servers (OP Sepolia by default during the test phase; see "Networks" below). If those can't be reached, it looks in the Arweave permanent archive.
 3. It decrypts the vault on your computer.
 4. It shows the secret only after you type `show`.
 
@@ -59,9 +59,11 @@ cryoshield-recover --blob-file my-vault.bin --vault-id 0x1f2e3d4c5b6a79881f2e3d4
 cryoshield-recover --output secret.txt
 # Save the encrypted vault for future offline recovery (it is useless without your key):
 cryoshield-recover --save-blob my-vault.bin
-# Use your own node, or the test network:
+# Use your own node, or pick a network explicitly:
 cryoshield-recover --rpc https://my-node.example/rpc
 cryoshield-recover --testnet
+cryoshield-recover --network op-mainnet
+cryoshield-recover --chain-id 10
 # Override the built-in contract address or site name:
 cryoshield-recover --registry 0x0000000000000000000000000000000000000001 --rp-id cryoshield.app
 ```
@@ -78,6 +80,31 @@ Every vault is cryptographically bound to the **vault ID** it is registered unde
 So anyone can copy your public blob into their own vault, but that copy never decrypts. The tool ignores it, and can never be tricked into showing a stale or attacker-held clone.
 
 The tool prints the vault ID after every unlock. Keep it together with any `--save-blob` file, because offline recovery from a file needs both.
+
+### Networks
+
+| Preset | Chain ID | Built-in public RPCs |
+|---|---|---|
+| `op-sepolia` (**default**, also `--testnet`) | 11155420 | sepolia.optimism.io, optimism-sepolia-rpc.publicnode.com, optimism-sepolia.drpc.org |
+| `op-mainnet` | 10 | mainnet.optimism.io, optimism-rpc.publicnode.com, optimism.drpc.org |
+| `arbitrum-one` | 42161 | arb1.arbitrum.io, arbitrum-one-rpc.publicnode.com, arbitrum.drpc.org |
+| `arbitrum-sepolia` | 421614 | sepolia-rollup.arbitrum.io, arbitrum-sepolia-rpc.publicnode.com, arbitrum-sepolia.drpc.org |
+| `anvil` | 31337 | 127.0.0.1:8545 (local development) |
+
+The mainnet chain (Arbitrum One or OP Mainnet) is not decided yet.
+
+**How the network is chosen,** first match wins:
+1. `--network <preset>`;
+2. `--testnet` (meaning `op-sepolia`);
+3. `--chain-id` matching a preset;
+4. the built-in default, `op-sepolia`.
+
+**Overrides:**
+- `--rpc` replaces the RPC list but keeps the preset's chain ID. These endpoints are labelled "user-supplied", and an RPC on a different chain is refused, with a hint.
+- `--chain-id` together with `--network` or `--testnet` must match that preset's chain ID; otherwise the tool exits with a usage error. A preset's built-in registry is never used on another chain.
+- **Custom chains:** a `--chain-id` that matches no preset needs `--rpc`, and should come with `--registry`. Such a chain never gets a built-in registry address.
+
+**Built-in registry addresses** come from the project's deployment records at release time; the tool never reads files at runtime. If a network has no deployment in this release, blockchain lookup is off: the tool says so and points you to `--registry` and `--deploy-block`.
 
 ### Shamir (M-of-N) vaults
 

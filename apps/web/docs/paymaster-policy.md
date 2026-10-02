@@ -34,6 +34,7 @@ call the public API key from a script, inside the caps.
 
 | Setting | Value |
 |---|---|
+| Chain | OP Sepolia (`optimism-sepolia`) for the testnet; the same settings apply to any configured chain |
 | EntryPoint | v0.6 (Coinbase Smart Wallet v1.1) |
 | Per-sender limit | 10 operations and $0.50 lifetime |
 | Per-operation limit | $0.20 |
@@ -44,8 +45,8 @@ call the public API key from a script, inside the caps.
 ## Private bundler endpoint
 
 `VITE_BUNDLER_URL` points at Pimlico's RPC endpoint. User operations go straight to Pimlico over HTTPS and are not
-gossiped to the public ERC-4337 p2p mempool by the client. On Arbitrum, the sequencer orders transactions first come,
-first served, with no public pending-transaction mempool. The design also tolerates front-running:
+gossiped to the public ERC-4337 p2p mempool by the client. On OP Stack and Arbitrum chains, a centralized sequencer
+orders transactions, with no public pending-transaction mempool. The design also tolerates front-running:
 - locator registration is non-exclusive;
 - a stolen `vaultId` leads to one retry with a fresh random id;
 - a full locator (`LocatorFull`) leads to enrolling a fresh credential.

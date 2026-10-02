@@ -11,6 +11,7 @@ import { chainOf, defaultTransport } from '../chain/registry';
 import { prfCapturingGetFn, type CredentialsApi } from '../webauthn';
 import { toBase64Url } from '../lib/bytes';
 import { smartWalletAbi } from './policy';
+import { ensureChain } from '../chain/guard';
 
 export const CBSW_VERSION = '1.1' as const;
 
@@ -41,6 +42,7 @@ export async function newVaultAccount(p: {
   expectedLocator: Uint8Array;
   credentials?: CredentialsApi;
 }) {
+  await ensureChain(p.client);
   const owners = p.owners.map((o, i) =>
     webAuthnOwner({
       credId: o.credId,
@@ -73,6 +75,7 @@ export async function existingVaultAccount(p: {
   expectedLocator: Uint8Array;
   credentials?: CredentialsApi;
 }) {
+  await ensureChain(p.client);
   if (p.entryIndex < 0) throw new OwnerMismatchError('this key is not listed in the vault');
   const publicKey = await ownerPublicKeyAt(p.client, p.address, p.entryIndex);
   const signer = webAuthnOwner({

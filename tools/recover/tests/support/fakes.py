@@ -86,11 +86,13 @@ class FakeServer:
 
 
 OWNER = "0x70997970c51812dc3a010c7d01b50e0d17dc79c8"
+# Fakes default to the default testnet (target-op-sepolia).
+TEST_CHAIN_ID = 11155420
 REGISTRY = "0xb43f58cf17e64b603ae5588a1dd17e96a0849e44"
 
 
 class FakeChain(FakeServer):
-    def __init__(self, chain_id: int = 42161, address: str = REGISTRY) -> None:
+    def __init__(self, chain_id: int = TEST_CHAIN_ID, address: str = REGISTRY) -> None:
         super().__init__()
         self.chain_id = chain_id
         self.address = address

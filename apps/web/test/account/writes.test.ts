@@ -6,7 +6,7 @@ import { createVaultOnChain, registryError, updateVaultOnChain, WriteError } fro
 const owner = '0x00000000000000000000000000000000000000aa' as Hex;
 const account = { getAddress: async () => owner } as never;
 const blob = new Uint8Array([1, 2, 3]);
-const okClient = { call: vi.fn(async () => ({ data: '0x' })) } as never;
+const okClient = { getChainId: async () => 31337, call: vi.fn(async () => ({ data: '0x' })) } as never;
 const reader = (b: Uint8Array | null) => ({ getVault: async (vaultId: Hex) => (b ? { vaultId, owner, blob: b, version: 2 } : null) }) as never;
 const revert = (name: string, args: unknown[]) => encodeErrorResult({ abi: registryAbi as any, errorName: name, args } as never);
 
@@ -60,7 +60,7 @@ describe('write confirmation (6.8)', () => {
     const { BaseError } = await import('viem');
     const data = revert('VaultIdTaken', ['0x' + '11'.repeat(32)]);
     let calls = 0;
-    const client = { call: vi.fn(async () => { if (calls++ === 0) throw new (class extends BaseError { data = data; constructor() { super('reverted'); } })(); return { data: '0x' }; }) } as never;
+    const client = { getChainId: async () => 31337, call: vi.fn(async () => { if (calls++ === 0) throw new (class extends BaseError { data = data; constructor() { super('reverted'); } })(); return { data: '0x' }; }) } as never;
     const sponsor = { send: vi.fn(async () => ({ userOpHash: '0x01' as Hex, success: true })) };
     const built: Hex[] = [];
     const r = await createVaultOnChain(
@@ -73,7 +73,7 @@ describe('write confirmation (6.8)', () => {
   });
 
   it('preflight LocatorFull stops before any signing/sending', async () => {
-    const client = { call: vi.fn(async () => { const e: any = new Error('reverted'); throw Object.assign(e, {}); }) } as never;
+    const client = { getChainId: async () => 31337, call: vi.fn(async () => { const e: any = new Error('reverted'); throw Object.assign(e, {}); }) } as never;
     const sponsor = { send: vi.fn() };
     const { BaseError } = await import('viem');
     const data = revert('LocatorFull', ['0x' + '22'.repeat(32)]);
@@ -91,7 +91,7 @@ describe('review fix 6: add-key asserts nextOwnerIndex == keyCount before signin
     void decodeVault;
     const onSign = vi.fn();
     const sponsor = { send: vi.fn() };
-    const client = { call: vi.fn(async () => ({ data: '0x' })), readContract: vi.fn(async () => 5n) } as never;
+    const client = { getChainId: async () => 31337, call: vi.fn(async () => ({ data: '0x' })), readContract: vi.fn(async () => 5n) } as never;
     const err = await addKeyOnChain(
       { account, vaultId: ('0x' + '33'.repeat(32)) as Hex, blob, newLocator: ('0x' + '44'.repeat(32)) as Hex, newPublicKey: ('0x' + 'aa'.repeat(64)) as Hex, keyCountBefore: 2 },
       { client, sponsor: sponsor as never, reader: reader(blob), onSign },
@@ -103,7 +103,7 @@ describe('review fix 6: add-key asserts nextOwnerIndex == keyCount before signin
   it('proceeds when nextOwnerIndex == keyCount', async () => {
     const { addKeyOnChain } = await import('../../src/account/writes');
     const sponsor = { send: vi.fn(async () => ({ userOpHash: '0x01' as Hex, success: true })) };
-    const client = { call: vi.fn(async () => ({ data: '0x' })), readContract: vi.fn(async () => 2n) } as never;
+    const client = { getChainId: async () => 31337, call: vi.fn(async () => ({ data: '0x' })), readContract: vi.fn(async () => 2n) } as never;
     const r = await addKeyOnChain(
       { account, vaultId: ('0x' + '33'.repeat(32)) as Hex, blob, newLocator: ('0x' + '44'.repeat(32)) as Hex, newPublicKey: ('0x' + 'aa'.repeat(64)) as Hex, keyCountBefore: 2 },
       { client, sponsor: sponsor as never, reader: reader(blob) },

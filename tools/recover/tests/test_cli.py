@@ -16,7 +16,7 @@ from support.keys import BY_NAME, FakePrfSource, PhysicalKey
 from support.vectors import h
 
 from cryoshield_recover import cli
-from cryoshield_recover.config import NETWORKS, is_placeholder
+from cryoshield_recover.config import DEFAULT_NETWORK, NETWORKS, is_placeholder
 from cryoshield_recover.errors import ExitCode
 from cryoshield_recover.ui import Console
 
@@ -62,7 +62,7 @@ def run_cli(args: list[str], term: Term, keys: list[PhysicalKey] | None = None) 
 def test_defaults_and_overrides() -> None:
     p = cli.build_parser()
     cfg = cli.config_from_args(p.parse_args([]))
-    assert cfg.rp_id == "cryoshield.app" and cfg.chain_id == 42161 and len(cfg.rpcs) >= 3
+    assert cfg.rp_id == "cryoshield.app" and cfg.chain_id == 11155420 and len(cfg.rpcs) >= 3
     assert len(cfg.arweave_graphql) >= 2 and len(cfg.arweave_gateways) >= 2
     assert all(u.startswith("https://") for u in cfg.rpcs + cfg.arweave_graphql + cfg.arweave_gateways)
     cfg = cli.config_from_args(
@@ -91,7 +91,7 @@ def test_defaults_and_overrides() -> None:
         "https://d.example"
     ]
     t = cli.config_from_args(p.parse_args(["--testnet"]))
-    assert t.chain_id == 421614 and t.network == "arbitrum-sepolia"
+    assert t.chain_id == 11155420 and t.network == "op-sepolia"
 
 
 @pytest.mark.parametrize(
@@ -131,7 +131,7 @@ def test_startup_summary_lists_endpoints_before_contact(chain: FakeChain) -> Non
 def test_placeholder_registry_warns_and_skips_chain() -> None:
     term = Term()
     code, _ = run_cli(["--no-arweave"], term)
-    assert "no VaultRegistry address is built in" in term.stderr.getvalue()
+    assert "No VaultRegistry deployment is built in" in term.stderr.getvalue()
     assert code == ExitCode.NETWORK_UNAVAILABLE
 
 
@@ -285,7 +285,7 @@ def test_core_dumps_disabled(chain: FakeChain) -> None:
 # ------------------------------------------------------------------ release guard
 @pytest.mark.release
 def test_release_has_real_registry_address() -> None:
-    assert not is_placeholder(NETWORKS["arbitrum-one"].registry), (
-        "fill in the Arbitrum One registry before release"
+    assert not is_placeholder(NETWORKS[DEFAULT_NETWORK].registry), (
+        f"fill in the {DEFAULT_NETWORK} registry before release"
     )
-    assert NETWORKS["arbitrum-one"].deploy_block > 0
+    assert NETWORKS[DEFAULT_NETWORK].deploy_block > 0

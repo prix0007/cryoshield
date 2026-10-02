@@ -119,7 +119,7 @@ The registry SHALL have no upgrade mechanism, no admin or owner role, no pause, 
 - **THEN** the call reverts exactly as for any other non-owner
 
 ### Requirement: Chain portability
-The registry SHALL depend on no chain-specific precompiles or system contracts. The same bytecode SHALL behave identically on Arbitrum One, Arbitrum Sepolia, and Ethereum L1.
+The registry SHALL depend on no chain-specific precompiles or system contracts. The same bytecode SHALL behave identically, and deploy to the same CREATE2 address, on OP Sepolia, OP Mainnet, Arbitrum One, Arbitrum Sepolia, and Ethereum L1.
 
 #### Scenario: Same test suite on L1 settings
 - **WHEN** the full test suite runs against a mainnet-equivalent EVM configuration

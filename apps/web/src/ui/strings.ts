@@ -13,6 +13,8 @@ export const S = {
       'Your secrets are locked with your security keys before they leave this page. Nobody else, including CryoShield, can read them.',
   },
 
+  wrongNetwork:
+    'This site is connected to the wrong network, so your vault can’t be read or saved safely. Nothing was changed. Please use the official CryoShield address, or tell the site operator.',
   misconfigured: 'This site is set up incorrectly, so security keys can’t be used here. Please use the official CryoShield address.',
   browserUnsupported:
     'This browser can’t use security keys for encryption. Please use a recent version of Chrome, Edge, or Firefox on a computer, or Safari 26.4 or newer.',

@@ -49,7 +49,7 @@ def cfg_for(chain: FakeChain | None = None, ar: FakeArweave | None = None, **kw:
     c = Config(
         rpcs=[chain.url] if chain else [],
         registry=chain.address if chain else "0x" + "00" * 20,
-        chain_id=chain.chain_id if chain else 42161,
+        chain_id=chain.chain_id if chain else 11155420,
         arweave_graphql=[ar.graphql_url] if ar else [],
         arweave_gateways=[ar.url] if ar else [],
         timeout=3,

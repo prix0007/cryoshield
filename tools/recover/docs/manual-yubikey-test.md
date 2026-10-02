@@ -5,8 +5,8 @@ Automated tests replace the hardware with a software CTAP2 authenticator. This p
 ## What you need
 
 - 2 YubiKeys from the 5 series (firmware 5.2 or newer), each with a PIN set. Check with `ykman fido info`.
-- Foundry (`anvil`, `forge`, `cast`) for the local chain, or Arbitrum Sepolia access for the testnet run.
-- The CryoShield web app running locally, or a vault created by the web app on Sepolia.
+- Foundry (`anvil`, `forge`, `cast`) for the local chain, or OP Sepolia (chain 11155420) access for the testnet run.
+- The CryoShield web app running locally, or a vault created by the web app on OP Sepolia.
 - This tool: `cd tools/recover && uv sync`.
 
 ## A. PRF equivalence: browser vs CTAP2 (task 8.3)
@@ -46,11 +46,11 @@ Automated tests replace the hardware with a software CTAP2 authenticator. This p
    - a wrong PIN shows the remaining attempts;
    - unplugging all keys gives exit code 3.
 
-## C. Arbitrum Sepolia (task 11.1)
+## C. OP Sepolia testnet (task 11.1)
 
 Same as B, but:
-- create the vault on Sepolia;
-- run with `--testnet --registry <sepolia address> --deploy-block <block>`;
+- create the vault on OP Sepolia;
+- run with `--testnet` (OP Sepolia, chain 11155420). Until the release embeds `contracts/deployments/11155420.json`, add `--registry <address> --deploy-block <block>` from that file;
 - block CryoShield domains in `/etc/hosts`.
 
 ## D. Arweave-only (task 11.2)

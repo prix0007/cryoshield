@@ -9,7 +9,7 @@ from typing import Any
 
 import pytest
 from support import vectors
-from support.fakes import FakeArweave, FakeChain
+from support.fakes import TEST_CHAIN_ID, FakeArweave, FakeChain
 from support.vectors import h
 
 from cryoshield_recover import net
@@ -135,7 +135,7 @@ def chain() -> Any:
         yield c
 
 
-def _registry(*chains: FakeChain, chain_id: int = 42161) -> Registry:
+def _registry(*chains: FakeChain, chain_id: int = TEST_CHAIN_ID) -> Registry:
     return Registry([c.url for c in chains], chains[0].address, chain_id, deploy_block=0, log_chunk=300)
 
 

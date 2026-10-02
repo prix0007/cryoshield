@@ -134,6 +134,8 @@ The blob always records credential IDs, so the vault ID or a saved blob is enoug
 - Constant-time behaviour is not a goal: it runs once, locally, on the user's machine.
 
 ### D8. Defaults and release pinning
+
+> **Superseded by `target-op-sepolia` (design D2):** there are per-chain presets (anvil, op-sepolia, op-mainnet, arbitrum-sepolia, arbitrum-one), `DEFAULT_NETWORK = "op-sepolia"`, and `--testnet` means op-sepolia. The selection order is `--network` > `--testnet` > `--chain-id` matching a preset > the default. Security review (target-op-sepolia): `--network`/`--testnet` with a conflicting `--chain-id` is a usage error, so a preset's registry is never used on another chain. A non-preset `--chain-id` is a `custom` network: it requires `--rpc`, carries no built-in registry, and its endpoints are labelled user-supplied. A preset without an embedded deployment record refuses chain mode with a clear message. The text below describes the original Arbitrum-only plan.
 - `config.py` bakes in:
   - RP ID: the production RP ID from the web-app change (placeholder `cryoshield.app` until decided);
   - chain ID 42161;

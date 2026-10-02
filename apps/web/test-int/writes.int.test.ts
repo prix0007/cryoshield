@@ -165,7 +165,8 @@ describe('on-chain verification and registry errors', () => {
       await t.impersonateAccount({ address: from });
       await t.setBalance({ address: from, value: 10n ** 18n });
       const id = keccak256(vToHex(`junk-${Date.now()}-${i}`));
-      await w.sendTransaction({ account: from, chain, to: config.registry.address, data: encodeFunctionData({ abi: registryAbi as any, functionName: 'createVault', args: [id, '0xdead', [target, keccak256(id)]] }) } as never);
+      const h = await w.sendTransaction({ account: from, chain, to: config.registry.address, data: encodeFunctionData({ abi: registryAbi as any, functionName: 'createVault', args: [id, '0xdead', [target, keccak256(id)]] }) } as never);
+      expect((await client.waitForTransactionReceipt({ hash: h })).status).toBe('success');
     }
     f.use(0);
     const account = await newVaultAccount({ client, owners: [a, b], signerIndex: 0, expectedLocator: locators[0]!, credentials: f.credentials });
@@ -178,7 +179,7 @@ describe('on-chain verification and registry errors', () => {
 
 describe('10.7: vault cloning is neutralised (vaultId bound into the ciphertext)', () => {
   it('a byte-identical clone of the victim blob + locators under an attacker vaultId is never offered', async () => {
-    const { f, res, reader } = await createOne([{ label: 'Seed', secret: 'victim secret' }]);
+    const { f, res, reader, client } = await createOne([{ label: 'Seed', secret: 'victim secret' }]);
     const { createTestClient, createWalletClient, encodeFunctionData, keccak256, toHex: vToHex } = await import('viem');
     const { registryAbi, config } = await import('virtual:cryoshield-config');
     const chain = { id: 31337, name: 'anvil', nativeCurrency: { name: 'E', symbol: 'E', decimals: 18 }, rpcUrls: { default: { http: ['http://127.0.0.1:8545'] } } } as const;
@@ -188,12 +189,15 @@ describe('10.7: vault cloning is neutralised (vaultId bound into the ciphertext)
     await t.impersonateAccount({ address: attacker });
     await t.setBalance({ address: attacker, value: 10n ** 18n });
     const cloneId = keccak256(vToHex(`clone-${Date.now()}`));
-    await w.sendTransaction({
+    const cloneTx = await w.sendTransaction({
       account: attacker,
       chain,
       to: config.registry.address,
       data: encodeFunctionData({ abi: registryAbi as any, functionName: 'createVault', args: [cloneId, toHex(res.blob), res.locators] }),
     } as never);
+    // Wait until the clone is mined and succeeded before asserting on the index.
+    const cloneReceipt = await client.waitForTransactionReceipt({ hash: cloneTx });
+    expect(cloneReceipt.status).toBe('success');
     // The clone is on-chain under the victim's locators, byte-identical...
     const cands = await reader.candidatesFor(res.locators[0]!);
     expect(cands.map((c) => c.vaultId.toLowerCase())).toEqual(expect.arrayContaining([res.vaultId.toLowerCase(), cloneId.toLowerCase()]));

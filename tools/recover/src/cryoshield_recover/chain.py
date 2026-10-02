@@ -55,7 +55,10 @@ class Registry:
                     self.warnings.append(f"RPC {c.host} unavailable ({e})")
                     return None
                 if got != self.chain_id:
-                    self.warnings.append(f"RPC {c.host} is on chain {got}, expected {self.chain_id}; ignored")
+                    self.warnings.append(
+                        f"RPC {c.host} is on chain {got}, expected {self.chain_id}; ignored "
+                        "(if this server is for another chain, pass --chain-id or --network)"
+                    )
                     return None
                 return c
 

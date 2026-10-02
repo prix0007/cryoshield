@@ -26,6 +26,7 @@ import { config, registryAbi } from '../config';
 import { bytesEqual, randomBytes, toHex } from '../lib/bytes';
 import type { RegistryReader } from '../chain/registry';
 import { findKeyError, KeyError } from '../webauthn';
+import { ensureChain } from '../chain/guard';
 import { assertSponsorableCallData, assertSponsorableCalls, PolicyError, smartWalletAbi, type Call } from './policy';
 
 export type WriteErrorCode =
@@ -94,6 +95,7 @@ function revertData(e: unknown): Hex | undefined {
 
 /** eth_call each registry call from the account address; throws the decoded registry error. */
 export async function preflight(client: PublicClient, from: Hex, calls: readonly Call[]): Promise<void> {
+  await ensureChain(client);
   for (const c of calls) {
     if (c.to.toLowerCase() !== config.registry.address.toLowerCase()) continue;
     try {
@@ -116,8 +118,11 @@ export function createSponsor(client: PublicClient, bundlerUrl = config.bundlerU
     transport: http(bundlerUrl, { timeout: 30_000 }),
     entryPoint: { address: entryPoint06Address, version: '0.6' },
   });
+  const bundlerChain = { getChainId: async () => Number(await pimlico.request({ method: 'eth_chainId' } as never)) };
   return {
     async send(account, calls) {
+      // The bundler/paymaster must serve the configured chain too (checked once per session).
+      await ensureChain(bundlerChain, config.chainId, 'bundler');
       const address = await account.getAddress();
       assertSponsorableCalls(calls, address);
       const guard = <T extends { callData: Hex; sender: Hex }>(p: T) => {

@@ -1,7 +1,8 @@
 # CryoShield contracts
 
 Foundry project for `VaultRegistry`, the immutable, ownerless on-chain store for encrypted vault blobs
-(OpenSpec change `add-vault-registry-contract`). Targets Arbitrum One and stays bytecode-portable to Ethereum L1.
+(OpenSpec changes `add-vault-registry-contract`, `target-op-sepolia`). Testnet: **OP Sepolia** (11155420); mainnet
+chain TBD (OP Mainnet or Arbitrum One). The same bytecode and CREATE2 address work on the OP Stack, Arbitrum, and Ethereum L1.
 
 - Compiler: solc `0.8.28` (pinned), EVM `cancun`, optimizer 10,000 runs. No precompiles, no external calls.
 - ABI (functions, events, custom errors): [`abi/VaultRegistry.json`](abi/VaultRegistry.json)
@@ -35,17 +36,31 @@ script/deploy.sh anvil                        # writes deployments/31337.json
 RPC_URL=http://127.0.0.1:9545 script/deploy.sh anvil   # other port
 ```
 
-Arbitrum Sepolia (chain 421614). Secrets come from the environment or a Foundry keystore only; never commit them.
-Raw private keys are refused for public networks (they would be visible in the process list). Only anvil uses an
-unlocked dev account.
+Public networks are named presets (`script/deploy.sh --list-presets`):
+
+| Preset | Chain ID | RPC env var | Verifier (Blockscout, keyless) |
+|---|---:|---|---|
+| `op_sepolia` (testnet) | 11155420 | `OP_SEPOLIA_RPC_URL` | `https://testnet-explorer.optimism.io/api/` |
+| `op_mainnet` | 10 | `OP_MAINNET_RPC_URL` | `https://explorer.optimism.io/api/` |
+| `arbitrum_sepolia` | 421614 | `ARBITRUM_SEPOLIA_RPC_URL` | `https://arbitrum-sepolia.blockscout.com/api/` |
+| `arbitrum_one` | 42161 | `ARBITRUM_ONE_RPC_URL` | `https://arbitrum.blockscout.com/api/` |
+
+Secrets come from the environment or a Foundry keystore only; never commit them (template: [`.env.example`](.env.example)).
+Raw private keys are refused for every public network, because they would be visible in the process list. Only anvil
+uses an unlocked dev account. Source verification is keyless, on Blockscout (`--verifier blockscout`, URL per preset).
+No explorer API key is needed. Verification runs after `deployments/<chainId>.json` is written. If it fails, the script
+exits 2, keeps the record, and prints a retry command. The script checks the RPC's chain ID before it simulates or
+sends anything.
 
 ```sh
 cast wallet import cryoshield-deployer --interactive   # once; key stored encrypted in ~/.foundry/keystores
-export ARBITRUM_SEPOLIA_RPC_URL=...
-export DEPLOYER_ACCOUNT=cryoshield-deployer
-script/deploy.sh arbitrum_sepolia             # simulation only
-BROADCAST=1 ARBISCAN_API_KEY=... script/deploy.sh arbitrum_sepolia   # send, verify, write deployments/421614.json
+set -a; source .env; set +a                   # OP_SEPOLIA_RPC_URL, DEPLOYER_ACCOUNT
+script/deploy.sh op_sepolia                   # simulation only (DEPLOYER_ADDRESS=0x... also works, without a keystore)
+BROADCAST=1 script/deploy.sh op_sepolia       # send, write deployments/11155420.json, verify on Blockscout
+script/test-deploy-args.sh                    # preset/argv tests and parity with config/chain-presets.json (no keys, local anvil)
 ```
+
+Test ETH: use the Superchain faucet (https://docs.optimism.io/app-developers/tools-sdks/faucets).
 
 Re-running is safe. If the CREATE2 address already has code, the script checks that the on-chain runtime bytecode
 matches this build and that `deployments/<chainId>.json` exists for that address. If either check fails, it exits

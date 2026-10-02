@@ -268,3 +268,16 @@ describe('review fix 3: create flow idle wipe', () => {
     }
   });
 });
+
+describe('wrong network (target-op-sepolia review)', () => {
+  it('unlock on a mismatched chain shows the wrong-network message, not "no vault"', async () => {
+    const u = userEvent.setup();
+    const { ChainMismatchError } = await import('../../src/chain/guard');
+    vi.spyOn(unlockMod, 'unlock').mockRejectedValue(new ChainMismatchError(31337, 10));
+    renderApp();
+    await u.click(screen.getByRole('button', { name: 'Unlock my vault' }));
+    await u.click(screen.getByRole('button', { name: 'Unlock with my key' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('connected to the wrong network');
+    expect(screen.queryByText('We couldn’t find a vault for this key.')).toBeNull();
+  });
+});

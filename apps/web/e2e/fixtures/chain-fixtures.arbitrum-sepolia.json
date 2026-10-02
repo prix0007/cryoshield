@@ -1,7 +1,6 @@
 {
-  "source": "https://sepolia.optimism.io",
-  "sourceChainId": 11155420,
-  "generatedAt": "2026-10-02T00:39:54.109Z",
+  "source": "https://sepolia-rollup.arbitrum.io/rpc",
+  "generatedAt": "2026-10-01T22:34:47.947Z",
   "entryPoint06": {
     "address": "0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789",
     "codeHash": "0xc93c806e738300b5357ecdc2e971d6438d34d8e4e17b99b758b1f9cac91c8e70",

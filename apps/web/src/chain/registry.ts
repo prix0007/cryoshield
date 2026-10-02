@@ -3,6 +3,7 @@ import { createPublicClient, http, type Hex, type Transport } from 'viem';
 import { config, registryAbi } from '../config';
 import type { Candidate } from '../vault/adapter';
 import { fromHex } from '../lib/bytes';
+import { ensureChain } from './guard';
 
 export const MAX_BLOB_BYTES = 1024;
 const ZERO = '0x0000000000000000000000000000000000000000';
@@ -23,13 +24,16 @@ export function defaultTransport(): Transport {
 export function createRegistryReader(transport: Transport = defaultTransport()) {
   const client = createPublicClient({ chain: chainOf(), transport });
   const address = config.registry.address;
+  const ready = () => ensureChain(client);
 
   async function resolveLocator(locator: Hex): Promise<Hex[]> {
+    await ready();
     const ids = (await client.readContract({ address, abi: registryAbi, functionName: 'resolveLocator', args: [locator] })) as Hex[];
     return ids.slice(0, 16);
   }
 
   async function getVault(vaultId: Hex): Promise<Candidate | null> {
+    await ready();
     const [owner, blob, version] = (await client.readContract({
       address,
       abi: registryAbi,
@@ -48,11 +52,13 @@ export function createRegistryReader(transport: Transport = defaultTransport()) 
   }
 
   async function vaultOf(owner: Hex): Promise<Hex> {
+    await ready();
     return (await client.readContract({ address, abi: registryAbi, functionName: 'vaultOf', args: [owner] })) as Hex;
   }
 
   /** Every locator registered for a vault (LocatorAdded events, indexed by vaultId). Best effort. */
   async function locatorsOf(vaultId: Hex): Promise<Hex[]> {
+    await ready();
     const logs = await client.getContractEvents({
       address,
       abi: registryAbi,
