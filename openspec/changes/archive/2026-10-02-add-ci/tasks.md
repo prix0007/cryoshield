@@ -9,7 +9,7 @@
 ## 2. Contracts job
 
 - [x] 2.1 Add `contracts` job: foundry-toolchain pinned to v1.1.0, `forge build`, `forge test` — verify the job is green on a branch and goes red on a deliberately failing test commit (then revert)
-- [ ] 2.2 Add `forge snapshot --mc GasTest --check` — verify red when a snapshot entry is edited, green when restored; then tick add-vault-registry-contract task 7.1
+- [x] 2.2 Add `forge snapshot --mc GasTest --check` — verify red when a snapshot entry is edited, green when restored; then tick add-vault-registry-contract task 7.1
 - [x] 2.3 Add Slither 0.11.6 via `uvx` with committed suppression for the triaged false positive (linked to design.md triage) — verify the job passes and fails on an injected unsuppressed finding
 
 ## 3. vault-crypto job
