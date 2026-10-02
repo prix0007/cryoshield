@@ -1,0 +1,11 @@
+# Code owners (OpenSpec change adopt-pr-workflow). The ruleset does not require code-owner review
+# (single maintainer; GitHub forbids self-approval), so this routes review requests and documents ownership.
+*                     @prix0007
+
+# Security-relevant paths, listed explicitly so a future second maintainer can be added per area.
+/.github/             @prix0007
+/.gitleaks.toml       @prix0007
+/contracts/src/       @prix0007
+/packages/vault-crypto/ @prix0007
+/tools/recover/src/   @prix0007
+/openspec/            @prix0007
