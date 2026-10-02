@@ -1,0 +1,22 @@
+# gitleaks configuration (OpenSpec change adopt-pr-workflow, design decision 7). Used by the `pr-checks`
+# CI job (gitleaks 8.30.1 CLI) and locally: `gitleaks git --redact` / `gitleaks dir --redact`.
+#
+# Default rules stay on. The ONLY exception: the published, deterministic vault-crypto test vectors, whose
+# hex key fields (derived from fixed public test inputs; spec vault-crypto) trip `generic-api-key`.
+# It is narrow on three axes that must ALL match (condition AND): that one rule, the test-vector JSON files,
+# and a vector key name with a pure lower-case hex value. Anything else in those files is still scanned.
+# Do not add entries here without a security review; never allowlist a real credential, rotate it instead.
+title = "CryoShield gitleaks config"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "generic-api-key"
+
+  [[rules.allowlists]]
+  description = "Public vault-crypto test vectors (packages/vault-crypto/test-vectors), hex key material from fixed test inputs"
+  condition = "AND"
+  paths = ['''^packages/vault-crypto/test-vectors/[^/]+\.json$''']
+  regexTarget = "line"
+  regexes = ['''^\s*"(wrapKey|dataKey|secret|expectedSecret|newSecret)": "[0-9a-f]{32,}",?\s*$''']
