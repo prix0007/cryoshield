@@ -24,8 +24,11 @@ const liveMatching = () => ({
   _links: {},
 });
 
-function run({ rulesets = [], ruleset = {}, repo = { ...settings, id: 1, private: true }, labels = [{ name: 'no-spec' }], args = [], env = {} }) {
+const actionsCommitted = JSON.parse(readFileSync(new URL('../../rulesets/actions-permissions.json', import.meta.url), 'utf8'));
+
+function run({ rulesets = [], ruleset = {}, repo = { ...settings, id: 1, private: true }, labels = [{ name: 'no-spec' }], actions = actionsCommitted, args = [], env = {} }) {
   const dir = mkdtempSync(join(tmpdir(), 'apply-sh-'));
+  writeFileSync(join(dir, 'actions.json'), JSON.stringify(actions));
   writeFileSync(join(dir, 'rulesets.json'), JSON.stringify(rulesets));
   writeFileSync(join(dir, 'ruleset.json'), JSON.stringify(ruleset));
   writeFileSync(join(dir, 'repo.json'), JSON.stringify(repo));
@@ -93,6 +96,41 @@ test('a failing write call fails the script (no silent success)', () => {
     const r = run({ ...scenario, args: ['--apply'], env: { STUB_FAIL_WRITES: '1' } });
     assert.notEqual(r.status, 0, r.stdout);
     assert.doesNotMatch(r.stdout, /^done$/m);
+  }
+});
+
+test('Actions workflow permissions drift (write token, PR approval) is applied (review LOW-8)', () => {
+  const r = run({
+    rulesets: [{ id: 7, name: 'main', target: 'branch' }],
+    ruleset: liveMatching(),
+    actions: { default_workflow_permissions: 'write', can_approve_pull_request_reviews: true },
+    args: ['--apply'],
+  });
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.deepEqual(r.writes.length, 1);
+  assert.match(r.writes[0], /^api -X PUT repos\/prix0007\/cryoshield\/actions\/permissions\/workflow --input /);
+});
+
+test('--apply re-checks afterwards and fails if the live state still differs', () => {
+  const ok = run({ args: ['--apply'], labels: [], repo: { allow_merge_commit: true } });
+  assert.equal(ok.status, 0, ok.stderr + ok.stdout);
+  assert.match(ok.stdout, /re-check: in sync/);
+  const sticky = run({ args: ['--apply'], env: { STUB_STICKY: '1' } });
+  assert.notEqual(sticky.status, 0);
+  assert.match(sticky.stderr, /still differs/);
+});
+
+test('two rulesets with the same name are refused', () => {
+  const r = run({ rulesets: [{ id: 7, name: 'main', target: 'branch' }, { id: 8, name: 'main', target: 'branch' }], args: ['--apply'] });
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /more than one ruleset/);
+  assert.deepEqual(r.writes, []);
+});
+
+test('--repo must be OWNER/NAME without dot segments', () => {
+  for (const repo of ['../x', 'a/..', 'a', 'a/b/c', '-x/y']) {
+    const r = run({ args: ['--repo', repo] });
+    assert.equal(r.status, 2, repo);
   }
 });
 

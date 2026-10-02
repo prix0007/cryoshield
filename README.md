@@ -97,7 +97,7 @@ The gate scripts live in `.github/scripts` and are tested with `npm ci --ignore-
 `main` is protected by the ruleset in `.github/rulesets/main.json`. Every change, including the maintainer's, goes through a pull request.
 
 1. **OpenSpec first.** Propose a change under `openspec/changes/<name>/` before writing code (see above).
-   - A PR that touches `apps/`, `packages/`, `contracts/src/`, `tools/recover/src/` or `.github/workflows/` must also add or modify something under `openspec/changes/`, archiving included.
+   - A PR that touches code or CI configuration (`apps/`, `packages/`, `contracts/src/`, `tools/recover/src/`, `.github/`, `scripts/`, `.gitleaks.toml`, the root workspace manifests or `contracts/foundry.toml`) must also add or modify something under `openspec/changes/`, archiving included.
    - The only exception is the `no-spec` label plus a `No-spec justification: <reason>` line in the PR description.
    - Dependabot PRs that touch only dependency manifests are exempt.
 2. **Branch** from `main` with a prefix: `feat/`, `fix/`, `ci/`, `docs/` or `chore/`, for example `feat/shamir-recovery`.
@@ -127,6 +127,7 @@ Secret-scan exceptions are in `.gitleaks.toml` (public test vectors only). Vulne
 The script syncs:
 - the `main` ruleset;
 - the repository merge settings in `.github/rulesets/repo-settings.json` (squash only, PR title as the commit title, delete the branch on merge);
+- the Actions workflow permissions in `.github/rulesets/actions-permissions.json` (read-only default token; Actions may not approve PRs);
 - the `no-spec` label.
 
 To change protection, edit those files in a PR and re-run the script after it merges.

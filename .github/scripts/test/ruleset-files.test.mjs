@@ -33,6 +33,10 @@ test('requires ci-ok from GitHub Actions, strict (up to date with main)', () => 
   assert.deepEqual(p.required_status_checks, [{ context: 'ci-ok', integration_id: 15368 }]);
 });
 
+test('Actions default token is read-only and Actions cannot approve PRs', () => {
+  assert.deepEqual(load('actions-permissions.json'), { default_workflow_permissions: 'read', can_approve_pull_request_reviews: false });
+});
+
 test('repo merge settings allow squash only, titled from the PR', () => {
   const s = load('repo-settings.json');
   assert.equal(s.allow_squash_merge, true);

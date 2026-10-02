@@ -70,6 +70,27 @@ test('secrets references are rejected in PR-triggered workflows', () => {
   expectError(clean.replace('    steps:', '    env:\n      X: ${{ secrets[format(\'{0}\', \'A\')] }}\n    steps:'), /secrets/);
 });
 
+test('secrets evasions are rejected (review MEDIUM-3)', () => {
+  const inject = (expr) => clean.replace('          persist-credentials: false', `          token: \${{ ${expr} }}`);
+  expectError(inject('toJSON(secrets)'), /secrets/);
+  expectError(inject('SECRETS.FOO'), /secrets/);
+  expectError(inject('secrets'), /secrets/);
+  // The word in plain text (not an expression) is fine.
+  assert.deepEqual(errs(clean.replace('name: Build', 'name: Build (no secrets here)')), []);
+});
+
+test('workflow_run is forbidden like pull_request_target', () => {
+  expectError(clean.replace('  pull_request:\n', '  workflow_run:\n    workflows: [CI]\n'), /workflow_run/);
+});
+
+test('job-level write scopes are rejected (review MEDIUM-5)', () => {
+  for (const scope of ['contents: write', 'id-token: write', 'pull-requests: write']) {
+    expectError(clean.replace('    permissions:\n      contents: read\n', `    permissions:\n      ${scope}\n`), /job 'build'.*write/);
+  }
+  assert.deepEqual(errs(clean.replace('    permissions:\n      contents: read\n', '    permissions:\n      contents: read\n      pull-requests: read\n')), []);
+  assert.deepEqual(errs(clean.replace('    permissions:\n      contents: read\n', '    permissions: {}\n')), []);
+});
+
 test('zizmor inline ignores are rejected', () => {
   expectError(clean.replace('# v7.0.1', '# v7.0.1 # zizmor: ignore[unpinned-uses]'), /zizmor: ignore/);
 });

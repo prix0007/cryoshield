@@ -69,7 +69,7 @@ test('label names given as strings are accepted', () => {
 });
 
 test('docs-only and non-code changes pass without a label', () => {
-  for (const files of [['README.md'], ['docs/reviews/x.md'], ['contracts/test/X.t.sol'], ['tools/recover/tests/test_x.py'], ['.github/dependabot.yml'], []]) {
+  for (const files of [['README.md'], ['docs/reviews/x.md'], ['contracts/test/X.t.sol'], ['tools/recover/tests/test_x.py'], ['docs/x/package.json'], []]) {
     assert.equal(evaluate(pr({ files })).ok, true, files.join(','));
   }
 });
@@ -107,4 +107,41 @@ test('CLI reads files, labels, body and author; exit code reflects the result', 
   assert.equal(good.status, 0, good.stderr);
   const broken = spawnSync(process.execPath, [script, files], { env: { ...env, PR_LABELS: 'not json' }, encoding: 'utf8' });
   assert.equal(broken.status, 2);
+});
+
+test('quoted (core.quotePath) paths fail closed (review HIGH-2)', () => {
+  const r = evaluate(pr({ files: ['"contracts/src/\\303\\211vil.sol"'] }));
+  assert.equal(r.ok, false);
+  assert.match(r.message, /quoted/);
+});
+
+test('non-ASCII paths are detected as code', () => {
+  assert.equal(evaluate(pr({ files: ['contracts/src/Évil.sol'] })).ok, false);
+  assert.equal(evaluate(pr({ files: ['.github/workflows/é.yml'] })).ok, false);
+});
+
+test('gate and CI-config paths need a spec too (review MEDIUM-4)', () => {
+  for (const file of ['.github/scripts/openspec-gate.mjs', '.github/osv-scanner.toml', '.github/rulesets/main.json',
+    '.gitleaks.toml', 'scripts/check-licenses.sh', 'package.json', 'pnpm-workspace.yaml', 'contracts/foundry.toml']) {
+    assert.equal(evaluate(pr({ files: [file] })).ok, false, file);
+  }
+});
+
+test('Dependabot exemption is anchored to known manifest paths (review LOW-6)', () => {
+  for (const file of ['apps/web/src/package.json', '.github/scripts/Dockerfile', 'apps/web/src/Dockerfile']) {
+    assert.equal(evaluate(pr({ files: [file], author: 'dependabot[bot]' })).ok, false, file);
+  }
+  for (const file of ['.github/scripts/package-lock.json', '.github/openspec-cli/package.json', 'packages/vault-crypto/package.json']) {
+    assert.equal(evaluate(pr({ files: [file], author: 'dependabot[bot]' })).ok, true, file);
+  }
+});
+
+test('CLI splits NUL-separated input (git diff -z)', () => {
+  const script = fileURLToPath(new URL('../openspec-gate.mjs', import.meta.url));
+  const dir = mkdtempSync(join(tmpdir(), 'gate-'));
+  const files = join(dir, 'files.bin');
+  writeFileSync(files, 'README.md\0contracts/src/Évil.sol\0');
+  const r = spawnSync(process.execPath, [script, files], { env: { PR_LABELS: '[]', PR_BODY: '', PR_AUTHOR: 'x' }, encoding: 'utf8' });
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /Évil\.sol/);
 });

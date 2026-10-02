@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // Workflow security policy (OpenSpec change adopt-pr-workflow, decision 9; spec: ci-pipeline
 // "CI supply-chain security"). Complements zizmor instead of duplicating it:
-//   here:   no pull_request_target; top-level permissions exactly `contents: read` (or {}); every job declares
-//           its own permissions (never write-all) and timeout-minutes; no secrets in PR-triggered workflows;
+//   here:   no pull_request_target/workflow_run; top-level permissions exactly `contents: read` (or {}); every job declares
+//           its own read-only permissions and timeout-minutes; no secrets context in PR-triggered workflows;
 //           no inline `zizmor: ignore`; zizmor.yml keeps hash-pin for "*" and disables/ignores nothing.
 //   zizmor: SHA pinning (via that hash-pin policy), persist-credentials (artipacked), template injection, etc.
 //
@@ -13,6 +13,7 @@ import { pathToFileURL } from 'node:url';
 import { parse } from 'yaml';
 
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+const FORBIDDEN_TRIGGERS = ['pull_request_target', 'workflow_run'];
 
 function triggers(on) {
   if (typeof on === 'string') return [on];
@@ -41,8 +42,8 @@ export function checkWorkflow(file, text) {
   if (!isObj(wf)) return [...errors, `${file}: not a workflow mapping`];
 
   const on = triggers(wf.on ?? wf.true);
-  if (on.includes('pull_request_target')) {
-    errors.push(`${file}: the pull_request_target trigger is forbidden (it runs fork code with a write token and secrets)`);
+  for (const t of FORBIDDEN_TRIGGERS) {
+    if (on.includes(t)) errors.push(`${file}: the ${t} trigger is forbidden (privileged context reachable from fork PRs: write token and secrets)`);
   }
 
   const top = wf.permissions;
@@ -52,16 +53,24 @@ export function checkWorkflow(file, text) {
   for (const [id, job] of Object.entries(isObj(wf.jobs) ? wf.jobs : {})) {
     if (!isObj(job)) continue;
     if (job.permissions === undefined) errors.push(`${file}: job '${id}' must declare its own permissions (least privilege)`);
-    else if (job.permissions === 'write-all' || job.permissions === 'read-all') {
-      errors.push(`${file}: job '${id}' uses ${job.permissions}; list only the scopes it needs`);
+    else if (!isObj(job.permissions)) {
+      errors.push(`${file}: job '${id}' uses ${JSON.stringify(job.permissions)}; list only the scopes it needs (read-only)`);
+    } else {
+      // Read-only allow-list (security review MEDIUM-5). A job that needs a write scope needs a spec change here.
+      for (const [scope, level] of Object.entries(job.permissions)) {
+        if (level !== 'read' && level !== 'none') errors.push(`${file}: job '${id}' requests ${scope}: ${level}; only read/none is allowed (no write scopes)`);
+      }
     }
     if (job['timeout-minutes'] === undefined && job.uses === undefined) {
       errors.push(`${file}: job '${id}' must set timeout-minutes`);
     }
   }
 
-  if (on.includes('pull_request') || on.includes('pull_request_target')) {
-    const hits = strings(wf).filter((s) => /\bsecrets\s*[.[]/.test(s) || s === 'inherit');
+  if (on.includes('pull_request') || FORBIDDEN_TRIGGERS.some((t) => on.includes(t))) {
+    // Any use of the secrets context inside an expression, whatever the case or form (secrets.X, secrets['X'],
+    // toJSON(secrets), SECRETS.X), plus `secrets: inherit` (security review MEDIUM-3).
+    const exprs = strings(wf).flatMap((s) => [...s.matchAll(/\$\{\{([\s\S]*?)\}\}/g)].map((m) => m[1]));
+    const hits = [...exprs.filter((e) => /\bsecrets\b/i.test(e)), ...strings(wf).filter((s) => s === 'inherit')];
     if (hits.length) errors.push(`${file}: secrets must not be referenced in a PR-triggered workflow (${hits.length} reference(s))`);
   }
   return errors;

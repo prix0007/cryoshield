@@ -36,9 +36,15 @@ export function evaluateReport(report) {
   return { ok: blocking.length === 0, blocking, advisory };
 }
 
-const unquote = (v) => {
-  const m = /^"(.*)"$/.exec(v) ?? /^'(.*)'$/.exec(v);
-  return m ? m[1] : v;
+// Strict subset of TOML, so the lint and osv-scanner's real TOML parser can never disagree (security review
+// HIGH-1: a multiline string could hide a second key from a line-based reader). Accepted lines only:
+//   full-line comments, blank lines, `[[IgnoredVulns]]`, and inside an entry exactly one of each of
+//   id = "<GHSA/CVE/OSV id>", reason = "<single-line basic string without \ or ">", ignoreUntil = YYYY-MM-DD[THH:MM:SSZ]
+// No trailing comments, no multiline/literal strings, no other keys or tables. Anything else fails closed.
+const VALUE = {
+  id: /^"([A-Za-z0-9][A-Za-z0-9_.:-]*)"$/,
+  reason: /^"([^"\\]*)"$/,
+  ignoreUntil: /^(\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}:\d{2}Z)?)$/,
 };
 
 export function lintIgnoreFile(text, today = new Date()) {
@@ -46,26 +52,40 @@ export function lintIgnoreFile(text, today = new Date()) {
   const entries = [];
   let current = null;
   text.split(/\r?\n/).forEach((raw, i) => {
-    const line = raw.replace(/\s+#.*$/, '').trim();
+    const line = raw.trim();
     const where = `line ${i + 1}`;
     if (line === '' || line.startsWith('#')) return;
-    const table = /^\[\[?\s*([A-Za-z0-9_.-]+)\s*\]\]?$/.exec(line);
-    if (table) {
-      if (table[1] !== 'IgnoredVulns' || !line.startsWith('[[')) {
-        errors.push(`${where}: only [[IgnoredVulns]] entries are allowed (found [${table[1]}]); PackageOverrides would ignore whole packages`);
-        current = null;
-        return;
-      }
+    if (line === '[[IgnoredVulns]]') {
       current = { line: i + 1 };
       entries.push(current);
       return;
     }
-    const kv = /^([A-Za-z0-9_]+)\s*=\s*(.+)$/.exec(line);
+    if (line.startsWith('[')) {
+      errors.push(`${where}: only [[IgnoredVulns]] tables are allowed (found ${line}); PackageOverrides would ignore whole packages`);
+      current = null;
+      return;
+    }
+    const kv = /^([A-Za-z0-9_]+) = (.+)$/.exec(line);
     if (!kv || current === null) {
       errors.push(`${where}: unexpected content outside an [[IgnoredVulns]] entry`);
       return;
     }
-    current[kv[1]] = unquote(kv[2].trim());
+    const [, key, value] = kv;
+    if (!(key in VALUE)) {
+      errors.push(`${where}: unknown key '${key}' (allowed: id, reason, ignoreUntil)`);
+      return;
+    }
+    if (key in current) {
+      errors.push(`${where}: duplicate key '${key}' in the entry at line ${current.line}`);
+      return;
+    }
+    const m = VALUE[key].exec(value);
+    if (!m) {
+      errors.push(`${where}: ${key} must match ${VALUE[key]} (single-line, no trailing comment)`);
+      current[key] = '';
+      return;
+    }
+    current[key] = m[1];
   });
 
   const limit = new Date(today.getTime() + MAX_IGNORE_DAYS * DAY_MS);

@@ -143,8 +143,8 @@ jobs:
           PR_BODY: ${{ github.event.pull_request.body }}
           PR_AUTHOR: ${{ github.event.pull_request.user.login }}
         run: |
-          git diff --name-only --no-renames "${BASE_SHA}...${HEAD_SHA}" > "${RUNNER_TEMP}/changed-files.txt"
-          node .github/scripts/openspec-gate.mjs "${RUNNER_TEMP}/changed-files.txt"
+          git -c core.quotePath=false diff -z --name-only --no-renames "${BASE_SHA}...${HEAD_SHA}" > "${RUNNER_TEMP}/changed-files"
+          node .github/scripts/openspec-gate.mjs "${RUNNER_TEMP}/changed-files"
       - name: Install gitleaks (pinned, checksum-verified)
         run: |
           curl -fsSL --retry 3 -o "${RUNNER_TEMP}/gitleaks.tar.gz" \
@@ -154,10 +154,11 @@ jobs:
           "${RUNNER_TEMP}/gitleaks" version
       - name: gitleaks allowlist self-test (allowlist stays narrow)
         run: .github/scripts/gitleaks-selftest.sh "${RUNNER_TEMP}/gitleaks" .gitleaks.toml
+      # -m: also diff merge commits against each parent, so content added in a conflict resolution is scanned.
       - name: gitleaks (every commit in the PR range)
         run: >-
           "${RUNNER_TEMP}/gitleaks" git --no-banner --redact --config .gitleaks.toml
-          --log-opts="${BASE_SHA}..${HEAD_SHA}" .
+          --log-opts="-m ${BASE_SHA}..${HEAD_SHA}" .
       - name: Install osv-scanner (pinned, checksum-verified)
         run: |
           curl -fsSL --retry 3 -o "${RUNNER_TEMP}/osv-scanner" \

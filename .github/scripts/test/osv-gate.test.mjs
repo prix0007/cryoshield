@@ -108,3 +108,18 @@ test('CLI: exit codes for clean, blocking, scanner error and bad ignore file', (
   writeFileSync(badCfg, entry({ reason: null }));
   assert.equal(cli(0, { results: [] }, badCfg).status, 1);
 });
+
+test('ignore file: TOML multiline-string smuggling is rejected (review HIGH-1)', () => {
+  const smuggle = '[[IgnoredVulns]]\nid = "GHSA-x"\nignoreUntil = 2099-01-01\nreason = """\nignoreUntil = 2026-11-01 # """\n';
+  assert.notDeepEqual(lintIgnoreFile(smuggle, TODAY), []);
+  assert.notDeepEqual(lintIgnoreFile(entry({ reason: "'''multi" }), TODAY), []);
+});
+
+test('ignore file: duplicate keys, unknown keys, trailing comments and odd values are rejected', () => {
+  assert.match(lintIgnoreFile(`${entry()}\nignoreUntil = 2026-10-03\n`, TODAY).join(), /duplicate/);
+  assert.match(lintIgnoreFile(`${entry()}\neffectiveUntil = 2026-10-03\n`, TODAY).join(), /unknown key/);
+  assert.notDeepEqual(lintIgnoreFile(entry({ ignoreUntil: '2026-11-01 # x' }), TODAY), []);
+  assert.notDeepEqual(lintIgnoreFile(entry({ id: 'GHSA-bare' }), TODAY), []);
+  assert.notDeepEqual(lintIgnoreFile(entry({ reason: '"a\\" b"' }), TODAY), []);
+  assert.notDeepEqual(lintIgnoreFile('[[ "IgnoredVulns" ]]\n', TODAY), []);
+});
