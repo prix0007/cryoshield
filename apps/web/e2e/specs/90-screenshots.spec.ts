@@ -26,6 +26,15 @@ test('landing (cinematic-landing 4.4): hero, scene stills, reduced motion, phone
       await page.screenshot({ path: `${dir}/scene-${id}-${Math.round(f * 100)}.png` });
     }
   }
+  // Sub-nav pair: light frosted over a light tile, dark frosted over a dark tile.
+  for (const [name, id] of [['subnav-light', 'how'], ['subnav-dark', 'fragile']] as const) {
+    await page.evaluate((id) => {
+      const t = document.querySelector<HTMLElement>(`#${id} .scene-track`)!;
+      window.scrollTo({ top: t.getBoundingClientRect().top + scrollY + 300, behavior: 'instant' });
+    }, id);
+    await page.waitForTimeout(500);
+    await page.screenshot({ path: `${dir}/${name}.png`, clip: { x: 0, y: 0, width: 1280, height: 160 } });
+  }
   await page.locator('#start').scrollIntoViewIfNeeded();
   await page.waitForTimeout(300);
   await page.screenshot({ path: `${dir}/landing-final-cta.png` });

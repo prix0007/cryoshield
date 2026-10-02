@@ -141,3 +141,37 @@ export function wireMagnetic(doc: Document, matchMedia: (q: string) => MediaQuer
     { passive: true },
   );
 }
+
+/* ---------------- Sub-nav theme: dark frosted variant over dark tiles ---------------- */
+
+const DARK_SURFACES = '.tile-dark, .tile-dark-2, .tile-dark-3, .tile-black';
+
+/** Sets header[data-under] from the elements found under the sub-nav (topmost first; the header itself is skipped). */
+export function subnavThemeAt(header: HTMLElement, elementsUnder: Element[]): void {
+  const below = elementsUnder.find((el) => !header.contains(el));
+  const dark = !!below?.closest(DARK_SURFACES);
+  const next = dark ? 'dark' : 'light';
+  if (header.dataset.under !== next) header.dataset.under = next;
+}
+
+/** Scroll-linked (rAF-throttled, passive): no layout change, so no CLS. Also active under reduced motion. */
+export function wireSubnavTheme(doc: Document, win: Window): void {
+  const header = doc.querySelector<HTMLElement>('.site-header');
+  const sub = doc.querySelector<HTMLElement>('.sub-nav');
+  if (!header || !sub || typeof doc.elementsFromPoint !== 'function') return;
+  let queued = false;
+  const check = () => {
+    queued = false;
+    const r = sub.getBoundingClientRect();
+    subnavThemeAt(header, doc.elementsFromPoint(win.innerWidth / 2, r.top + r.height / 2));
+  };
+  const queue = () => {
+    if (!queued) {
+      queued = true;
+      win.requestAnimationFrame(check);
+    }
+  };
+  win.addEventListener('scroll', queue, { passive: true });
+  win.addEventListener('resize', queue, { passive: true });
+  check();
+}

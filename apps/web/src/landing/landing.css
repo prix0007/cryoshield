@@ -960,3 +960,37 @@
 .graphic.g-timeline {
   overflow: hidden;
 }
+
+/* Sub-nav over dark tiles (boot.ts sets header[data-under]): Tile-1 at 72% with the frost blur, Body On Dark text. */
+.landing .sub-nav {
+  transition:
+    background-color 0.25s ease,
+    color 0.25s ease,
+    border-color 0.25s ease;
+}
+.landing .site-header[data-under='dark'] .sub-nav {
+  background: var(--frost-tile);
+  color: var(--body-on-dark);
+  border-bottom-color: var(--hairline-on-dark);
+}
+.landing .site-header[data-under='dark'] .chip {
+  background: transparent;
+  color: var(--body-on-dark);
+  border-color: var(--body-muted);
+}
+.landing .site-header[data-under='dark'] :focus-visible {
+  outline-color: var(--color-primary-on-dark);
+}
+@media (prefers-reduced-motion: reduce) {
+  .landing .sub-nav {
+    transition: none;
+  }
+}
+
+/* Timeline end labels are fixed inside the viewBox (only the ticks scroll), so they never clip. */
+.tl-end {
+  fill: var(--body-muted);
+  font-family: var(--font-stack);
+  font-size: 22px;
+  font-weight: 600;
+}

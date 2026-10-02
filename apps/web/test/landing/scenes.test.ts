@@ -1,6 +1,6 @@
 /** cinematic-landing 3.1 / 3.3: scene maths, runtime wiring, per-scene lazy loading, counters and magnetic CTAs. */
 import { describe, expect, it, vi } from 'vitest';
-import { range, scramble, yearAt } from '../../src/landing/scenes/math';
+import { range, resolveCipher, yearAt } from '../../src/landing/scenes/math';
 import { mountScene } from '../../src/landing/scenes/runtime';
 import { bootScenes, formatStat, wireMagnetic } from '../../src/landing/boot';
 
@@ -17,12 +17,19 @@ describe('scene maths', () => {
     expect(yearAt(1, 2026, 2126)).toBe(2126);
   });
 
-  it('scramble is deterministic, keeps length, starts as plaintext and ends fully hex', () => {
-    const t = 'abandon ability';
-    expect(scramble(t, 0)).toBe(t);
-    expect(scramble(t, 0.5)).toBe(scramble(t, 0.5));
-    expect(scramble(t, 0.5)).toHaveLength(t.length);
-    expect(scramble(t, 1)).toMatch(/^[0-9a-f]+$/);
+  it('resolveCipher turns plaintext into ciphertext character by character, deterministically', () => {
+    const plain = 'abandon able';
+    const cipher = '219f fd7c 9547';
+    expect(resolveCipher(plain, cipher, 0)).toBe(plain.padEnd(14));
+    expect(resolveCipher(plain, cipher, 1)).toBe(cipher);
+    const mid = resolveCipher(plain, cipher, 0.5);
+    expect(mid).toBe(resolveCipher(plain, cipher, 0.5));
+    expect(mid).toHaveLength(14);
+    // Every position is either still plaintext or already its final ciphertext character.
+    [...mid].forEach((c, i) => expect([plain.padEnd(14)[i], cipher[i]]).toContain(c));
+    // Monotonic: more progress never un-resolves a character.
+    const resolved = (p: number) => [...resolveCipher(plain, cipher, p)].filter((c, i) => c === cipher[i] && c !== plain.padEnd(14)[i]).length;
+    expect(resolved(0.3)).toBeLessThanOrEqual(resolved(0.6));
   });
 });
 
@@ -121,5 +128,17 @@ describe('counters and magnetic CTAs', () => {
     expect(add.mock.calls.filter((c) => c[0] === 'pointermove')).toHaveLength(0);
     wireMagnetic(document, (q: string) => ({ matches: q.includes('fine') }) as MediaQueryList);
     expect(add.mock.calls.filter((c) => c[0] === 'pointermove')).toHaveLength(1);
+  });
+});
+
+describe('sub-nav theme over dark tiles', () => {
+  it('marks the header dark while a dark section is under the sub-nav, light otherwise', async () => {
+    const { subnavThemeAt } = await import('../../src/landing/boot');
+    document.body.innerHTML = '<header class="site-header"><div class="sub-nav"></div></header><section class="tile-dark"><p id="d">x</p></section><section class="tile-light"><p id="l">y</p></section>';
+    const header = document.querySelector<HTMLElement>('.site-header')!;
+    subnavThemeAt(header, [document.getElementById('d')!]);
+    expect(header.dataset.under).toBe('dark');
+    subnavThemeAt(header, [header, document.getElementById('l')!]);
+    expect(header.dataset.under).toBe('light');
   });
 });

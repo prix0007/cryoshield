@@ -51,6 +51,6 @@ Scenes animate only `transform`, `opacity` and SVG stroke offsets from one CSS v
 
 | Part | Size | Budget |
 |---|---|---|
-| Initial (landing entry + preload helper) | 2.11 KB | ≤ 15 KB |
+| Initial (landing entry + preload helper) | 2.32 KB | ≤ 15 KB |
 | Largest lazy chunk (scene runtime incl. Motion `scroll`) | 3.71 KB | ≤ 40 KB |
-| Whole landing graph | 6.60 KB | ≤ 120 KB |
+| Whole landing graph | 6.82 KB | ≤ 120 KB |

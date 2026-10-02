@@ -1,7 +1,7 @@
 import '../ui/tokens.css';
 import '../ui/chrome.css';
 import './landing.css';
-import { bootCounters, bootLanding, bootScenes, wireMagnetic } from './boot';
+import { bootCounters, bootLanding, bootScenes, wireMagnetic, wireSubnavTheme } from './boot';
 
 const matchMedia = (q: string) => window.matchMedia(q);
 const IO = typeof IntersectionObserver === 'undefined' ? undefined : IntersectionObserver;
@@ -23,3 +23,4 @@ bootScenes({
 });
 bootCounters(document, matchMedia, IO);
 wireMagnetic(document, matchMedia);
+wireSubnavTheme(document, window);

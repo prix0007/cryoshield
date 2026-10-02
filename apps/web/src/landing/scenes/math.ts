@@ -9,18 +9,23 @@ export function yearAt(p: number, from: number, to: number): number {
   return Math.round(from + (to - from) * Math.min(1, Math.max(0, p)));
 }
 
-const HEX = '0123456789abcdef';
 const frac = (n: number) => {
   const x = Math.sin(n * 12.9898) * 43758.5453;
   return x - Math.floor(x);
 };
 
-/** Deterministic "plaintext -> ciphertext" scramble: each character flips to hex at its own threshold in (0, 1]. */
-export function scramble(text: string, p: number): string {
+/**
+ * Plaintext -> ciphertext, resolved character by character as a left-to-right sweep with a little jitter (so the line
+ * reads as "sealed part | plain part", not as interleaved word fragments). Position i flips to its final ciphertext
+ * character once p passes its threshold in (0, 1]. Deterministic and monotonic; at p = 1 it is exactly `cipher`.
+ */
+export function resolveCipher(plain: string, cipher: string, p: number): string {
+  const n = cipher.length;
+  const from = plain.padEnd(n).slice(0, n);
   let out = '';
-  for (let i = 0; i < text.length; i++) {
-    const threshold = 0.05 + 0.95 * frac(i + 1);
-    out += p >= threshold ? HEX[Math.floor(frac(i * 31 + text.charCodeAt(i)) * 16)] : text[i];
+  for (let i = 0; i < n; i++) {
+    const threshold = Math.min(1, 0.04 + (0.9 * i) / Math.max(1, n - 1) + 0.06 * frac(i + 1));
+    out += p >= threshold ? cipher[i] : from[i];
   }
   return out;
 }

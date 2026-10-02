@@ -64,9 +64,9 @@ test('each scene is pinned and scrubbed by scroll: progress and visuals change, 
   expect(Number(early)).toBeLessThan(2030);
   await expect(page.locator('#fragile .year')).toHaveText('2036');
   await scrollScene(page, 'how', 0.05);
-  await expect(page.locator('#how .tp-text').first()).toHaveText('abandon ability');
+  await expect(page.locator('#how .tp-text').first()).toHaveText('abandon able');
   await scrollScene(page, 'how', 1);
-  await expect(page.locator('#how .tp-text').first()).toHaveText(/^[0-9a-f]+$/);
+  for (const t of await page.locator('#how .tp-text').all()) await expect(t).toHaveText(/^[0-9a-f]{4} [0-9a-f]{4} [0-9a-f]{4}$/);
   expect(errs).toEqual([]);
 });
 
@@ -157,4 +157,46 @@ test('desktop axe with every scene live (mid-progress)', async ({ page }) => {
     const r = await new AxeBuilder({ page }).include(`#${id}`).withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa']).analyze();
     expect(r.violations.map((v) => `${id}: ${v.id} ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`)).toEqual([]);
   }
+});
+
+for (const width of [1280, 390]) {
+  test(`timeline end labels stay fully inside the graphic at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto(LANDING);
+    for (const f of [0, 0.5, 1]) {
+      await page.evaluate((f) => {
+        const t = document.querySelector<HTMLElement>('#timeline .scene-track')!;
+        window.scrollTo({ top: t.getBoundingClientRect().top + scrollY + Math.max(0, t.offsetHeight - innerHeight) * f, behavior: 'instant' });
+      }, f);
+      await page.waitForTimeout(200);
+      const r = await page.evaluate(() => {
+        const svg = document.querySelector('#timeline svg')!.getBoundingClientRect();
+        return [...document.querySelectorAll('#timeline .tl-end')].map((el) => {
+          const b = el.getBoundingClientRect();
+          return { text: el.textContent, inside: b.left >= svg.left - 0.5 && b.right <= svg.right + 0.5 && b.top >= svg.top - 0.5 && b.bottom <= svg.bottom + 0.5 };
+        });
+      });
+      expect(r).toEqual([{ text: '2026', inside: true }, { text: '2126', inside: true }]);
+    }
+  });
+}
+
+test('the sub-nav turns dark frosted over dark tiles and back to light', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto(LANDING);
+  const header = page.locator('.site-header');
+  await expect(header).toHaveAttribute('data-under', 'light');
+  await page.evaluate(() => {
+    const t = document.querySelector<HTMLElement>('#fragile .scene-track')!;
+    window.scrollTo({ top: t.getBoundingClientRect().top + scrollY + 300, behavior: 'instant' });
+  });
+  await expect(header).toHaveAttribute('data-under', 'dark');
+  await expect // colours transition for 250 ms
+    .poll(() => page.locator('.sub-nav').evaluate((e) => [getComputedStyle(e).backgroundColor, getComputedStyle(e).color]))
+    .toEqual(['rgba(39, 39, 41, 0.72)', 'rgb(255, 255, 255)']);
+  await page.evaluate(() => {
+    const t = document.querySelector<HTMLElement>('#how .scene-track')!;
+    window.scrollTo({ top: t.getBoundingClientRect().top + scrollY + 200, behavior: 'instant' });
+  });
+  await expect(header).toHaveAttribute('data-under', 'light');
 });
