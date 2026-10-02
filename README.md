@@ -72,15 +72,64 @@ Real-hardware checklists:
 - `openspec`: strict validation
 - `workflow-lint`
 
+- `pr-checks` (pull requests only), which runs on every PR event and checks:
+  - the title follows Conventional Commits;
+  - the OpenSpec gate passes;
+  - gitleaks finds no secrets in the PR's commits;
+  - osv-scanner finds no HIGH/CRITICAL vulnerabilities in any lockfile.
+
 A final **`ci-ok`** job aggregates the results. Skipped jobs count as passing; failed or cancelled jobs fail it.
 
 How the workflow is hardened:
-- every third-party action is pinned by commit SHA (Dependabot keeps them updated);
-- `permissions: contents: read`;
-- no secrets are exposed to pull requests;
-- installs fail on lockfile drift.
+- triggers are `push` (main) and `pull_request` only;
+- `permissions: contents: read` at the top, and every job declares its own minimal permissions and a `timeout-minutes`;
+- no secrets are referenced; PR title, body and labels reach scripts only through `env:`;
+- every action is pinned by commit SHA, and the scanners are pinned by version and SHA-256 (Dependabot keeps them updated);
+- checkouts don't persist credentials, and installs fail on lockfile drift;
+- superseded PR runs are cancelled.
 
-**Manual step (repository admin):** in GitHub → Settings → Branches, add a branch-protection rule for `main` that requires the status check **`ci-ok`**, and require pull requests before merging.
+`workflow-lint` enforces these rules with actionlint, zizmor (pedantic persona) and `.github/scripts/workflow-policy.mjs`. Inline `zizmor: ignore` comments are rejected.
+
+The gate scripts live in `.github/scripts` and are tested with `npm ci --ignore-scripts --prefix .github/scripts && npm test --prefix .github/scripts`.
+
+## Contributing / PR workflow
+
+`main` is protected by the ruleset in `.github/rulesets/main.json`. Every change, including the maintainer's, goes through a pull request.
+
+1. **OpenSpec first.** Propose a change under `openspec/changes/<name>/` before writing code (see above).
+   - A PR that touches `apps/`, `packages/`, `contracts/src/`, `tools/recover/src/` or `.github/workflows/` must also add or modify something under `openspec/changes/`, archiving included.
+   - The only exception is the `no-spec` label plus a `No-spec justification: <reason>` line in the PR description.
+   - Dependabot PRs that touch only dependency manifests are exempt.
+2. **Branch** from `main` with a prefix: `feat/`, `fix/`, `ci/`, `docs/` or `chore/`, for example `feat/shamir-recovery`.
+3. **PR title** in Conventional Commits form, `type(scope)!: subject`, for example `fix(recover): handle empty log page`. It becomes the commit on `main`.
+4. **Fill in the PR template:**
+   - the OpenSpec change;
+   - the tests you ran;
+   - a security-review link, or N/A;
+   - screenshots for UI changes.
+5. **Merge rules:**
+   - `ci-ok` must be green and up to date with `main`;
+   - all conversations must be resolved;
+   - squash merge only, so history stays linear;
+   - force-pushes to `main` and deleting it are blocked;
+   - no approval is required, since the single maintainer cannot approve their own PRs;
+   - nobody can bypass these rules.
+
+Secret-scan exceptions are in `.gitleaks.toml` (public test vectors only). Vulnerability exceptions are in `.github/osv-scanner.toml`; each needs a reason and expires within 90 days. Changing either one needs a security review.
+
+**Applying the ruleset (repository admin, `gh auth login` with admin rights):**
+
+```sh
+.github/rulesets/apply.sh           # dry run: diff of live vs committed (exit 3 on drift)
+.github/rulesets/apply.sh --apply   # create/update only what differs; idempotent
+```
+
+The script syncs:
+- the `main` ruleset;
+- the repository merge settings in `.github/rulesets/repo-settings.json` (squash only, PR title as the commit title, delete the branch on merge);
+- the `no-spec` label.
+
+To change protection, edit those files in a PR and re-run the script after it merges.
 
 ## Security
 
