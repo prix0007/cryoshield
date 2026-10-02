@@ -15,7 +15,8 @@
     "verify-build": "node scripts/verify-build.mjs",
     "fixtures:e2e": "node e2e/scripts/build-fixtures.mjs",
     "test:int": "vitest run -c vitest.int.config.ts",
-    "stack": "node e2e/stack/stack.ts"
+    "stack": "node e2e/stack/stack.ts",
+    "test:deploy": "vitest run -c deploy/vitest.config.ts"
   },
   "dependencies": {
     "@cryoshield/vault-crypto": "workspace:*",

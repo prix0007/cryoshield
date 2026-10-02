@@ -4,6 +4,7 @@
  * and also as a Netlify/Cloudflare-style `_headers` file for hosts that support it
  * (frame-ancestors only works as a real header).
  */
+import { SECURITY_HEADERS } from './security-headers.ts';
 
 export function buildCsp(connectOrigins: readonly string[]): string {
   return [
@@ -40,10 +41,7 @@ export function headersFile(connectOrigins: readonly string[]): string {
   return [
     '/*',
     `  Content-Security-Policy: ${buildCsp(connectOrigins)}; frame-ancestors 'none'`,
-    '  X-Content-Type-Options: nosniff',
-    '  Referrer-Policy: no-referrer',
-    '  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()',
-    '  Cross-Origin-Opener-Policy: same-origin',
+    ...Object.entries(SECURITY_HEADERS).map(([k, v]) => `  ${k}: ${v}`),
     '',
   ].join('\n');
 }

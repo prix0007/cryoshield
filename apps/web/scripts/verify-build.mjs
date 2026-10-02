@@ -6,7 +6,10 @@
  *   - index.html carries the strict CSP meta tag; _headers carries frame-ancestors.
  *   - the same checks on a PRODUCTION-mode build (https endpoints from a production-like env), which must also
  *     contain no loopback endpoints from .env.development / .env.e2e.
- * Usage: node scripts/verify-build.mjs [--mode e2e]
+ *   - --real-env (deploy, add-fly-hosting 3.1): ONLY two production builds with the real apps/web/.env, identical,
+ *     the same bundle checks, no loopback endpoints, and (with --expect-host) the bundle's RP ID equals the host.
+ *     Leaves the verified dist/ in place for deploy/gen-context.mjs.
+ * Usage: node scripts/verify-build.mjs [--mode e2e] | --real-env [--expect-host cryoshield.app]
  */
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -17,6 +20,9 @@ const root = new URL('..', import.meta.url).pathname;
 const modeIdx = process.argv.indexOf('--mode');
 const mode = modeIdx > 0 ? process.argv[modeIdx + 1] : 'e2e';
 const dist = join(root, 'dist');
+const realEnv = process.argv.includes('--real-env');
+const hostIdx = process.argv.indexOf('--expect-host');
+const expectHost = hostIdx > 0 ? process.argv[hostIdx + 1] : undefined;
 
 const PROD_ENV = {
   VITE_CHAIN_ID: process.env.VERIFY_CHAIN_ID ?? '31337', // any chain with a contracts/deployments/<id>.json
@@ -31,7 +37,17 @@ const PROD_ENV = {
 
 function build(buildMode = mode, extraEnv = {}) {
   rmSync(dist, { recursive: true, force: true });
-  execFileSync('pnpm', ['exec', 'vite', 'build', '--mode', buildMode], { cwd: root, stdio: 'ignore', env: { ...process.env, ...extraEnv } });
+  try {
+    execFileSync('pnpm', ['exec', 'vite', 'build', '--mode', buildMode], {
+      cwd: root,
+      stdio: ['ignore', 'ignore', 'pipe'],
+      env: { ...process.env, ...extraEnv, NODE_ENV: 'production' },
+    });
+  } catch (e) {
+    const lines = String(e.stderr ?? e.message).split('\n');
+    const msg = lines.find((l) => /deployment|ConfigError|Missing required/.test(l)) ?? lines.find((l) => /Error/.test(l)) ?? 'vite build failed';
+    fail(`${buildMode} build failed: ${msg.trim()}`);
+  }
   return hashTree(dist);
 }
 
@@ -53,17 +69,12 @@ const fail = (m) => {
   process.exit(1);
 };
 
-const a = build();
-const b = build();
-if (a !== b) fail(`builds differ: ${a} != ${b}`);
-console.log(`ok   reproducible build ${a}`);
-
 function checkBundle(label) {
 const all = files(dist);
 if (all.some((f) => f.endsWith('.map'))) fail(`[${label}] source maps present`);
 const js = all.filter((f) => f.endsWith('.js')).map((f) => readFileSync(f, 'utf8')).join('\n');
-for (const banned of ['console.', 'prf-shim', 'cryoshield_setPolicy', 'cryoshield_stats', 'E2EPaymaster', '__recordPrf']) {
-  if (js.includes(banned)) fail(`bundle contains "${banned}"`);
+for (const banned of ['console.', 'prf-shim', 'cryoshield_setPolicy', 'cryoshield_stats', 'E2EPaymaster', '__recordPrf', 'jsxDEV', '/Users/', '/home/']) {
+  if (js.includes(banned)) fail(`bundle contains "${banned}" (dev build or local path leak?)`);
 }
 console.log(`ok   [${label}] no source maps, console calls, or E2E-only code in the bundle`);
 
@@ -80,17 +91,30 @@ console.log(`ok   [${label}] strict CSP in index.html and _headers`);
 return { js, html };
 }
 
-checkBundle(mode);
+if (!realEnv) {
+  const a = build();
+  const b = build();
+  if (a !== b) fail(`builds differ: ${a} != ${b}`);
+  console.log(`ok   reproducible build ${a}`);
+  checkBundle(mode);
+}
 
 // Production-mode build: same checks, plus no loopback endpoints and the production origins in the CSP.
-const p1 = build('production', PROD_ENV);
-const p2 = build('production', PROD_ENV);
+const prodEnv = realEnv ? {} : PROD_ENV;
+const p1 = build('production', prodEnv);
+const p2 = build('production', prodEnv);
 if (p1 !== p2) fail(`production builds differ: ${p1} != ${p2}`);
 console.log(`ok   reproducible production build ${p1}`);
 const prod = checkBundle('production');
 for (const loop of ['127.0.0.1', 'localhost:', 'sp_e2e_local']) {
   if (prod.js.includes(loop) || prod.html.includes(loop)) fail(`production build contains "${loop}"`);
 }
-if (!prod.html.includes('https://rpc.verify.invalid') || !prod.html.includes('https://bundler.verify.invalid')) fail('production CSP lacks configured origins');
+if (!realEnv && (!prod.html.includes('https://rpc.verify.invalid') || !prod.html.includes('https://bundler.verify.invalid'))) fail('production CSP lacks configured origins');
+if (expectHost) {
+  const m = prod.js.match(/rpId:[`"']([^`"']+)[`"']/);
+  if (!m) fail('could not find the RP ID in the bundle');
+  if (m[1] !== expectHost) fail(`bundle RP ID ${m[1]} != deploy host ${expectHost}`);
+  console.log(`ok   [production] bundle RP ID == ${expectHost}`);
+}
 console.log('ok   [production] no loopback/E2E endpoints; CSP lists the configured origins');
 console.log('PASS verify-build');

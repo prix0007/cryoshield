@@ -1,0 +1,32 @@
+# Fly.io config for https://cryoshield.app (add-fly-hosting, design D4).
+# No [env], no secrets, no [mounts]: the image only contains the verified static build.
+# Org is chosen at creation time: fly apps create cryoshield-web --org cryoshield
+app = "cryoshield-web"
+primary_region = "sin" # Singapore: nearest Fly region to the founder (IST); Fly has no Indian region.
+
+[build]
+  dockerfile = "deploy/Dockerfile"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 1 # one warm machine: no cold start on first load (~$2/month); 0 is a one-line change
+  processes = ["app"]
+
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 200
+    hard_limit = 250
+
+  [[http_service.checks]]
+    grace_period = "5s"
+    interval = "30s"
+    method = "GET"
+    path = "/healthz"
+    timeout = "5s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"

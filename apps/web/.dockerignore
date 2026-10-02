@@ -1,0 +1,4 @@
+# Whitelist: the image may only ever see the generated deploy context.
+*
+!deploy/.build/
+!deploy/.build/**

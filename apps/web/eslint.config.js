@@ -2,7 +2,7 @@ import tseslint from 'typescript-eslint';
 import reactHooks from 'eslint-plugin-react-hooks';
 
 export default tseslint.config(
-  { ignores: ['dist/**', 'e2e/contracts/**', 'test-results/**', 'playwright-report/**'] },
+  { ignores: ['dist/**', 'deploy/.build/**', 'deploy/.test-dist/**', 'e2e/contracts/**', 'test-results/**', 'playwright-report/**'] },
   ...tseslint.configs.recommended,
   {
     files: ['src/**/*.{ts,tsx}'],
@@ -31,7 +31,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ['test/**', 'test-int/**', 'e2e/**'],
+    files: ['test/**', 'test-int/**', 'e2e/**', 'deploy/test/**'],
     rules: { '@typescript-eslint/no-explicit-any': 'off', '@typescript-eslint/no-unused-vars': 'off' },
   },
 );

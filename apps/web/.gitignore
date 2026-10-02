@@ -4,3 +4,5 @@ playwright-report/
 e2e/contracts/out/
 e2e/contracts/cache/
 node_modules/
+deploy/.build/
+deploy/.test-dist/
