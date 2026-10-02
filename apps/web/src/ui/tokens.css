@@ -30,6 +30,8 @@
   --surface-chip-translucent: rgba(210, 210, 215, 0.64);
   --frost-light: rgba(245, 245, 247, 0.8);
   --frost-dark: rgba(29, 29, 31, 0.8);
+  --frost-tile: rgba(39, 39, 41, 0.72); /* Tile-1 at 72%: sub-nav over dark tiles */
+  --hairline-on-dark: rgba(255, 255, 255, 0.14);
 
   /* Text */
   --ink: #1d1d1f;

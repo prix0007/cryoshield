@@ -48,3 +48,130 @@ function wireNavMenu(doc: Document) {
     });
   }
 }
+
+/* ---------------- cinematic-landing D3: per-scene lazy loading, counters, magnetic CTAs ---------------- */
+
+export interface SceneRuntime {
+  mountScene(section: Element, scene: object): void;
+  mountParallax(doc: Document): void;
+}
+export interface SceneDeps {
+  doc: Document;
+  matchMedia: (q: string) => MediaQueryList;
+  IO: typeof IntersectionObserver | undefined;
+  loadRuntime: () => Promise<SceneRuntime>;
+  loadScene: (name: string) => Promise<object>;
+}
+
+/** Imports the shared runtime and each scene's own module only when that scene is within one viewport. */
+export function bootScenes({ doc, matchMedia, IO, loadRuntime, loadScene }: SceneDeps): void {
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches || !IO) return;
+  const scenes = [...doc.querySelectorAll<HTMLElement>('[data-scene]')];
+  if (scenes.length === 0) return;
+  let runtime: Promise<SceneRuntime> | undefined;
+  const io = new IO(
+    (entries) => {
+      for (const e of entries) {
+        if (!e.isIntersecting) continue;
+        io.unobserve(e.target);
+        const name = (e.target as HTMLElement).dataset.scene ?? '';
+        if (!runtime) {
+          runtime = loadRuntime();
+          runtime.then((rt) => rt.mountParallax(doc)).catch(() => undefined);
+        }
+        Promise.all([runtime, loadScene(name)])
+          .then(([rt, scene]) => rt.mountScene(e.target, scene))
+          .catch(() => undefined); // the scene stays on its static key frame
+      }
+    },
+    { rootMargin: '100% 0px' },
+  );
+  scenes.forEach((s) => io.observe(s));
+}
+
+export function formatStat(n: number, prefix: string, suffix: string): string {
+  return `${prefix}${n}${suffix}`;
+}
+
+/** Count the numbers band up (or down to 0) once in view. The final values are already in the HTML. */
+export function bootCounters(doc: Document, matchMedia: (q: string) => MediaQueryList, IO: typeof IntersectionObserver | undefined) {
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches || !IO) return;
+  const els = [...doc.querySelectorAll<HTMLElement>('[data-count]')];
+  const io = new IO(
+    (entries) => {
+      for (const e of entries) {
+        if (!e.isIntersecting) continue;
+        io.unobserve(e.target);
+        const el = e.target as HTMLElement;
+        const to = Number(el.dataset.count);
+        const from = to === 0 ? 10 : 0;
+        const [pre, suf] = [el.dataset.prefix ?? '', el.dataset.suffix ?? ''];
+        const t0 = performance.now();
+        const step = (t: number) => {
+          const k = Math.min(1, (t - t0) / 1200);
+          const eased = 1 - (1 - k) ** 3;
+          el.textContent = formatStat(Math.round(from + (to - from) * eased), pre, suf);
+          if (k < 1) requestAnimationFrame(step);
+        };
+        requestAnimationFrame(step);
+      }
+    },
+    { threshold: 0.6 },
+  );
+  els.forEach((el) => io.observe(el));
+}
+
+/** Magnetic CTAs: pills lean toward a nearby fine pointer (CSS `translate`, so the press `scale` still works). */
+export function wireMagnetic(doc: Document, matchMedia: (q: string) => MediaQueryList): void {
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches || !matchMedia('(pointer: fine)').matches) return;
+  const els = [...doc.querySelectorAll<HTMLElement>('.magnetic')];
+  if (els.length === 0) return;
+  doc.addEventListener(
+    'pointermove',
+    (e) => {
+      for (const el of els) {
+        const r = el.getBoundingClientRect();
+        const dx = e.clientX - (r.left + r.width / 2);
+        const dy = e.clientY - (r.top + r.height / 2);
+        const near = Math.hypot(dx, dy) < Math.max(r.width, r.height);
+        el.style.setProperty('--mx', near ? `${(dx * 0.18).toFixed(1)}px` : '0px');
+        el.style.setProperty('--my', near ? `${(dy * 0.25).toFixed(1)}px` : '0px');
+      }
+    },
+    { passive: true },
+  );
+}
+
+/* ---------------- Sub-nav theme: dark frosted variant over dark tiles ---------------- */
+
+const DARK_SURFACES = '.tile-dark, .tile-dark-2, .tile-dark-3, .tile-black';
+
+/** Sets header[data-under] from the elements found under the sub-nav (topmost first; the header itself is skipped). */
+export function subnavThemeAt(header: HTMLElement, elementsUnder: Element[]): void {
+  const below = elementsUnder.find((el) => !header.contains(el));
+  const dark = !!below?.closest(DARK_SURFACES);
+  const next = dark ? 'dark' : 'light';
+  if (header.dataset.under !== next) header.dataset.under = next;
+}
+
+/** Scroll-linked (rAF-throttled, passive): no layout change, so no CLS. Also active under reduced motion. */
+export function wireSubnavTheme(doc: Document, win: Window): void {
+  const header = doc.querySelector<HTMLElement>('.site-header');
+  const sub = doc.querySelector<HTMLElement>('.sub-nav');
+  if (!header || !sub || typeof doc.elementsFromPoint !== 'function') return;
+  let queued = false;
+  const check = () => {
+    queued = false;
+    const r = sub.getBoundingClientRect();
+    subnavThemeAt(header, doc.elementsFromPoint(win.innerWidth / 2, r.top + r.height / 2));
+  };
+  const queue = () => {
+    if (!queued) {
+      queued = true;
+      win.requestAnimationFrame(check);
+    }
+  };
+  win.addEventListener('scroll', queue, { passive: true });
+  win.addEventListener('resize', queue, { passive: true });
+  check();
+}

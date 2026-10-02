@@ -31,6 +31,22 @@ h3 {
 a {
   color: inherit;
 }
+/* Link decoration (cinematic-landing D6): chrome links and pills never underline in any state; inline links in body
+   copy are always underlined, not only on hover. */
+.global-nav a,
+.wordmark,
+.pill,
+.skip-link,
+.footer-links a,
+.sub-nav a {
+  text-decoration: none;
+}
+p a:not(.pill),
+li p a:not(.pill),
+dd a {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
 
 :focus-visible {
   outline: 2px solid var(--app-focus);
@@ -101,8 +117,11 @@ a {
   justify-content: center;
   padding: 0 var(--space-xs);
 }
+.global-nav a {
+  transition: opacity 0.15s ease;
+}
 .global-nav a:hover {
-  text-decoration: underline;
+  opacity: 0.72;
 }
 .global-nav :focus-visible {
   outline-color: var(--color-primary-on-dark);
@@ -290,8 +309,9 @@ a {
   font-size: 18px;
   font-weight: 300;
 }
+/* Pills never underline (cinematic-landing D6): hover feedback is a slight opacity change (contrast stays >= 4.5:1). */
 .pill:hover {
-  text-decoration: underline;
+  opacity: 0.92;
 }
 
 @media (prefers-reduced-motion: reduce) {
