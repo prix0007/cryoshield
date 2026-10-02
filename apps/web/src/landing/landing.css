@@ -500,8 +500,11 @@
   color: var(--ink-muted-80);
   text-decoration: none;
 }
+.footer-links a {
+  transition: opacity 0.15s ease;
+}
 .footer-links a:hover {
-  text-decoration: underline;
+  opacity: 0.72;
 }
 .legal {
   margin: var(--space-xl) 0 0;

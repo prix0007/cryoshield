@@ -2,7 +2,7 @@
 
 ## 1. Hover bug
 
-- [ ] 1.1 Write a failing E2E `e2e/specs/06-hover.spec.ts` that hovers the logo, every global-nav link, every footer link and every pill on `/`, and the logo, nav links and buttons on `/app/`, then asserts the computed `text-decoration-line` is `none`, and that inline body-copy links are `underline` at rest. Fix `chrome.css` and `landing.css` (D6). Verify the spec passes.
+- [x] 1.1 Write a failing E2E `e2e/specs/06-hover.spec.ts` that hovers the logo, every global-nav link, every footer link and every pill on `/`, and the logo, nav links and buttons on `/app/`, then asserts the computed `text-decoration-line` is `none`, and that inline body-copy links are `underline` at rest. Fix `chrome.css` and `landing.css` (D6). Verify the spec passes.
 
 ## 2. Content and structure
 
