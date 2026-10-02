@@ -66,7 +66,12 @@ test('reduced motion: the motion chunk is never requested and graphics show thei
 
 test('motion is lazy: requested only after scrolling towards a story graphic', async ({ page }) => {
   const requested: string[] = [];
+  const csp: string[] = [];
   page.on('request', (r) => requested.push(r.url()));
+  page.on('console', (m) => {
+    if (/Content Security Policy|Trusted Type|Refused/i.test(m.text())) csp.push(m.text());
+  });
+  page.on('pageerror', (e) => csp.push(String(e)));
   await page.setViewportSize({ width: 1280, height: 600 });
   await page.goto(LANDING);
   await page.waitForTimeout(500);
@@ -74,6 +79,13 @@ test('motion is lazy: requested only after scrolling towards a story graphic', a
   await page.locator('#how').scrollIntoViewIfNeeded();
   await expect.poll(() => requested.filter(isMotionChunk).length).toBe(1);
   await expect(page.locator('.g-how.armed')).toHaveCount(1);
+  // Run every animation: Motion must work under the unchanged CSP with no violation or error.
+  for (const id of ['#keys-only', '#lose-a-key', '#survives', '#free']) {
+    await page.locator(id).scrollIntoViewIfNeeded();
+    await expect(page.locator(`${id} .graphic.in`)).toHaveCount(1);
+  }
+  await page.waitForTimeout(2500);
+  expect(csp).toEqual([]);
 });
 
 test('the CSP blocks injected inline script and innerHTML on the landing page', async ({ page }) => {
@@ -109,4 +121,13 @@ test('"Open the app" leads to the vault app at /app/', async ({ page }) => {
   await page.getByRole('link', { name: 'Open the app' }).first().click();
   await expect(page).toHaveURL(/\/app\/$/);
   await expect(page.getByRole('button', { name: 'Unlock my vault' })).toBeVisible();
+});
+
+test('reflows at 320px with no horizontal scroll (landing and app)', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 640 });
+  for (const url of [LANDING, '/app/']) {
+    await page.goto(url);
+    const { sw, cw } = await page.evaluate(() => ({ sw: document.documentElement.scrollWidth, cw: document.documentElement.clientWidth }));
+    expect(sw, url).toBeLessThanOrEqual(cw);
+  }
 });

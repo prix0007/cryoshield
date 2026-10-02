@@ -94,7 +94,7 @@
 
 ## 6. Reviews
 
-- [ ] 6.1 Security review:
+- [x] 6.1 Security review:
   - the CSP is unchanged and identical on both pages;
   - TT/eval/innerHTML/WASM are absent from the bundle (grep plus the E2E injection test);
   - Motion supply-chain pinning;
@@ -104,7 +104,7 @@
   - external links are safe.
 
   Record it in `apps/web/docs/security-review-ui-redesign.md`, and verify that every CRITICAL/HIGH finding is resolved.
-- [ ] 6.2 Accessibility review (WCAG 2.2 AA):
+- [x] 6.2 Accessibility review (WCAG 2.2 AA):
   - the contrast table;
   - focus visible and not obscured;
   - target size;
