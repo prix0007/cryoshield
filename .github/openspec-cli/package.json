@@ -4,5 +4,6 @@
   "description": "Pins the OpenSpec CLI used by the CI openspec job (OpenSpec change add-ci). Install with: npm ci --ignore-scripts",
   "dependencies": {
     "@fission-ai/openspec": "1.14.0"
-  }
+  },
+  "license": "MIT"
 }

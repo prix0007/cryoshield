@@ -4,7 +4,7 @@ Permanent, non-custodial backup for the secrets you can't afford to lose (seed p
 
 - Secrets are encrypted **in your browser**. CryoShield never sees them and runs no servers.
 - Only your **FIDO2 hardware keys** (YubiKey 5, firmware ≥ 5.2) can unlock a vault. You enrol at least two, and any one of them opens it.
-- The encrypted vault lives on an EVM rollup (testnet: **OP Sepolia**; mainnet chain to be decided between OP Mainnet and Arbitrum One), mirrored to **Arweave**. Gas is sponsored, so you never need a wallet or crypto.
+- The encrypted vault lives on an EVM rollup (**OP Mainnet**; currently testnet-only on **OP Sepolia**), mirrored to **Arweave**. Gas is sponsored, so you never need a wallet or crypto.
 - If CryoShield disappears, the open-source **desktop recovery tool** still unlocks your vault, straight from the public chain.
 
 > Status: pre-MVP. Not audited. Not deployed to any public network yet. Testnet target: OP Sepolia (chain 11155420). Get test ETH from the [Superchain faucet](https://console.optimism.io/faucet).
@@ -88,4 +88,4 @@ There is no external audit for the MVP. Mitigations: an open specification, dete
 
 ## License
 
-TBD. The project will be open source.
+[MIT](LICENSE). Every first-party package declares MIT, and `scripts/check-licenses.sh` enforces this in CI.

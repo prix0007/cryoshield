@@ -86,6 +86,12 @@ jobs:
               - *ci
               - openspec/**
               - .github/openspec-cli/**
+              # license consistency check (spec: project-licensing)
+              - LICENSE
+              - scripts/check-licenses.sh
+              - '**/package.json'
+              - '**/pyproject.toml'
+              - 'contracts/**/*.sol'
             workflows:
               - .github/**
 
@@ -228,6 +234,9 @@ jobs:
       - name: Build contracts (the local chain stack deploys contracts/out)
         run: forge build
         working-directory: contracts
+      # @cryoshield/vault-crypto resolves types from dist/ (gitignored), so build it before typechecking the web app.
+      - name: Build workspace dependency vault-crypto
+        run: pnpm --filter @cryoshield/vault-crypto build
       - run: pnpm --filter @cryoshield/web typecheck
       - run: pnpm --filter @cryoshield/web lint
       - run: pnpm --filter @cryoshield/web test
@@ -282,6 +291,8 @@ jobs:
       - name: Assert OpenSpec CLI version
         run: test "$(.github/openspec-cli/node_modules/.bin/openspec --version)" = "$OPENSPEC_VERSION"
       - run: .github/openspec-cli/node_modules/.bin/openspec validate --all --strict --no-interactive
+      - name: License consistency (all first-party declarations are MIT)
+        run: scripts/check-licenses.sh
 
   # The only check branch protection needs. Skipped area jobs count as success; failed or cancelled ones do not.
   ci-ok:

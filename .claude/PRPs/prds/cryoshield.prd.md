@@ -49,7 +49,7 @@ We'll know we're right when 10,000 users have created vaults and ≥95% of test 
 - [ ] GDPR: does on-chain ciphertext make CryoShield a data controller? EDPB Guidelines 02/2025 v2 advise against putting even encrypted personal data on-chain. Needs legal review.
 - [ ] iOS Safari PRF reliability with external keys: WebKit bugs 311099 and 314934 are open.
 - [ ] Domain strategy: a long-lived domain plus ENS, and how to protect the RP ID against domain lapse or hijack.
-- [ ] **Mainnet chain:** Arbitrum One or OP Mainnet? The testnet is OP Sepolia (2026-10-02). Both chains support everything the MVP needs; OP Mainnet is estimated at ~$0.004 per 1 KB sponsored create vs ~$0.03 on Arbitrum.
+- [x] **Mainnet chain:** decided 2026-10-02: **OP Mainnet**. No funds yet, so deployments stay on OP Sepolia only. Background: the testnet is OP Sepolia (2026-10-02). Both chains support everything the MVP needs; OP Mainnet is estimated at ~$0.004 per 1 KB sponsored create vs ~$0.03 on Arbitrum.
 - [ ] Rollup long-term data availability: what is the archive story if the chosen L2 stops operating? This is mitigated by the Arweave mirror.
 - [ ] Shipping without an audit while protecting high-value secrets: what is the disclosure, cap, or bug-bounty plan?
 - [ ] Revenue model: CryoShield pays gas, so how does it make money?
@@ -204,7 +204,7 @@ Phases 1 and 2 are independent once the vault blob is defined as opaque bytes. P
 | Decision | Choice | Alternatives | Rationale |
 |----------|--------|--------------|-----------|
 | Testnet | OP Sepolia (pivot from Arbitrum Sepolia, 2026-10-02) | Arbitrum Sepolia | Founder choice: Arbitrum Sepolia test ETH was hard to get. The P-256 precompile, EntryPoint v0.6, CBSW v1.1 and Pimlico are all verified on OP Sepolia; the stack is chain-configurable via presets |
-| Chain (mainnet, TBD) | Arbitrum One (original) or OP Mainnet | Ethereum L1, Starknet | Cents per KB; EVM so moving to L1 is straightforward; mature tooling. Starknet is not EVM (Cairo) and has no permanence advantage |
+| Chain (mainnet) | **OP Mainnet** (decided 2026-10-02; not deployed until funded) | Arbitrum One (original choice) | Ethereum L1, Starknet | Cents per KB; EVM so moving to L1 is straightforward; mature tooling. Starknet is not EVM (Cairo) and has no permanence advantage |
 | Permanence | Arweave mirror + L1 hash | Arbitrum only | Data survives if any copy survives |
 | Crypto | FIDO2 PRF + AES-256-GCM (symmetric only) | ECIES, hybrid ML-KEM | FIDO keys can't do ECIES; elliptic-curve encryption is quantum-vulnerable while the ciphertext is public forever |
 | Threshold | 1-of-N, at least 2 keys; SSS-capable format | 2-of-3 with paper, user-chosen M-of-N | Simplest for non-technical users; a paper share risks theft |
@@ -212,6 +212,7 @@ Phases 1 and 2 are independent once the vault blob is defined as opaque bytes. P
 | Gas | CryoShield sponsors through a third-party ERC-4337 paymaster; YubiKey-owned passkey smart account | User pays via own wallet; on-ramp | Founder choice; non-technical users never touch a wallet or gas |
 | Architecture | Static frontend + chain + third-party bundler/paymaster; no CryoShield backend | Own API server, own relayer | Founder choice; nothing to run, hack, or shut down; smaller SOC 2 scope |
 | Process | OpenSpec for every change (HARD requirement) | Ad-hoc plans | Founder requirement; specs are the contract between build agents |
+| License | MIT (decided 2026-10-02; matches existing SPDX/package metadata) | Apache-2.0, AGPL-3.0 | Founder: "anything public and OSS"; MIT needed no relicensing |
 | Open source | Always public repo | Closed source | Trust for an unaudited security product; enables independent recovery |
 | Launch audience | Crypto holders + security professionals together | One first | Founder choice; risk: diluted positioning |
 | Audit | None for MVP | Audit before launch | Solo founder, ASAP timeline; compensate with open source + test vectors + bug bounty |
