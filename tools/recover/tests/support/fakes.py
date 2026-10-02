@@ -103,6 +103,10 @@ class FakeChain(FakeServer):
         self.withhold = False
         self.malicious_abi = False
         self.logs_error = False
+        # Emulates public-RPC eth_getLogs block-range limits: ranges wider than this are rejected.
+        self.max_log_range: int | None = None
+        self.range_error_mode = "-32005"  # "http400" | "-32005" | "-32600"
+        self.log_ranges: list[int] = []
         self.down = False
 
     # --- state helpers -------------------------------------------------------
@@ -139,6 +143,20 @@ class FakeChain(FakeServer):
         if self.down:
             return 503, {}, b"down"
         req = json.loads(body)
+        if req.get("method") == "eth_getLogs" and self.max_log_range is not None:
+            f = req["params"][0]
+            width = int(f["toBlock"], 16) - int(f["fromBlock"], 16) + 1
+            self.log_ranges.append(width)
+            if width > self.max_log_range:
+                if self.range_error_mode == "http400":
+                    return 400, {"Content-Type": "application/json"}, b'{"error":"block range too large"}'
+                code = int(self.range_error_mode)
+                err = {"code": code, "message": f"query exceeds max block range {self.max_log_range}"}
+                return (
+                    200,
+                    {"Content-Type": "application/json"},
+                    json.dumps({"jsonrpc": "2.0", "id": req["id"], "error": err}).encode(),
+                )
         try:
             result = self.rpc(req["method"], req["params"])
             resp: dict[str, Any] = {"jsonrpc": "2.0", "id": req["id"], "result": result}
@@ -169,7 +187,7 @@ class FakeChain(FakeServer):
             raise LookupError("execution reverted")
         if method == "eth_getLogs":
             if self.logs_error:
-                raise LookupError("block range too large")
+                raise LookupError("internal error")
             f = params[0]
             t0s, vid = f["topics"]
             lo, hi = int(f["fromBlock"], 16), int(f["toBlock"], 16)

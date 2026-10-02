@@ -163,23 +163,35 @@ def test_rpc_on_other_chain_without_chain_id_is_refused_with_hint() -> None:
 def test_startup_prints_network_name() -> None:
     console, err = term()
     cli.main(
-        ["--no-arweave"],
+        ["--no-arweave", "--no-chain"],  # offline-safe: the op-sepolia registry is live
         console=console,
         prf_factory=lambda ui: FakePrfSource([PhysicalKey.named("A")], ui=ui),
     )
     assert "Network: op-sepolia (chain 11155420)" in err.getvalue()
 
 
+def test_op_sepolia_registry_is_the_live_deployment() -> None:
+    """VaultRegistry is live on OP Sepolia (contracts/deployments/11155420.json), embedded at release."""
+    p = NETWORKS["op-sepolia"]
+    assert p.registry == "0xb43f58cf17e64b603ae5588a1dd17e96a0849e44"
+    assert p.deploy_block == 49568053
+    assert cfg().registry == p.registry and cfg().deploy_block == p.deploy_block
+
+
+@pytest.mark.parametrize("name", ["op-mainnet", "arbitrum-one", "arbitrum-sepolia"])
+def test_undeployed_presets_stay_placeholders(name: str) -> None:
+    assert is_placeholder(NETWORKS[name].registry)
+
+
 def test_preset_without_deployment_refuses_chain_mode() -> None:
-    assert is_placeholder(NETWORKS["op-sepolia"].registry)  # no deployments/11155420.json yet
     console, err = term()
     code = cli.main(
-        ["--no-arweave"],
+        ["--network", "op-mainnet", "--no-arweave"],
         console=console,
         prf_factory=lambda ui: FakePrfSource([PhysicalKey.named("A")], ui=ui),
     )
     text = err.getvalue()
-    assert "No VaultRegistry deployment is built in for op-sepolia" in text
+    assert "No VaultRegistry deployment is built in for op-mainnet" in text
     assert "--registry" in text
     assert code == ExitCode.NETWORK_UNAVAILABLE
 

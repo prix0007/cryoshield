@@ -50,6 +50,7 @@ def cfg_for(chain: FakeChain | None = None, ar: FakeArweave | None = None, **kw:
         rpcs=[chain.url] if chain else [],
         registry=chain.address if chain else "0x" + "00" * 20,
         chain_id=chain.chain_id if chain else 11155420,
+        deploy_block=0,  # fake chains start at block 0 (the real op-sepolia preset is far higher)
         arweave_graphql=[ar.graphql_url] if ar else [],
         arweave_gateways=[ar.url] if ar else [],
         timeout=3,

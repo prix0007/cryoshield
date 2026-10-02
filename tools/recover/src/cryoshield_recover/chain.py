@@ -18,6 +18,24 @@ from .rpc import JsonRpcClient, RpcError, hex_to_bytes, hex_to_int
 ClientFactory = Callable[[str], JsonRpcClient]
 
 
+# eth_getLogs paging. Public RPCs cap block ranges (drpc rejects 50k with HTTP 400), so pages start at
+# 10k blocks and are halved per RPC on a range-limit error, down to MIN_LOG_CHUNK, before giving up.
+DEFAULT_LOG_CHUNK = 10_000
+MIN_LOG_CHUNK = 64  # drpc's free plan accepts only ~100-block ranges (live, 2026-10-02)
+MAX_LOG_PAGES = 2_000
+_RANGE_WORDS = ("range", "too many", "limit", "exceed", "too large", "block")
+
+
+def is_range_error(e: RpcError) -> bool:
+    """An RPC refusing the eth_getLogs block range (as opposed to failing for another reason)."""
+    if e.http_status in (400, 413):
+        return True
+    if e.code == -32005:  # "limit exceeded" (EIP-1474)
+        return True
+    text = str(e).lower()
+    return e.code in (-32600, -32602, -32000, -32001) and any(w in text for w in _RANGE_WORDS)
+
+
 def _hex(b: bytes) -> str:
     return "0x" + b.hex()
 
@@ -31,8 +49,8 @@ class Registry:
         deploy_block: int = 0,
         *,
         client_factory: ClientFactory = JsonRpcClient,
-        log_chunk: int = 50_000,
-        max_log_pages: int = 200,
+        log_chunk: int = DEFAULT_LOG_CHUNK,
+        max_log_pages: int = MAX_LOG_PAGES,
     ) -> None:
         self.address = address.lower()
         self.chain_id = chain_id
@@ -211,18 +229,39 @@ class Registry:
     def _logs(self, c: JsonRpcClient, vault_id: bytes) -> list[tuple[int, bytes]]:
         latest = hex_to_int(c.call("eth_blockNumber", []))
         start = self.deploy_block
-        pages = 0
+        chunk = self.log_chunk
+        requests = 0
         out: list[tuple[int, bytes]] = []
         topics = [[_hex(abi.TOPIC_VAULT_CREATED), _hex(abi.TOPIC_VAULT_UPDATED)], _hex(vault_id)]
         while start <= latest:
-            pages += 1
-            if pages > self.max_log_pages:
+            requests += 1
+            if requests > self.max_log_pages:
                 raise RpcError("too many log pages")
-            end = min(latest, start + self.log_chunk - 1)
-            logs = c.call(
-                "eth_getLogs",
-                [{"address": self.address, "fromBlock": hex(start), "toBlock": hex(end), "topics": topics}],
-            )
+            end = min(latest, start + chunk - 1)
+            try:
+                logs = c.call(
+                    "eth_getLogs",
+                    [
+                        {
+                            "address": self.address,
+                            "fromBlock": hex(start),
+                            "toBlock": hex(end),
+                            "topics": topics,
+                        }
+                    ],
+                )
+            except RpcError as e:
+                if is_range_error(e) and chunk > MIN_LOG_CHUNK:
+                    chunk = max(MIN_LOG_CHUNK, chunk // 2)  # adapt to this RPC's limit and retry
+                    # Fail fast: if even every remaining page at this size cannot fit the budget, this RPC
+                    # cannot deliver the history; don't stall recovery paging it for minutes.
+                    remaining_pages = -(-(latest - start + 1) // chunk)
+                    if remaining_pages > self.max_log_pages - requests:
+                        raise RpcError(
+                            f"block-range limit too small for {latest - start + 1} blocks"
+                        ) from None
+                    continue
+                raise
             if not isinstance(logs, list):
                 raise RpcError("malformed logs")
             for log in logs:

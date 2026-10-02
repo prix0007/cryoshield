@@ -130,7 +130,7 @@ def test_startup_summary_lists_endpoints_before_contact(chain: FakeChain) -> Non
 
 def test_placeholder_registry_warns_and_skips_chain() -> None:
     term = Term()
-    code, _ = run_cli(["--no-arweave"], term)
+    code, _ = run_cli(["--network", "op-mainnet", "--no-arweave"], term)
     assert "No VaultRegistry deployment is built in" in term.stderr.getvalue()
     assert code == ExitCode.NETWORK_UNAVAILABLE
 

@@ -15,7 +15,10 @@ ALLOWED_METHODS = frozenset({"eth_chainId", "eth_call", "eth_getLogs", "eth_bloc
 
 
 class RpcError(Exception):
-    pass
+    def __init__(self, message: str, *, code: int | None = None, http_status: int | None = None) -> None:
+        super().__init__(message)
+        self.code = code
+        self.http_status = http_status
 
 
 class JsonRpcClient:
@@ -38,14 +41,18 @@ class JsonRpcClient:
                 max_bytes=self.max_bytes,
             )
         except NetError as e:
-            raise RpcError(str(e)) from None
+            raise RpcError(str(e), http_status=e.http_status) from None
         if not isinstance(resp, dict):
             raise RpcError(f"malformed response from {self.host}")
         if resp.get("error") is not None:
             err = resp["error"]
             msg = err.get("message") if isinstance(err, dict) else None
             text = sanitize(" ".join(msg.split()), 120) if isinstance(msg, str) else "error"  # one line only
-            raise RpcError(f"{self.host}: {text}")
+            code = err.get("code") if isinstance(err, dict) else None
+            raise RpcError(
+                f"{self.host}: {text}",
+                code=code if isinstance(code, int) and not isinstance(code, bool) else None,
+            )
         if "result" not in resp:
             raise RpcError(f"malformed response from {self.host}")
         return resp["result"]

@@ -25,6 +25,10 @@ _LOOPBACK = {"localhost", "127.0.0.1", "::1"}
 class NetError(Exception):
     """Transport-level failure (unreachable, timeout, HTTP error, redirect, bad JSON)."""
 
+    def __init__(self, message: str, *, http_status: int | None = None) -> None:
+        super().__init__(message)
+        self.http_status = http_status
+
 
 class TooLarge(NetError):
     pass
@@ -86,7 +90,7 @@ def request(
     except NetError:
         raise
     except urllib.error.HTTPError as e:
-        raise NetError(f"HTTP {e.code} from {host_of(url)}") from None
+        raise NetError(f"HTTP {e.code} from {host_of(url)}", http_status=e.code) from None
     except (urllib.error.URLError, OSError, ValueError, http.client.HTTPException) as e:
         raise NetError(f"{host_of(url)} unreachable: {type(e).__name__}") from None
 

@@ -12,7 +12,7 @@ from pathlib import Path
 
 PLACEHOLDER_ADDRESS = "0x0000000000000000000000000000000000000000"
 
-# Production RP ID of the web app. Placeholder until the web-app change fixes the domain (design D8).
+# Production RP ID of the web app (deployed at https://cryoshield.app).
 DEFAULT_RP_ID = "cryoshield.app"
 
 ARWEAVE_GRAPHQL = ("https://arweave.net/graphql", "https://arweave-search.goldsky.com/graphql")
@@ -45,8 +45,9 @@ NETWORKS = {
     "op-sepolia": NetworkPreset(
         name="op-sepolia",
         chain_id=11155420,
-        registry=PLACEHOLDER_ADDRESS,  # until contracts/deployments/11155420.json exists
-        deploy_block=0,
+        # From contracts/deployments/11155420.json (tx 0xb3608598…0759; source verified on Blockscout).
+        registry="0xb43f58cf17e64b603ae5588a1dd17e96a0849e44",
+        deploy_block=49568053,
         # Verified to answer eth_chainId = 11155420 on 2026-10-02 (omniatech excluded: HTTP 521).
         rpcs=(
             "https://sepolia.optimism.io",
