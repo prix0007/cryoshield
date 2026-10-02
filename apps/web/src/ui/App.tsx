@@ -5,6 +5,7 @@ import { Notice } from './components';
 import type { VaultSession } from './operations';
 import { ServicesProvider, useServices, type Services } from './services';
 import { S } from './strings';
+import { ActionBar, GlobalNav, SubNav, useFocusClearOfActionBar } from './chrome';
 import { UnlockFlow, type Unlocked } from './UnlockFlow';
 import { useAutoLock } from './useAutoLock';
 import { VaultView } from './VaultView';
@@ -27,6 +28,7 @@ function Shell() {
   const [locked, setLocked] = useState(false);
   const [prf, setPrf] = useState<'supported' | 'unsupported' | 'unknown'>('unknown');
   const allowed = rpIdAllowed(svc.host, svc.rpId);
+  useFocusClearOfActionBar();
 
   useEffect(() => {
     void detectPrfSupport().then(setPrf);
@@ -47,14 +49,18 @@ function Shell() {
 
   return (
     <div className="app">
-      <header>
-        <p className="brand">{S.appName}</p>
+      <a className="skip-link" href="#main">
+        Skip to content
+      </a>
+      <header className="site-header">
+        <GlobalNav />
+        <SubNav name={S.vault.surface} />
       </header>
-      <main id="main">
+      <main id="main" className="app-main" tabIndex={-1}>
         {!allowed && <Notice kind="error">{S.misconfigured}</Notice>}
         {allowed && prf === 'unsupported' && screen.name !== 'vault' && (
-          <Notice kind="error">
-            {S.browserUnsupported}
+          <Notice kind="error" title="Browser not supported">
+            <p className="notice-text">{S.browserUnsupported}</p>
             <ul>
               {S.supportedBrowsers.map((b) => (
                 <li key={b}>{b}</li>
@@ -63,26 +69,26 @@ function Shell() {
           </Notice>
         )}
         {warning && session && (
-          <div className="notice notice-info" role="alert">
-            {S.vault.idleWarning}{' '}
+          <div className="notice notice-info notice-inline" role="alert">
+            <p className="notice-text">{S.vault.idleWarning}</p>
             <button onClick={extend}>{S.vault.stillHere}</button>
           </div>
         )}
         {locked && screen.name === 'home' && <Notice kind="info">{S.vault.locked}</Notice>}
 
         {screen.name === 'home' && (
-          <section aria-labelledby="home-title">
+          <section aria-labelledby="home-title" className="card step">
             <h1 id="home-title">{S.appName}</h1>
             <p>{S.tagline}</p>
             <p>{S.home.explain}</p>
-            <div className="actions">
+            <ActionBar>
               <button onClick={() => { setLocked(false); setScreen({ name: 'unlock' }); }} disabled={!allowed || prf === 'unsupported'}>
                 {S.home.unlock}
               </button>
               <button className="secondary" onClick={() => { setLocked(false); setScreen({ name: 'create' }); }} disabled={!allowed || prf === 'unsupported'}>
                 {S.home.create}
               </button>
-            </div>
+            </ActionBar>
           </section>
         )}
         {screen.name === 'create' && allowed && (

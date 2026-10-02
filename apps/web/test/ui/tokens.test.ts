@@ -138,3 +138,19 @@ describe('token set', () => {
     for (const m of css.matchAll(/url\(([^)]+)\)/g)) expect(m[1]).not.toMatch(/^['"]?(https?:)?\/\//);
   });
 });
+
+describe('stylesheets use tokens only', () => {
+  const files = ['src/ui/global.css', 'src/ui/chrome.css', 'src/landing/landing.css'];
+  it.each(files)('%s has no colour literal and no font-weight 500', (f) => {
+    const body = readFileSync(join(__dirname, '..', '..', f), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+    expect(body).not.toMatch(/#[0-9a-f]{3,8}\b|rgba?\(|hsla?\(/i);
+    expect(body).not.toMatch(/font-weight:\s*500/);
+  });
+
+  it('every button scales to 0.95 when pressed (and not under reduced motion)', () => {
+    const g = readFileSync(join(__dirname, '..', '..', 'src/ui/global.css'), 'utf8');
+    expect(g).toMatch(/button:active:not\(:disabled\)\s*\{\s*transform: scale\(0\.95\)/);
+    expect(g).toMatch(/prefers-reduced-motion: reduce[\s\S]*transform: none/);
+    expect(g).toMatch(/scroll-padding-bottom/);
+  });
+});

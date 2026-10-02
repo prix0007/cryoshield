@@ -8,6 +8,7 @@ import { KeyPrompt, Notice, StepHeading } from './components';
 import { messageFor, type VaultSession } from './operations';
 import { useServices } from './services';
 import { S } from './strings';
+import { ActionBar } from './chrome';
 
 export interface Unlocked {
   session: VaultSession;
@@ -60,7 +61,7 @@ export function UnlockFlow(props: { onUnlocked: (u: Unlocked) => void; onCreate:
   }
 
   return (
-    <section aria-labelledby="unlock-title">
+    <section aria-labelledby="unlock-title" className="step card">
       <h1 id="unlock-title">{S.unlock.title}</h1>
       <StepHeading>{S.unlock.touch}</StepHeading>
       {error && <Notice kind="error">{error}</Notice>}
@@ -68,12 +69,12 @@ export function UnlockFlow(props: { onUnlocked: (u: Unlocked) => void; onCreate:
       {notFound && (
         <div>
           <Notice kind="info">{S.unlock.notFound}</Notice>
-          <div className="actions">
+          <ActionBar>
             <button onClick={props.onCreate}>{S.unlock.createInstead}</button>
             <button className="secondary" onClick={go}>
               {S.unlock.tryAgain}
             </button>
-          </div>
+          </ActionBar>
         </div>
       )}
       {choices && (
@@ -92,14 +93,14 @@ export function UnlockFlow(props: { onUnlocked: (u: Unlocked) => void; onCreate:
         </div>
       )}
       {!notFound && !choices && (
-        <div className="actions">
+        <ActionBar>
           <button onClick={go} disabled={busy}>
             {S.unlock.button}
           </button>
           <button className="secondary" onClick={props.onCancel} disabled={busy}>
             {S.back}
           </button>
-        </div>
+        </ActionBar>
       )}
     </section>
   );

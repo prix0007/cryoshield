@@ -51,8 +51,8 @@
   - an import failure leaves the page static with no thrown error.
 
   Then implement `src/landing/main.ts` and `src/landing/motion.ts` (`motion/mini` animate + `scroll` + `inView`).
-- [ ] 3.3 Write `src/landing/landing.css` (tiles, global nav with `<details>` menu ≤ 833px, frosted sub-nav, hero CSS animation, reduced-motion overrides, responsive hero sizes). Verify with E2E 3.4.
-- [ ] 3.4 Add `e2e/specs/05-landing.spec.ts` covering:
+- [x] 3.3 Write `src/landing/landing.css` (tiles, global nav with `<details>` menu ≤ 833px, frosted sub-nav, hero CSS animation, reduced-motion overrides, responsive hero sizes). Verify with E2E 3.4.
+- [x] 3.4 Add `e2e/specs/05-landing.spec.ts` covering:
   - render and the disclosures;
   - axe at 1280px and 375px;
   - keyboard Tab reaches "Open the app" and every footer link, with a visible focus ring;
@@ -65,7 +65,7 @@
 
 ## 4. App restyle
 
-- [ ] 4.1 Write failing unit tests in `test/ui/components.test.tsx`:
+- [x] 4.1 Write failing unit tests in `test/ui/components.test.tsx`:
   - `GlobalNav` (link to `/`, menu summary ≥ 44px class, landmark);
   - `SubNav` (surface name, Testnet chip);
   - `ActionBar` (keeps children in order);
@@ -75,8 +75,8 @@
   - `EmptyState`.
 
   Implement the components until they pass.
-- [ ] 4.2 Apply the components and classes to `App`, `CreateFlow`, `UnlockFlow` and `VaultView`, with no logic or message changes. Add the secrets-editor `aria-invalid` on over-capacity, and the empty-vault state. Verify that all existing unit tests pass unchanged (except for new assertions), plus a new test for the over-capacity `aria-invalid` and the empty vault.
-- [ ] 4.3 Rewrite `src/ui/global.css` on the tokens:
+- [x] 4.2 Apply the components and classes to `App`, `CreateFlow`, `UnlockFlow` and `VaultView`, with no logic or message changes. Add the secrets-editor `aria-invalid` on over-capacity, and the empty-vault state. Verify that all existing unit tests pass unchanged (except for new assertions), plus a new test for the over-capacity `aria-invalid` and the empty vault.
+- [x] 4.3 Rewrite `src/ui/global.css` on the tokens:
   - 17px body;
   - pills with `scale(0.95)`;
   - cards;
@@ -86,11 +86,11 @@
   - the reduced-motion overrides.
 
   Verify with the axe unit test (contrast enabled for the tokens test) and the E2E 4.4.
-- [ ] 4.4 Update the E2E fixtures and specs for `/app/`. In `30-a11y.spec.ts`, raise the target check to 44×44 for buttons, inputs and standalone links, and add a sticky-bar focus-not-obscured check on a short viewport. Verify that the full `pnpm test:e2e` passes.
+- [x] 4.4 Update the E2E fixtures and specs for `/app/`. In `30-a11y.spec.ts`, raise the target check to 44×44 for buttons, inputs and standalone links, and add a sticky-bar focus-not-obscured check on a short viewport. Verify that the full `pnpm test:e2e` passes.
 
 ## 5. Screenshots and docs
 
-- [ ] 5.1 Capture headless Playwright screenshots of the landing page (desktop, phone, reduced motion) and the app home/unlock/error states into `apps/web/docs/screenshots/`. Verify that the files exist.
+- [x] 5.1 Capture headless Playwright screenshots of the landing page (desktop, phone, reduced motion) and the app home/unlock/error states into `apps/web/docs/screenshots/`. Verify that the files exist.
 
 ## 6. Reviews
 

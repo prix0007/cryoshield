@@ -1,5 +1,6 @@
 /** Task 9.1: network allowlist, empty storage, no PRF output on the wire, CSP blocks injected inline script. */
 import { expect, test } from '@playwright/test';
+import { APP } from '../fixtures/routes';
 import { ArweaveStub } from '../fixtures/arweave';
 import { VirtualKeys } from '../fixtures/webauthn';
 import { createVault, unlockWith } from '../fixtures/app';
@@ -29,7 +30,7 @@ test('every flow: only configured origins, nothing stored, PRF outputs never sen
 
   const arweave = new ArweaveStub();
   await arweave.install(page);
-  await page.goto('/');
+  await page.goto(APP);
   const keys = await VirtualKeys.attach(page);
   await keys.add();
   await keys.add();

@@ -110,6 +110,8 @@ export const S = {
     idleWarning: 'For your safety, your vault will lock in 30 seconds.',
     stillHere: 'I’m still here',
     locked: 'Your vault is locked.',
+    empty: 'Your vault has no secrets yet. Use “Edit secrets” to add one.',
+    surface: 'Your vault',
   },
 
   edit: {
