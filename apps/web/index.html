@@ -4,6 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="referrer" content="no-referrer" />
+    <link rel="icon" href="data:," />
     <meta name="description" content="CryoShield keeps seed phrases and recovery codes sealed in your browser and unlocked only by your own security keys. Testnet preview, not yet audited." />
     <title>CryoShield · Backups that outlive the drive</title>
     <script type="module" src="/src/landing/main.ts"></script>
@@ -20,7 +21,7 @@
           </a>
           <ul class="global-nav-links">
             <li><a href="#how">How it works</a></li>
-            <li><a href="#keys-only">Security</a></li>
+            <li><a href="#lose-a-key">Security</a></li>
             <li><a href="#survives">Recovery</a></li>
             <li><a href="#faq">FAQ</a></li>
             <li><a href="https://github.com/prix0007/cryoshield" rel="noopener noreferrer">GitHub</a></li>
@@ -29,7 +30,7 @@
             <summary aria-label="Menu"><span class="nav-menu-icon" aria-hidden="true"></span></summary>
             <ul>
               <li><a href="#how">How it works</a></li>
-              <li><a href="#keys-only">Security</a></li>
+              <li><a href="#lose-a-key">Security</a></li>
               <li><a href="#survives">Recovery</a></li>
               <li><a href="#faq">FAQ</a></li>
               <li><a href="https://github.com/prix0007/cryoshield" rel="noopener noreferrer">GitHub</a></li>
@@ -47,188 +48,302 @@
     </header>
 
     <main id="main" tabindex="-1">
-      <!-- HERO (light) -->
-      <section id="hero" class="tile tile-light hero" data-story aria-labelledby="hero-title">
-        <h1 id="hero-title" class="hero-title">Backups that outlive the drive.</h1>
-        <p class="tile-lead">Seed phrases and recovery codes, sealed in your browser and unlocked only by the security keys you hold.</p>
+      <!-- HERO: kinetic type + a key that drifts in, docks and is "tapped" (CSS only) -->
+      <section id="hero" class="tile tile-light hero" aria-labelledby="hero-title">
+        <div class="visual hero-visual" data-parallax>
+          <svg class="graphic g-hero" viewBox="0 0 640 300" aria-hidden="true" focusable="false">
+            <ellipse class="hero-floor" cx="400" cy="262" rx="210" ry="14" />
+            <g class="hero-shield">
+              <path class="shape-ink-soft" d="M470 30 386 62v74c0 58 36 106 84 124 48-18 84-66 84-124V62l-84-32Z" />
+              <path class="shape-accent-line" d="M470 92v96M429 116l82 48M429 164l82-48" />
+              <rect class="hero-port" x="372" y="132" width="20" height="36" rx="4" />
+            </g>
+            <g class="hero-key">
+              <rect class="shape-dark" x="160" y="118" width="170" height="64" rx="18" />
+              <rect class="shape-metal" x="330" y="133" width="40" height="34" rx="4" />
+              <rect class="shape-metal-dark" x="337" y="141" width="26" height="6" rx="1" />
+              <rect class="shape-metal-dark" x="337" y="153" width="26" height="6" rx="1" />
+              <circle class="shape-ring" cx="184" cy="150" r="9" />
+              <circle class="hero-pulse" cx="256" cy="150" r="22" />
+              <circle class="hero-pulse hero-pulse-2" cx="256" cy="150" r="22" />
+              <circle class="shape-pad" cx="256" cy="150" r="18" />
+            </g>
+          </svg>
+        </div>
+        <h1 id="hero-title" class="hero-title" aria-label="Backups that outlive the drive."><span class="w">Backups</span> <span class="w">that</span> <span class="w">outlive</span> <span class="w">the</span> <span class="w w-accent">drive.</span></h1>
+        <p class="tile-lead hero-lead">Seed phrases and recovery codes, sealed in your browser and unlocked only by the security keys you hold.</p>
         <p class="ctas">
-          <a class="pill pill-primary pill-large" href="/app/">Open the app</a>
-          <a class="pill pill-secondary pill-large" href="#how">How it works</a>
+          <a class="pill pill-primary pill-large magnetic" href="/app/">Open the app</a>
+          <a class="pill pill-secondary pill-large magnetic" href="#how">How it works</a>
         </p>
         <p class="status-strip">
           <strong>Testnet preview.</strong> CryoShield runs on OP Sepolia, a test network, and has not been independently audited. Please don’t rely on it as your only backup yet.
         </p>
-        <div class="visual">
-          <svg class="graphic g-hero" viewBox="0 0 480 280" aria-hidden="true" focusable="false">
-            <g class="hero-shield">
-              <path class="shape-ink-soft" d="M330 46 266 70v54c0 44 27 80 64 94 37-14 64-50 64-94V70l-64-24Z" />
-              <path class="shape-accent-line" d="M330 92v76M297 111l66 38M297 149l66-38" />
-            </g>
-            <g class="hero-key">
-              <rect class="shape-dark" x="70" y="112" width="150" height="62" rx="16" />
-              <rect class="shape-metal" x="220" y="126" width="34" height="34" rx="4" />
-              <rect class="shape-metal-dark" x="226" y="134" width="22" height="6" rx="1" />
-              <rect class="shape-metal-dark" x="226" y="146" width="22" height="6" rx="1" />
-              <circle class="shape-ring" cx="92" cy="143" r="9" />
-              <circle class="hero-pulse" cx="160" cy="143" r="20" />
-              <circle class="hero-pulse hero-pulse-2" cx="160" cy="143" r="20" />
-              <circle class="shape-pad" cx="160" cy="143" r="17" />
-            </g>
-          </svg>
+      </section>
+
+      <!-- NUMBERS -->
+      <section id="numbers" class="tile tile-parchment numbers" aria-labelledby="numbers-title">
+        <h2 id="numbers-title" class="numbers-title">By the numbers.</h2>
+        <ul class="stats">
+          <li><span class="stat-value" data-count="1">1</span><span class="stat-label">tap to open your vault</span></li>
+          <li><span class="stat-value" data-count="2" data-suffix="+">2+</span><span class="stat-label">keys enrolled, any one opens it</span></li>
+          <li><span class="stat-value" data-count="0">0</span><span class="stat-label">copies of your secrets or keys we hold</span></li>
+          <li><span class="stat-value" data-count="0" data-prefix="$">$0</span><span class="stat-label">network fees for you, sponsored</span></li>
+          <li><span class="stat-value" data-count="1" data-prefix="~" data-suffix=" KB">~1 KB</span><span class="stat-label">per vault, sealed</span></li>
+        </ul>
+      </section>
+
+      <!-- SCENE 1: fragile media over a decade -->
+      <section id="fragile" class="scene tile-dark" data-scene="fragile" aria-labelledby="fragile-title">
+        <div class="scene-track">
+          <div class="scene-stage">
+            <div class="scene-copy">
+              <p class="eyebrow">01 · The problem</p>
+              <h2 id="fragile-title" class="scene-title">Drives fail. Paper fades.</h2>
+              <p class="scene-lead">Thumb drives, notebooks and hard disks wear out, get lost, or burn. Most backups of a seed phrase are one bad day away from gone.</p>
+              <p class="scene-year" aria-hidden="true"><span class="year" data-from="2026" data-to="2036">2036</span></p>
+            </div>
+            <div class="scene-visual">
+              <svg class="graphic g-fragile" viewBox="0 0 600 360" aria-hidden="true" focusable="false">
+                <g class="fr-item fr-drive">
+                  <rect class="fr-body" x="40" y="150" width="120" height="56" rx="12" />
+                  <rect class="fr-plug" x="160" y="162" width="34" height="32" rx="3" />
+                  <path class="fr-crack" d="M70 150l14 18-10 12 16 10-8 16" pathLength="1" />
+                  <text class="fr-label" x="110" y="250" text-anchor="middle">Thumb drive</text>
+                </g>
+                <g class="fr-item fr-paper">
+                  <rect class="fr-sheet" x="240" y="96" width="120" height="156" rx="4" />
+                  <rect class="fr-line" x="256" y="120" width="88" height="6" rx="3" />
+                  <rect class="fr-line" x="256" y="138" width="72" height="6" rx="3" />
+                  <rect class="fr-line" x="256" y="156" width="84" height="6" rx="3" />
+                  <rect class="fr-line" x="256" y="174" width="60" height="6" rx="3" />
+                  <rect class="fr-line" x="256" y="192" width="80" height="6" rx="3" />
+                  <text class="fr-label" x="300" y="290" text-anchor="middle">Paper</text>
+                </g>
+                <g class="fr-item fr-disk">
+                  <rect class="fr-case" x="420" y="110" width="140" height="130" rx="10" />
+                  <circle class="fr-platter" cx="490" cy="175" r="46" />
+                  <circle class="fr-spindle" cx="490" cy="175" r="8" />
+                  <rect class="fr-bad" x="466" y="140" width="14" height="10" />
+                  <rect class="fr-bad" x="500" y="186" width="18" height="10" />
+                  <rect class="fr-bad" x="470" y="196" width="10" height="10" />
+                  <path class="fr-arm" d="M548 128l-40 44" />
+                  <text class="fr-label" x="490" y="280" text-anchor="middle">Hard disk</text>
+                </g>
+              </svg>
+            </div>
+          </div>
         </div>
       </section>
 
-      <!-- HOW IT WORKS (dark) -->
-      <section id="how" class="tile tile-dark" data-story aria-labelledby="how-title">
-        <h2 id="how-title" class="tile-title">How it works.</h2>
-        <p class="tile-lead">Three steps, and the first two never leave your device.</p>
-        <p class="ctas">
-          <a class="pill pill-primary" href="/app/">Open the app</a>
-          <a class="pill pill-secondary" href="https://github.com/prix0007/cryoshield/blob/main/docs/spec/vault-format-v1.md" rel="noopener noreferrer">Read the vault format</a>
-        </p>
-        <div class="visual">
-          <svg class="graphic g-how" viewBox="0 0 600 200" aria-hidden="true" focusable="false" data-motion="how">
-            <path class="how-track" d="M100 100H500" />
-            <path class="how-progress" d="M100 100H500" pathLength="1" />
-            <g class="how-node how-node-1">
-              <circle class="node-bg" cx="100" cy="100" r="54" />
-              <rect class="node-ink" x="76" y="88" width="40" height="24" rx="7" />
-              <rect class="node-ink" x="116" y="94" width="10" height="12" rx="2" />
-              <circle class="node-accent" cx="94" cy="100" r="6" />
-            </g>
-            <g class="how-node how-node-2">
-              <circle class="node-bg" cx="300" cy="100" r="54" />
-              <path class="node-line how-shackle" d="M286 96V84a14 14 0 0 1 28 0v12" />
-              <rect class="node-ink" x="280" y="94" width="40" height="32" rx="6" />
-              <circle class="node-accent" cx="300" cy="108" r="4" />
-            </g>
-            <g class="how-node how-node-3">
-              <circle class="node-bg" cx="500" cy="100" r="54" />
-              <rect class="node-ink" x="476" y="74" width="30" height="18" rx="3" />
-              <rect class="node-ink" x="482" y="96" width="30" height="18" rx="3" />
-              <rect class="node-ink" x="488" y="118" width="30" height="18" rx="3" />
-              <rect class="node-accent" x="512" y="74" width="14" height="14" rx="3" />
-            </g>
-          </svg>
-        </div>
-        <ol class="steps">
-          <li>
-            <h3>Tap your key</h3>
-            <p>Your security key (a YubiKey 5 or another FIDO2 key that supports the PRF extension) produces a secret that only it can make, and only for this site.</p>
-          </li>
-          <li>
-            <h3>Sealed in your browser</h3>
-            <p>That secret locks your vault with AES-256-GCM on your own device. Your secrets are never sent anywhere unencrypted.</p>
-          </li>
-          <li>
-            <h3>Stored on-chain and on Arweave</h3>
-            <p>The sealed vault (about 1 KB) is written to a public blockchain, OP Sepolia during this test phase, and a copy goes to the Arweave permanent archive.</p>
-          </li>
-        </ol>
-      </section>
-
-      <!-- ONLY YOUR KEYS (light) -->
-      <section id="keys-only" class="tile tile-parchment" data-story aria-labelledby="keys-title">
-        <h2 id="keys-title" class="tile-title">Only your keys open it.</h2>
-        <p class="tile-lead">CryoShield has no backend, no account and no copy of your keys: this site only serves the page you’re reading. What gets stored is locked data that only one of your own keys can open, so we couldn’t read your secrets even if we wanted to.</p>
-        <p class="ctas">
-          <a class="pill pill-primary" href="/app/">Open the app</a>
-          <a class="pill pill-secondary" href="https://github.com/prix0007/cryoshield/blob/main/apps/web/docs/security-review.md" rel="noopener noreferrer">Read the security review</a>
-        </p>
-        <div class="visual">
-          <svg class="graphic g-sealed" viewBox="0 0 480 260" aria-hidden="true" focusable="false" data-motion="sealed">
-            <rect class="card-surface subject" x="110" y="40" width="260" height="180" rx="18" />
-            <rect class="cipher-row" x="140" y="72" width="140" height="10" rx="5" />
-            <rect class="cipher-row" x="140" y="96" width="180" height="10" rx="5" />
-            <rect class="cipher-row" x="140" y="120" width="110" height="10" rx="5" />
-            <rect class="cipher-row" x="140" y="144" width="160" height="10" rx="5" />
-            <g class="sealed-lock">
-              <path class="lock-shackle" d="M322 168v-14a18 18 0 0 1 36 0v14" />
-              <rect class="lock-body" x="314" y="166" width="52" height="40" rx="8" />
-              <circle class="lock-hole" cx="340" cy="184" r="5" />
-            </g>
-          </svg>
+      <!-- SCENE 2: the tap -->
+      <section id="how" class="scene tile-light" data-scene="tap" aria-labelledby="how-title">
+        <div class="scene-track">
+          <div class="scene-stage">
+            <div class="scene-copy">
+              <p class="eyebrow">02 · How it works</p>
+              <h2 id="how-title" class="scene-title">One tap. Sealed in your browser.</h2>
+              <p class="scene-lead">Tap your security key and it produces a secret only it can make, for this site only. Your browser uses it to lock your vault with AES-256-GCM before anything leaves your device. Only your keys can open it: CryoShield never sees your secrets or your keys.</p>
+              <p class="ctas ctas-left">
+                <a class="pill pill-secondary" href="https://github.com/prix0007/cryoshield/blob/main/docs/spec/vault-format-v1.md" rel="noopener noreferrer">Read the vault format</a>
+              </p>
+            </div>
+            <div class="scene-visual">
+              <svg class="graphic g-tap" viewBox="0 0 600 360" aria-hidden="true" focusable="false">
+                <g class="tp-key">
+                  <rect class="shape-dark" x="20" y="150" width="110" height="46" rx="14" />
+                  <rect class="shape-metal" x="130" y="160" width="26" height="26" rx="3" />
+                  <circle class="tp-pad" cx="78" cy="173" r="12" />
+                </g>
+                <rect class="tp-beam" x="156" y="169" width="150" height="8" rx="4" />
+                <g class="tp-panel">
+                  <rect class="tp-card" x="300" y="70" width="190" height="206" rx="16" />
+                  <text class="tp-text" x="318" y="112" data-plain="abandon ability">245570f986a1a19</text>
+                  <text class="tp-text" x="318" y="140" data-plain="able about above">240ffa5a224bbeef</text>
+                  <text class="tp-text" x="318" y="168" data-plain="absent absorb">246f54da8367b</text>
+                  <text class="tp-text" x="318" y="196" data-plain="abstract absurd">2466aadd66d3e1a</text>
+                  <text class="tp-text" x="318" y="224" data-plain="abuse access">245f7b413e53</text>
+                </g>
+                <g class="tp-door">
+                  <circle class="tp-door-ring" cx="540" cy="173" r="44" />
+                  <path class="tp-door-spokes" d="M540 137v72M504 173h72M515 148l50 50M565 148l-50 50" />
+                  <circle class="tp-door-hub" cx="540" cy="173" r="10" />
+                </g>
+              </svg>
+            </div>
+          </div>
         </div>
       </section>
 
-      <!-- LOSE A KEY (dark 2) -->
-      <section id="lose-a-key" class="tile tile-dark-2" data-story aria-labelledby="lose-title">
-        <h2 id="lose-title" class="tile-title">Lose a key, not your vault.</h2>
-        <p class="tile-lead">You set up at least two keys, and any one of them opens your vault. Lost one? Open the vault with another and add a replacement.</p>
-        <p class="warning-line"><strong>If you lose every key, nobody can open the vault, not even us.</strong> There is no reset and no recovery service. Keep your keys in different places.</p>
-        <p class="ctas">
-          <a class="pill pill-primary" href="/app/">Open the app</a>
-          <a class="pill pill-secondary" href="#faq-lose">What if I lose a key?</a>
-        </p>
-        <div class="visual">
-          <svg class="graphic g-keys" viewBox="0 0 520 220" aria-hidden="true" focusable="false" data-motion="keys">
-            <g class="mini-key key-lost">
-              <rect x="40" y="96" width="100" height="40" rx="12" />
-              <rect x="140" y="106" width="22" height="20" rx="3" />
-            </g>
-            <path class="lost-mark" d="M70 70l40 40M110 70l-40 40" />
-            <g class="mini-key key-ok">
-              <rect x="200" y="96" width="100" height="40" rx="12" />
-              <rect x="300" y="106" width="22" height="20" rx="3" />
-              <circle class="mini-pad" cx="246" cy="116" r="10" />
-            </g>
-            <g class="vault-lock">
-              <path class="vault-shackle" d="M412 110V88a26 26 0 0 1 52 0v6" />
-              <rect class="lock-body-dark" x="398" y="106" width="80" height="62" rx="12" />
-              <path class="check" d="M422 138l12 12 22-24" />
-            </g>
-          </svg>
+      <!-- SCENE 3: chain + Arweave -->
+      <section id="stored" class="scene tile-dark" data-scene="chain" aria-labelledby="stored-title">
+        <div class="scene-track">
+          <div class="scene-stage">
+            <div class="scene-copy">
+              <p class="eyebrow">03 · Where it lives</p>
+              <h2 id="stored-title" class="scene-title">Stored on-chain. Copied to Arweave.</h2>
+              <p class="scene-lead">The sealed vault, about 1 KB, is written to a public blockchain (OP Sepolia during this test phase), and a copy goes to Arweave’s permanent archive. Anyone can see the locked data. Only your keys can open it.</p>
+            </div>
+            <div class="scene-visual">
+              <svg class="graphic g-chain" viewBox="0 0 600 360" aria-hidden="true" focusable="false">
+                <path class="ch-rail" d="M60 120H560" />
+                <rect class="ch-block ch-b1" x="90" y="96" width="56" height="48" rx="8" />
+                <rect class="ch-block ch-b2" x="180" y="96" width="56" height="48" rx="8" />
+                <rect class="ch-block ch-b3" x="270" y="96" width="56" height="48" rx="8" />
+                <rect class="ch-block ch-b4" x="360" y="96" width="56" height="48" rx="8" />
+                <rect class="ch-block ch-b5 ch-block-yours" x="450" y="96" width="56" height="48" rx="8" />
+                <rect class="ch-blob" x="20" y="108" width="24" height="24" rx="5" />
+                <text class="ch-label" x="478" y="76" text-anchor="middle">your vault</text>
+                <path class="ch-stream" d="M478 150V262" pathLength="1" />
+                <rect class="ch-archive" x="80" y="262" width="460" height="54" rx="12" />
+                <rect class="ch-copy" x="466" y="276" width="24" height="24" rx="5" />
+                <text class="ch-label ch-label-dim" x="110" y="296">Arweave archive</text>
+                <text class="ch-label ch-label-dim" x="60" y="176">Public blockchain</text>
+              </svg>
+            </div>
+          </div>
         </div>
       </section>
 
-      <!-- SURVIVES US (light) -->
-      <section id="survives" class="tile tile-light" data-story aria-labelledby="survives-title">
-        <h2 id="survives-title" class="tile-title">Survives us too.</h2>
-        <p class="tile-lead">An open-source desktop recovery tool opens your vault with just your key. It reads the vault straight from the public blockchain or Arweave, so it keeps working even if this website and CryoShield disappear.</p>
-        <p class="ctas">
-          <a class="pill pill-primary" href="https://github.com/prix0007/cryoshield/tree/main/tools/recover#readme" rel="noopener noreferrer">Recovery tool docs</a>
-          <a class="pill pill-secondary" href="https://github.com/prix0007/cryoshield" rel="noopener noreferrer">View the source</a>
-        </p>
-        <div class="visual">
-          <svg class="graphic g-recover" viewBox="0 0 520 260" aria-hidden="true" focusable="false" data-motion="recover">
-            <g class="site-offline">
-              <circle cx="80" cy="120" r="44" />
-              <path d="M36 120h88M80 76c-18 22-18 66 0 88M80 76c18 22 18 66 0 88" />
-              <path class="offline-slash" d="M44 84l72 72" />
-            </g>
-            <rect class="terminal subject" x="160" y="36" width="320" height="188" rx="14" />
-            <circle class="terminal-dot" cx="182" cy="56" r="5" />
-            <circle class="terminal-dot" cx="198" cy="56" r="5" />
-            <circle class="terminal-dot" cx="214" cy="56" r="5" />
-            <text class="term-line" x="180" y="100">$ cryoshield-recover</text>
-            <text class="term-line term-dim" x="180" y="128">Touch your key…</text>
-            <text class="term-line term-dim" x="180" y="156">Vault found on the public chain</text>
-            <text class="term-line term-ok" x="180" y="184">Unlocked. Type show to reveal.</text>
-          </svg>
+      <!-- SCENE 4: lose a key -->
+      <section id="lose-a-key" class="scene tile-dark-2" data-scene="lose" aria-labelledby="lose-title">
+        <div class="scene-track">
+          <div class="scene-stage">
+            <div class="scene-copy">
+              <p class="eyebrow">04 · Resilience</p>
+              <h2 id="lose-title" class="scene-title">Lose a key, not your vault.</h2>
+              <p class="scene-lead">You set up at least two keys, and any one of them opens your vault. Lost one? Open the vault with another and add a replacement.</p>
+              <p class="warning-line"><strong>If you lose every key, nobody can open the vault, not even us.</strong> There is no reset and no recovery service. Keep your keys in different places.</p>
+              <p class="ctas ctas-left">
+                <a class="pill pill-secondary" href="#faq-lose">What if I lose a key?</a>
+              </p>
+            </div>
+            <div class="scene-visual">
+              <svg class="graphic g-lose" viewBox="0 0 600 360" aria-hidden="true" focusable="false">
+                <g class="ls-key1">
+                  <polygon class="ls-shard ls-s1" points="40,120 80,120 74,150 40,150" />
+                  <polygon class="ls-shard ls-s2" points="80,120 120,120 112,142 74,150" />
+                  <polygon class="ls-shard ls-s3" points="120,120 150,120 150,150 112,142" />
+                  <polygon class="ls-shard ls-s4" points="40,150 74,150 70,164 40,164" />
+                  <polygon class="ls-shard ls-s5" points="74,150 112,142 120,164 70,164" />
+                  <polygon class="ls-shard ls-s6" points="112,142 150,150 150,164 120,164" />
+                  <rect class="ls-shard ls-s7" x="150" y="128" width="22" height="28" rx="3" />
+                </g>
+                <g class="ls-key2">
+                  <rect class="ls-body" x="40" y="220" width="110" height="44" rx="12" />
+                  <rect class="ls-plug" x="150" y="230" width="22" height="24" rx="3" />
+                  <circle class="ls-pad" cx="95" cy="242" r="10" />
+                </g>
+                <g class="ls-lock">
+                  <path class="ls-shackle" d="M432 186v-34a38 38 0 0 1 76 0v10" />
+                  <rect class="ls-lockbody" x="412" y="182" width="116" height="92" rx="16" />
+                  <rect class="ls-slot" x="460" y="222" width="20" height="14" rx="3" />
+                  <path class="ls-check" d="M446 230l16 16 30-32" pathLength="1" />
+                </g>
+              </svg>
+            </div>
+          </div>
         </div>
       </section>
 
-      <!-- FREE (dark 3) -->
-      <section id="free" class="tile tile-dark-3" data-story aria-labelledby="free-title">
+      <!-- SCENE 5: survives us -->
+      <section id="survives" class="scene tile-light" data-scene="survive" aria-labelledby="survives-title">
+        <div class="scene-track">
+          <div class="scene-stage">
+            <div class="scene-copy">
+              <p class="eyebrow">05 · Independence</p>
+              <h2 id="survives-title" class="scene-title">Survives us too.</h2>
+              <p class="scene-lead">An open-source desktop recovery tool opens your vault with just your key. It reads the vault straight from the public blockchain or Arweave, so it keeps working even if this website and CryoShield disappear.</p>
+              <p class="ctas ctas-left">
+                <a class="pill pill-primary" href="https://github.com/prix0007/cryoshield/tree/main/tools/recover#readme" rel="noopener noreferrer">Recovery tool docs</a>
+                <a class="pill pill-secondary" href="https://github.com/prix0007/cryoshield" rel="noopener noreferrer">View the source</a>
+              </p>
+            </div>
+            <div class="scene-visual">
+              <svg class="graphic g-survive" viewBox="0 0 600 360" aria-hidden="true" focusable="false">
+                <g class="sv-site">
+                  <rect class="sv-window" x="20" y="40" width="300" height="200" rx="14" />
+                  <rect class="sv-bar" x="20" y="40" width="300" height="34" rx="14" />
+                  <text class="sv-url" x="44" y="63">cryoshield.app</text>
+                  <rect class="sv-block" x="50" y="100" width="180" height="14" rx="7" />
+                  <rect class="sv-block" x="50" y="126" width="230" height="14" rx="7" />
+                  <rect class="sv-block" x="50" y="152" width="140" height="14" rx="7" />
+                  <text class="sv-offline" x="170" y="214" text-anchor="middle">offline</text>
+                </g>
+                <g class="sv-term">
+                  <rect class="terminal subject" x="230" y="120" width="350" height="200" rx="14" />
+                  <circle class="terminal-dot" cx="252" cy="140" r="5" />
+                  <circle class="terminal-dot" cx="268" cy="140" r="5" />
+                  <circle class="terminal-dot" cx="284" cy="140" r="5" />
+                  <text class="term-line sv-l1" x="252" y="184">$ cryoshield-recover</text>
+                  <text class="term-line term-dim sv-l2" x="252" y="212">Touch your key…</text>
+                  <text class="term-line term-dim sv-l3" x="252" y="240">Vault found on the public chain</text>
+                  <text class="term-line term-ok sv-l4" x="252" y="268">Unlocked. Type show to reveal.</text>
+                </g>
+              </svg>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- SCENE 6: permanence timeline -->
+      <section id="timeline" class="scene tile-dark-3" data-scene="timeline" aria-labelledby="timeline-title">
+        <div class="scene-track">
+          <div class="scene-stage">
+            <div class="scene-copy">
+              <p class="eyebrow">06 · Time</p>
+              <h2 id="timeline-title" class="scene-title">Built for decades.</h2>
+              <p class="scene-lead">Your vault stays readable as long as the blockchain or the Arweave copy exists, and at least one of your keys still works. Arweave is designed to pay for storage for at least 200 years. No one can promise any technology lasts that long, so keep your keys safe and check them now and then.</p>
+              <p class="scene-year" aria-hidden="true"><span class="year" data-from="2026" data-to="2126">2126</span></p>
+            </div>
+            <div class="scene-visual">
+              <svg class="graphic g-timeline" viewBox="0 0 600 360" aria-hidden="true" focusable="false">
+                <g class="tl-ruler">
+                  <path class="tl-axis" d="M0 250H2600" />
+                  <path class="tl-ticks" d="M300 236v28 M400 240v20 M500 236v28 M600 240v20 M700 236v28 M800 240v20 M900 236v28 M1000 240v20 M1100 236v28 M1200 240v20 M1300 236v28 M1400 240v20 M1500 236v28 M1600 240v20 M1700 236v28 M1800 240v20 M1900 236v28 M2000 240v20 M2100 236v28 M2200 240v20 M2300 236v28" />
+                  <text class="tl-year" x="300" y="296" text-anchor="middle">2026</text>
+                  <text class="tl-year" x="700" y="296" text-anchor="middle">2046</text>
+                  <text class="tl-year" x="1100" y="296" text-anchor="middle">2066</text>
+                  <text class="tl-year" x="1500" y="296" text-anchor="middle">2086</text>
+                  <text class="tl-year" x="1900" y="296" text-anchor="middle">2106</text>
+                  <text class="tl-year" x="2300" y="296" text-anchor="middle">2126</text>
+                </g>
+                <g class="tl-vault">
+                  <rect class="tl-glow" x="236" y="64" width="128" height="128" rx="28" />
+                  <rect class="tl-box" x="248" y="76" width="104" height="104" rx="22" />
+                  <path class="tl-shackle" d="M282 100v-12a18 18 0 0 1 36 0v12" />
+                  <rect class="tl-body" x="272" y="98" width="56" height="44" rx="8" />
+                  <path class="tl-marker" d="M300 196v40" />
+                </g>
+              </svg>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- FREE -->
+      <section id="free" class="tile tile-parchment" aria-labelledby="free-title">
         <h2 id="free-title" class="tile-title">Free to use.</h2>
         <p class="tile-lead">CryoShield pays the network fee each time your vault is saved, so you don’t need a crypto wallet or any cryptocurrency. You just need two security keys.</p>
-        <p class="fine">If fee sponsorship is ever paused, saving waits until it’s back. Opening your vault never depends on it.</p>
+        <p class="fine fine-light">If fee sponsorship is ever paused, saving waits until it’s back. Opening your vault never depends on it.</p>
         <p class="ctas">
           <a class="pill pill-primary" href="/app/">Open the app</a>
           <a class="pill pill-secondary" href="#faq">Read the FAQ</a>
         </p>
-        <div class="visual">
-          <svg class="graphic g-free" viewBox="0 0 480 240" aria-hidden="true" focusable="false" data-motion="free">
-            <rect class="receipt subject" x="140" y="20" width="200" height="200" rx="16" />
-            <rect class="receipt-row" x="164" y="52" width="100" height="10" rx="5" />
-            <rect class="receipt-row" x="164" y="76" width="140" height="10" rx="5" />
-            <path class="receipt-rule" d="M164 108h152" />
-            <text class="receipt-zero" x="240" y="182" text-anchor="middle">$0</text>
-          </svg>
-        </div>
       </section>
 
-      <!-- FAQ (light) -->
+      <!-- FINAL CTA -->
+      <section id="start" class="tile tile-black final-cta" aria-labelledby="start-title">
+        <h2 id="start-title" class="final-title">Back it up once.</h2>
+        <p class="tile-lead">Two security keys, one tap, and your seed phrase or recovery codes are sealed, stored, and yours alone.</p>
+        <p class="ctas">
+          <a class="pill pill-primary pill-large magnetic" href="/app/">Open the app</a>
+          <a class="pill pill-secondary pill-large magnetic" href="#faq">Read the FAQ</a>
+        </p>
+        <p class="fine">Testnet preview on OP Sepolia, not independently audited. Please keep your existing backups too.</p>
+      </section>
+
+      <!-- FAQ -->
       <section id="faq" class="tile tile-light faq" aria-labelledby="faq-title">
         <h2 id="faq-title" class="tile-title">Questions, answered.</h2>
         <div class="faq-list">
@@ -258,7 +373,7 @@
           </details>
           <details>
             <summary>What happens if CryoShield shuts down?</summary>
-            <p>Your vault stays on the public blockchain and on Arweave. The open-source desktop recovery tool can open it with your key without this website.</p>
+            <p>Your vault stays on the public blockchain and on Arweave. The open-source <a href="https://github.com/prix0007/cryoshield/tree/main/tools/recover#readme" rel="noopener noreferrer">desktop recovery tool</a> can open it with your key without this website.</p>
           </details>
         </div>
       </section>

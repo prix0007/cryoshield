@@ -27,22 +27,54 @@ describe('landing structure', () => {
     expect(doc.querySelector('footer')).not.toBeNull();
   });
 
-  it('presents the story tiles in order', () => {
+  it('presents the story in order: hero, numbers, six scenes, free, final CTA, FAQ', () => {
     const ids = [...doc.querySelectorAll('main > section')].map((s) => s.id);
-    expect(ids).toEqual(['hero', 'how', 'keys-only', 'lose-a-key', 'survives', 'free', 'faq']);
+    expect(ids).toEqual(['hero', 'numbers', 'fragile', 'how', 'stored', 'lose-a-key', 'survives', 'timeline', 'free', 'start', 'faq']);
     const h2 = [...doc.querySelectorAll('main > section h2')].map((h) => h.textContent?.trim());
-    expect(h2).toEqual(['How it works.', 'Only your keys open it.', 'Lose a key, not your vault.', 'Survives us too.', 'Free to use.', 'Questions, answered.']);
+    expect(h2).toEqual([
+      'By the numbers.',
+      'Drives fail. Paper fades.',
+      'One tap. Sealed in your browser.',
+      'Stored on-chain. Copied to Arweave.',
+      'Lose a key, not your vault.',
+      'Survives us too.',
+      'Built for decades.',
+      'Free to use.',
+      'Back it up once.',
+      'Questions, answered.',
+    ]);
   });
 
-  it('every story tile (and the hero) has one or two pill CTAs, and at least one leads somewhere real', () => {
-    const tiles = [...doc.querySelectorAll('main > section[data-story]')];
-    expect(tiles.length).toBe(6);
-    for (const t of tiles) {
-      const pills = [...t.querySelectorAll('a.pill')];
-      expect(pills.length, t.id).toBeGreaterThanOrEqual(1);
-      expect(pills.length, t.id).toBeLessThanOrEqual(2);
-      for (const p of pills) expect(p.getAttribute('href'), t.id).toMatch(/^(\/app\/|#[a-z-]+|https:\/\/github\.com\/prix0007\/cryoshield)/);
+  it('the six scenes are pinned-scene sections with a track, a sticky stage and a decorative visual', () => {
+    const scenes = [...doc.querySelectorAll('main > section[data-scene]')];
+    expect(scenes.map((s) => s.getAttribute('data-scene'))).toEqual(['fragile', 'tap', 'chain', 'lose', 'survive', 'timeline']);
+    for (const sc of scenes) {
+      expect(sc.querySelector(':scope > .scene-track > .scene-stage'), sc.id).not.toBeNull();
+      expect(sc.querySelector('.scene-stage h2'), sc.id).not.toBeNull();
+      expect(sc.querySelector('.scene-visual svg[aria-hidden="true"]'), sc.id).not.toBeNull();
+      expect(sc.querySelectorAll('a.pill').length, sc.id).toBeLessThanOrEqual(2);
     }
+  });
+
+  it('hero, Free to use and the final CTA each have one or two pills; every pill goes somewhere real', () => {
+    for (const id of ['hero', 'free', 'start']) {
+      const n = doc.querySelectorAll(`#${id} a.pill`).length;
+      expect(n, id).toBeGreaterThanOrEqual(1);
+      expect(n, id).toBeLessThanOrEqual(2);
+    }
+    for (const p of doc.querySelectorAll('main a.pill')) expect(p.getAttribute('href')).toMatch(/^(\/app\/|#[a-z-]+|https:\/\/github\.com\/prix0007\/cryoshield)/);
+  });
+
+  it('the numbers band shows its final values in the HTML (no JS needed)', () => {
+    const vals = [...doc.querySelectorAll('#numbers [data-count]')].map((e) => e.textContent?.trim());
+    expect(vals).toEqual(['1', '2+', '0', '$0', '~1 KB']);
+  });
+
+  it('the timeline names what permanence depends on', () => {
+    const t = (doc.querySelector('#timeline')?.textContent ?? '').replace(/\s+/g, ' ');
+    expect(t).toMatch(/blockchain/);
+    expect(t).toMatch(/Arweave/);
+    expect(t).toMatch(/at least one of your keys/);
   });
 
   it('the "Open the app" CTA goes to /app/', () => {
@@ -53,7 +85,7 @@ describe('landing structure', () => {
 
   it('every graphic is decorative (aria-hidden), carries no inline style, and its tile states its meaning in text', () => {
     const svgs = [...doc.querySelectorAll('main svg')];
-    expect(svgs.length).toBeGreaterThanOrEqual(6);
+    expect(svgs.length).toBeGreaterThanOrEqual(7);
     for (const s of svgs) {
       expect(s.getAttribute('aria-hidden')).toBe('true');
       expect(s.getAttribute('focusable')).toBe('false');
@@ -108,6 +140,10 @@ describe('honest copy', () => {
       /\bguarantee/i,
       /\bIPFS\b|\bENS\b/,
       /recover(y)? (after|without) (losing )?(all|every) keys?/i,
+      /guaranteed/i,
+      /\bforever\b/i,
+      /unbreakable/i,
+      /never lose/i,
     ];
     for (const b of banned) expect(text, String(b)).not.toMatch(b);
   });

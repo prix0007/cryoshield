@@ -117,14 +117,16 @@
   color: var(--body-muted);
 }
 
-/* ---- Visuals (motion graphics as "product photography") ---- */
+/* ==== Cinematic landing (cinematic-landing D1-D7) ====
+   One progress variable per scene stage, --p (0..1), written by scenes/runtime.ts. Every visual below depends on it
+   through transform/opacity only. Without JS, and under reduced motion, --p is 1: the scene's final key frame. */
+
 .visual {
   display: flex;
   justify-content: center;
 }
 .graphic {
   width: 100%;
-  max-width: 560px;
   height: auto;
   overflow: visible;
 }
@@ -136,10 +138,8 @@
   filter: var(--shadow-subject-svg);
 }
 
-/* Shared shape fills */
-.shape-dark,
-.node-ink,
-.lock-body-dark {
+/* Shared shapes */
+.shape-dark {
   fill: var(--ink);
 }
 .shape-ink-soft {
@@ -150,7 +150,7 @@
 .shape-accent-line {
   fill: none;
   stroke: var(--color-primary);
-  stroke-width: 8;
+  stroke-width: 9;
   stroke-linecap: round;
 }
 .shape-metal {
@@ -168,9 +168,36 @@
   fill: var(--color-primary-focus);
 }
 
-/* Hero: CSS-only pulse on the key's touch pad (0 bytes of JS). */
-.hero-key {
-  filter: var(--shadow-subject-svg);
+/* ---- Hero: kinetic type, docking key ---- */
+.hero {
+  padding-top: var(--space-lg);
+}
+.hero-title {
+  font-size: clamp(44px, 7.6vw, 104px);
+  line-height: 1;
+  letter-spacing: -0.03em;
+  max-width: 1200px;
+  margin-top: var(--space-sm);
+}
+.hero-title .w {
+  display: inline-block;
+}
+.w-accent {
+  color: var(--color-primary);
+}
+.hero-lead {
+  font-size: clamp(19px, 2.2vw, 28px);
+}
+.hero-visual {
+  max-width: 500px;
+  translate: 0 var(--py, 0px);
+}
+.hero-floor {
+  fill: var(--hairline);
+  opacity: 0.6;
+}
+.hero-port {
+  fill: var(--ink-muted-48);
 }
 .hero-pulse {
   fill: none;
@@ -179,201 +206,463 @@
   opacity: 0;
 }
 @media (prefers-reduced-motion: no-preference) {
-  .hero-pulse {
-    animation: pulse 2.4s ease-out infinite;
+  .hero-title .w {
+    animation: rise 0.9s cubic-bezier(0.2, 0.7, 0.2, 1) both;
   }
-  .hero-pulse-2 {
-    animation-delay: 1.2s;
+  .hero-title .w:nth-child(2) {
+    animation-delay: 0.06s;
+  }
+  .hero-title .w:nth-child(3) {
+    animation-delay: 0.12s;
+  }
+  .hero-title .w:nth-child(4) {
+    animation-delay: 0.18s;
+  }
+  .hero-title .w:nth-child(5) {
+    animation-delay: 0.26s;
   }
   .hero-key {
-    animation: float 6s ease-in-out infinite;
+    animation: dock 1.5s cubic-bezier(0.2, 0.8, 0.2, 1) 0.2s both;
+  }
+  .hero-pulse {
+    animation: pulse 2.4s ease-out 1.7s infinite;
+  }
+  .hero-pulse-2 {
+    animation-delay: 2.9s;
+  }
+  .shape-pad {
+    animation: tap 2.4s ease-out 1.7s infinite;
+  }
+}
+@keyframes rise {
+  from {
+    transform: translateY(0.45em) rotate(3deg);
+  }
+  to {
+    transform: none;
+  }
+}
+@keyframes dock {
+  from {
+    transform: translate(-300px, -36px) rotate(-10deg);
+  }
+  70% {
+    transform: translate(6px, 0) rotate(0.5deg);
+  }
+  to {
+    transform: none;
   }
 }
 @keyframes pulse {
   from {
     transform: scale(1);
-    opacity: 0.7;
+    opacity: 0.8;
   }
   to {
-    transform: scale(2.4);
+    transform: scale(2.6);
     opacity: 0;
   }
 }
-@keyframes float {
+@keyframes tap {
   0%,
   100% {
-    transform: translateY(0);
+    opacity: 1;
   }
-  50% {
-    transform: translateY(-6px);
+  8% {
+    opacity: 0.55;
   }
 }
 
-/* How it works: connector + three nodes. Final state = full progress, every node on. */
-.how-track,
-.how-progress {
-  fill: none;
-  stroke-width: 6;
-  stroke-linecap: round;
+/* ---- Numbers band ---- */
+.numbers-title {
+  font-size: var(--caption-size);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-muted-48);
+  margin: 0 0 var(--space-xl);
 }
-.how-track {
-  stroke: var(--ink-muted-48);
-}
-.how-progress {
-  stroke: var(--color-primary-on-dark);
-  stroke-dasharray: 1;
-  stroke-dashoffset: 0;
-}
-.g-how.armed .how-progress {
-  stroke-dashoffset: calc(1 - var(--how-p, 0));
-}
-.node-bg {
-  fill: var(--surface-black);
-  stroke: var(--color-primary-on-dark);
-  stroke-width: 3;
-}
-.node-ink {
-  fill: var(--body-on-dark);
-}
-.node-accent {
-  fill: var(--color-primary-on-dark);
-}
-.node-line {
-  fill: none;
-  stroke: var(--body-on-dark);
-  stroke-width: 6;
-  stroke-linecap: round;
-}
-.how-node {
-  transition:
-    opacity 0.3s ease,
-    transform 0.3s ease;
-}
-.g-how.armed .how-node:not(.is-on) {
-  opacity: 0.35;
-  transform: scale(0.9);
-}
-.steps {
+.stats {
   list-style: none;
+  margin: 0 auto;
   padding: 0;
-  margin-top: var(--space-xxl);
-  margin-bottom: 0;
+  max-width: var(--grid-w);
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: var(--space-lg);
+}
+.stats li {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+.stat-value {
+  font-size: clamp(48px, 6vw, 88px);
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+.stat-label {
+  font-size: var(--caption-size);
+  color: var(--ink-muted-48);
+}
+
+/* ---- Scenes: native sticky stages ---- */
+.scene {
+  --header: calc(var(--nav-h) + var(--subnav-h));
   text-align: left;
-  counter-reset: step;
 }
-.steps li {
-  counter-increment: step;
+.scene-stage {
+  --p: 1;
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: var(--space-xxl) var(--space-md);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
+  gap: var(--space-xxl);
+  align-items: center;
 }
-.steps h3 {
-  margin: 0 0 var(--space-xs);
-  font-size: var(--tagline-size);
-  line-height: 1.19;
+.scene-copy > :last-child {
+  margin-bottom: 0;
 }
-.steps h3::before {
-  content: counter(step) '. ';
+.eyebrow {
+  margin: 0 0 var(--space-sm);
+  font-size: var(--caption-size);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-primary);
+}
+.tile-dark .eyebrow,
+.tile-dark-2 .eyebrow,
+.tile-dark-3 .eyebrow {
   color: var(--color-primary-on-dark);
 }
-.steps p {
-  margin: 0;
+.scene-title {
+  margin: 0 0 var(--space-md);
+  font-size: clamp(34px, 4.6vw, 64px);
+  line-height: 1.04;
+  letter-spacing: -0.025em;
+}
+.scene-lead {
+  font-size: clamp(17px, 1.6vw, 21px);
+  line-height: 1.47;
+  margin: 0 0 var(--space-lg);
+}
+.tile-dark .scene-lead,
+.tile-dark-2 .scene-lead,
+.tile-dark-3 .scene-lead {
   color: var(--body-muted);
 }
-
-/* Only your keys: sealed card with ciphertext rows and a lock. */
-.card-surface {
-  fill: var(--canvas);
-  stroke: var(--hairline);
+.ctas-left {
+  justify-content: flex-start;
+  margin-bottom: 0;
 }
-.cipher-row {
-  fill: var(--hairline);
+.scene-year {
+  margin: var(--space-lg) 0 0;
+  font-size: clamp(64px, 9vw, 136px);
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-primary-on-dark);
 }
-.lock-shackle {
-  fill: none;
-  stroke: var(--ink);
-  stroke-width: 7;
-  stroke-linecap: round;
-}
-.lock-body {
-  fill: var(--color-primary);
-}
-.lock-hole {
-  fill: var(--canvas);
-}
-.g-sealed.armed:not(.in) .cipher-row {
-  opacity: 0;
-}
-.g-sealed.armed:not(.in) .lock-shackle {
-  transform: translateY(-14px);
+.scene-visual .graphic {
+  max-height: 62vh;
 }
 
-/* Lose a key: one key gone, another opens the lock. */
-.mini-key rect {
+/* Pin only where it is comfortable: motion allowed, wide and tall enough. Phones and short screens scroll normally
+   and play each scene as it passes (runtime.ts picks the offsets). No JS changes layout, so CLS stays 0. */
+@media (prefers-reduced-motion: no-preference) and (min-width: 641px) and (min-height: 560px) {
+  .scene-track {
+    height: 300vh;
+  }
+  .scene-stage {
+    position: sticky;
+    top: var(--header);
+    min-height: calc(100vh - var(--header));
+  }
+}
+
+/* Sub-ranges of --p: range(a, b) = clamp(0, (p - a) / (b - a), 1). */
+
+/* Scene 1: fragile media */
+.g-fragile {
+  --a: clamp(0, (var(--p) - 0.08) / 0.37, 1);
+  --b: clamp(0, (var(--p) - 0.3) / 0.4, 1);
+  --c: clamp(0, (var(--p) - 0.55) / 0.35, 1);
+}
+.fr-body,
+.fr-case {
   fill: var(--body-on-dark);
 }
-.mini-pad {
-  fill: var(--color-primary-on-dark);
+.fr-plug {
+  fill: var(--body-muted);
 }
-.key-lost {
-  opacity: 0.3;
-  transform: translateY(14px) rotate(-8deg);
-}
-.lost-mark {
+.fr-crack {
   fill: none;
-  stroke: var(--body-muted);
-  stroke-width: 5;
-  stroke-linecap: round;
-}
-.vault-shackle {
-  fill: none;
-  stroke: var(--body-on-dark);
-  stroke-width: 9;
-  stroke-linecap: round;
-  transform: translateY(-10px);
-}
-.lock-body-dark {
-  fill: var(--color-primary);
-}
-.check {
-  fill: none;
-  stroke: var(--body-on-dark);
-  stroke-width: 7;
+  stroke: var(--surface-tile-1);
+  stroke-width: 4;
   stroke-linecap: round;
   stroke-linejoin: round;
   stroke-dasharray: 1;
-  stroke-dashoffset: 0;
+  stroke-dashoffset: calc(1 - var(--a));
 }
-.g-keys.armed:not(.in) .key-lost {
-  opacity: 1;
-  transform: none;
+.fr-drive {
+  transform: translateY(calc(var(--a) * 8px)) rotate(calc(var(--a) * -7deg));
 }
-.g-keys.armed:not(.in) .lost-mark {
-  opacity: 0;
+.fr-sheet {
+  fill: var(--canvas-parchment);
+  opacity: calc(1 - 0.45 * var(--b));
 }
-.g-keys.armed:not(.in) .key-ok {
-  transform: translateX(-24px);
+.fr-paper {
+  transform: rotate(calc(var(--b) * 5deg));
 }
-.g-keys.armed:not(.in) .vault-shackle {
-  transform: none;
+.fr-line {
+  fill: var(--ink-muted-48);
+  opacity: calc(1 - 0.9 * var(--b));
 }
-.g-keys.armed:not(.in) .check {
-  stroke-dashoffset: 1;
+.fr-platter {
+  fill: var(--surface-tile-1);
 }
-
-/* Survives us: the website goes offline, the desktop tool still unlocks. */
-.site-offline circle,
-.site-offline path {
-  fill: none;
-  stroke: var(--ink-muted-48);
-  stroke-width: 4;
+.fr-spindle {
+  fill: var(--body-muted);
 }
-.site-offline .offline-slash {
-  stroke: var(--ink);
+.fr-bad {
+  fill: var(--color-primary-on-dark);
+  opacity: var(--c);
+}
+.fr-arm {
+  stroke: var(--surface-tile-1);
   stroke-width: 6;
   stroke-linecap: round;
+  transform-origin: 100% 0%;
+  transform: rotate(calc(var(--c) * -22deg));
+}
+.fr-label {
+  fill: var(--body-muted);
+  font-size: 16px;
+  font-family: var(--font-stack);
+}
+
+/* Scene 2: the tap */
+.g-tap {
+  --a: clamp(0, var(--p) / 0.15, 1);
+  --b: clamp(0, (var(--p) - 0.12) / 0.2, 1);
+  --c: clamp(0, (var(--p) - 0.65) / 0.3, 1);
+}
+.tp-key {
+  transform: translateX(calc((1 - var(--a)) * -70px));
+}
+.tp-pad {
+  fill: var(--color-primary-focus);
+}
+.tp-beam {
+  fill: var(--color-primary-focus);
+  filter: drop-shadow(0 0 10px var(--color-primary-focus));
+  transform-origin: 0% 50%;
+  transform: scaleX(var(--b));
+}
+.tp-card {
+  fill: var(--canvas);
+  stroke: var(--hairline);
+  stroke-width: 2;
+}
+.tp-text {
+  fill: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 17px;
+}
+.tp-door {
+  transform: rotate(calc((1 - var(--c)) * 140deg));
+}
+.tp-door-ring {
+  fill: var(--canvas-parchment);
+  stroke: var(--ink);
+  stroke-width: 6;
+}
+.tp-door-spokes {
+  stroke: var(--ink);
+  stroke-width: 5;
+  stroke-linecap: round;
+}
+.tp-door-hub {
+  fill: var(--color-primary);
+  opacity: var(--c);
+}
+
+/* Scene 3: chain + Arweave */
+.g-chain {
+  --a: clamp(0, (var(--p) - 0.05) / 0.4, 1);
+  --d: clamp(0, (var(--p) - 0.5) / 0.25, 1);
+  --e: clamp(0, (var(--p) - 0.6) / 0.3, 1);
+}
+.ch-rail {
+  stroke: var(--ink-muted-48);
+  stroke-width: 3;
+}
+.ch-block {
+  fill: var(--surface-tile-1);
+  stroke: var(--body-muted);
+  stroke-width: 2;
+}
+.ch-b1 {
+  opacity: clamp(0.15, var(--p) / 0.1, 1);
+}
+.ch-b2 {
+  opacity: clamp(0.15, (var(--p) - 0.08) / 0.1, 1);
+}
+.ch-b3 {
+  opacity: clamp(0.15, (var(--p) - 0.16) / 0.1, 1);
+}
+.ch-b4 {
+  opacity: clamp(0.15, (var(--p) - 0.24) / 0.1, 1);
+}
+.ch-b5 {
+  opacity: clamp(0.15, (var(--p) - 0.32) / 0.1, 1);
+}
+.ch-block-yours {
+  stroke: var(--color-primary-on-dark);
+  stroke-width: 3;
+}
+.ch-blob,
+.ch-copy {
+  fill: var(--color-primary-on-dark);
+  filter: drop-shadow(0 0 8px var(--color-primary-on-dark));
+}
+.ch-blob {
+  transform: translateX(calc(var(--a) * 446px));
+}
+.ch-stream {
+  fill: none;
+  stroke: var(--color-primary-on-dark);
+  stroke-width: 3;
+  stroke-dasharray: 0.04 0.03;
+  stroke-dashoffset: calc(1 - var(--d));
+  opacity: var(--d);
+}
+.ch-archive {
+  fill: var(--surface-black);
+  stroke: var(--ink-muted-48);
+  stroke-width: 2;
+}
+.ch-copy {
+  opacity: var(--e);
+  transform: translateY(calc((1 - var(--e)) * -120px));
+}
+.ch-label {
+  fill: var(--body-on-dark);
+  font-family: var(--font-stack);
+  font-size: 15px;
+}
+.ch-label-dim {
+  fill: var(--body-muted);
+}
+
+/* Scene 4: lose a key */
+.g-lose {
+  --a: clamp(0, (var(--p) - 0.12) / 0.33, 1);
+  --b: clamp(0, (var(--p) - 0.4) / 0.3, 1);
+  --c: clamp(0, (var(--p) - 0.72) / 0.13, 1);
+  --d: clamp(0, (var(--p) - 0.82) / 0.16, 1);
+}
+.ls-shard {
+  fill: var(--body-muted);
+  opacity: calc(1 - 0.75 * var(--a));
+}
+.ls-s1 {
+  transform: translate(calc(var(--a) * -30px), calc(var(--a) * -40px)) rotate(calc(var(--a) * -40deg));
+}
+.ls-s2 {
+  transform: translate(calc(var(--a) * 10px), calc(var(--a) * -60px)) rotate(calc(var(--a) * 30deg));
+}
+.ls-s3 {
+  transform: translate(calc(var(--a) * 50px), calc(var(--a) * -30px)) rotate(calc(var(--a) * 60deg));
+}
+.ls-s4 {
+  transform: translate(calc(var(--a) * -40px), calc(var(--a) * 30px)) rotate(calc(var(--a) * 20deg));
+}
+.ls-s5 {
+  transform: translate(calc(var(--a) * 6px), calc(var(--a) * 44px)) rotate(calc(var(--a) * -50deg));
+}
+.ls-s6 {
+  transform: translate(calc(var(--a) * 44px), calc(var(--a) * 36px)) rotate(calc(var(--a) * 35deg));
+}
+.ls-s7 {
+  transform: translate(calc(var(--a) * 70px), calc(var(--a) * -10px)) rotate(calc(var(--a) * 80deg));
+}
+.ls-body {
+  fill: var(--body-on-dark);
+}
+.ls-plug {
+  fill: var(--body-muted);
+}
+.ls-pad {
+  fill: var(--color-primary-on-dark);
+}
+.ls-key2 {
+  transform: translate(calc(var(--b) * 288px), calc(var(--b) * -13px));
+}
+.ls-shackle {
+  fill: none;
+  stroke: var(--body-on-dark);
+  stroke-width: 12;
+  stroke-linecap: round;
+  transform: translateY(calc(var(--c) * -16px));
+}
+.ls-lockbody {
+  fill: var(--color-primary);
+}
+.ls-slot {
+  fill: var(--surface-tile-2);
+}
+.ls-check {
+  fill: none;
+  stroke: var(--body-on-dark);
+  stroke-width: 8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
   stroke-dasharray: 1;
-  stroke-dashoffset: 0;
+  stroke-dashoffset: calc(1 - var(--d));
+}
+
+/* Scene 5: survives us */
+.g-survive {
+  --a: clamp(0, (var(--p) - 0.08) / 0.32, 1);
+  --b: clamp(0, (var(--p) - 0.3) / 0.2, 1);
+}
+.sv-window {
+  fill: var(--canvas);
+  stroke: var(--hairline);
+  stroke-width: 2;
+}
+.sv-bar {
+  fill: var(--canvas-parchment);
+}
+.sv-url {
+  fill: var(--ink-muted-48);
+  font-family: var(--font-stack);
+  font-size: 14px;
+}
+.sv-block {
+  fill: var(--hairline);
+}
+.sv-site {
+  opacity: calc(1 - 0.75 * var(--a));
+  transform: scale(calc(1 - 0.06 * var(--a)));
+}
+.sv-offline {
+  fill: var(--ink);
+  font-family: var(--font-stack);
+  font-size: 22px;
+  font-weight: 600;
+  opacity: var(--a);
+}
+.sv-term {
+  opacity: var(--b);
+  transform: translateY(calc((1 - var(--b)) * 60px));
 }
 .terminal {
   fill: var(--surface-tile-1);
@@ -392,33 +681,133 @@
 .term-ok {
   fill: var(--color-primary-on-dark);
 }
-.g-recover.armed:not(.in) .term-line {
-  opacity: 0;
+.sv-l1 {
+  opacity: clamp(0, (var(--p) - 0.5) / 0.08, 1);
 }
-.g-recover.armed:not(.in) .offline-slash {
-  stroke-dashoffset: 1;
+.sv-l2 {
+  opacity: clamp(0, (var(--p) - 0.6) / 0.08, 1);
+}
+.sv-l3 {
+  opacity: clamp(0, (var(--p) - 0.7) / 0.08, 1);
+}
+.sv-l4 {
+  opacity: clamp(0, (var(--p) - 0.82) / 0.1, 1);
 }
 
-/* Free to use: a receipt that totals $0. */
-.receipt {
-  fill: var(--canvas);
+/* Scene 6: permanence timeline */
+.tl-ruler {
+  transform-box: view-box;
+  transform: translateX(calc(var(--p) * -2000px));
 }
-.receipt-row {
-  fill: var(--hairline);
+.tl-axis,
+.tl-ticks {
+  stroke: var(--ink-muted-48);
+  stroke-width: 3;
 }
-.receipt-rule {
-  stroke: var(--hairline);
-  stroke-width: 2;
-}
-.receipt-zero {
-  fill: var(--ink);
+.tl-year {
+  fill: var(--body-muted);
   font-family: var(--font-stack);
-  font-size: 72px;
+  font-size: 22px;
   font-weight: 600;
 }
-.g-free.armed:not(.in) .receipt,
-.g-free.armed:not(.in) .receipt-zero {
-  opacity: 0;
+.tl-glow {
+  fill: none;
+  stroke: var(--color-primary-on-dark);
+  stroke-width: 2;
+  opacity: 0.45;
+}
+.tl-box {
+  fill: var(--surface-tile-1);
+  stroke: var(--color-primary-on-dark);
+  stroke-width: 3;
+}
+.tl-shackle {
+  fill: none;
+  stroke: var(--body-on-dark);
+  stroke-width: 8;
+  stroke-linecap: round;
+}
+.tl-body {
+  fill: var(--color-primary);
+}
+.tl-marker {
+  stroke: var(--color-primary-on-dark);
+  stroke-width: 3;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .scene-stage.live .tl-glow {
+    animation: breathe 3.2s ease-in-out infinite;
+  }
+}
+@keyframes breathe {
+  0%,
+  100% {
+    opacity: 0.25;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+/* ---- Final CTA: full viewport, black ---- */
+.tile-black {
+  background: var(--surface-black);
+  color: var(--body-on-dark);
+  --app-focus: var(--color-primary-on-dark);
+}
+.tile-black .pill-secondary {
+  color: var(--color-primary-on-dark);
+  border-color: var(--color-primary-on-dark);
+}
+.tile-black .tile-lead {
+  color: var(--body-muted);
+}
+.final-cta {
+  min-height: calc(100vh - var(--nav-h) - var(--subnav-h));
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.final-title {
+  margin: 0 auto var(--space-md);
+  font-size: clamp(48px, 8vw, 112px);
+  line-height: 1;
+  letter-spacing: -0.035em;
+}
+.fine-light {
+  color: var(--ink-muted-48);
+}
+
+/* Magnetic CTAs: the individual `translate` property, so the press `transform: scale(0.95)` still applies. */
+.magnetic {
+  translate: var(--mx, 0px) var(--my, 0px);
+  transition:
+    transform 0.12s ease,
+    translate 0.25s ease-out;
+}
+
+/* ---- Small screens: simplified scenes, stacked ---- */
+@media (max-width: 833px) {
+  .scene-stage {
+    grid-template-columns: 1fr;
+    gap: var(--space-lg);
+  }
+  .stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .scene-visual .graphic {
+    max-height: 44vh;
+  }
+}
+@media (max-width: 640px) {
+  .fr-label,
+  .ch-label-dim,
+  .sv-block {
+    display: none;
+  }
+  .scene-year {
+    font-size: 64px;
+  }
 }
 
 /* ---- FAQ ---- */
@@ -557,9 +946,6 @@
 
 /* Reduced motion: final states, no transitions (motion.ts is never loaded either). */
 @media (prefers-reduced-motion: reduce) {
-  .how-node {
-    transition: none;
-  }
   html {
     scroll-behavior: auto;
   }
@@ -568,4 +954,9 @@
   html {
     scroll-behavior: smooth;
   }
+}
+
+/* The timeline ruler is wider than its viewBox: clip it to the visual. */
+.graphic.g-timeline {
+  overflow: hidden;
 }

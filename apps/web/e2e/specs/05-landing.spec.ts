@@ -4,7 +4,6 @@ import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 import { LANDING } from '../fixtures/routes';
 
-const isMotionChunk = (url: string) => /\/assets\/motion-[^/]+\.js$/.test(url);
 
 async function axe(page: Page, label: string) {
   const r = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa']).analyze();
@@ -49,44 +48,7 @@ test('keyboard: Tab reaches "Open the app" and every footer link, each with a vi
   for (const h of footerHrefs) expect(reached.has(h!), `footer link ${h} not reachable by Tab`).toBe(true);
 });
 
-test('reduced motion: the motion chunk is never requested and graphics show their final state', async ({ browser }) => {
-  const ctx = await browser.newContext({ reducedMotion: 'reduce' });
-  const page = await ctx.newPage();
-  const requested: string[] = [];
-  page.on('request', (r) => requested.push(r.url()));
-  await page.goto(LANDING);
-  for (let y = 0; y < 10; y++) await page.mouse.wheel(0, 800);
-  await page.waitForTimeout(500);
-  expect(requested.filter(isMotionChunk)).toEqual([]);
-  expect(await page.locator('.armed').count()).toBe(0);
-  await expect(page.locator('.g-keys .check')).toBeVisible();
-  await expect(page.locator('.g-recover .term-ok')).toBeVisible();
-  await ctx.close();
-});
-
-test('motion is lazy: requested only after scrolling towards a story graphic', async ({ page }) => {
-  const requested: string[] = [];
-  const csp: string[] = [];
-  page.on('request', (r) => requested.push(r.url()));
-  page.on('console', (m) => {
-    if (/Content Security Policy|Trusted Type|Refused/i.test(m.text())) csp.push(m.text());
-  });
-  page.on('pageerror', (e) => csp.push(String(e)));
-  await page.setViewportSize({ width: 1280, height: 600 });
-  await page.goto(LANDING);
-  await page.waitForTimeout(500);
-  expect(requested.filter(isMotionChunk)).toEqual([]);
-  await page.locator('#how').scrollIntoViewIfNeeded();
-  await expect.poll(() => requested.filter(isMotionChunk).length).toBe(1);
-  await expect(page.locator('.g-how.armed')).toHaveCount(1);
-  // Run every animation: Motion must work under the unchanged CSP with no violation or error.
-  for (const id of ['#keys-only', '#lose-a-key', '#survives', '#free']) {
-    await page.locator(id).scrollIntoViewIfNeeded();
-    await expect(page.locator(`${id} .graphic.in`)).toHaveCount(1);
-  }
-  await page.waitForTimeout(2500);
-  expect(csp).toEqual([]);
-});
+// Reduced motion, lazy loading and per-scene behaviour moved to 07-scenes.spec.ts (cinematic-landing).
 
 test('the CSP blocks injected inline script and innerHTML on the landing page', async ({ page }) => {
   const violations: string[] = [];

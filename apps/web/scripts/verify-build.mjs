@@ -10,7 +10,7 @@
  *     the same bundle checks, no loopback endpoints, and (with --expect-host) the bundle's RP ID equals the host.
  *     Leaves the verified dist/ in place for deploy/gen-context.mjs.
  *   - every HTML page (landing /, app /app/) carries the same strict CSP (redesign-landing-and-app-ui D1/D8);
- *   - the landing page's JS budget (D4): initial <= 6 KB gzip, each lazy chunk <= 10 KB, whole graph <= 16 KB,
+ *   - the landing page's JS budget (cinematic-landing D3): initial <= 15 KB gzip, each lazy chunk <= 40 KB, graph <= 120 KB,
  *     and no React / viem / vault code in the landing graph. VERIFY_LANDING_BUDGET_SCALE scales the budgets (tests).
  * Usage: node scripts/verify-build.mjs [--mode e2e] | --real-env [--expect-host cryoshield.app]
  */
@@ -114,7 +114,8 @@ return { js, html };
 /** Landing JS budget (spec landing-page "Landing performance budget"; design D4). Sizes are gzip -9 bytes. */
 const KB = 1024;
 const scale = Number(process.env.VERIFY_LANDING_BUDGET_SCALE ?? '1');
-const BUDGET = { initial: 6 * KB * scale, lazyChunk: 10 * KB * scale, total: 16 * KB * scale };
+// cinematic-landing D3: raised for the scroll scenes (founder brief); the measured total is far below the ceiling.
+const BUDGET = { initial: 15 * KB * scale, lazyChunk: 40 * KB * scale, total: 120 * KB * scale };
 function landingBudget(label) {
   const html = readFileSync(join(dist, 'index.html'), 'utf8');
   const entries = [...html.matchAll(/<(?:script|link rel="modulepreload")[^>]*\b(?:src|href)="\/([^"]+\.js)"/g)].map((m) => m[1]);
@@ -145,6 +146,10 @@ function landingBudget(label) {
   const code = all.map((f) => readFileSync(join(dist, f), 'utf8')).join('\n');
   for (const marker of ['react.transitional.element', 'react.element', 'viem@', 'rpId:', 'createRoot', 'VaultRegistry']) {
     if (code.includes(marker)) fail(`[${label}] landing graph contains "${marker}" (React/viem/vault code on the landing page)`);
+  }
+  // CSP-hostile sinks never appear in landing code (cinematic-landing security review).
+  for (const sink of ['innerHTML', 'outerHTML', 'insertAdjacentHTML', 'document.write', 'eval(', 'new Function', 'WebAssembly']) {
+    if (code.includes(sink)) fail(`[${label}] landing graph contains "${sink}"`);
   }
   const fmt = (n) => `${(n / KB).toFixed(2)} KB`;
   const detail = all.map((f) => `${f} ${fmt(gz(f))}${initial.has(f) ? '' : ' (lazy)'}`).join(', ');
