@@ -1,5 +1,8 @@
-# Keeps SHA-pinned GitHub Actions current (OpenSpec change add-ci). Dependabot proposes SHA bumps with the
-# version comment updated; each bump is reviewed like any other change. No secrets are configured.
+# Dependabot (OpenSpec changes add-ci, adopt-pr-workflow decision 10). Weekly, one grouped PR per ecosystem,
+# 7-day cooldown (lets bad releases get yanked first). No auto-merge: every bump is a normal PR that must
+# pass ci-ok (incl. osv-scanner and gitleaks) and be squash-merged by the maintainer. No secrets configured.
+# Commit prefixes keep PR titles Conventional; the OpenSpec gate exempts Dependabot PRs that touch only
+# dependency manifests (design assumption A1).
 version: 2
 updates:
   - package-ecosystem: github-actions
@@ -13,3 +16,58 @@ updates:
         patterns: ["*"]
     commit-message:
       prefix: "ci"
+
+  # pnpm workspace (root pnpm-lock.yaml covers apps/* and packages/*).
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    groups:
+      npm:
+        patterns: ["*"]
+    commit-message:
+      prefix: "chore(deps)"
+
+  # CI tool lockfiles (npm ci --ignore-scripts in workflows).
+  - package-ecosystem: npm
+    directories:
+      - /.github/openspec-cli
+      - /.github/scripts
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      ci-tools:
+        patterns: ["*"]
+    commit-message:
+      prefix: "ci"
+
+  # Desktop recovery tool (uv.lock).
+  - package-ecosystem: uv
+    directory: /tools/recover
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      uv:
+        patterns: ["*"]
+    commit-message:
+      prefix: "chore(deps)"
+
+  # Web hosting image: bumps the Caddy tag and its pinned digest in apps/web/deploy/Dockerfile.
+  - package-ecosystem: docker
+    directory: /apps/web/deploy
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      docker:
+        patterns: ["*"]
+    commit-message:
+      prefix: "chore(deps)"
