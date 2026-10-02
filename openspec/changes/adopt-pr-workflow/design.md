@@ -186,3 +186,85 @@ Each is weekly with a 7-day cooldown and one group per ecosystem. Commit prefixe
 3. The overwatcher creates the `no-spec` label.
 
 Rollback: `gh api -X DELETE repos/prix0007/cryoshield/rulesets/<id>`, then revert the workflow.
+
+## Implementation notes (recorded during apply, 2026-10-02)
+
+- **Local verification:**
+  - `npm test --prefix .github/scripts`: 87 tests pass.
+  - actionlint: clean.
+  - zizmor 1.30.1 `--persona=pedantic`: 0 findings (previously 9 `anonymous-definition` infos, cleared by naming jobs after their ids so the check names, `ci-ok` included, do not change).
+  - `workflow-policy.mjs`: OK. Before 5.2 it flagged 8 jobs without job-level permissions.
+  - shellcheck: clean.
+  - `openspec validate --all --strict`: pass.
+  - `scripts/check-licenses.sh`: pass.
+- **gitleaks 8.30.1:**
+  - baseline: 23 `generic-api-key` hits, all hex key fields in `packages/vault-crypto/test-vectors/v1.json`, in the tree and in history;
+  - with `.gitleaks.toml`: 0 findings over the tree, the full history and `origin/main..HEAD`;
+  - `gitleaks-selftest.sh` passes;
+  - a fake token committed and then deleted inside the range was still reported (exit 1); the temporary commits were discarded.
+- **osv-scanner 2.6.0:**
+  - the gate passes with the ignore file and reports 7 MEDIUM findings (elliptic);
+  - without the ignore file it fails on the four advisories in A2.
+- **`apply.sh` dry run against the live repo** (read-only GETs): no ruleset exists yet; merge commits and rebase merges are enabled; the `no-spec` label is missing. Exit 3, as expected.
+- **Added during apply: `gitleaks-selftest.sh`.** It runs in `pr-checks` before the real scan. Fake secrets are assembled at runtime, so the repository itself never matches.
+- **Added during apply: concurrency.** `cancel-in-progress` is limited to pull requests, so every push to `main` is verified to completion.
+- **Added during apply: `ci-ok` permissions.** `ci-ok` now has `permissions: {}`, because it needs neither a checkout nor the API.
+
+## Security review (2026-10-02)
+
+The security reviewer verdict was **APPROVE WITH FIXES**. Confirmed sound:
+- trigger safety;
+- per-job permissions and `persist-credentials`;
+- no secrets;
+- env-only PR inputs (no workflow-command injection, since all echoed values are prefixed or indented);
+- `ci-ok` cannot turn green for a failing commit;
+- both scanner SHA-256 pins match upstream, and the `sha256sum -c` form is correct;
+- the ruleset has no bypass and binds the check to integration 15368.
+
+Every finding below was fixed test-first: the regression tests were written red, then turned green.
+
+### HIGH
+
+1. **The osv ignore-file lint could be bypassed with a TOML multiline string,** hiding a non-expiring `ignoreUntil`.
+   - Fix: `lintIgnoreFile` now accepts only a strict TOML subset that it and osv-scanner read identically:
+     - full-line comments;
+     - `[[IgnoredVulns]]`;
+     - exactly one `id`, `reason` and `ignoreUntil` per entry, with no duplicates;
+     - single-line `"..."` values without `\` or `"`;
+     - bare dates.
+
+     Anything else, including trailing comments, fails closed. This supersedes decision 8's description of the lint.
+2. **The OpenSpec gate missed non-ASCII paths,** because git quoted them.
+   - Fix: CI uses `git -c core.quotePath=false diff -z`, and the script splits on NUL.
+   - Any path that still starts with a quote fails the gate.
+
+### MEDIUM
+
+3. **`workflow-policy.mjs` missed three evasions:** `toJSON(secrets)`, `SECRETS.X`, and `workflow_run`.
+   - Fix: any case-insensitive `secrets` inside a `${{ }}` expression is rejected, as is `secrets: inherit`.
+   - `workflow_run` is now forbidden alongside `pull_request_target`.
+4. **The gate did not cover itself.**
+   - Fix: the code paths now include all of `.github/`, `scripts/`, `.gitleaks.toml`, the root `package.json`, `pnpm-lock.yaml` and `pnpm-workspace.yaml`, and `contracts/foundry.toml`. This supersedes the list in decision 5; the spec is updated.
+   - Residual risk, accepted: a PR can still edit the workflow that gates it, because `pull_request` runs the PR's own workflow. The maintainer's review of `.github/**` diffs is the control.
+5. **Job-level write scopes were allowed.**
+   - Fix: job permissions must be a mapping whose values are only `read` or `none`.
+
+### LOW
+
+6. **The Dependabot exemption matched by basename.**
+   - Fix: it is now anchored to the exact manifest paths Dependabot is configured for.
+   - Workflow-file bumps stay exempt: Dependabot is the only author, and the change is reviewed in the PR.
+7. **gitleaks did not scan the content of merge commits.**
+   - Fix: `--log-opts="-m BASE..HEAD"` diffs each merge commit against each of its parents. The cost is some over-scanning.
+8. **`apply.sh` had several gaps:**
+   - it never re-checked after `--apply`;
+   - duplicate ruleset names broke the PUT;
+   - `--repo` accepted `..`;
+   - the Actions default token was not managed.
+
+   Fix:
+   - it now re-checks after applying and fails if drift remains;
+   - it refuses duplicate ruleset names;
+   - `--repo` is strictly validated;
+   - it syncs `actions-permissions.json` (read-only default `GITHUB_TOKEN`, and Actions may not approve PRs).
+9. **No approvals with a solo maintainer** was accepted. A status can only be spoofed by editing a workflow in a PR, which item 4 makes subject to the OpenSpec gate and review.

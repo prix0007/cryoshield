@@ -3,7 +3,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: CI supply-chain security
-Workflows MUST pin every third-party action to a full commit SHA, MUST default to read-only repository permissions, and MUST NOT expose repository secrets to workflows triggered by pull requests. Workflows MUST NOT use the `pull_request_target` trigger, and every job MUST declare its own `permissions` and a `timeout-minutes`. These rules MUST be enforced by a CI check that cannot be switched off by an inline suppression comment.
+Workflows MUST pin every third-party action to a full commit SHA, MUST default to read-only repository permissions, and MUST NOT expose repository secrets to workflows triggered by pull requests. Workflows MUST NOT use the `pull_request_target` or `workflow_run` triggers, and every job MUST declare its own read-only `permissions` and a `timeout-minutes`. These rules MUST be enforced by a CI check that cannot be switched off by an inline suppression comment.
 
 #### Scenario: Unpinned action rejected
 - **WHEN** a workflow references a third-party action by tag or branch instead of a commit SHA
@@ -18,8 +18,12 @@ Workflows MUST pin every third-party action to a full commit SHA, MUST default t
 - **THEN** the workflow policy check fails the run
 
 #### Scenario: Job without explicit permissions or timeout
-- **WHEN** a workflow job omits `permissions` or `timeout-minutes`
+- **WHEN** a workflow job omits `permissions` or `timeout-minutes`, or requests a write scope
 - **THEN** the workflow policy check fails and names the job
+
+#### Scenario: Secrets context in any form
+- **WHEN** a PR-triggered workflow uses `secrets` inside an expression in any case or form (for example `toJSON(secrets)`)
+- **THEN** the workflow policy check fails the run
 
 #### Scenario: Lint suppression attempt
 - **WHEN** a workflow contains an inline `zizmor: ignore` comment, or the zizmor configuration stops requiring hash pins for all actions
@@ -57,7 +61,7 @@ CI MUST scan every commit in a pull request's range for secrets with a scanner p
 - **THEN** the secret scan does not report it
 
 ### Requirement: Dependency vulnerability audit
-CI MUST audit every committed lockfile (pnpm, uv and the CI tool lockfiles) against the OSV database on every pull request, with a scanner pinned by version and checksum. The audit MUST fail on any HIGH or CRITICAL (CVSS ≥ 7.0) or unscored vulnerability. Exceptions MUST be listed in a committed ignore file, with a reason and an expiry date of no more than 90 days.
+CI MUST audit every committed lockfile (pnpm, uv and the CI tool lockfiles) against the OSV database on every pull request, with a scanner pinned by version and checksum. The audit MUST fail on any HIGH or CRITICAL (CVSS ≥ 7.0) or unscored vulnerability. Exceptions MUST be listed in a committed ignore file, with a reason and an expiry date of no more than 90 days. The ignore file MUST be restricted to a syntax the lint and the scanner read identically.
 
 #### Scenario: New high-severity vulnerability
 - **WHEN** a lockfile resolves a package with a known CVSS 8.1 vulnerability that is not in the ignore file

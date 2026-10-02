@@ -29,7 +29,7 @@ Every pull request SHALL be opened with a template that asks for the OpenSpec ch
 - **THEN** the description is pre-filled with the OpenSpec, Tests, Security review and Screenshots sections
 
 ### Requirement: OpenSpec-first gate on pull requests
-A pull request that changes code paths (`apps/`, `packages/`, `contracts/src/`, `tools/recover/src/`, `.github/workflows/`) MUST also add or modify a file under `openspec/changes/` (including `openspec/changes/archive/`), unless it carries the `no-spec` label and its description contains a non-empty `No-spec justification:` line. Otherwise CI MUST fail.
+A pull request that changes code paths (`apps/`, `packages/`, `contracts/src/`, `tools/recover/src/`, `.github/`, `scripts/`, `.gitleaks.toml`, root workspace manifests, `contracts/foundry.toml`) MUST also add or modify a file under `openspec/changes/` (archive included), unless it has the `no-spec` label and a non-empty `No-spec justification:` line. Otherwise CI MUST fail, also when a changed path cannot be read unambiguously.
 
 #### Scenario: Code change without a spec change
 - **WHEN** a pull request modifies `apps/web/src/main.tsx` and nothing under `openspec/changes/`
@@ -45,6 +45,14 @@ A pull request that changes code paths (`apps/`, `packages/`, `contracts/src/`, 
 
 #### Scenario: Label without justification
 - **WHEN** a pull request carries the `no-spec` label but has no non-empty justification line
+- **THEN** the OpenSpec gate fails
+
+#### Scenario: Change to the gates themselves
+- **WHEN** a pull request modifies only `.github/scripts/openspec-gate.mjs` or `.github/osv-scanner.toml`
+- **THEN** the OpenSpec gate requires an OpenSpec change (or a justified `no-spec` label)
+
+#### Scenario: Non-ASCII code path
+- **WHEN** a pull request adds `contracts/src/Évil.sol` without an OpenSpec change
 - **THEN** the OpenSpec gate fails
 
 #### Scenario: Docs-only change
