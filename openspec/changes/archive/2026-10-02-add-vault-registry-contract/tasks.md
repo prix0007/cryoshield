@@ -41,7 +41,7 @@
 ## 8. Testnet Deployment
 
 - [x] 8.1 Write a deploy script using the canonical CREATE2 deterministic deployer; verify a dry run against anvil yields the predicted address
-- [ ] 8.2 Deploy to OP Sepolia (testnet target since target-op-sepolia; was Arbitrum Sepolia) and verify the source on Blockscout; record the deployment in `contracts/deployments/11155420.json` (format per 8.3) and the ABI in `contracts/abi/VaultRegistry.json`; verify a public-RPC `eth_call` read of a test vault returns the expected blob
+- [x] 8.2 Deploy to OP Sepolia (testnet target since target-op-sepolia; was Arbitrum Sepolia) and verify the source on Blockscout; record the deployment in `contracts/deployments/11155420.json` (format per 8.3) and the ABI in `contracts/abi/VaultRegistry.json`; verify a public-RPC `eth_call` read of a test vault returns the expected blob
 - [x] 8.3 Have the deploy flow write `contracts/deployments/<chainId>.json` with `{address, deployBlock, txHash, abiHash}` (abiHash = keccak256 of `contracts/abi/VaultRegistry.json`) so log readers know where to start scanning; verify the anvil dry run produces a record whose address, block, and tx hash match the chain
 
 ## 9. Security Review
