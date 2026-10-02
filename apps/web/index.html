@@ -4,10 +4,295 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="referrer" content="no-referrer" />
-    <title>CryoShield</title>
+    <meta name="description" content="CryoShield keeps seed phrases and recovery codes sealed in your browser and unlocked only by your own security keys. Testnet preview, not yet audited." />
+    <title>CryoShield · Backups that outlive the drive</title>
+    <script type="module" src="/src/landing/main.ts"></script>
   </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
+  <body class="landing">
+    <a class="skip-link" href="#main">Skip to content</a>
+
+    <header class="site-header">
+      <nav class="global-nav" aria-label="Site">
+        <div class="global-nav-inner">
+          <a class="wordmark" href="/">
+            <svg class="wordmark-glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5l-8-3Z" /><path class="wordmark-snow" d="M12 7v10M7.7 9.5l8.6 5M7.7 14.5l8.6-5" /></svg>
+            <span>CryoShield</span>
+          </a>
+          <ul class="global-nav-links">
+            <li><a href="#how">How it works</a></li>
+            <li><a href="#keys-only">Security</a></li>
+            <li><a href="#survives">Recovery</a></li>
+            <li><a href="#faq">FAQ</a></li>
+            <li><a href="https://github.com/prix0007/cryoshield" rel="noopener noreferrer">GitHub</a></li>
+          </ul>
+          <details class="nav-menu">
+            <summary aria-label="Menu"><span class="nav-menu-icon" aria-hidden="true"></span></summary>
+            <ul>
+              <li><a href="#how">How it works</a></li>
+              <li><a href="#keys-only">Security</a></li>
+              <li><a href="#survives">Recovery</a></li>
+              <li><a href="#faq">FAQ</a></li>
+              <li><a href="https://github.com/prix0007/cryoshield" rel="noopener noreferrer">GitHub</a></li>
+            </ul>
+          </details>
+        </div>
+      </nav>
+      <div class="sub-nav">
+        <div class="sub-nav-inner">
+          <p class="sub-nav-name">CryoShield</p>
+          <p class="chip">Testnet preview</p>
+          <a class="pill pill-primary pill-small" href="/app/">Open the app</a>
+        </div>
+      </div>
+    </header>
+
+    <main id="main" tabindex="-1">
+      <!-- HERO (light) -->
+      <section id="hero" class="tile tile-light hero" data-story aria-labelledby="hero-title">
+        <h1 id="hero-title" class="hero-title">Backups that outlive the drive.</h1>
+        <p class="tile-lead">Seed phrases and recovery codes, sealed in your browser and unlocked only by the security keys you hold.</p>
+        <p class="ctas">
+          <a class="pill pill-primary pill-large" href="/app/">Open the app</a>
+          <a class="pill pill-secondary pill-large" href="#how">How it works</a>
+        </p>
+        <p class="status-strip">
+          <strong>Testnet preview.</strong> CryoShield runs on OP Sepolia, a test network, and has not been independently audited. Please don’t rely on it as your only backup yet.
+        </p>
+        <div class="visual">
+          <svg class="graphic g-hero" viewBox="0 0 480 280" aria-hidden="true" focusable="false">
+            <g class="hero-shield">
+              <path class="shape-ink-soft" d="M330 46 266 70v54c0 44 27 80 64 94 37-14 64-50 64-94V70l-64-24Z" />
+              <path class="shape-accent-line" d="M330 92v76M297 111l66 38M297 149l66-38" />
+            </g>
+            <g class="hero-key">
+              <rect class="shape-dark" x="70" y="112" width="150" height="62" rx="16" />
+              <rect class="shape-metal" x="220" y="126" width="34" height="34" rx="4" />
+              <rect class="shape-metal-dark" x="226" y="134" width="22" height="6" rx="1" />
+              <rect class="shape-metal-dark" x="226" y="146" width="22" height="6" rx="1" />
+              <circle class="shape-ring" cx="92" cy="143" r="9" />
+              <circle class="hero-pulse" cx="160" cy="143" r="20" />
+              <circle class="hero-pulse hero-pulse-2" cx="160" cy="143" r="20" />
+              <circle class="shape-pad" cx="160" cy="143" r="17" />
+            </g>
+          </svg>
+        </div>
+      </section>
+
+      <!-- HOW IT WORKS (dark) -->
+      <section id="how" class="tile tile-dark" data-story aria-labelledby="how-title">
+        <h2 id="how-title" class="tile-title">How it works.</h2>
+        <p class="tile-lead">Three steps, and the first two never leave your device.</p>
+        <p class="ctas">
+          <a class="pill pill-primary" href="/app/">Open the app</a>
+          <a class="pill pill-secondary" href="https://github.com/prix0007/cryoshield/blob/main/docs/spec/vault-format-v1.md" rel="noopener noreferrer">Read the vault format</a>
+        </p>
+        <div class="visual">
+          <svg class="graphic g-how" viewBox="0 0 600 200" aria-hidden="true" focusable="false" data-motion="how">
+            <path class="how-track" d="M100 100H500" />
+            <path class="how-progress" d="M100 100H500" pathLength="1" />
+            <g class="how-node how-node-1">
+              <circle class="node-bg" cx="100" cy="100" r="54" />
+              <rect class="node-ink" x="76" y="88" width="40" height="24" rx="7" />
+              <rect class="node-ink" x="116" y="94" width="10" height="12" rx="2" />
+              <circle class="node-accent" cx="94" cy="100" r="6" />
+            </g>
+            <g class="how-node how-node-2">
+              <circle class="node-bg" cx="300" cy="100" r="54" />
+              <path class="node-line how-shackle" d="M286 96V84a14 14 0 0 1 28 0v12" />
+              <rect class="node-ink" x="280" y="94" width="40" height="32" rx="6" />
+              <circle class="node-accent" cx="300" cy="108" r="4" />
+            </g>
+            <g class="how-node how-node-3">
+              <circle class="node-bg" cx="500" cy="100" r="54" />
+              <rect class="node-ink" x="476" y="74" width="30" height="18" rx="3" />
+              <rect class="node-ink" x="482" y="96" width="30" height="18" rx="3" />
+              <rect class="node-ink" x="488" y="118" width="30" height="18" rx="3" />
+              <rect class="node-accent" x="512" y="74" width="14" height="14" rx="3" />
+            </g>
+          </svg>
+        </div>
+        <ol class="steps">
+          <li>
+            <h3>Tap your key</h3>
+            <p>Your security key (a YubiKey 5 or another FIDO2 key that supports the PRF extension) produces a secret that only it can make, and only for this site.</p>
+          </li>
+          <li>
+            <h3>Sealed in your browser</h3>
+            <p>That secret locks your vault with AES-256-GCM on your own device. Your secrets are never sent anywhere unencrypted.</p>
+          </li>
+          <li>
+            <h3>Stored on-chain and on Arweave</h3>
+            <p>The sealed vault (about 1 KB) is written to a public blockchain, OP Sepolia during this test phase, and a copy goes to the Arweave permanent archive.</p>
+          </li>
+        </ol>
+      </section>
+
+      <!-- ONLY YOUR KEYS (light) -->
+      <section id="keys-only" class="tile tile-parchment" data-story aria-labelledby="keys-title">
+        <h2 id="keys-title" class="tile-title">Only your keys open it.</h2>
+        <p class="tile-lead">CryoShield has no backend, no account and no copy of your keys: this site only serves the page you’re reading. What gets stored is locked data that only one of your own keys can open, so we couldn’t read your secrets even if we wanted to.</p>
+        <p class="ctas">
+          <a class="pill pill-primary" href="/app/">Open the app</a>
+          <a class="pill pill-secondary" href="https://github.com/prix0007/cryoshield/blob/main/apps/web/docs/security-review.md" rel="noopener noreferrer">Read the security review</a>
+        </p>
+        <div class="visual">
+          <svg class="graphic g-sealed" viewBox="0 0 480 260" aria-hidden="true" focusable="false" data-motion="sealed">
+            <rect class="card-surface subject" x="110" y="40" width="260" height="180" rx="18" />
+            <rect class="cipher-row" x="140" y="72" width="140" height="10" rx="5" />
+            <rect class="cipher-row" x="140" y="96" width="180" height="10" rx="5" />
+            <rect class="cipher-row" x="140" y="120" width="110" height="10" rx="5" />
+            <rect class="cipher-row" x="140" y="144" width="160" height="10" rx="5" />
+            <g class="sealed-lock">
+              <path class="lock-shackle" d="M322 168v-14a18 18 0 0 1 36 0v14" />
+              <rect class="lock-body" x="314" y="166" width="52" height="40" rx="8" />
+              <circle class="lock-hole" cx="340" cy="184" r="5" />
+            </g>
+          </svg>
+        </div>
+      </section>
+
+      <!-- LOSE A KEY (dark 2) -->
+      <section id="lose-a-key" class="tile tile-dark-2" data-story aria-labelledby="lose-title">
+        <h2 id="lose-title" class="tile-title">Lose a key, not your vault.</h2>
+        <p class="tile-lead">You set up at least two keys, and any one of them opens your vault. Lost one? Open the vault with another and add a replacement.</p>
+        <p class="warning-line"><strong>If you lose every key, nobody can open the vault, not even us.</strong> There is no reset and no recovery service. Keep your keys in different places.</p>
+        <p class="ctas">
+          <a class="pill pill-primary" href="/app/">Open the app</a>
+          <a class="pill pill-secondary" href="#faq-lose">What if I lose a key?</a>
+        </p>
+        <div class="visual">
+          <svg class="graphic g-keys" viewBox="0 0 520 220" aria-hidden="true" focusable="false" data-motion="keys">
+            <g class="mini-key key-lost">
+              <rect x="40" y="96" width="100" height="40" rx="12" />
+              <rect x="140" y="106" width="22" height="20" rx="3" />
+            </g>
+            <path class="lost-mark" d="M70 70l40 40M110 70l-40 40" />
+            <g class="mini-key key-ok">
+              <rect x="200" y="96" width="100" height="40" rx="12" />
+              <rect x="300" y="106" width="22" height="20" rx="3" />
+              <circle class="mini-pad" cx="246" cy="116" r="10" />
+            </g>
+            <g class="vault-lock">
+              <path class="vault-shackle" d="M412 110V88a26 26 0 0 1 52 0v6" />
+              <rect class="lock-body-dark" x="398" y="106" width="80" height="62" rx="12" />
+              <path class="check" d="M422 138l12 12 22-24" />
+            </g>
+          </svg>
+        </div>
+      </section>
+
+      <!-- SURVIVES US (light) -->
+      <section id="survives" class="tile tile-light" data-story aria-labelledby="survives-title">
+        <h2 id="survives-title" class="tile-title">Survives us too.</h2>
+        <p class="tile-lead">An open-source desktop recovery tool opens your vault with just your key. It reads the vault straight from the public blockchain or Arweave, so it keeps working even if this website and CryoShield disappear.</p>
+        <p class="ctas">
+          <a class="pill pill-primary" href="https://github.com/prix0007/cryoshield/tree/main/tools/recover#readme" rel="noopener noreferrer">Recovery tool docs</a>
+          <a class="pill pill-secondary" href="https://github.com/prix0007/cryoshield" rel="noopener noreferrer">View the source</a>
+        </p>
+        <div class="visual">
+          <svg class="graphic g-recover" viewBox="0 0 520 260" aria-hidden="true" focusable="false" data-motion="recover">
+            <g class="site-offline">
+              <circle cx="80" cy="120" r="44" />
+              <path d="M36 120h88M80 76c-18 22-18 66 0 88M80 76c18 22 18 66 0 88" />
+              <path class="offline-slash" d="M44 84l72 72" />
+            </g>
+            <rect class="terminal subject" x="160" y="36" width="320" height="188" rx="14" />
+            <circle class="terminal-dot" cx="182" cy="56" r="5" />
+            <circle class="terminal-dot" cx="198" cy="56" r="5" />
+            <circle class="terminal-dot" cx="214" cy="56" r="5" />
+            <text class="term-line" x="180" y="100">$ cryoshield-recover</text>
+            <text class="term-line term-dim" x="180" y="128">Touch your key…</text>
+            <text class="term-line term-dim" x="180" y="156">Vault found on the public chain</text>
+            <text class="term-line term-ok" x="180" y="184">Unlocked. Type show to reveal.</text>
+          </svg>
+        </div>
+      </section>
+
+      <!-- FREE (dark 3) -->
+      <section id="free" class="tile tile-dark-3" data-story aria-labelledby="free-title">
+        <h2 id="free-title" class="tile-title">Free to use.</h2>
+        <p class="tile-lead">CryoShield pays the network fee each time your vault is saved, so you don’t need a crypto wallet or any cryptocurrency. You just need two security keys.</p>
+        <p class="fine">If fee sponsorship is ever paused, saving waits until it’s back. Opening your vault never depends on it.</p>
+        <p class="ctas">
+          <a class="pill pill-primary" href="/app/">Open the app</a>
+          <a class="pill pill-secondary" href="#faq">Read the FAQ</a>
+        </p>
+        <div class="visual">
+          <svg class="graphic g-free" viewBox="0 0 480 240" aria-hidden="true" focusable="false" data-motion="free">
+            <rect class="receipt subject" x="140" y="20" width="200" height="200" rx="16" />
+            <rect class="receipt-row" x="164" y="52" width="100" height="10" rx="5" />
+            <rect class="receipt-row" x="164" y="76" width="140" height="10" rx="5" />
+            <path class="receipt-rule" d="M164 108h152" />
+            <text class="receipt-zero" x="240" y="182" text-anchor="middle">$0</text>
+          </svg>
+        </div>
+      </section>
+
+      <!-- FAQ (light) -->
+      <section id="faq" class="tile tile-light faq" aria-labelledby="faq-title">
+        <h2 id="faq-title" class="tile-title">Questions, answered.</h2>
+        <div class="faq-list">
+          <details>
+            <summary>What do I need?</summary>
+            <p>Two FIDO2 security keys that support the PRF extension (hmac-secret), such as a YubiKey 5 with firmware 5.2 or newer, and a recent version of Chrome, Edge or Firefox. The app checks your browser before you start.</p>
+          </details>
+          <details>
+            <summary>Can CryoShield read my secrets?</summary>
+            <p>No. Your secrets are encrypted in your browser with a key that only your security keys can produce. CryoShield has no backend; this website only serves the app’s files, and never receives your secrets or your keys.</p>
+          </details>
+          <details id="faq-lose">
+            <summary>What if I lose a key?</summary>
+            <p>Open your vault with any other enrolled key, then use “Add a key” to set up a replacement. That’s why you need at least two.</p>
+          </details>
+          <details>
+            <summary>What if I lose all my keys?</summary>
+            <p>Then nobody can open the vault: not you, not CryoShield, not the recovery tool. This is the cost of a backup that only you control.</p>
+          </details>
+          <details>
+            <summary>Is it safe to use today?</summary>
+            <p>CryoShield is a testnet preview on OP Sepolia and has not been independently audited. The code and the vault format are open source, and the encryption uses well-known open-source cryptography libraries (@noble) with published test vectors. Please keep your existing backups too.</p>
+          </details>
+          <details>
+            <summary>How much can I store?</summary>
+            <p>About 1 KB of text: plenty for seed phrases, 2FA backup codes and recovery codes, but not for files.</p>
+          </details>
+          <details>
+            <summary>What happens if CryoShield shuts down?</summary>
+            <p>Your vault stays on the public blockchain and on Arweave. The open-source desktop recovery tool can open it with your key without this website.</p>
+          </details>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="footer-inner">
+        <div class="footer-cols">
+          <div>
+            <h2 class="footer-heading">Product</h2>
+            <ul class="footer-links">
+              <li><a href="/app/">Open the app</a></li>
+              <li><a href="#how">How it works</a></li>
+              <li><a href="#faq">FAQ</a></li>
+            </ul>
+          </div>
+          <div>
+            <h2 class="footer-heading">Open source</h2>
+            <ul class="footer-links">
+              <li><a href="https://github.com/prix0007/cryoshield" rel="noopener noreferrer">GitHub repository</a></li>
+              <li><a href="https://github.com/prix0007/cryoshield/tree/main/tools/recover#readme" rel="noopener noreferrer">Recovery tool docs</a></li>
+              <li><a href="https://github.com/prix0007/cryoshield/blob/main/docs/spec/vault-format-v1.md" rel="noopener noreferrer">Vault format</a></li>
+            </ul>
+          </div>
+          <div>
+            <h2 class="footer-heading">Legal</h2>
+            <ul class="footer-links">
+              <li><a href="https://github.com/prix0007/cryoshield/blob/main/LICENSE" rel="noopener noreferrer">MIT license</a></li>
+              <li><a href="https://github.com/prix0007/cryoshield/blob/main/docs/design/ASSETS.md" rel="noopener noreferrer">Third-party assets</a></li>
+            </ul>
+          </div>
+        </div>
+        <p class="legal">CryoShield contributors. MIT licensed. Testnet preview on OP Sepolia, not independently audited. YubiKey is a trademark of Yubico.</p>
+      </div>
+    </footer>
   </body>
 </html>

@@ -2,7 +2,9 @@
 /**
  * Generates the Docker build context for Fly (add-fly-hosting D1/D2):
  *   <out>/site/       = the verified dist/ minus the host-specific `_headers`
- *   <out>/Caddyfile   = static server config; CSP derived from the BUILT index.html meta tag + frame-ancestors 'none'
+ *   <out>/Caddyfile   = static server config; CSP derived from the BUILT index.html meta tag + frame-ancestors 'none'.
+ *   Every HTML page (landing index.html, app/index.html) must carry the identical meta CSP, because one header
+ *   CSP covers every response (redesign-landing-and-app-ui D8).
  * Usage: node deploy/gen-context.mjs --dist dist --out deploy/.build --host cryoshield.app
  */
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -20,10 +22,18 @@ const out = arg('out');
 const host = arg('host');
 if (!/^(?=.{1,253}$)([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,63}$/.test(host)) throw new Error(`invalid host: ${host}`);
 
-const html = readFileSync(join(dist, 'index.html'), 'utf8');
-const metas = [...html.matchAll(/<meta http-equiv="Content-Security-Policy" content="([^"]+)">/g)];
-if (metas.length !== 1) throw new Error('index.html must contain exactly one meta Content-Security-Policy');
-const meta = metas[0][1];
+function pageCsp(rel) {
+  const p = join(dist, rel);
+  if (!existsSync(p)) throw new Error(`${rel} is missing from the build`);
+  const metas = [...readFileSync(p, 'utf8').matchAll(/<meta http-equiv="Content-Security-Policy" content="([^"]+)">/g)];
+  if (metas.length !== 1) throw new Error(`${rel} must contain exactly one meta Content-Security-Policy`);
+  return metas[0][1];
+}
+const PAGES = ['index.html', 'app/index.html'];
+const [meta, ...others] = PAGES.map(pageCsp);
+others.forEach((c, i) => {
+  if (c !== meta) throw new Error(`the meta CSP of ${PAGES[i + 1]} and index.html differ; one header CSP must cover every page`);
+});
 if (/frame-ancestors/.test(meta)) throw new Error('meta CSP unexpectedly contains frame-ancestors');
 const csp = `${meta}; frame-ancestors 'none'`;
 
@@ -63,7 +73,7 @@ ${headerLines}
 		respond "ok" 200
 	}
 
-	@html path / /index.html
+	@html path / /index.html /app/ /app/index.html
 	header @html Cache-Control ${quote('no-cache')}
 	@assets path /assets/*
 	header @assets Cache-Control ${quote('public, max-age=31536000, immutable')}

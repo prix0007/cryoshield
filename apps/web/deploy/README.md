@@ -124,6 +124,10 @@ fly certs check cryoshield.app --app cryoshield-web
 curl -sI https://cryoshield.app/ | grep -iE 'content-security-policy|x-frame-options|strict-transport|permissions-policy|referrer-policy|x-content-type|cross-origin|cache-control|^server'
 curl -sI https://www.cryoshield.app/ | grep -iE '^(HTTP|location)'   # 301 -> https://cryoshield.app/
 curl -s https://cryoshield.app/healthz                                # ok
+# Routes (redesign-landing-and-app-ui): landing at /, vault app at /app/, identical security headers on both.
+curl -sI https://cryoshield.app/app/ | grep -iE 'content-security-policy|x-frame-options|cache-control'   # same CSP as /
+curl -sI https://cryoshield.app/app | grep -iE '^(HTTP|location)'     # 308 -> /app/
+curl -sI https://cryoshield.app/app/nope | head -1                     # 404 (no SPA fallback)
 ```
 
 Expected:
@@ -159,3 +163,16 @@ Vaults are on-chain, so taking the site down never affects them. Users can still
 ```sh
 pnpm --filter @cryoshield/web test:deploy   # generator, fly.toml, deploy.sh guards, verify --real-env, container (needs Docker)
 ```
+
+## Routes
+
+| Path | Serves | Cache |
+|---|---|---|
+| `/`, `/index.html` | Landing page (static HTML + a small lazy motion chunk) | `no-cache` |
+| `/app/`, `/app/index.html` | Vault app | `no-cache` |
+| `/app` | Redirect to `/app/` (Caddy `file_server`, same host) | n/a |
+| `/assets/*` | Content-hashed JS/CSS/fonts | `immutable` |
+| anything else | 404 with every security header | `no-store` |
+
+Both HTML pages must carry the byte-identical meta CSP; `gen-context.mjs` refuses to build the context otherwise.
+The vault does not depend on the path: the RP ID is the domain.

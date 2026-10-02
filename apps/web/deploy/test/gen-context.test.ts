@@ -9,10 +9,14 @@ import { SECURITY_HEADERS } from '../../vite-plugins/security-headers';
 const GEN = join(__dirname, '..', 'gen-context.mjs');
 const META = "default-src 'none'; script-src 'self'; connect-src 'self' https://rpc.example; require-trusted-types-for 'script'";
 
-function fixture(html: string) {
+function fixture(html: string, appHtml: string | null = html) {
   const d = mkdtempSync(join(tmpdir(), 'cs-gen-'));
   mkdirSync(join(d, 'dist', 'assets'), { recursive: true });
   writeFileSync(join(d, 'dist', 'index.html'), html);
+  if (appHtml !== null) {
+    mkdirSync(join(d, 'dist', 'app'));
+    writeFileSync(join(d, 'dist', 'app', 'index.html'), appHtml);
+  }
   writeFileSync(join(d, 'dist', 'assets', 'index-abc.js'), 'x');
   writeFileSync(join(d, 'dist', '_headers'), '/*\n');
   return d;
@@ -47,6 +51,21 @@ describe('deploy context generator (1.2)', () => {
     expect(() => run(fixture('<html><head></head></html>'))).toThrow(/meta Content-Security-Policy/);
     expect(() => run(fixture(`<html><head><meta http-equiv="Content-Security-Policy" content="${META}; frame-ancestors 'self'"></head></html>`))).toThrow(/frame-ancestors/);
     expect(() => run(fixture(`<html><head><meta http-equiv="Content-Security-Policy" content="${META}"></head></html>`), 'evil.com/x')).toThrow(/host/);
+  });
+
+  it('serves the landing page and the app page no-cache (redesign-landing-and-app-ui 2.3)', () => {
+    const d = fixture(`<html><head><meta charset="utf-8" /><meta http-equiv="Content-Security-Policy" content="${META}"></head></html>`);
+    run(d);
+    expect(existsSync(join(d, 'out', 'site', 'app', 'index.html'))).toBe(true);
+    const caddy = readFileSync(join(d, 'out', 'Caddyfile'), 'utf8');
+    expect(caddy).toContain('@html path / /index.html /app/ /app/index.html');
+    expect(caddy).not.toMatch(/try_files|rewrite/); // no SPA fallback
+  });
+
+  it('refuses pages whose CSPs differ, or a missing app page', () => {
+    const page = (csp: string) => `<html><head><meta http-equiv="Content-Security-Policy" content="${csp}"></head></html>`;
+    expect(() => run(fixture(page(META), page(`${META}; img-src *`)))).toThrow(/differ/);
+    expect(() => run(fixture(page(META), null))).toThrow(/app\/index\.html/);
   });
 
   it('refuses a CSP containing a backtick (cannot be quoted safely)', () => {

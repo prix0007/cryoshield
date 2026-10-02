@@ -101,6 +101,37 @@ describe('served by the container', () => {
     expect(r.headers['server']).toBeUndefined();
   });
 
+  it('/app/ serves the vault app with every header, the same CSP as /, and no-cache (redesign-landing-and-app-ui 2.4)', async () => {
+    const landing = await get('/');
+    const app = await get('/app/');
+    expect(app.status).toBe(200);
+    expect(app.body).toContain('<div id="root">');
+    expect(landing.body).toContain('Backups that outlive the drive.');
+    expect(app.headers['content-security-policy']).toBe(`${metaCsp(app.body)}; frame-ancestors 'none'`);
+    expect(app.headers['content-security-policy']).toBe(landing.headers['content-security-policy']);
+    for (const [k, v] of Object.entries(SECURITY_HEADERS)) expect(app.headers[k.toLowerCase()], k).toBe(v);
+    expect(app.headers['server']).toBeUndefined();
+    expect(app.headers['cache-control']).toBe('no-cache');
+    const idx = await get('/app/index.html');
+    expect(idx.status).toBe(200);
+    expect(idx.headers['cache-control']).toBe('no-cache');
+  });
+
+  it('/app redirects to /app/ on the same host, with security headers', async () => {
+    const r = await get('/app');
+    expect([301, 302, 307, 308]).toContain(r.status);
+    const loc = new URL(r.headers['location'] as string, 'https://cryoshield.app/');
+    expect(loc.host).toBe('cryoshield.app');
+    expect(loc.pathname).toBe('/app/');
+    expect(r.headers['x-frame-options']).toBe('DENY');
+  });
+
+  it.each(['/app/does-not-exist', '/landing', '/app/_headers'])('%s is 404 (no SPA fallback)', async (p) => {
+    const r = await get(p);
+    expect(r.status).toBe(404);
+    expect(r.headers['content-security-policy']).toMatch(/frame-ancestors 'none'$/);
+  });
+
   it('/healthz is 200', async () => {
     const r = await get('/healthz');
     expect(r.status).toBe(200);

@@ -14,17 +14,17 @@
 
 ## 2. Routing and build plumbing
 
-- [ ] 2.1 Write failing tests, then implement:
+- [x] 2.1 Write failing tests, then implement:
   - `test/build/pages.test.ts` (a production build has `index.html` and `app/index.html` with identical CSP metas and no inline script/style; the app page loads the React entry and the landing page does not);
   - `vite.config.ts` multi-page input;
   - move the app to `app/index.html`.
-- [ ] 2.2 Extend `scripts/verify-build.mjs`:
+- [x] 2.2 Extend `scripts/verify-build.mjs`:
   - check the CSP on every HTML page, and require it to be identical across pages;
   - enforce the landing JS budget (initial ≤ 6 KB, each lazy chunk ≤ 10 KB, total ≤ 16 KB gzip; no React/viem markers), printing the measured sizes.
 
   Verify that `pnpm verify-build` passes, and that it fails when the budget is temporarily lowered (`VERIFY_LANDING_BUDGET_SCALE=0.01`).
-- [ ] 2.3 Write failing gen-context tests (CSP mismatch between pages is refused; `/app/` and `/app/index.html` are no-cache), then implement them in `deploy/gen-context.mjs`. Verify with `pnpm test:deploy -- gen-context`.
-- [ ] 2.4 Extend `deploy/test/container.test.ts`:
+- [x] 2.3 Write failing gen-context tests (CSP mismatch between pages is refused; `/app/` and `/app/index.html` are no-cache), then implement them in `deploy/gen-context.mjs`. Verify with `pnpm test:deploy -- gen-context`.
+- [x] 2.4 Extend `deploy/test/container.test.ts`:
   - `/app/` → 200 with every header and no-cache;
   - `/app` → redirect to `/app/` on the same host;
   - `/app/index.html` → no-cache;
@@ -35,7 +35,7 @@
 
 ## 3. Landing page
 
-- [ ] 3.1 Write failing `test/landing/content.test.ts` against `index.html`:
+- [x] 3.1 Write failing `test/landing/content.test.ts` against `index.html`:
   - the tile order and headings;
   - 1–2 pill CTAs per story tile;
   - the required disclosures (OP Sepolia, unaudited, all keys lost);
@@ -45,7 +45,7 @@
   - one `h1`, a skip link, and landmarks.
 
   Then write the static landing markup and first-party SVG graphics until it passes.
-- [ ] 3.2 Write a failing `test/landing/main.test.ts` (jsdom):
+- [x] 3.2 Write a failing `test/landing/main.test.ts` (jsdom):
   - under reduced motion, the motion module is never imported;
   - otherwise it is imported only after a graphic intersects;
   - an import failure leaves the page static with no thrown error.
