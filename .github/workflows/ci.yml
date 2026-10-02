@@ -1,13 +1,15 @@
-# CryoShield CI (OpenSpec change: add-ci).
+# CryoShield CI (OpenSpec changes: add-ci, adopt-pr-workflow).
 #
-# Hardening (design.md decision 7):
+# Hardening (add-ci design decision 7, adopt-pr-workflow decision 9), enforced by
+# .github/scripts/workflow-policy.mjs and zizmor (pedantic) in `workflow-lint`:
 # - push (main) and pull_request only; never the privileged PR "target" trigger.
-# - read-only GITHUB_TOKEN; no secrets referenced anywhere.
-# - every third-party action pinned to a full commit SHA (checked by zizmor in `workflow-lint`).
+# - read-only GITHUB_TOKEN at the top; every job declares its own minimal permissions and a timeout.
+# - no secrets referenced anywhere; PR inputs (title, body, labels) reach scripts only through env:.
+# - every action pinned to a full commit SHA; downloaded tools pinned by version and SHA-256.
 # - checkout never persists credentials; installs use committed lockfiles only.
 # - no dependency caches (avoids cache poisoning across PRs; revisit if CI time matters).
 #
-# Branch protection should require only the aggregate `ci-ok` check.
+# The `main` ruleset (.github/rulesets/main.json) requires only the aggregate `ci-ok` check.
 
 name: CI
 
@@ -15,13 +17,17 @@ on:
   push:
     branches: [main]
   pull_request:
+    # edited/labeled/unlabeled re-run the title and OpenSpec gates. Every job runs on every event, so a
+    # later run can never report a partially skipped ci-ok for the same commit.
+    types: [opened, synchronize, reopened, edited, labeled, unlabeled]
 
 permissions:
   contents: read # least privilege; no job needs to write
 
 concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  # Cancel superseded PR runs; every push to main is verified to completion.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   FOUNDRY_VERSION: v1.1.0
@@ -30,12 +36,18 @@ env:
   SLITHER_VERSION: "0.11.6"
   ZIZMOR_VERSION: "1.30.1"
   OPENSPEC_VERSION: "1.14.0"
+  # PR scanners (adopt-pr-workflow decisions 7-8): release assets verified against these SHA-256 sums.
+  GITLEAKS_VERSION: "8.30.1"
+  GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb # gitleaks_8.30.1_linux_x64.tar.gz
+  OSV_SCANNER_VERSION: "2.6.0"
+  OSV_SCANNER_SHA256: ca69b3d3cd08f889a49dc0a383122f71cc528b83803671df5fd874d97485b108 # osv-scanner_linux_amd64
   FORCE_COLOR: "1"
 
 jobs:
   # Path filter. On pull requests the filter reads the changed-file list from the API (no checkout).
   # On push to main every area job runs, so main is always fully verified.
   changes:
+    name: changes
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -50,7 +62,8 @@ jobs:
       openspec: ${{ steps.filter.outputs.openspec }}
       workflows: ${{ steps.filter.outputs.workflows }}
     steps:
-      - id: filter
+      - name: Filter changed paths
+        id: filter
         uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         with:
           filters: |
@@ -94,41 +107,130 @@ jobs:
               - 'contracts/**/*.sol'
             workflows:
               - .github/**
+              - .gitleaks.toml
+
+  # PR-only hardening gates (adopt-pr-workflow). Runs on every PR event; skipped (= success) on push.
+  pr-checks:
+    name: pr-checks
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read # checkout only; no API calls, no writes
+    env:
+      BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - name: Checkout (full history, for the PR commit range)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          package-manager-cache: false
+      - name: Install gate-script dependencies (locked)
+        run: npm ci --ignore-scripts --no-audit --no-fund --prefix .github/scripts
+      - name: PR title is a Conventional Commit
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: node .github/scripts/pr-title.mjs
+      - name: OpenSpec gate (code changes need an OpenSpec change or a justified no-spec label)
+        env:
+          PR_LABELS: ${{ toJSON(github.event.pull_request.labels) }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: |
+          git diff --name-only --no-renames "${BASE_SHA}...${HEAD_SHA}" > "${RUNNER_TEMP}/changed-files.txt"
+          node .github/scripts/openspec-gate.mjs "${RUNNER_TEMP}/changed-files.txt"
+      - name: Install gitleaks (pinned, checksum-verified)
+        run: |
+          curl -fsSL --retry 3 -o "${RUNNER_TEMP}/gitleaks.tar.gz" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  ${RUNNER_TEMP}/gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf "${RUNNER_TEMP}/gitleaks.tar.gz" -C "${RUNNER_TEMP}" gitleaks
+          "${RUNNER_TEMP}/gitleaks" version
+      - name: gitleaks allowlist self-test (allowlist stays narrow)
+        run: .github/scripts/gitleaks-selftest.sh "${RUNNER_TEMP}/gitleaks" .gitleaks.toml
+      - name: gitleaks (every commit in the PR range)
+        run: >-
+          "${RUNNER_TEMP}/gitleaks" git --no-banner --redact --config .gitleaks.toml
+          --log-opts="${BASE_SHA}..${HEAD_SHA}" .
+      - name: Install osv-scanner (pinned, checksum-verified)
+        run: |
+          curl -fsSL --retry 3 -o "${RUNNER_TEMP}/osv-scanner" \
+            "https://github.com/google/osv-scanner/releases/download/v${OSV_SCANNER_VERSION}/osv-scanner_linux_amd64"
+          echo "${OSV_SCANNER_SHA256}  ${RUNNER_TEMP}/osv-scanner" | sha256sum -c -
+          chmod +x "${RUNNER_TEMP}/osv-scanner"
+      - name: osv-scanner (fail on HIGH/CRITICAL in any lockfile)
+        run: |
+          set +e
+          "${RUNNER_TEMP}/osv-scanner" scan source --config .github/osv-scanner.toml \
+            --format json --output-file "${RUNNER_TEMP}/osv.json" \
+            -L pnpm-lock.yaml -L tools/recover/uv.lock \
+            -L .github/openspec-cli/package-lock.json -L .github/scripts/package-lock.json
+          code=$?
+          set -e
+          node .github/scripts/osv-gate.mjs --config .github/osv-scanner.toml \
+            --report "${RUNNER_TEMP}/osv.json" --scanner-exit "${code}"
 
   workflow-lint:
+    name: workflow-lint
     needs: changes
     if: always() && (github.event_name == 'push' || needs.changes.outputs.workflows == 'true')
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    permissions:
+      contents: read # checkout only
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           version: ${{ env.UV_VERSION }}
           enable-cache: false
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          package-manager-cache: false
       - name: actionlint
         run: >-
           docker run --rm -v "$PWD:/repo" --workdir /repo
           rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
           -color
-      - name: zizmor (SHA pinning, permissions, injection)
-        run: uvx "zizmor==${ZIZMOR_VERSION}" --offline --config .github/zizmor.yml .github
+      - name: Install gate-script dependencies (locked)
+        run: npm ci --ignore-scripts --no-audit --no-fund --prefix .github/scripts
+      - name: Gate-script unit tests
+        run: npm test --prefix .github/scripts
+      - name: Workflow policy (no pull_request_target, explicit permissions and timeouts, no secrets, no lint suppression)
+        run: node .github/scripts/workflow-policy.mjs .github
+      - name: zizmor, pedantic persona (SHA pinning, permissions, injection, credential persistence)
+        run: uvx "zizmor==${ZIZMOR_VERSION}" --offline --persona=pedantic --config .github/zizmor.yml .github
 
   contracts:
+    name: contracts
     needs: changes
     if: always() && (github.event_name == 'push' || needs.changes.outputs.contracts == 'true')
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    permissions:
+      contents: read # checkout only
     defaults:
       run:
         working-directory: contracts
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1.9.1
+      - name: Set up Foundry
+        uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1.9.1
         with:
           version: ${{ env.FOUNDRY_VERSION }}
           cache: false
@@ -141,7 +243,8 @@ jobs:
       # forge test rewrites per-call snapshots (vm.snapshotGasLastCall); fail if they drifted from the committed file.
       - name: Per-call gas snapshot check
         run: git diff --exit-code -- snapshots/
-      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           version: ${{ env.UV_VERSION }}
           enable-cache: false
@@ -153,20 +256,27 @@ jobs:
           --triage-database ../.github/slither-triage.json
 
   vault-crypto:
+    name: vault-crypto
     needs: changes
     if: always() && (github.event_name == 'push' || needs.changes.outputs.vault-crypto == 'true')
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    permissions:
+      contents: read # checkout only
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0 (version from packageManager)
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - name: Set up pnpm
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0 (version from packageManager)
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: ${{ env.NODE_VERSION }}
           package-manager-cache: false
-      - run: pnpm install --frozen-lockfile
+      - name: Install (frozen lockfile)
+        run: pnpm install --frozen-lockfile
       - name: Unit, vector and property tests (Node)
         run: pnpm --filter @cryoshield/vault-crypto test
       - name: Install Playwright Chromium
@@ -175,10 +285,13 @@ jobs:
         run: pnpm --filter @cryoshield/vault-crypto test:browser
 
   recover:
+    name: recover
     needs: changes
     if: always() && (github.event_name == 'push' || needs.changes.outputs.recover == 'true')
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    permissions:
+      contents: read # checkout only
     strategy:
       fail-fast: false
       matrix:
@@ -190,19 +303,23 @@ jobs:
       UV_PYTHON: ${{ matrix.python }}
       EXPECTED_PYTHON: ${{ matrix.python }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       # anvil + forge, so tests/test_anvil_e2e.py runs instead of auto-skipping.
-      - uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1.9.1
+      - name: Set up Foundry
+        uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1.9.1
         with:
           version: ${{ env.FOUNDRY_VERSION }}
           cache: false
-      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           version: ${{ env.UV_VERSION }}
           enable-cache: false
-      - run: uv sync --locked
+      - name: Install (locked)
+        run: uv sync --locked
       - name: Assert interpreter version
         run: uv run --locked python -c "import os, sys; v = '%d.%d' % sys.version_info[:2]; assert v == os.environ['EXPECTED_PYTHON'], v"
       - name: pytest (incl. vault-crypto cross-implementation vectors)
@@ -213,57 +330,76 @@ jobs:
         run: uv run --locked mypy
 
   web:
+    name: web
     needs: changes
     if: always() && (github.event_name == 'push' || needs.changes.outputs.web == 'true')
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    permissions:
+      contents: read # checkout only
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0 (version from packageManager)
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - name: Set up pnpm
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0 (version from packageManager)
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: ${{ env.NODE_VERSION }}
           package-manager-cache: false
-      - uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1.9.1
+      - name: Set up Foundry
+        uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1.9.1
         with:
           version: ${{ env.FOUNDRY_VERSION }}
           cache: false
-      - run: pnpm install --frozen-lockfile
+      - name: Install (frozen lockfile)
+        run: pnpm install --frozen-lockfile
       - name: Build contracts (the local chain stack deploys contracts/out)
         run: forge build
         working-directory: contracts
       # @cryoshield/vault-crypto resolves types from dist/ (gitignored), so build it before typechecking the web app.
       - name: Build workspace dependency vault-crypto
         run: pnpm --filter @cryoshield/vault-crypto build
-      - run: pnpm --filter @cryoshield/web typecheck
-      - run: pnpm --filter @cryoshield/web lint
-      - run: pnpm --filter @cryoshield/web test
+      - name: Typecheck
+        run: pnpm --filter @cryoshield/web typecheck
+      - name: Lint
+        run: pnpm --filter @cryoshield/web lint
+      - name: Unit tests
+        run: pnpm --filter @cryoshield/web test
       - name: Integration tests (anvil stack)
         run: pnpm --filter @cryoshield/web test:int
       - name: Reproducible build and bundle checks
         run: pnpm --filter @cryoshield/web verify-build
 
   web-e2e:
+    name: web-e2e
     needs: changes
     if: always() && (github.event_name == 'push' || needs.changes.outputs.web == 'true')
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    permissions:
+      contents: read # checkout only
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0 (version from packageManager)
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - name: Set up pnpm
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0 (version from packageManager)
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: ${{ env.NODE_VERSION }}
           package-manager-cache: false
-      - uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1.9.1
+      - name: Set up Foundry
+        uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1.9.1
         with:
           version: ${{ env.FOUNDRY_VERSION }}
           cache: false
-      - run: pnpm install --frozen-lockfile
+      - name: Install (frozen lockfile)
+        run: pnpm install --frozen-lockfile
       - name: Build contracts (the local chain stack deploys contracts/out)
         run: forge build
         working-directory: contracts
@@ -273,15 +409,20 @@ jobs:
         run: pnpm --filter @cryoshield/web test:e2e
 
   openspec:
+    name: openspec
     needs: changes
     if: always() && (github.event_name == 'push' || needs.changes.outputs.openspec == 'true')
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    permissions:
+      contents: read # checkout only
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: ${{ env.NODE_VERSION }}
           package-manager-cache: false
@@ -290,16 +431,19 @@ jobs:
         run: npm ci --ignore-scripts --no-audit --no-fund --prefix .github/openspec-cli
       - name: Assert OpenSpec CLI version
         run: test "$(.github/openspec-cli/node_modules/.bin/openspec --version)" = "$OPENSPEC_VERSION"
-      - run: .github/openspec-cli/node_modules/.bin/openspec validate --all --strict --no-interactive
+      - name: Validate all changes and specs (strict)
+        run: .github/openspec-cli/node_modules/.bin/openspec validate --all --strict --no-interactive
       - name: License consistency (all first-party declarations are MIT)
         run: scripts/check-licenses.sh
 
-  # The only check branch protection needs. Skipped area jobs count as success; failed or cancelled ones do not.
+  # The only check the main ruleset requires. Skipped jobs count as success; failed or cancelled ones do not.
   ci-ok:
-    needs: [changes, workflow-lint, contracts, vault-crypto, recover, web, web-e2e, openspec]
+    name: ci-ok
+    needs: [changes, pr-checks, workflow-lint, contracts, vault-crypto, recover, web, web-e2e, openspec]
     if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    permissions: {} # no checkout, no API calls
     steps:
       - name: All required jobs succeeded or were skipped
         env:
