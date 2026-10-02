@@ -1,0 +1,29 @@
+# Reviewed osv-scanner exceptions (OpenSpec change adopt-pr-workflow, design decision 8, assumption A2).
+# Rules (enforced by .github/scripts/osv-gate.mjs): only [[IgnoredVulns]]; each needs id, reason and an
+# ignoreUntil at most 90 days ahead. Expired entries count again and fail CI. No package-wide overrides.
+#
+# Baseline triage 2026-10-02. All four are reachable only through @dha-team/arbundles@1.0.4, a devDependency
+# of apps/web used solely by test/mirror/ans104.test.ts as a cross-check oracle that signs fixed test data.
+# Not in the shipped bundle (verify-build), no WebSocket provider is created, secp256k1's native build is
+# disabled (pnpm.onlyBuiltDependencies: []). Fix owner: web engineer, via pnpm overrides
+# (elliptic >= 6.6.1, secp256k1 >= 5.0.1, ws >= 7.5.10) or by replacing the oracle, before the expiry below.
+
+[[IgnoredVulns]]
+id = "GHSA-vjh7-7g9h-fjfh"
+ignoreUntil = 2026-11-01
+reason = "elliptic 6.5.4 (CRITICAL, private key extraction on malformed input signing): dev-only arbundles test oracle signing fixed test data; fix tracked for web owner"
+
+[[IgnoredVulns]]
+id = "GHSA-584q-6j8j-r5pm"
+ignoreUntil = 2026-11-01
+reason = "secp256k1 5.0.0 (HIGH, ECDH key extraction with crafted public keys): dev-only arbundles test oracle, ECDH never called; fix tracked for web owner"
+
+[[IgnoredVulns]]
+id = "GHSA-3h5v-q93c-6h6q"
+ignoreUntil = 2026-11-01
+reason = "ws 7.4.6 (HIGH, DoS via many HTTP headers): dev-only, via unused @ethersproject/providers WebSocketProvider in arbundles; no server, no socket opened; fix tracked for web owner"
+
+[[IgnoredVulns]]
+id = "GHSA-96hv-2xvq-fx4p"
+ignoreUntil = 2026-11-01
+reason = "ws 7.4.6 (HIGH, DoS): dev-only, via unused @ethersproject/providers WebSocketProvider in arbundles; no server, no socket opened; fix tracked for web owner"
