@@ -130,6 +130,14 @@ test('write-env: refuses newlines (key injection) and an existing file', async (
   assert.notEqual((await run('write-env.sh', { ...FULL_ENV, OUT: out })).status, 0);
 });
 
+test('write-env: refuses $ (Vite dotenv expansion would rewrite the value) (review L2)', async () => {
+  const out = join(mkdtempSync(join(tmpdir(), 'env-')), '.env');
+  const r = await run('write-env.sh', { ...FULL_ENV, VITE_RP_NAME: 'Cryo$HOME', OUT: out });
+  assert.notEqual(r.status, 0);
+  assert.match(r.stdout + r.stderr, /VITE_RP_NAME/);
+  assert.equal(existsSync(out), false);
+});
+
 // ---- detect.sh ----
 test('detect: live commit equals main -> deploy=false', async () => {
   site = healthySite();
@@ -163,6 +171,16 @@ test('detect: a run whose commit is no longer main HEAD is superseded (deploy=fa
     assert.match(r.stdout, /superseded/);
   }
   assert.equal((await run('detect.sh', { TARGET_SHA: SHA, MAIN_SHA: 'nope' })).status, 2);
+});
+
+test('detect: a commit whose earlier deploy or smoke failed is not retried every 15 minutes, unless forced (review M2)', async () => {
+  site = { ...healthySite(), release: { status: 200, body: JSON.stringify({ commit: OTHER }) } };
+  const skipped = await run('detect.sh', { TARGET_SHA: SHA, PREVIOUSLY_FAILED: 'true' });
+  assert.equal(skipped.status, 0, skipped.stderr);
+  assert.match(skipped.output, /^deploy=false$/m);
+  assert.match(skipped.stdout, /previously failed/);
+  assert.match((await run('detect.sh', { TARGET_SHA: SHA, PREVIOUSLY_FAILED: 'true', FORCE: 'true' })).output, /^deploy=true$/m);
+  assert.match((await run('detect.sh', { TARGET_SHA: SHA, PREVIOUSLY_FAILED: 'false' })).output, /^deploy=true$/m);
 });
 
 test('detect: FORCE=true always deploys; an invalid TARGET_SHA exits 2', async () => {

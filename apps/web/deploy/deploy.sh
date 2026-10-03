@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Deploy the CryoShield web app to Fly.io (add-fly-hosting D5). Fails closed at every step.
 #   DEPLOY_HOST=cryoshield.app apps/web/deploy/deploy.sh
+#   apps/web/deploy/deploy.sh --build-only   # every guard and build step, but no fly (CI build job, add-continuous-deploy H1)
 # Never pass secrets on the command line; this script needs none (fly uses its own auth).
 set -euo pipefail
 
@@ -13,7 +14,16 @@ die() {
   exit 1
 }
 
-for tool in git pnpm node fly; do
+BUILD_ONLY=0
+case "${1:-}" in
+  "") ;;
+  --build-only) BUILD_ONLY=1 ;;
+  *) die "unknown argument: $1 (usage: deploy.sh [--build-only])" ;;
+esac
+
+tools=(git pnpm node)
+[ "$BUILD_ONLY" -eq 1 ] || tools+=(fly)
+for tool in "${tools[@]}"; do
   command -v "$tool" >/dev/null 2>&1 || die "$tool is not on PATH"
 done
 
@@ -56,5 +66,9 @@ node deploy/release-manifest.mjs --site deploy/.build/site --out deploy/.build/r
 # --site-release also publishes deploy/.build/site/release.json, served as /release.json (add-continuous-deploy D3).
 echo "deploy: the site serves /release.json; keep deploy/.build/release-manifest.json (CI uploads it as an artifact)"
 
+if [ "$BUILD_ONLY" -eq 1 ]; then
+  echo "deploy: build only: deploy/.build is ready for commit $(git -C "$ROOT" rev-parse --short HEAD); fly deploy not run"
+  exit 0
+fi
 echo "deploy: commit $(git -C "$ROOT" rev-parse --short HEAD) -> https://$HOST ($APP)"
 fly deploy --config fly.toml --remote-only --app "$APP"

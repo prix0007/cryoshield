@@ -1,7 +1,7 @@
 // @vitest-environment node
 /** add-fly-hosting 3.2: deploy.sh refuses unsafe deploys; on success, steps run in order and end with fly deploy. */
 import { spawnSync } from 'node:child_process';
-import { chmodSync, cpSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -28,9 +28,9 @@ function repo(rpId = 'cryoshield.app') {
   git('init', '-q');
   git('-c', 'user.email=t@t', '-c', 'user.name=t', 'add', '-A');
   git('-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'init');
-  const run = (env: Record<string, string> = {}) => {
+  const run = (env: Record<string, string> = {}, args: string[] = []) => {
     const clean = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('VITE_')));
-    return spawnSync('bash', [join(web, 'deploy', 'deploy.sh')], {
+    return spawnSync('bash', [join(web, 'deploy', 'deploy.sh'), ...args], {
       cwd: web,
       encoding: 'utf8',
       env: { ...clean, PATH: `${bin}:/usr/bin:/bin`, ...env },
@@ -43,7 +43,7 @@ function repo(rpId = 'cryoshield.app') {
       return [];
     }
   };
-  return { root, web, run, calls };
+  return { root, web, bin, run, calls };
 }
 
 describe('deploy.sh guards', () => {
@@ -109,5 +109,23 @@ describe('deploy.sh guards', () => {
       expect.stringMatching(/^node deploy\/release-manifest\.mjs --site deploy\/\.build\/site --out deploy\/\.build\/release-manifest\.json --commit [0-9a-f]{40} --env \.env --contracts .+\/contracts --site-release$/),
       'fly deploy --config fly.toml --remote-only --app cryoshield-web',
     ]);
+  });
+
+  it('--build-only runs every guard and build step but never fly, and does not need fly (add-continuous-deploy H1)', () => {
+    const r = repo();
+    rmSync(join(r.bin, 'fly'));
+    spawnSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qam', 'no fly'], { cwd: r.root });
+    const out = r.run({}, ['--build-only']);
+    expect(out.status, out.stderr).toBe(0);
+    expect(r.calls().some((c) => c.startsWith('fly'))).toBe(false);
+    expect(r.calls()).toHaveLength(3);
+    expect(out.stdout).toMatch(/build only/);
+  });
+
+  it('rejects unknown arguments', () => {
+    const r = repo();
+    const out = r.run({}, ['--deploy-anyway']);
+    expect(out.status).not.toBe(0);
+    expect(r.calls()).toEqual([]);
   });
 });

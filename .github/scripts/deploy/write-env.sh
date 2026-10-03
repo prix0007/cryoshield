@@ -27,6 +27,7 @@ for k in "${REQUIRED[@]}" "${OPTIONAL[@]}"; do
   [ -n "$v" ] || continue
   case "$v" in
     *$'\n'* | *$'\r'*) echo "::error title=production config::$k contains a line break" ; exit 1 ;;
+    *'$'*) echo "::error title=production config::$k contains \$ (Vite's dotenv expansion would rewrite it)" ; exit 1 ;;
   esac
   lines+=("$k=$v")
 done

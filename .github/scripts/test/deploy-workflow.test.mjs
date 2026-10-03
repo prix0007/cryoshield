@@ -65,6 +65,48 @@ test('no other workflow may use FLY_API_TOKEN or environment production', () => 
   expectError('nightly.yml', deploy.replace('name: Deploy', 'name: Nightly'), /only deploy\.yml/);
 });
 
+// ---- Security review (add-continuous-deploy) ----
+
+test('H1: jobs holding FLY_API_TOKEN run no build tooling and no third-party code', () => {
+  const tokenJob = parse(deploy).jobs.deploy;
+  assert.ok(JSON.stringify(tokenJob).includes('FLY_API_TOKEN'));
+  const withBuild = replaceOnce(deploy, '      - name: Deploy the built context (flyctl only)\n', '      - name: Sneaky install\n        run: pnpm install --frozen-lockfile\n      - name: Deploy the built context (flyctl only)\n');
+  expectError('deploy.yml', withBuild, /job 'deploy'.*no node, npm, pnpm/);
+  const withAction = replaceOnce(deploy, '      - name: Deploy the built context (flyctl only)\n', '      - name: Setup\n        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0\n      - name: Deploy the built context (flyctl only)\n');
+  expectError('deploy.yml', withAction, /job 'deploy'.*actions\/setup-node/);
+});
+
+test('H1: the build job never sees the Fly token and the deploy job only ships the build artifact', () => {
+  const wf = parse(deploy);
+  assert.doesNotMatch(JSON.stringify(wf.jobs.build), /FLY_API_TOKEN/);
+  assert.match(String(wf.jobs.build.steps.find((s) => s.id === 'build')?.run), /deploy\.sh --build-only/);
+  assert.ok(wf.jobs.deploy.steps.some((s) => String(s.uses).startsWith('actions/download-artifact@')));
+});
+
+test('M3: environment names are case-insensitive and may not be expressions', () => {
+  expectError('ci.yml', replaceOnce(ci, '  contracts:\n    name: contracts\n', '  contracts:\n    name: contracts\n    environment: Production\n'), /production/i);
+  expectError('ci.yml', replaceOnce(ci, '  contracts:\n    name: contracts\n', "  contracts:\n    name: contracts\n    environment: \"${{ 'production' }}\"\n"), /expression/);
+  expectError('deploy.yml', deploy.replace('    environment:\n      name: production\n', "    environment:\n      name: ${{ 'production' }}\n"), /expression/);
+});
+
+test('M3: deploy.yml allows only exact secret expressions, each in its own step', () => {
+  const inject = (expr) => replaceOnce(deploy, '          VITE_RP_NAME: ${{ vars.VITE_RP_NAME }}\n', `          VITE_RP_NAME: \${{ vars.VITE_RP_NAME }}\n          X: \${{ ${expr} }}\n`);
+  expectError('deploy.yml', inject("secrets[format('FLY_{0}','API_TOKEN')]"), /secret/);
+  expectError('deploy.yml', inject('toJSON(secrets)'), /secret/);
+  expectError('deploy.yml', inject('secrets.FLY_API_TOKEN'), /FLY_API_TOKEN/);
+  const bundlerElsewhere = replaceOnce(deploy, '          PREVIOUS_IMAGE: ${{ needs.deploy.outputs.previous_image }}\n', '          PREVIOUS_IMAGE: ${{ needs.deploy.outputs.previous_image }}\n          B: ${{ secrets.VITE_BUNDLER_URL }}\n');
+  expectError('deploy.yml', bundlerElsewhere, /VITE_BUNDLER_URL/);
+});
+
+test('M1/L3: smoke and rollback also run when the deploy job failed after fly deploy started', () => {
+  const wf = parse(deploy);
+  assert.match(String(wf.jobs.smoke.if), /always\(\)/);
+  assert.match(String(wf.jobs.smoke.if), /needs\.deploy\.result/);
+  const rollback = wf.jobs.smoke.steps.find((s) => s.id === 'rollback');
+  assert.match(String(rollback.if), /failure\(\)/);
+  assert.match(String(rollback.if), /fly_started/);
+});
+
 test('ci.yml: `full` (workflow_call) forces every area job and workflow-lint on', () => {
   const wf = parse(ci);
   assert.equal(wf.on.workflow_call.inputs.full.type, 'boolean');

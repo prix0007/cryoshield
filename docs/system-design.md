@@ -151,7 +151,7 @@ flowchart LR
   main["main<br/>squash only, linear, no force-push"]
   detect["detect<br/>/release.json ≠ main HEAD<br/>(push · every 15 min · manual)"]
   full["full CI on that commit<br/>ci.yml, every job"]
-  deploy["deploy.sh (env production)<br/>clean tree · 2 identical builds<br/>RP ID = host · release manifest"]
+  deploy["build: deploy.sh --build-only (no token)<br/>clean tree · 2 identical builds · RP ID = host<br/>then deploy: flyctl only (Fly token)"]
   fly["Fly.io<br/>cryoshield-web"]
   smoke["smoke test<br/>routes · headers · registry · /release.json<br/>auto rollback on failure"]
 
@@ -169,7 +169,7 @@ flowchart LR
 - **Rebuildable deploys.** Every deploy writes `apps/web/deploy/.build/release-manifest.json` with the commit and a deterministic tree hash, so anyone can rebuild the site and compare it with what Fly serves. The site also serves the commit, tree hash and public config at `https://cryoshield.app/release.json` (not part of the tree hash), so anyone can see which commit is live.
 - **Continuous deployment.** `deploy.yml` runs on every push to `main`, every 15 minutes (merges made by auto-merge start no push workflow), and on demand. It skips when `/release.json` already shows the `main` HEAD. It then:
   - runs the full `ci.yml` on that commit;
-  - deploys with the unchanged guarded `deploy.sh` in the GitHub Environment `production`, the only place the Fly deploy token lives;
+  - builds with the guarded `deploy.sh --build-only` in a job without the Fly token, then deploys that verified artifact from a job that runs only flyctl (the GitHub Environment `production` is the only place the token lives);
   - smoke-tests the live site, and on any failure redeploys the previous image automatically and fails loudly.
 
 ## 6. Hosting and headers

@@ -317,7 +317,14 @@ export function checkWorkflow(file, text) {
 
   // Production deployment (OpenSpec change add-continuous-deploy, design D7).
   const mentionsToken = strings(wf).some((s) => /FLY_API_TOKEN/i.test(s));
-  const usesProduction = Object.values(isObj(wf.jobs) ? wf.jobs : {}).some((j) => isObj(j) && envName(j.environment) === 'production');
+  const jobsList = Object.entries(isObj(wf.jobs) ? wf.jobs : {}).filter(([, j]) => isObj(j));
+  // Environment names are case-insensitive on GitHub and must never be computed (review M3).
+  for (const [id, j] of jobsList) {
+    if (j.environment !== undefined && /\$\{\{/.test(String(envName(j.environment)))) {
+      errors.push(`${file}: job '${id}': environment must be a literal name, not an expression`);
+    }
+  }
+  const usesProduction = jobsList.some(([, j]) => envName(j.environment) === 'production');
   if (name === DEPLOY_WORKFLOW) errors.push(...checkDeploy(file, wf, on));
   else {
     if (mentionsToken) errors.push(`${file}: FLY_API_TOKEN may only be referenced by ${DEPLOY_WORKFLOW} (only deploy.yml deploys)`);
@@ -329,7 +336,12 @@ export function checkWorkflow(file, text) {
 const DEPLOY_WORKFLOW = 'deploy.yml';
 const DEPLOY_TRIGGERS = ['push', 'schedule', 'workflow_dispatch'];
 const DEPLOY_TOKEN_STEPS = ['deploy', 'rollback'];
-const envName = (e) => (isObj(e) ? e.name : e);
+const envName = (e) => String(isObj(e) ? e.name ?? '' : e ?? '').trim().toLowerCase();
+// The only secret expressions deploy.yml may contain, each only in the step env of the named steps (review M3).
+const DEPLOY_SECRETS = { deploy: ['FLY_API_TOKEN'], rollback: ['FLY_API_TOKEN'], 'web-env': ['VITE_BUNDLER_URL'] };
+// Jobs holding the Fly token run no build tooling or third-party code (review H1).
+const TOKEN_JOB_ACTIONS = [/^actions\/checkout@[0-9a-f]{40}$/, /^actions\/download-artifact@[0-9a-f]{40}$/];
+const BUILD_TOOLING = /(^|[\s;&|(`!/])(node|npm|npx|pnpm|yarn|bunx?|deno|vite|tsx|python3?|pip3?|uvx?|make|docker)\b/m;
 const exprsOf = (node) => strings(node).flatMap((s) => [...s.matchAll(/\$\{\{([\s\S]*?)\}\}/g)].map((m) => m[1]));
 const usesSecret = (node, re = /\bsecrets\b/i) => exprsOf(node).some((e) => re.test(e) && !/^\s*secrets\.GITHUB_TOKEN\s*$/i.test(e));
 
@@ -355,13 +367,33 @@ function checkDeploy(file, wf, on) {
     const prod = envName(job.environment) === 'production';
     if (job.environment !== undefined && !prod) err(`job '${id}': the only allowed environment is production`);
     if (usesSecret(job) && !prod) err(`job '${id}' uses secrets, so it must run in environment production`);
-    if (strings(job.env).some((s) => /FLY_API_TOKEN/i.test(s))) err(`job '${id}': FLY_API_TOKEN must not be in a job-level env`);
-    for (const step of Array.isArray(job.steps) ? job.steps : []) {
-      if (!isObj(step)) continue;
+    if (strings(job.env).some((s) => /FLY_API_TOKEN/i.test(s)) || usesSecret(job.env)) err(`job '${id}': FLY_API_TOKEN or any secret must not be in a job-level env`);
+    const steps = Array.isArray(job.steps) ? job.steps.filter(isObj) : [];
+    const holdsToken = strings(job).some((s) => /FLY_API_TOKEN/i.test(s));
+    for (const step of steps) {
+      const label = `job '${id}' step '${step.name ?? step.id}'`;
       const { env, ...rest } = step;
-      if (strings(rest).some((s) => /FLY_API_TOKEN/i.test(s))) err(`job '${id}' step '${step.name ?? step.id}': FLY_API_TOKEN may only be passed through the step env`);
+      if (strings(rest).some((s) => /FLY_API_TOKEN/i.test(s))) err(`${label}: FLY_API_TOKEN may only be passed through the step env`);
       if (strings(env).some((s) => /FLY_API_TOKEN/i.test(s)) && !(prod && DEPLOY_TOKEN_STEPS.includes(step.id))) {
-        err(`job '${id}' step '${step.name ?? step.id}': FLY_API_TOKEN is only allowed in steps with id ${DEPLOY_TOKEN_STEPS.join(' or ')} in a production job`);
+        err(`${label}: FLY_API_TOKEN is only allowed in steps with id ${DEPLOY_TOKEN_STEPS.join(' or ')} in a production job`);
+      }
+      // Exact secret expressions only, in the step env of their step.
+      for (const e of exprsOf(rest)) if (/\bsecrets\b/i.test(e)) err(`${label}: secret expression \${{${e}}} is only allowed in a step env`);
+      for (const e of exprsOf(env)) {
+        if (!/\bsecrets\b/i.test(e)) continue;
+        const m = /^\s*secrets\.([A-Z_]+)\s*$/.exec(e);
+        if (!m || !(DEPLOY_SECRETS[step.id] ?? []).includes(m[1]) || !prod) {
+          err(`${label}: secret expression \${{${e}}} is not allowed here (allowed: ${Object.entries(DEPLOY_SECRETS).map(([k, v]) => `${v.join(',')} in step '${k}'`).join('; ')})`);
+        }
+      }
+      // H1: the token's job runs nothing but checkout/download-artifact and shell around flyctl.
+      if (holdsToken) {
+        if (step.uses !== undefined && !TOKEN_JOB_ACTIONS.some((re) => re.test(String(step.uses)))) {
+          err(`job '${id}' holds FLY_API_TOKEN, so step '${step.name ?? step.id}' may not use ${String(step.uses).split('@')[0]} (only actions/checkout and actions/download-artifact)`);
+        }
+        if (step.run !== undefined && BUILD_TOOLING.test(String(step.run))) {
+          err(`job '${id}' holds FLY_API_TOKEN, so it may run no node, npm, pnpm or other build tooling (step '${step.name ?? step.id}'); build in a separate job`);
+        }
       }
     }
   }

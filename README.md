@@ -165,8 +165,9 @@ Every new commit on `main` is deployed to https://cryoshield.app automatically b
 
 1. **detect:** compare `https://cryoshield.app/release.json` with the `main` HEAD, and skip if they are equal.
 2. **test:** run the **full** `ci.yml` on that exact commit.
-3. **deploy:** run the guarded `apps/web/deploy/deploy.sh` in the GitHub Environment `production`.
-4. **smoke:** check the routes, headers, registry address and `/release.json`. On failure, roll back to the previous image automatically.
+3. **build** (no deploy token): run the guarded `apps/web/deploy/deploy.sh --build-only` in the GitHub Environment `production`.
+4. **deploy:** a token-holding job that runs only pinned flyctl on the verified build artifact.
+5. **smoke:** check the routes, headers, registry address and `/release.json`. On failure, roll back to the previous image automatically.
 
 The pipeline never runs on pull requests. To redeploy by hand, run `gh workflow run deploy.yml -f force=true`. To roll back, see [`docs/deploy.md`](docs/deploy.md), which also covers first-time setup and token rotation. Note that polling every 15 minutes costs about 2,900 Actions minutes a month on a private repo; the runbook lists cheaper cadences.
 

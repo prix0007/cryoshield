@@ -160,3 +160,55 @@ Rollback of the pipeline: disable the workflow (`gh workflow disable deploy.yml`
   - policy: OK;
   - `openspec validate --all --strict` and the licence check: pass;
   - gitleaks on the branch range: no leaks.
+
+## Security review (2026-10-04)
+
+The security reviewer verdict was **APPROVE WITH FIXES**. Confirmed sound:
+- only tested `main` commits deploy (implicit `success()`, the same `github.sha` throughout, the superseded check);
+- the environment API fields in the runbook are correct;
+- flyctl checksum and action pins;
+- `/release.json` holds no keys, is `no-store`, and is correctly excluded from `treeHash`;
+- `inputs.full` and the permissions of the called jobs.
+
+Every finding below was fixed test-first (red, then green).
+
+### HIGH
+
+1. **The Fly token was in the same step as third-party build code.** `deploy.sh` runs `vite build`, its plugins and their dependencies with `FLY_API_TOKEN` in the environment. A compromised build dependency could take the one-year token and deploy a phishing build at will. Splitting steps within one job is not enough, because a build step can write to `$GITHUB_ENV` and `$GITHUB_PATH`.
+
+   Fix: the work is split into two jobs.
+   - **`build`** (no token) runs `deploy.sh --build-only`. This new flag runs every guard and build step but no `fly` (tested), and the job uploads `deploy/.build`.
+   - **`deploy`** holds the token and runs only `actions/checkout`, `actions/download-artifact`, shell, `curl`, `jq` and pinned flyctl.
+     - Before `fly deploy`, it re-verifies the artifact: the manifest commit, the recomputed `treeHash`, and the `release.json` commit.
+     - The policy rejects any other action, and any node, npm, pnpm, vite, python, make or docker invocation, in a job that holds the token.
+
+### MEDIUM
+
+2. **A failed `fly deploy` was never rolled back.** If `fly deploy` failed partway, or a later deploy step failed, nothing rolled back.
+   - Fix: `deploy` sets `fly_started=true` just before `fly deploy`. `smoke` now runs `if: always()` when `deploy` succeeded, or failed after `fly_started`. Rollback runs on any failure in `smoke`, or on a failed `deploy`, once `fly_started` is set. This also fixes LOW-3.
+3. **A failing commit was retried every 15 minutes.**
+   - Fix: `detect` (with `actions: read`) looks up earlier Deploy runs of the SHA. If a `deploy` or `smoke` job failed, it skips unless `force` is set (`PREVIOUSLY_FAILED` in `detect.sh`, tested).
+4. **The policy could be bypassed.** Fixes:
+   - environment names are compared case-insensitively and may not be expressions;
+   - `deploy.yml` allows only the exact expressions `secrets.FLY_API_TOKEN` (step env of `deploy` and `rollback`) and `secrets.VITE_BUNDLER_URL` (step env of `web-env`), in `production` jobs only. `secrets[...]`, `toJSON(secrets)` and other names are rejected.
+5. **Nothing checked the branch policy existed.**
+   - Fix: setup step 5 in `docs/deploy.md` is a hard gate: it prints `OK` only when the custom policy is the single `branch:main` rule.
+   - The runbook says to create the policy and pass the check before setting secrets, and not to merge before then.
+
+### LOW
+
+- **L1:** a rollback uses the new commit's `fly.toml`. This is documented, with the manual alternative.
+- **L2:** `write-env.sh` rejects `$` (Vite's dotenv expansion would rewrite the value; tested).
+- **L3:** fixed with item 2.
+
+### Unrelated observation
+
+The reviewer saw 2 failures in `apps/web/deploy/test/verify-real-env.test.ts` ("Missing required build variable(s)") in a worktree without `apps/web/.env`. That file is not touched by this change, and the failure comes from the local environment. CI does not run `test:deploy`.
+
+### New pin
+
+`actions/download-artifact` v8.0.1 = `3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c`.
+
+### zizmor ignore
+
+The `self-repository` ignore moved to `deploy.yml:87`.

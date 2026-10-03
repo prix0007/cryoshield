@@ -3,7 +3,8 @@
 # Reads /release.json's commit. Anything missing, unreachable or malformed counts as "deploy": the deploy itself is
 # fully gated by CI, so erring toward deploying is safe; erring toward skipping would leave main undeployed.
 #
-# env: TARGET_SHA (40-hex, required), BASE_URL (default https://cryoshield.app), FORCE (true|false)
+# env: TARGET_SHA (40-hex, required), BASE_URL (default https://cryoshield.app), FORCE (true|false),
+#      MAIN_SHA (current main HEAD; a different value means superseded), PREVIOUSLY_FAILED (true|false)
 # out: deploy=true|false to $GITHUB_OUTPUT (and stdout)
 set -euo pipefail
 
@@ -25,6 +26,14 @@ if [ -n "${MAIN_SHA:-}" ]; then
     emit "deploy=false"
     exit 0
   fi
+fi
+
+# A commit whose earlier deploy/smoke failed (and was rolled back) is not retried every 15 minutes (review M2):
+# fix forward with a new commit, or redeploy on purpose with workflow_dispatch force=true.
+if [ "${PREVIOUSLY_FAILED:-false}" = "true" ] && [ "${FORCE:-false}" != "true" ]; then
+  echo "detect: a previous deploy of $TARGET_SHA previously failed (deploy or smoke); not retrying automatically"
+  emit "deploy=false"
+  exit 0
 fi
 
 if [ "${FORCE:-false}" = "true" ]; then

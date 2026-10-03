@@ -19,4 +19,4 @@ rules:
   # file:line (add-continuous-deploy D4). Drop it once actionlint supports `$/`.
   self-repository:
     ignore:
-      - deploy.yml:74
+      - deploy.yml:87

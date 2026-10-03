@@ -15,16 +15,21 @@ It has four stages:
 |---|---|
 | `detect` | Reads `https://cryoshield.app/release.json`. If it already names the `main` HEAD, or if `main` moved on (a newer run owns the deploy), the run stops here. |
 | `test` | The **full** `ci.yml` (`workflow_call`, `full: true`) on that exact commit: every area job, no path filters. |
-| `deploy` | Runs in the GitHub Environment `production`. It writes `apps/web/.env` from the environment's variables, installs flyctl (pinned and checksummed), records the live image, then runs the unchanged guarded `apps/web/deploy/deploy.sh`. The release manifest is uploaded as an artifact, and the commit and tree hash go into the job summary. |
-| `smoke` | Checks `/`, `/app/`, `/architecture`, `/privacy` and `/healthz` (200), the security headers, the registry address on `/architecture`, and that `/release.json` names the deployed commit. On failure it **rolls back automatically** to the previous image and fails the run. |
+| `build` | Runs in the GitHub Environment `production` and **never sees the Fly token**. It writes `apps/web/.env` from the environment's variables, then runs `apps/web/deploy/deploy.sh --build-only`. That run applies every guard (clean tree, RP ID equals host, two identical production builds, bundle checks) and produces `deploy/.build`: the site, the Caddyfile, the release manifest and `release.json`. The result is uploaded as an artifact. |
+| `deploy` | Holds the Fly token, and runs **no node, pnpm or build code**; the workflow policy enforces this. It downloads the artifact, checks the manifest's commit and tree hash against the files, records the live image, and runs `fly deploy` with pinned, checksummed flyctl. The commit and tree hash go into the job summary. |
+| `smoke` | Checks `/`, `/app/`, `/architecture`, `/privacy` and `/healthz` (200), the security headers, the registry address on `/architecture`, and that `/release.json` names the deployed commit. On failure, including a `deploy` that failed after `fly deploy` started, it **rolls back automatically** to the previous image and fails the run. |
 
 Only one deploy runs at a time (`concurrency: deploy-production`), and a running deploy is never cancelled. The pipeline never runs on pull requests, and `workflow-policy.mjs` enforces that in CI.
+
+A commit whose deploy or smoke test failed is **not retried** by the 15-minute schedule. Fix forward with a new commit, or redeploy it on purpose with `gh workflow run deploy.yml --ref main -f force=true`.
 
 **Which commit is live?** Run `curl -s https://cryoshield.app/release.json`. It returns the commit, the `treeHash` and the public config.
 
 ## First-time setup [founder]
 
 Run these once, from a checkout that has the real `apps/web/.env`. None of them prints a secret value.
+
+> **Order matters.** The branch policy (step 1) is what keeps the Fly token away from any other branch: a workflow pushed on a feature branch could otherwise ask for `production`. Create it, run the step 5 check, and only then set secrets. Do not merge `add-continuous-deploy` before step 5 passes.
 
 **1. Create the `production` environment, deployable from `main` only.**
 
@@ -62,10 +67,12 @@ for k in VITE_CHAIN_ID VITE_RPC_URL VITE_SPONSORSHIP_POLICY_ID VITE_TURBO_UPLOAD
 done
 ```
 
-**5. Check (names only).**
+**5. Check (names only).** This is a hard gate: it must print `OK`. Run it after step 1, and again at the end.
 
 ```sh
-gh api repos/prix0007/cryoshield/environments/production --jq '.deployment_branch_policy'
+policy="$(gh api repos/prix0007/cryoshield/environments/production --jq '.deployment_branch_policy | "\(.protected_branches) \(.custom_branch_policies)"')"
+branches="$(gh api repos/prix0007/cryoshield/environments/production/deployment-branch-policies --jq '[.branch_policies[] | "\(.type):\(.name)"] | join(",")')"
+[ "$policy" = "false true" ] && [ "$branches" = "branch:main" ] && echo OK || echo "NOT SAFE: policy=$policy branches=$branches"
 gh secret list --env production      # FLY_API_TOKEN, VITE_BUNDLER_URL
 gh variable list --env production    # the VITE_* names above
 ```
@@ -91,7 +98,9 @@ There are two ways:
 - **Pause deploys** while you fix `main`: `gh workflow disable deploy.yml`, then later `gh workflow enable deploy.yml`. Reverting the bad commit on `main` through a PR also works: the pipeline deploys the revert.
 - **Take the site offline:** `fly scale count 0 --app cryoshield-web`. Vaults are on-chain, and the desktop recovery tool keeps working.
 
-A rollback restores the previous *image* only. It cannot fix DNS, certificates or Fly app settings.
+A rollback restores the previous *image* only.
+- It uses the **new** commit's `apps/web/fly.toml`. If the bad change was in `fly.toml` itself, revert that file in a PR, or deploy the old image with the old config by hand (`git show <old-commit>:apps/web/fly.toml > /tmp/fly.toml`, then `fly deploy --config /tmp/fly.toml --image ...`).
+- It cannot fix DNS, certificates or Fly app settings.
 
 ## Rotating the Fly token
 

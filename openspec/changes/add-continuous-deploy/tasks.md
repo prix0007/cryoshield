@@ -55,7 +55,7 @@
 
 ## 6. Security review
 
-- [ ] 6.1 The security reviewer reviews this change, covering:
+- [x] 6.1 The security reviewer reviews this change, covering:
   - the trigger and branch restrictions;
   - environment and secret scoping;
   - token exposure (logs, step env, artifacts);
