@@ -47,15 +47,16 @@ The source of truth is `openspec/config.yaml`; the product requirements are in `
    - verifies each finding;
    - posts one review as `github-actions[bot]`: *request changes* on any CRITICAL/HIGH finding, *comment* otherwise.
 
-   The `ecc-review` check fails while blocking findings stand. The reviewing agent never touches GitHub, so text inside a PR cannot make it comment, approve or call the API. The check needs a `CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY` repo secret; without one it fails. Fork PRs are refused.
+   The `ecc-review` check fails while blocking findings stand. The reviewing agent never touches GitHub, so text inside a PR cannot make it comment, approve or call the API. Plugin hooks are off, and the agent can write only its two output files. The check needs a `CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY` secret, as both an Actions secret and a Dependabot secret; without one it fails. Fork PRs are refused.
 6. **Fix and ask for a re-review.**
    - Fix every blocking finding in new commits, and advisory ones where cheap.
    - Reply to each finding on the PR saying what changed, then push. Every push re-runs the review.
    - The owner can comment `/ecc-review` (as the first word) to re-run it without a push.
    - Repeat until no blocking findings remain.
 7. **Watch the PR while it is open.** Check for new reviews and owner comments, and treat owner comments like findings: fix, push, reply. Mark your own PR comments with `<!-- claude-pr-flow -->` so they are never mistaken for the owner's.
-8. **Auto-merge.** `.github/workflows/auto-merge.yml` turns on GitHub auto-merge (squash, delete branch) for every same-repo, non-draft PR.
-   - It merges the moment all required checks are green: `ci-ok`, plus `ecc-review` once enabled with `apply.sh --with-ecc-review --apply`.
+8. **Auto-merge.** `.github/workflows/auto-merge.yml` turns on GitHub auto-merge (squash, delete branch) for every same-repo, non-draft, non-Dependabot PR into `main`.
+   - It does so only while `ecc-review` is a required check (`apply.sh --with-ecc-review --apply`). Until then, the maintainer merges by hand after the review.
+   - Once on, it merges the moment all required checks are green.
    - Strict mode requires the branch to be up to date with `main`. Update the branch if `main` moved.
    - **Owner veto:** the `hold` label switches auto-merge off for that PR; remove it to switch it back on. `gh pr merge <n> --disable-auto` also works.
 9. **After the merge,** archive the OpenSpec change (`/opsx:archive`) in a follow-up PR.

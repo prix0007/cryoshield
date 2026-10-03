@@ -101,6 +101,59 @@ test('third-party secrets are only allowed at step level; GITHUB_TOKEN at job le
   expectError('ecc-review.yml', replaceOnce(ecc, 'env:\n  # ECC', 'env:\n  KEY: ${{ secrets.ANTHROPIC_API_KEY }}\n  # ECC'), /workflow-level env/);
 });
 
+// ---- Security review (adopt-ecc-review-and-auto-merge) M1/H1/H2: guards the first version did not hold. ----
+
+test('H1: the agent tool lists are exact (no Bash, writes only the two output files)', () => {
+  expectError('ecc-review.yml', replaceOnce(ecc, '--allowedTools "Agent,Read,', '--allowedTools "Bash,Agent,Read,'), /allowedTools/);
+  expectError('ecc-review.yml', replaceOnce(ecc, 'Edit(//home/runner/work/_temp/ecc-review/body.md)', 'Edit(//home/runner/work/_temp/ecc-review/**)'), /allowedTools/);
+  expectError('ecc-review.yml', replaceOnce(ecc, 'Grep(./.git/**),Glob(./.git/**)', 'Grep(./.git/**)'), /disallowedTools/);
+  expectError('ecc-review.yml', replaceOnce(ecc, '--max-turns 80', '--max-turns 80 --dangerously-skip-permissions'), /claude_args/);
+});
+
+test('H1: plugin hooks stay off (emptied hooks.json and ECC_HOOKS_ENABLED=false) and the env scrub stays on', () => {
+  expectError('ecc-review.yml', replaceOnce(ecc, '          ECC_HOOKS_ENABLED: "false"\n', ''), /ECC_HOOKS_ENABLED/);
+  expectError('ecc-review.yml', replaceOnce(ecc, '          CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1"\n', ''), /CLAUDE_CODE_SUBPROCESS_ENV_SCRUB/);
+  expectError('ecc-review.yml', replaceOnce(ecc, `          printf '{"hooks":{}}\\n' > "$RUNNER_TEMP/ecc-plugin/hooks/hooks.json"\n`, ''), /hooks\.json/);
+});
+
+test('H2: auto-merge must exclude Dependabot and non-default base branches', () => {
+  expectError('auto-merge.yml', replaceOnce(am, "      && github.event.pull_request.user.login != 'dependabot[bot]'\n", ''), /dependabot/);
+  expectError('auto-merge.yml', replaceOnce(am, '      && github.event.pull_request.base.ref == github.event.repository.default_branch\n', ''), /default_branch/);
+});
+
+test('M1: fork refusal cannot be defeated by continue-on-error, always(), a fake exit, or an OR', () => {
+  const refusal = '        if: github.event.pull_request.head.repo.full_name != github.repository\n';
+  expectError('ecc-review.yml', replaceOnce(ecc, refusal, `${refusal}        continue-on-error: true\n`), /continue-on-error/);
+  expectError('ecc-review.yml', replaceOnce(ecc, '      - name: Check out the PR head (read only)\n', '      - name: Check out the PR head (read only)\n        if: always()\n'), /always\(\)/);
+  expectError('ecc-review.yml', replaceOnce(ecc, '          exit 1\n\n      - name: Require a Claude credential', '          echo "exit 1"\n\n      - name: Require a Claude credential'), /refuse fork/);
+  expectError('auto-merge.yml', replaceOnce(am, '      && github.event.pull_request.head.repo.full_name == github.repository\n', '      && github.event.pull_request.head.repo.full_name == github.repository || true\n'), /\|\|/);
+  expectError('ecc-review.yml', replaceOnce(ecc, "      && github.event.comment.author_association == 'OWNER'\n", "      && github.event.comment.author_association == 'OWNER' || true\n"), /\|\|/);
+  expectError('ecc-review.yml', replaceOnce(ecc, "    timeout-minutes: 5\n", "    timeout-minutes: 5\n    continue-on-error: true\n"), /continue-on-error/);
+});
+
+test('M1: custom shells and run defaults are forbidden', () => {
+  expectError('ecc-review.yml', replaceOnce(ecc, '        run: rm -rf .ecc-plugin\n', '        shell: bash -e evil.sh {0}\n        run: rm -rf .ecc-plugin\n'), /shell/);
+  expectError('auto-merge.yml', replaceOnce(am, '    timeout-minutes: 5\n', '    timeout-minutes: 5\n    defaults:\n      run:\n        shell: bash -e evil.sh {0}\n'), /defaults/);
+});
+
+test('M1: checkouts are pinned: this repo only at the head SHA, the plugin only via literal env pins', () => {
+  expectError('ecc-review.yml', replaceOnce(ecc, '          ref: ${{ github.event.pull_request.head.sha }}\n', '          repository: ${{ github.repository }}\n          ref: refs/pull/1/merge\n'), /checkout/);
+  expectError('ecc-review.yml', replaceOnce(ecc, '          repository: ${{ env.ECC_REPO }}\n', '          repository: ${{ github.event.pull_request.head.repo.full_name }}\n'), /checkout/);
+  expectError('ecc-review.yml', replaceOnce(ecc, '  ECC_SHA: c05b2d6614f62f6db0047669aa4eefb223d478f9\n', '  ECC_SHA: main\n'), /ECC_SHA/);
+});
+
+test('M1: run steps are pinned by digest; any edit needs a reviewed digest update', () => {
+  expectError('ecc-review.yml', replaceOnce(ecc, '        run: rm -rf .ecc-plugin\n', '        run: rm -rf .ecc-plugin && echo hi\n'), /digest/);
+  expectError('auto-merge.yml', replaceOnce(am, '          set -euo pipefail\n', '          set -euo pipefail\n          true\n'), /digest/);
+});
+
+test('M1: denylist also catches interpreters and git hook/fsmonitor tricks', () => {
+  for (const cmd of ['perl x.pl', 'ruby x.rb', '/bin/sh x', 'bash -e x.sh', 'git -c core.hooksPath=. status', 'awk -f x.awk', 'bunx foo', 'env ./x', 'xargs sh']) {
+    const bad = replaceOnce(ecc, '        run: rm -rf .ecc-plugin\n', `        run: rm -rf .ecc-plugin && ${cmd}\n`);
+    expectError('ecc-review.yml', bad, /executes code from the checkout/);
+  }
+});
+
 test('zizmor ignores: only dangerous-triggers, only the two privileged files, pinned to a line', () => {
   const base = 'rules:\n  unpinned-uses:\n    config:\n      policies:\n        "*": hash-pin\n';
   const ok = `${base}  dangerous-triggers:\n    ignore:\n      - ecc-review.yml:29\n      - auto-merge.yml:12\n`;

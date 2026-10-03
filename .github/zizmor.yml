@@ -12,5 +12,5 @@ rules:
   # permissions) are enforced by .github/scripts/workflow-policy.mjs, which also allows no other ignore here.
   dangerous-triggers:
     ignore:
-      - ecc-review.yml:29
-      - auto-merge.yml:12
+      - ecc-review.yml:31
+      - auto-merge.yml:19

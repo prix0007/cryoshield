@@ -13,13 +13,15 @@ name: ecc-review
 # therefore not post, approve, comment or call the API; at worst it distorts its own review.
 #
 # `rerun` handles a "/ecc-review" comment from the repository owner by re-running the PR's own review run, so
-# the result lands on the PR. It holds no Claude credential and checks out nothing.
+# the result lands on the PR. It holds no Claude credential and checks out nothing, and refuses runs created
+# before the current ecc-review.yml (a re-run replays the original workflow file).
 #
 # Supply chain: actions pinned to commits (versions in the trailing comments); the ECC plugin is checked out at
 # a pinned release commit, verified, and moved out of the workspace before install so PR content cannot add to
 # it. Bump pins deliberately, after reading the diff. .github/scripts/workflow-policy.mjs enforces the guards.
 #
-# Needs ONE repo secret: CLAUDE_CODE_OAUTH_TOKEN (from `claude setup-token`) or ANTHROPIC_API_KEY. Without one
+# Needs ONE repo secret: CLAUDE_CODE_OAUTH_TOKEN (from `claude setup-token`) or ANTHROPIC_API_KEY, added both as an
+# Actions secret and as a Dependabot secret (Dependabot-triggered runs only see Dependabot secrets). Without one
 # the check FAILS, so a required check can never pass on a PR nobody reviewed.
 
 # pull_request_target, not pull_request: the workflow then always comes from main, so a PR cannot edit or
@@ -127,6 +129,9 @@ jobs:
           mv .ecc-plugin "$RUNNER_TEMP/ecc-plugin"
           # The plugin's .mcp.json would start an npm-fetched server in the job's environment; reviewers don't need it.
           rm -f "$RUNNER_TEMP/ecc-plugin/.mcp.json"
+          # No plugin hooks at all: some run formatters via npx in the edited file's directory, which a prompt-injected
+          # agent could aim at a config it wrote (security review H1). The reviewers are agents, not hooks.
+          printf '{"hooks":{}}\n' > "$RUNNER_TEMP/ecc-plugin/hooks/hooks.json"
 
       - name: Collect the PR for the reviewer (the agent gets no GitHub access)
         env:
@@ -160,9 +165,8 @@ jobs:
         env:
           # Scrub credentials from the agent's subprocesses and isolate them.
           CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1"
-          # ECC's own GateGuard would make the agent justify its first write of the two output files; those are
-          # the only writes it may make anyway.
-          GATEGUARD_EXEMPT_GLOBS: "**/ecc-review/body.md,**/ecc-review/verdict.txt"
+          # Belt and braces with the emptied hooks.json: ECC's own hook kill switch.
+          ECC_HOOKS_ENABLED: "false"
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -171,15 +175,18 @@ jobs:
           plugins: ecc@ecc
           # The agent's final message goes to the job summary, so a run that ends without a review explains why.
           display_report: true
-          # Read the code and the collected PR files; write only inside the review scratch dir. Path-scoped
-          # Write(...) rules never match in Claude Code; Edit(...) rules govern every file-writing tool, so this
-          # one rule lets the Write tool create files there and nowhere else. No Bash at all, so no gh, no git,
-          # no network from the agent.
+          # Dependabot PRs are reviewed too (they come from this repo). For them GitHub supplies Dependabot
+          # secrets, so the Claude credential must also exist as a Dependabot secret.
+          allowed_bots: dependabot[bot]
+          # Read the code and the collected PR files; write exactly the two output files. Path-scoped Write(...)
+          # rules never match in Claude Code; Edit(...) rules govern every file-writing tool, so these two rules let
+          # the Write tool create those files and nothing else. No Bash and no web tools, so no gh, no git, no
+          # network from the agent; .git and /proc are unreadable. Exact lists enforced by workflow-policy.mjs.
           claude_args: >-
             --model ${{ env.REVIEW_MODEL }}
             --max-turns 80
-            --allowedTools "Agent,Read,Grep,Glob,Edit(//home/runner/work/_temp/ecc-review/**)"
-            --disallowedTools "Bash,WebFetch,WebSearch,Read(//proc/**),Grep(//proc/**),Glob(//proc/**),Read(./.git/**)"
+            --allowedTools "Agent,Read,Grep,Glob,Edit(//home/runner/work/_temp/ecc-review/body.md),Edit(//home/runner/work/_temp/ecc-review/verdict.txt)"
+            --disallowedTools "Bash,WebFetch,WebSearch,Read(//proc/**),Grep(//proc/**),Glob(//proc/**),Read(./.git/**),Grep(./.git/**),Glob(./.git/**)"
           prompt: |
             You are the automatic ECC code reviewer for pull request #${{ env.PR }} in ${{ github.repository }},
             head commit ${{ env.HEAD_SHA }}. You review only: you cannot run commands, and a separate step
@@ -311,11 +318,17 @@ jobs:
             echo "::error::Refusing: PR #$PR comes from $head_repo, not $GH_REPO."; exit 1
           fi
           run=$(gh run list --workflow ecc-review.yml --commit "$head_sha" --event pull_request_target \
-            --json databaseId,status --jq 'if length == 0 then "" else (.[0] | "\(.databaseId) \(.status)") end')
+            --json databaseId,status,createdAt --jq 'if length == 0 then "" else (.[0] | "\(.databaseId) \(.status) \(.createdAt)") end')
           if [ -z "$run" ]; then
             echo "::error::No ECC review run exists for $head_sha yet; push to start one."; exit 1
           fi
-          read -r id status <<<"$run"
+          read -r id status created <<<"$run"
+          # A re-run replays the ORIGINAL workflow file. Refuse runs older than main's current ecc-review.yml,
+          # so a fixed workflow is never bypassed by re-running an old one (security review L2).
+          changed=$(gh api "repos/$GH_REPO/commits?path=.github/workflows/ecc-review.yml&per_page=1" --jq '.[0].commit.committer.date')
+          if [[ "$created" < "$changed" ]]; then
+            echo "::error::Run $id predates the current ecc-review.yml ($changed); push a commit to get a fresh review."; exit 1
+          fi
           if [ "$status" != "completed" ]; then
             echo "::notice::ECC review run $id is still $status; it will report on its own."; exit 0
           fi

@@ -153,3 +153,62 @@ Other changes:
 4. After one successful ECC review, the admin runs `.github/rulesets/apply.sh --with-ecc-review --apply`.
 
 Rollback: delete the two workflows. If needed, run `apply.sh --apply`, then remove `ecc-review` from the ruleset by hand.
+
+## Security review (2026-10-04)
+
+The security reviewer verdict was **APPROVE WITH FIXES**. Confirmed sound:
+- all three pins are the official tags' targets;
+- our base restore list is a superset of the action's `SENSITIVE_PATHS`;
+- git operations on the checkout read no PR-controlled config;
+- ECC's `SessionStart` hooks are benign;
+- the verdict whitelist, `--body-file` posting, and dismissals limited to `github-actions[bot]`;
+- the `apply.sh` refusal guard and the narrow zizmor ignores.
+
+Every finding below was fixed test-first (`test/privileged-workflows.test.mjs`, red first).
+
+### HIGH
+
+1. **ECC plugin hooks could run code in the review job.**
+   - Scenario: hooks such as `quality-gate.js` and `stop-format-typecheck.js` run `npx` formatters in the edited file's directory. A prompt-injected agent could write `package.json` and a config into the review directory. That code then runs, and it can read the job token the action writes to `.git/config`.
+   - Fixes:
+     - the moved plugin's `hooks/hooks.json` is replaced with `{"hooks":{}}` (`plugin.json` declares no other hooks; checked at the pin);
+     - the step sets `ECC_HOOKS_ENABLED=false` (honoured by ECC's `hook-flags.js`; checked at the pin);
+     - `--allowedTools` may write exactly `body.md` and `verdict.txt`;
+     - `Grep(./.git/**)` and `Glob(./.git/**)` are denied as well (LOW-1);
+     - `GATEGUARD_EXEMPT_GLOBS` is dropped.
+
+     The policy requires the exact tool lists, both env flags, and the hooks-emptying line.
+2. **Dependabot PRs would have auto-merged.**
+   - Fix: the job condition adds `user.login != 'dependabot[bot]'` and a default-base-branch check. The policy requires both conjuncts.
+
+### MEDIUM
+
+3. **The policy did not hold its guards.** These all passed before the fix:
+   - giving the agent `Bash`;
+   - `continue-on-error`;
+   - `if: always()`;
+   - an `echo "exit 1"` refusal;
+   - `|| true` in a job condition;
+   - custom `shell:` or `defaults`;
+   - an unpinned same-repo `repository:` checkout;
+   - denylist gaps.
+
+   Fixes:
+   - exact `claude_args` flags and tool lists;
+   - no `continue-on-error`, `always()`, `failure()` or `cancelled()`, and no `shell` or `defaults`;
+   - the refusal run must contain a line that is exactly `exit 1`;
+   - job conditions may contain no `||`, and each must include its declared conjuncts exactly;
+   - a same-repo checkout must use `ref` equal to the head SHA. An external checkout must use literal env pins (`owner/name`, 40-hex).
+   - **Every run step is pinned by SHA-256** in `.github/scripts/privileged-run-steps.json`. Any edit needs a deliberate digest update (`workflow-policy.mjs --digests`), and stale pins fail. This replaces relying on the heuristic denylist, which stays as a widened backstop: interpreters, `/bin/*`, `env`, `xargs`, `git -c`, `bunx`, `awk -f`.
+4. **The review would only be post-merge until it is required.**
+   - Fix: `auto-merge.yml` reads the base branch rules (`GET repos/{repo}/rules/branches/{base}`). It enables auto-merge only when `ecc-review` is required; otherwise it disables auto-merge with a notice. This supersedes decision 5: no PR auto-merges before `apply.sh --with-ecc-review --apply`.
+
+### LOW
+
+- **L1:** fixed, as part of H1.
+- **L2:** a `/ecc-review` re-run replays the original workflow file. The `rerun` job now refuses runs created before the latest commit to `ecc-review.yml`.
+- **L3:** the action rejects bot actors, so Dependabot PRs could never pass a required `ecc-review`.
+  - Fix: set `allowed_bots: dependabot[bot]`.
+  - Dependabot-triggered runs only see Dependabot secrets, so the founder adds the Claude credential as **both** an Actions secret and a Dependabot secret.
+
+Trigger lines moved, so the zizmor ignores are now `ecc-review.yml:31` and `auto-merge.yml:19`.

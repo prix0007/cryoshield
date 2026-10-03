@@ -57,7 +57,7 @@ When the pull request names an OpenSpec change, a deviation from that change MUS
 - **THEN** the code, security and TypeScript reviewers all review it
 
 ### Requirement: Auto-merge with an owner veto
-Every non-draft, same-repository pull request SHALL have GitHub auto-merge (squash, delete branch) enabled. It then merges only when every required check passes. The `hold` label MUST switch auto-merge off for that pull request, and removing it MUST switch it back on. The workflow MUST NOT check out code.
+Every non-draft, same-repository, non-Dependabot pull request into the default branch SHALL have GitHub auto-merge (squash, delete branch) enabled, but only while the default branch requires the `ecc-review` check. It then merges only when every required check passes. The `hold` label MUST switch auto-merge off, and removing it MUST switch it back on. The workflow MUST NOT check out code.
 
 #### Scenario: Hold label
 - **WHEN** the owner adds the `hold` label to an open pull request
@@ -66,6 +66,14 @@ Every non-draft, same-repository pull request SHALL have GitHub auto-merge (squa
 #### Scenario: Failing check
 - **WHEN** any required check fails or is missing
 - **THEN** the pull request is not merged
+
+#### Scenario: Review not yet required
+- **WHEN** the default branch does not require `ecc-review`
+- **THEN** auto-merge stays off, so no PR can merge before its review lands
+
+#### Scenario: Dependabot pull request
+- **WHEN** Dependabot opens a pull request
+- **THEN** auto-merge is not enabled; the maintainer merges it
 
 ### Requirement: ECC review as an opt-in required check
 The ruleset tooling SHALL be able to require the `ecc-review` check in addition to `ci-ok`, only when explicitly asked to. The default ruleset MUST NOT require it while no reviewer credential exists.

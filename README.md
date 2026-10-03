@@ -113,9 +113,10 @@ The gate scripts live in `.github/scripts` and are tested with `npm ci --ignore-
    - it posts *request changes* on CRITICAL/HIGH findings, *comment* otherwise;
    - push fixes to re-run it, or, as the owner, comment `/ecc-review`;
    - fork PRs are refused;
-   - it needs the repo secret `CLAUDE_CODE_OAUTH_TOKEN` (from `claude setup-token`) or `ANTHROPIC_API_KEY`.
+   - it needs `CLAUDE_CODE_OAUTH_TOKEN` (from `claude setup-token`) or `ANTHROPIC_API_KEY`, as both an Actions secret and a Dependabot secret.
 6. **Auto-merge** (`.github/workflows/auto-merge.yml`):
-   - every same-repo, non-draft PR squash-merges by itself once all required checks pass;
+   - every same-repo, non-draft, non-Dependabot PR squash-merges by itself once all required checks pass;
+   - it is active only while `ecc-review` is a required check;
    - the `hold` label is the owner's veto.
 7. **Merge rules:**
    - `ci-ok` must be green and up to date with `main`;
@@ -141,7 +142,20 @@ The script syncs:
 - the `no-spec` and `hold` labels;
 - auto-merge, enabled in the repository settings.
 
-`ecc-review` is **not** a required check by default. After the founder adds the `CLAUDE_CODE_OAUTH_TOKEN` (or `ANTHROPIC_API_KEY`) repo secret and an ECC review has succeeded on a PR, run `.github/rulesets/apply.sh --with-ecc-review --apply`. Keep passing `--with-ecc-review` from then on: without it, `--apply` refuses to drop the requirement.
+`ecc-review` is **not** a required check by default, and auto-merge stays off until it is.
+
+To enable both:
+1. Add the `CLAUDE_CODE_OAUTH_TOKEN` secret (or `ANTHROPIC_API_KEY`) twice: as an Actions secret and as a Dependabot secret.
+
+   ```sh
+   claude setup-token
+   gh secret set CLAUDE_CODE_OAUTH_TOKEN
+   gh secret set CLAUDE_CODE_OAUTH_TOKEN --app dependabot
+   ```
+2. Wait until an ECC review has succeeded on a PR.
+3. Run `.github/rulesets/apply.sh --with-ecc-review --apply`.
+
+Keep passing `--with-ecc-review` from then on: without it, `--apply` refuses to drop the requirement.
 
 To change protection, edit those files in a PR and re-run the script after it merges.
 
