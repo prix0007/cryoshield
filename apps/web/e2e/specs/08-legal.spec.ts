@@ -31,7 +31,8 @@ test('the legal pages make only same-origin requests and pass axe', async ({ pag
   page.on('request', (r) => requests.push(r.url()));
   for (const p of LEGAL) {
     await page.goto(p);
-    await expect(page.locator('.draft-banner')).toBeVisible();
+    await expect(page.locator('.legal-note')).toBeVisible();
+    await expect(page.locator('.draft-banner')).toHaveCount(0);
     await expect(page.locator('main h1')).toBeVisible();
     const r = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa']).analyze();
     expect(r.violations.map((v) => `${p}: ${v.id}`)).toEqual([]);

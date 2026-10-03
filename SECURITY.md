@@ -1,14 +1,16 @@
 # Security policy
 
-CryoShield protects secrets that people cannot afford to lose. We take every report seriously and are grateful for
+CryoShield protects secrets that people cannot afford to lose. It is an open-source project maintained by its
+contributors (github.com/prix0007/cryoshield). We take every report seriously and are grateful for
 careful, good-faith research.
 
 > **Status:** testnet preview on OP Sepolia, **not independently audited**. There is no paid bug bounty yet.
 
 ## How to report
 
-- **Preferred:** [GitHub private vulnerability reporting](https://github.com/prix0007/cryoshield/security/advisories/new).
-- **Email:** `security@cryoshield.app` (mailbox being set up; until it is live, please use GitHub).
+- **Use [GitHub private vulnerability reporting](https://github.com/prix0007/cryoshield/security/advisories/new).**
+  Only the maintainers can see the report. CryoShield is an open-source project maintained by its contributors; there
+  is no company and no email address.
 - Machine-readable contact: [`/.well-known/security.txt`](https://cryoshield.app/.well-known/security.txt) (RFC 9116).
 
 Please include what you found, how to reproduce it, the impact you expect, and whether it is already public. **Never

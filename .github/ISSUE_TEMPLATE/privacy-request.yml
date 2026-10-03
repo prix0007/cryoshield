@@ -1,0 +1,42 @@
+{
+  "name": "Privacy request",
+  "description": "Ask about, correct or delete personal data CryoShield's maintainers hold (adopt-oss-project-defaults). Issues are PUBLIC.",
+  "title": "Privacy request: ",
+  "labels": ["privacy-request"],
+  "body": [
+    {
+      "type": "markdown",
+      "attributes": {
+        "value": "## ⚠️ Never post secrets here\n\nThis issue is **public**. **Never post seed phrases, recovery codes, 2FA codes, passwords, private keys, security-key PINs, or the contents of your vault** — not even partially. CryoShield's maintainers will **never** ask for them, and cannot open, change or recover any vault.\n\n**For anything sensitive** (for example your vault's account address or other details that identify you), do **not** use this form: open a [private security advisory](https://github.com/prix0007/cryoshield/security/advisories/new) instead, which only the maintainers can see.\n\nSee the [privacy policy](https://cryoshield.app/privacy) for what data exists and who holds it. We acknowledge requests within 24 hours and resolve them within 15 days."
+      }
+    },
+    {
+      "type": "dropdown",
+      "id": "kind",
+      "attributes": {
+        "label": "What kind of request is this?",
+        "options": ["Access: what do you hold about me?", "Correction", "Deletion or redaction (e.g. of something I posted on GitHub)", "Objection or restriction", "Grievance (DPDP) or complaint", "Question about the privacy policy"]
+      },
+      "validations": { "required": true }
+    },
+    {
+      "type": "textarea",
+      "id": "details",
+      "attributes": {
+        "label": "Details",
+        "description": "Describe your request without any secrets, keys, recovery codes or PINs. Link the issue, comment or advisory it is about, if any."
+      },
+      "validations": { "required": true }
+    },
+    {
+      "type": "checkboxes",
+      "id": "no-secrets",
+      "attributes": {
+        "label": "Confirmation",
+        "options": [
+          { "label": "I have not posted any secret, seed phrase, recovery code, private key, PIN or vault content in this issue.", "required": true }
+        ]
+      }
+    }
+  ]
+}

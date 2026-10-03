@@ -45,23 +45,11 @@
   font-family: var(--font-mono);
   font-size: 0.9em;
 }
-.draft-banner {
-  margin: 0;
-  padding: var(--space-sm) var(--space-lg);
-  border: 2px solid var(--error-ink);
-  border-radius: var(--radius-lg);
-  background: var(--canvas);
-  color: var(--ink);
-}
-.draft-banner strong {
-  color: var(--error-ink);
-}
-mark.placeholder {
-  background: var(--canvas-parchment);
-  color: var(--ink);
-  outline: 1px dashed var(--ink-muted-48);
-  padding: 0 var(--space-xxs);
-  border-radius: var(--radius-xs);
+.legal-note {
+  margin: 0 0 var(--space-lg);
+  font-size: var(--caption-size);
+  letter-spacing: -0.224px;
+  color: var(--ink-muted-48);
 }
 .summary-box {
   margin: var(--space-lg) 0;

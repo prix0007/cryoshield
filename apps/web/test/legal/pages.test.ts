@@ -70,14 +70,49 @@ describe('legal pages', () => {
     for (const s of ['test network', 'not been independently audited', 'nobody', 'cannot be removed', 'paused, limited or withdrawn', '18 or over', 'sanctions', 'MIT license', 'Limitation of liability', 'Governing law']) expect(t, s).toMatch(new RegExp(s, 'i'));
   });
 
-  it('every legal page shows the draft banner first and keeps the placeholders', () => {
+  it('every legal page shows the not-legal-advice note right under the effective date, and no draft banner (adopt-oss 1.2)', () => {
     for (const p of LEGAL) {
       const d = page(p);
-      const art = d.querySelector('main article')!;
-      expect(art.firstElementChild?.classList.contains('draft-banner'), p).toBe(true);
-      expect(art.firstElementChild?.textContent).toMatch(/Draft, pending legal review/);
-      expect(d.querySelectorAll('mark.placeholder').length, p).toBeGreaterThan(0);
+      const date = [...d.querySelectorAll('main article p')].find((x) => /Effective date:/.test(x.textContent ?? ''))!;
+      const note = date.nextElementSibling!;
+      expect(note.classList.contains('legal-note'), p).toBe(true);
+      expect(note.textContent?.replace(/\s+/g, ' ').trim(), p).toBe('Written for an open-source project; not legal advice. Suggestions welcome via GitHub.');
+      const html = readFileSync(join(out, p), 'utf8');
+      expect(html, p).not.toMatch(/Draft, pending legal review|draft-banner|mark class="placeholder"/);
+      expect(html, p).not.toMatch(/\[[A-Z][A-Z ]{2,}\]|@cryoshield\.app/);
     }
+  });
+
+  it('/privacy and /terms name the open-source operator and no company or registered address', () => {
+    for (const p of ['privacy/index.html', 'terms/index.html']) {
+      const d = page(p);
+      const t = d.body.textContent!.replace(/\s+/g, ' ');
+      expect(t, p).toContain('CryoShield, an open-source project maintained by its contributors (github.com/prix0007/cryoshield)');
+      expect(t, p).not.toMatch(/registered address|registered office/i);
+      expect([...d.querySelectorAll('main a')].map((a) => a.getAttribute('href')), p).toContain('https://github.com/prix0007/cryoshield');
+    }
+    expect(page('privacy/index.html').body.textContent!.replace(/\s+/g, ' ')).toMatch(/maintainers act as the data controller .*only for the correspondence/i);
+  });
+
+  it('/privacy routes requests to GitHub (privacy-request issue or private advisory) and names the maintainer as Grievance Officer', () => {
+    const d = page('privacy/index.html');
+    const hrefs = [...d.querySelectorAll('main a')].map((a) => a.getAttribute('href'));
+    expect(hrefs).toContain('https://github.com/prix0007/cryoshield/issues/new?template=privacy-request.yml');
+    expect(hrefs).toContain('https://github.com/prix0007/cryoshield/security/advisories/new');
+    const h = [...d.querySelectorAll('main h2')].find((x) => x.textContent?.trim() === 'Grievance Officer')!;
+    let text = '';
+    for (let n = h.nextElementSibling; n && n.tagName !== 'H2'; n = n.nextElementSibling) text += ' ' + n.textContent;
+    expect(text).toMatch(/the project maintainer/);
+    expect(text).toMatch(/24 hours/);
+    expect(text).toMatch(/15 days/);
+    expect(text).toMatch(/private security advisory/);
+  });
+
+  it('/terms mirrors the MIT licence disclaimer and keeps the honest framing', () => {
+    const t = page('terms/index.html').body.textContent!.replace(/\s+/g, ' ');
+    expect(t).toContain('WITHOUT WARRANTY OF ANY KIND');
+    expect(t).toContain('IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE');
+    for (const s of ['test network', 'not been independently audited', 'nobody', 'cannot be removed']) expect(t).toMatch(new RegExp(s, 'i'));
   });
 
   it('the landing page and every legal page link to /privacy, /terms and /cookies', () => {

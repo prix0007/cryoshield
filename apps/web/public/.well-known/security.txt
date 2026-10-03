@@ -1,7 +1,5 @@
-# CryoShield security contact (RFC 9116). See SECURITY.md for scope, safe harbour and timelines.
-# The security@ mailbox is a placeholder until the founder creates it (add-privacy-and-compliance task 1.2);
-# until then, use the GitHub private vulnerability report link.
-Contact: mailto:security@cryoshield.app
+# CryoShield security contact (RFC 9116). CryoShield is an open-source project; reports go through GitHub private
+# vulnerability reporting (no email address). See SECURITY.md for scope, safe harbour and timelines.
 Contact: https://github.com/prix0007/cryoshield/security/advisories/new
 Expires: 2027-09-30T23:59:59Z
 Policy: https://github.com/prix0007/cryoshield/blob/main/SECURITY.md

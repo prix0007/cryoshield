@@ -8,7 +8,7 @@ import { checkSecurityTxt } from '../../scripts/securitytxt-check.mjs';
 const NOW = new Date('2026-10-03T00:00:00Z');
 const txt = (expires: string) =>
   [
-    'Contact: mailto:security@cryoshield.app',
+    'Contact: https://github.com/prix0007/cryoshield/security/advisories/new',
     `Expires: ${expires}`,
     'Policy: https://github.com/prix0007/cryoshield/blob/main/SECURITY.md',
     'Canonical: https://cryoshield.app/.well-known/security.txt',
@@ -31,5 +31,8 @@ describe('security.txt guard', () => {
     const shipped = readFileSync(join(__dirname, '..', '..', 'public', '.well-known', 'security.txt'), 'utf8');
     expect(checkSecurityTxt(shipped, new Date())).toEqual([]);
     expect(shipped).toContain('Canonical: https://cryoshield.app/.well-known/security.txt');
+    // adopt-oss-project-defaults: GitHub private vulnerability reporting is the only contact; no mailbox exists.
+    expect(shipped.split('\n').filter((l) => l.startsWith('Contact:'))).toEqual(['Contact: https://github.com/prix0007/cryoshield/security/advisories/new']);
+    expect(shipped).not.toMatch(/mailto:|@cryoshield\.app/);
   });
 });
