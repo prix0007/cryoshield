@@ -60,3 +60,22 @@ describe('two pages', () => {
     expect(fonts.length).toBeGreaterThanOrEqual(1);
   });
 });
+
+describe('brand icon on every page (add-brand-icon 1.2)', () => {
+  it.each(['index.html', 'app/index.html', 'privacy/index.html', 'terms/index.html', 'cookies/index.html'])('%s links the icons, the manifest and both theme colours', (p) => {
+    const h = html(p);
+    expect(h).toMatch(/<link rel="icon" href="\/favicon\.svg" type="image\/svg\+xml"/);
+    expect(h).toMatch(/<link rel="icon" href="\/favicon\.ico" sizes="48x48"/);
+    expect(h).toMatch(/<link rel="apple-touch-icon" href="\/apple-touch-icon\.png"/);
+    expect(h).toMatch(/<link rel="manifest" href="\/site\.webmanifest"/);
+    expect(h).toMatch(/<meta name="theme-color" content="#[0-9a-f]{6}" media="\(prefers-color-scheme: light\)"/);
+    expect(h).toMatch(/<meta name="theme-color" content="#[0-9a-f]{6}" media="\(prefers-color-scheme: dark\)"/);
+    expect(h).not.toContain('href="data:,"');
+  });
+
+  it('the icon files and manifest are emitted to the site root', () => {
+    for (const f of ['favicon.svg', 'favicon.ico', 'apple-touch-icon.png', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png', 'site.webmanifest']) {
+      expect(existsSync(join(out, f)), f).toBe(true);
+    }
+  });
+});

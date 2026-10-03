@@ -217,6 +217,20 @@ describe('served by the container', () => {
     expect(readFileSync(join(web, 'deploy', '.build', 'Caddyfile'), 'utf8')).not.toMatch(/^\s*log\b/m);
   });
 
+  it.each([
+    ['/favicon.ico', /^image\/(vnd\.microsoft\.icon|x-icon)$/],
+    ['/favicon.svg', /^image\/svg\+xml$/],
+    ['/apple-touch-icon.png', /^image\/png$/],
+    ['/site.webmanifest', /^application\/manifest\+json$/],
+  ])('%s is served with the right content type and every security header (add-brand-icon 1.2)', async (p, type) => {
+    const r = await get(p);
+    expect(r.status).toBe(200);
+    expect(String(r.headers['content-type']).split(';')[0]).toMatch(type);
+    expect(r.headers['content-security-policy']).toMatch(/frame-ancestors 'none'$/);
+    for (const k of ['X-Frame-Options', 'Strict-Transport-Security', 'X-Content-Type-Options', 'Referrer-Policy']) expect(r.headers[k.toLowerCase()], k).toBe(SECURITY_HEADERS[k]);
+    expect(r.headers['server']).toBeUndefined();
+  });
+
   it('/healthz is 200', async () => {
     const r = await get('/healthz');
     expect(r.status).toBe(200);
