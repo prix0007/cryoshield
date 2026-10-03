@@ -2,7 +2,8 @@
 
 ## Purpose
 
-Defines the public legal and trust pages of cryoshield.app (privacy policy, terms of service, security contact) and the
+Defines the public legal and trust pages of cryoshield.app (privacy policy, terms of service, cookie policy, security
+contact) and the
 in-app disclosures users must see before their encrypted data is written permanently to public networks.
 
 ## ADDED Requirements
@@ -14,11 +15,15 @@ on-chain and Arweave data, retention, user rights and how to exercise them, the 
 
 #### Scenario: Required sections present
 - **WHEN** the built `/privacy` page is checked by a test
-- **THEN** it contains the headings Who we are, What we never see, Data held by third parties, Public and permanent data, Your rights, Grievance Officer, Children, Changes, and an effective date
+- **THEN** it contains the headings Who we are, What we never see, Data held by third parties, Public and permanent data, Analytics, Your rights, Grievance Officer, Children, Changes, and an effective date
+
+#### Scenario: Analytics disclosed
+- **WHEN** the built `/privacy` page is checked
+- **THEN** its Analytics section names Cloudflare Web Analytics, states it runs on the landing page only, lists the data it reads, says no cookies are set, and says GPC/DNT turn it off
 
 #### Scenario: Linked everywhere
-- **WHEN** the landing page, the app shell, and `/terms` are rendered
-- **THEN** each has a visible link to `/privacy` and `/terms`
+- **WHEN** the landing page, the app shell, and each legal page are rendered
+- **THEN** each has a visible link to `/privacy`, `/terms` and `/cookies`
 
 ### Requirement: Terms of service page
 The site SHALL serve static terms at `/terms` covering: testnet and unaudited status, no custody and no recovery after all
@@ -29,16 +34,47 @@ use, sanctions eligibility, minimum age, MIT software licence, disclaimers, limi
 - **WHEN** the deployment targets a testnet chain
 - **THEN** `/terms` and the app shell both show the testnet and unaudited warning
 
+### Requirement: Cookie policy page
+The site SHALL serve a static cookie policy at `/cookies` that states whether any cookie or similar technology is
+used on each route, publishes the device-storage inventory, describes the landing-page analytics beacon and how
+GPC/DNT suppress it, and explains when a consent banner would be introduced.
+
+#### Scenario: Required sections present
+- **WHEN** the built `/cookies` page is checked by a test
+- **THEN** it contains the headings What we store on your device, Analytics on the landing page, Your choices, When this would change, and an effective date
+
+### Requirement: Device-storage inventory
+The cookie policy SHALL contain a table listing every cookie, localStorage, sessionStorage, IndexedDB, Cache Storage
+or service-worker entry that any CryoShield page or embedded third party creates, per route, with purpose and
+lifetime. An E2E test SHALL fail if a page creates any entry not listed.
+
+#### Scenario: Inventory matches reality
+- **WHEN** an E2E test loads `/` (beacon allowed), then `/app/` and runs create and unlock, then loads each legal page
+- **THEN** the cookies and storage it finds per route equal the published inventory, which today lists no entries
+
+### Requirement: Draft status and placeholders
+Until counsel signs off, each legal page SHALL show a visible banner "Draft, pending legal review" and SHALL keep the
+placeholders `[ENTITY]`, `[REGISTERED ADDRESS]`, `[GRIEVANCE OFFICER]` and `[CONTACT EMAIL]` verbatim. A build
+check SHALL refuse a page that has no banner while it still contains a placeholder.
+
+#### Scenario: Banner while placeholders remain
+- **WHEN** `verify-build` finds a placeholder token in a legal page that lacks the draft banner
+- **THEN** the build fails and names the page and the token
+
+#### Scenario: Placeholders visible in the draft
+- **WHEN** the draft `/privacy` page is rendered
+- **THEN** the banner is visible above the first heading and each placeholder appears where the final value will go
+
 ### Requirement: Legal pages are tracker-free
-The `/privacy` and `/terms` pages SHALL load no analytics, no third-party scripts, fonts or images, and SHALL be served
+The `/privacy`, `/terms` and `/cookies` pages SHALL load no analytics, no third-party scripts, fonts or images, and SHALL be served
 with the app CSP.
 
 #### Scenario: No third-party requests
-- **WHEN** an E2E test loads `/privacy` and `/terms`
+- **WHEN** an E2E test loads `/privacy`, `/terms` and `/cookies`
 - **THEN** every request goes to the site origin
 
 ### Requirement: Versioned legal text
-Every change to the privacy policy or terms SHALL update the effective date and add a dated entry to a changelog
+Every change to the privacy policy, terms or cookie policy SHALL update the effective date and add a dated entry to a changelog
 section on the page. The source text SHALL live in the repository so its history is public.
 
 #### Scenario: Date changes with content

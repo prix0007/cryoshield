@@ -37,7 +37,7 @@ We'll know we're right when 10,000 users have created vaults and ≥95% of test 
 |--------|--------|--------------|
 | Vaults created | 10,000 | On-chain vault-creation events |
 | Unlock success rate | ≥95% | Manual compatibility test matrix (no backend, so no telemetry) |
-| Landing visits | (directional) | Cookieless page-view count on `/` only (Plausible); never on `/app` |
+| Landing visits | (directional) | Cookieless page-view count on `/` only (Cloudflare Web Analytics); never on `/app/` |
 | Recovery without CryoShield | 100% of test vaults | Desktop tool unlocks vaults with the website offline |
 | Cost per vault to user | ≤ $1 | Gas paid per create, measured on-chain |
 
@@ -52,7 +52,7 @@ We'll know we're right when 10,000 users have created vaults and ≥95% of test 
 - [ ] PMLA/VDA: does sponsoring gas (Pimlico bills USD; we never hold ETH) or deploying user smart accounts make us a VDA service provider needing FIU-IND registration? Our analysis says very likely not (medium confidence); get a written opinion before mainnet. Never top up the paymaster with ETH bought by the company without advice.
 - [ ] EU/UK Art. 27 representative: likely needed once we target EU/UK users (permanent publication is hard to call "occasional"). Founder decision on timing and cost.
 - [ ] Sanctions: ToS clause only (testnet), or add a client-side advisory sanctions-oracle check and/or geoblocking before mainnet?
-- [ ] Landing analytics consent: EDPB Guidelines 2/2023 (para 32) treat script-sent requests as device "access", so cookieless is not automatically banner-free in the EU. Plan: no banner, a payload built only from constants, GPC/DNT honoured. Accept the residual risk, or add a one-click opt-out? Lawyer review.
+- [ ] Landing analytics consent: EDPB Guidelines 2/2023 (para 32) treat script-sent requests as device "access", so cookieless is not automatically banner-free in the EU. Cloudflare's beacon reads Performance API timings, URL and referrer, so the EU risk is somewhat higher than a constant-only payload. Plan: no banner, landing only, GPC/DNT suppress it. Accept the residual risk, or skip the beacon for EU/UK visitors / add an opt-in? Lawyer review. Also ask Cloudflare whether the beacon may be self-hosted.
 - [ ] Legal entity details, Grievance Officer, and the mail provider for privacy@/security@/grievance@ (needed before public launch).
 - [ ] iOS Safari PRF reliability with external keys: WebKit bugs 311099 and 314934 are open.
 - [ ] Domain strategy: a long-lived domain plus ENS, and how to protect the RP ID against domain lapse or hijack.
@@ -223,8 +223,9 @@ Phases 1 and 2 are independent once the vault blob is defined as opaque bytes. P
 | Open source | Always public repo | Closed source | Trust for an unaudited security product; enables independent recovery |
 | Launch audience | Crypto holders + security professionals together | One first | Founder choice; risk: diluted positioning |
 | Audit | None for MVP | Audit before launch | Solo founder, ASAP timeline; compensate with open source + test vectors + bug bounty |
-| Analytics | **On-chain + cookieless** (founder, 2026-10-02): product metrics only from public on-chain events + the Pimlico dashboard; cookieless, no-PII analytics on the landing page only; no analytics on `/app`. Vendor recommended: Plausible (EU-hosted), called by a first-party client (OpenSpec `add-privacy-preserving-analytics`) | Full-site analytics; no analytics at all; Simple Analytics / Fathom / Umami | Zero user tracking fits a secrets product; on-chain data already answers the 10k-vaults metric |
+| Analytics | **On-chain + cookieless** (founder, 2026-10-02): product metrics only from public on-chain events + the Pimlico dashboard; cookieless, no-PII analytics on the landing page only; no analytics on `/app`. Vendor (founder, 2026-10-03): **Cloudflare Web Analytics, "beacon only"**: no Cloudflare proxy, Fly keeps hosting/TLS, DNS unchanged. The beacon runs on `/` only, SRI-pinned (self-hosted copy if Cloudflare permits, else the CF URL failing closed on updates, because CF does not version-pin the beacon), with per-route CSP, no WebAuthn on `/`, and GPC/DNT suppression (OpenSpec `add-privacy-preserving-analytics`) | Plausible (earlier recommendation), full-site analytics, none at all | Zero user tracking fits a secrets product; on-chain data already answers the 10k-vaults metric |
 | Jurisdiction | **Indian legal entity, global users** (founder, 2026-10-02): comply with the DPDP Act 2023 + Rules 2025, GDPR/UK GDPR, US state laws (CCPA thresholds not met today), the IT Act/CERT-In, and analyse PMLA-VDA and sanctions (OpenSpec `add-privacy-and-compliance`) | Offshore entity | Founder choice; DPDP core duties start ~13 May 2027 |
+| Legal pages | Privacy Policy, Terms of Service **and Cookie Policy** drafted now, before public launch, with placeholders `[ENTITY]`, `[REGISTERED ADDRESS]`, `[GRIEVANCE OFFICER]`, `[CONTACT EMAIL]` and a visible "Draft, pending legal review" banner; the cookie policy publishes a device-storage inventory (founder, 2026-10-03) | Wait for final legal text | Ship honest disclosures with the landing analytics; counsel finalises later |
 | Compliance sequencing | Privacy/terms, security.txt, inventory, permanence + 18+ acknowledgement, and the incident runbook **before public launch**; lawyer opinions, full DPIA and a mainnet gate **before mainnet**; policies + Vanta/Drata **before SOC 2 Type I** (Security + Confidentiality; Privacy criteria optional) | Do it all at SOC 2 time | Cheap now; on-chain data is permanent, so notices must precede the first real write |
 
 ---

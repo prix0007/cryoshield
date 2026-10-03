@@ -22,11 +22,13 @@ recovery-engineer. Phases: **P1** = before public launch (testnet), **P2** = bef
 
 ## 3. Legal pages (P1, FE; text by F + L)
 
-- [ ] 3.1 Draft `/privacy` and `/terms` source in-repo (`apps/web/legal/privacy.md`, `terms.md`) from the D6 outlines, each marked "Draft – pending legal review" until L signs off; verify L's comments are resolved in the PR
-- [ ] 3.2 Test first: build test checks the `/privacy` required headings and the effective date (spec "Required sections present"), and that the landing page, app shell and `/terms` link to both pages (spec "Linked everywhere"); then render the pages as static HTML with the app CSP and no third-party resources
-- [ ] 3.3 Test first (Playwright): `/privacy` and `/terms` make only same-origin requests (spec "No third-party requests"); then make it pass
-- [ ] 3.4 Test first: a CI check fails when legal source text changes without an effective-date change (spec "Date changes with content"); then implement in `scripts/`
-- [ ] 3.5 SR: check every security claim on both pages against `openspec/specs` and the reviews; verify a sign-off line in `docs/compliance/review-log.md`
+- [ ] 3.1 Draft `/privacy`, `/terms` and `/cookies` in-repo (`apps/web/legal/privacy.md`, `terms.md`, `cookies.md`) from the D6 outlines. Keep the placeholders `[ENTITY]`, `[REGISTERED ADDRESS]`, `[GRIEVANCE OFFICER]` and `[CONTACT EMAIL]` verbatim and show the "Draft, pending legal review" banner. Include the Cloudflare Web Analytics disclosure (privacy + cookies) and the device-storage inventory table. Verify L's light-review comments are resolved in the PR
+- [ ] 3.2 Test first: build test checks the required headings and effective date on `/privacy` and `/cookies`, the Analytics section (spec "Required sections present", "Analytics disclosed"), and links to all three pages from the landing page, app shell and each legal page (spec "Linked everywhere"); then render the pages as static HTML with the app CSP and no third-party resources
+- [ ] 3.3 Test first (`verify-build`): fail when a placeholder token remains on a page without the draft banner (spec "Banner while placeholders remain"); then implement it
+- [ ] 3.4 Test first (Playwright): the three pages make only same-origin requests (spec "No third-party requests"); a storage sweep of `/` (beacon allowed), the `/app/` create/unlock flow and each legal page equals the published inventory (spec "Inventory matches reality"); then make them pass
+- [ ] 3.5 Test first: a CI check fails when legal source text changes without an effective-date change (spec "Date changes with content"); then implement in `scripts/`
+- [ ] 3.6 SR: check every security claim on the three pages against `openspec/specs` and the reviews; verify a sign-off line in `docs/compliance/review-log.md`
+- [ ] 3.7 F: once the entity, Grievance Officer and mailbox exist (1.1, 1.2) and L signs off, replace the placeholders and remove the banner; verify `verify-build` passes with no placeholder tokens
 
 ## 4. In-app acknowledgements (P1, FE)
 

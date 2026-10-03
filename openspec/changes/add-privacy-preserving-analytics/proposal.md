@@ -15,15 +15,23 @@ leak into `/app`.
   counts, keys per vault, updates, weekly active vaults, Arweave mirror coverage and sponsored gas spend, as aggregate
   JSON with no identifiers. A weekly GitHub Actions workflow runs the same CLI and uploads the JSON as an artifact.
   Pimlico's USD bill is read monthly from the Pimlico dashboard and reconciled with the on-chain gas total.
-- **Landing analytics:** a cookieless, first-party-bundled page-view client on `/` only, sending to one vendor event
-  endpoint (recommended vendor: see design.md D4). The script is bundled, so `script-src 'self'` stays; only the landing
-  route's `connect-src` gains the vendor origin, using a per-route CSP from Caddy.
-- **Hard guarantees** (spec `landing-analytics`): no analytics code or requests on `/app`; no URL parameters,
-  fragments or identifiers sent; GPC and DNT honoured; per-route CSP; disclosure on `/privacy` checked at build time.
-- **Dependency:** this change is a **follow-up to `redesign-landing-and-app-ui`** (branch `feat/ui-redesign`), which
-  introduces the separate landing page at `/` and the app at `/app`. Landing analytics cannot be implemented until
-  that change is merged. The metrics CLI (task groups 1 and 2) does not depend on it and can start now. The `/privacy`
-  disclosure depends on `add-privacy-and-compliance`.
+- **Landing analytics (founder decision 2026-10-03): Cloudflare Web Analytics, "beacon only".** Fly keeps hosting
+  and TLS, with no Cloudflare proxy and no DNS change. The beacon is inserted on `/` only, after a GPC/DNT/host gate,
+  with query and fragment stripped first and `spa: false`. It loads with a committed SHA-384 `integrity` hash:
+  self-hosted under `'self'` if Cloudflare permits, otherwise from `static.cloudflareinsights.com`, failing closed when
+  Cloudflare updates the file. Cloudflare does not support version-pinning the beacon (design D4). A weekly drift job
+  flags updates for review.
+- **Per-route CSP and headers:** only the landing document adds `https://cloudflareinsights.com` to `connect-src`
+  (plus the beacon host to `script-src` in the CF-hosted fallback). It also disables WebAuthn through
+  Permissions-Policy. Every other path keeps the app CSP. This **modifies** spec `landing-page` "Same security headers
+  and CSP on every page".
+- **Same-origin hardening:** the app refuses to start when it has a same-origin `window.opener`, so landing-page
+  script can't drive it.
+- **Hard guarantees** (spec `landing-analytics`): no analytics code or requests on `/app/` or the legal pages; no URL
+  parameters, fragments, cookies or identifiers; GPC and DNT suppress the beacon entirely; disclosure on `/privacy`
+  and `/cookies`, checked at build time.
+- **Dependency:** `redesign-landing-and-app-ui` is merged (landing at `/`, app at `/app/`), so nothing blocks this.
+  The disclosure depends on the legal pages from `add-privacy-and-compliance`. Both ship **before public launch**.
 
 **Out of scope:**
 - any analytics, telemetry, error reporting or session replay on `/app`, `/privacy`, `/terms`, or the desktop tool;
@@ -32,8 +40,9 @@ leak into `/app`.
 - publishing per-address or per-vault data, even though it is public on-chain;
 - unlock success-rate telemetry (stays the manual compatibility matrix, as the PRD says).
 
-**Runtime dependencies:** one new third-party endpoint, the analytics vendor's event API, called from the landing page
-only. It is a vendor service, not a CryoShield-operated backend. The metrics CLI adds no runtime dependency to the
+**Runtime dependencies:** Cloudflare Web Analytics (`cloudflareinsights.com`, plus `static.cloudflareinsights.com` in
+the fallback), from the landing page only. It is a vendor service, not a CryoShield-operated backend, and it never sits
+in the path of the app or its crypto code. The metrics CLI adds no runtime dependency to the
 site; it runs locally or in GitHub Actions against public RPCs and the Arweave gateway already in use.
 
 ## Capabilities
@@ -43,14 +52,14 @@ site; it runs locally or in GitHub Actions against public RPCs and the Arweave g
 - `landing-analytics`: the cookieless landing-page analytics and the guarantees that keep it off app routes.
 
 ### Modified Capabilities
-None in `openspec/specs/`. The per-route CSP changes the `web-hosting` capability, which is still in flight in
-`add-fly-hosting`. The requirement lives here as `landing-analytics` "Per-route Content Security Policy" and must be
-reconciled with `web-hosting` when both are archived (task 6.4).
+- `landing-page`: "Same security headers and CSP on every page" now allows a distinct landing CSP (the analytics sources only) and a landing Permissions-Policy without WebAuthn.
 
 ## Impact
 
-- New: `tools/metrics/` (TS CLI and tests), `.github/workflows/metrics.yml`.
-- Changed after `redesign-landing-and-app-ui` lands: the landing entry (`src/landing/analytics.ts`),
-  `vite-plugins/csp.ts` (two CSPs), `deploy/gen-context.mjs` (per-route header blocks), `scripts/verify-build`, E2E
-  tests, and `/privacy` text.
-- Founder ops: vendor account and DPA, Pimlico dashboard export.
+- New: `tools/metrics/` (TS CLI + tests), `.github/workflows/metrics.yml`, `.github/workflows/beacon-drift.yml`,
+  `apps/web/analytics/beacon.lock.json`, `src/landing/analytics.ts`.
+- Changed: `vite-plugins/csp.ts` (two CSPs), `deploy/gen-context.mjs` (per-route header blocks; relaxed
+  identical-CSP guard), `scripts/verify-build.mjs`, the app boot (opener check), E2E and container tests, `/privacy`
+  and `/cookies` text, `.env.example` (`VITE_CF_BEACON_TOKEN`).
+- Founder ops: Cloudflare account and Web Analytics site (manual snippet), DPA acceptance, the redistribution question
+  to Cloudflare, and Pimlico dashboard exports.

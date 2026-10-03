@@ -2,20 +2,26 @@
 
 ## Context
 
-See proposal.md for the motivation. Constraints observed in the repo (2026-10-02):
-- `vite-plugins/csp.ts` builds one CSP (`default-src 'none'`, `script-src 'self'`, `connect-src 'self' <origins>`,
-  Trusted Types required) and injects it as a meta tag into `index.html`. `deploy/gen-context.mjs` copies that meta CSP
-  into a single Caddy `header` block for every path, adding `frame-ancestors 'none'`. **Both the meta and the HTTP CSP
-  are enforced, and a browser applies both**, so a per-route change needs per-document meta tags and per-path headers.
+See proposal.md for the motivation. Constraints observed in the repo (rebased on `main`, 2026-10-03):
+- `redesign-landing-and-app-ui` is merged and archived. Vite builds two entries, `index.html` (landing, `/`) and
+  `app/index.html` (`/app/`); `/app` redirects to `/app/`. `vite-plugins/csp.ts` injects one CSP meta tag
+  (`default-src 'none'`, `script-src 'self'`, `connect-src 'self' <origins>`, Trusted Types `'none'`) into both.
+  `deploy/gen-context.mjs` refuses to run unless both meta tags are identical, and emits one Caddy `header` block for
+  every path. Spec `landing-page` "Same security headers and CSP on every page" requires this, so this change
+  **modifies** that requirement.
+- **Both the meta CSP and the HTTP CSP are enforced**, so a per-route change needs per-document meta tags *and*
+  per-path headers.
 - Caddy has no `log` directive, so it writes no access log.
-- `VaultRegistry` emits `VaultCreated(vaultId indexed, owner indexed, version, blobHash)`,
-  `VaultUpdated(vaultId indexed, version, blobHash)`, `LocatorAdded(vaultId indexed, locator indexed)`. The blob header
-  carries the key count N in cleartext (`docs/spec/vault-format-v1.md` §5). EntryPoint v0.6 emits
-  `UserOperationEvent(userOpHash, sender indexed, paymaster indexed, nonce, success, actualGasCost, actualGasUsed)`.
-- The recovery tool already pages `eth_getLogs` adaptively across public RPCs that cap block ranges.
-- The landing page and the `/app` split do not exist on `main` yet. They arrive with `redesign-landing-and-app-ui`
-  (branch `feat/ui-redesign`). On that branch today only `docs/design/visual-language.md` is pushed; the OpenSpec
-  change itself was not visible on `origin` when this design was written (UNVERIFIED how it splits entries).
+- `/` and `/app/` share one origin (`https://cryoshield.app`, which is also the RP ID).
+- `VaultRegistry` events:
+  - `VaultCreated(vaultId indexed, owner indexed, version, blobHash)`;
+  - `VaultUpdated(vaultId indexed, version, blobHash)`;
+  - `LocatorAdded(vaultId indexed, locator indexed)`.
+- The blob header carries the key count N in cleartext. EntryPoint v0.6 emits `UserOperationEvent(userOpHash, sender
+  indexed, paymaster indexed, nonce, success, actualGasCost, actualGasUsed)`.
+- The recovery tool already pages `eth_getLogs` adaptively.
+- **Founder decision 2026-10-03:** Cloudflare Web Analytics, "Analytics beacon only". Fly keeps hosting and TLS; no
+  Cloudflare proxy; DNS unchanged. The beacon runs on `/` only, pinned with SRI, with a per-route CSP.
 
 ## Goals / Non-Goals
 
@@ -48,82 +54,129 @@ which is exactly the tracking we refuse); per-user metrics; real-time dashboards
 
 - Output is aggregate only, and buckets under 3 are suppressed on public networks. Every input is public, but the report must not become a convenient index of who uses CryoShield, and aggregates keep the report outside personal-data rules.
 
-### D3. Per-route CSP: two HTML documents, per-path headers in Caddy
-- After the redesign, Vite builds two HTML entries: `index.html` (landing, `/`) and `app/index.html` (`/app`). `csp.ts` injects the **app CSP** into every document except the landing one, which gets the **landing CSP** = app CSP with exactly one extra `connect-src` origin.
-- `gen-context.mjs` reads each HTML file's meta CSP and emits one Caddy `header` block per document path. The landing block uses `@landing path / /index.html`; the default block for every other path, including errors, is the app CSP. A test fails if any path other than those two gets the analytics origin.
-- *Alternative rejected:* one CSP for all routes with the vendor origin in `connect-src`. Then a script injected into `/app` could exfiltrate to the vendor endpoint. Its event API only carries a short URL and props, but there is no reason to widen the app's egress.
-- *Risk:* path normalisation. Caddy matches on the cleaned path, and `/app` serves `app/index.html`. Tests cover `/index.html`, `//`, `/App`, `/app/`, and `/%61pp` (task 4.4, task 6.1).
 
-### D4. Vendor: Plausible Cloud, called by our own ~40-line client (no vendor package)
-Comparison (sources in the research notes; confidence high unless marked):
+### D3. Per-route CSP and headers: landing document vs everything else
+- `csp.ts` emits two CSPs:
+  - the **app CSP**, unchanged, for every HTML document except `index.html`;
+  - the **landing CSP** for `index.html` = the app CSP plus `https://cloudflareinsights.com` in `connect-src`, and
+    the beacon source in `script-src` only when the founder chooses the CF-hosted path (D4b). The self-hosted path
+    (D4a) keeps `script-src 'self'`.
+- `gen-context.mjs`:
+  - reads each HTML file's meta CSP and checks that the landing CSP differs from the app CSP only by the allowed
+    sources;
+  - emits a Caddy header block for `@landing path / /index.html`, with the landing CSP and a Permissions-Policy that
+    sets `publickey-credentials-get=()` and `publickey-credentials-create=()`;
+  - emits the default block (app CSP, existing Permissions-Policy) for every other path, including 404 and error
+    responses.
+- *Rejected:* one CSP with the Cloudflare origins for all routes. A compromised or malicious beacon would then also
+  have egress from `/app/`, where secrets live.
+- *Risk:* path normalisation (`/index.html`, `//`, `/App/`, `/%61pp/`, `/app` redirect). Covered by the container
+  tests (task 4.4) and the security review (6.1).
 
-| | Plausible | Simple Analytics | Fathom | Umami Cloud |
-|---|---|---|---|---|
-| Cookies/storage | none (npm package *reads* `localStorage.plausible_ignore`) | none | none | none (medium) |
-| Visitor counting | daily-salted hash of IP+UA+domain, salt deleted after 24h; raw IP not stored | no IP/UA hash; referrer-based uniques; country from timezone | daily-salted signature, IP/UA up to 24h | hash with **monthly** salt; IP use UNVERIFIED |
-| Owner / hosting | Estonia; Hetzner DE + Bunny SI | Netherlands; NL/DE/SI hosts | Canada; storage on **AWS USA** | Delaware; EU region option; sub-processors UNVERIFIED |
-| First-party bundling | official npm tracker; documented Events API | no official bundle; proxy route serves vendor script | custom domains discontinued 2023 | MIT script, self-hostable |
-| Endpoint | `POST https://plausible.io/api/event` (documented) | `queue.simpleanalyticscdn.com` | `cdn.usefathom.com` | `cloud.umami.is/api/send` |
-| DNT / GPC | neither by default | DNT by default | DNT opt-in | DNT opt-in |
-| Cheapest plan | $9/mo (10k pageviews) | free (30-day retention) or $20/mo | $15/mo | free hobby / $20/mo (medium) |
-| Open source | CE AGPL-3.0 | scripts public, backend closed | closed | MIT |
+### D4. Vendor: Cloudflare Web Analytics, "beacon only" (founder decision 2026-10-03)
+**Research findings** (accessed 2026-10-03; H = high, M = medium, L = low confidence):
+- *Cookieless:* Cloudflare says it "does not use any client-side state, such as cookies or localStorage", and doesn't
+  fingerprint by IP or UA "for the purpose of displaying analytics" (cloudflare.com/web-analytics, H for the claim).
+  A 2020 review found a cookie set when the beacon downloaded, which Cloudflare said it would deprecate in 2021
+  (ctrl.blog review, Dec 2020; current status UNVERIFIED). Our E2E test asserts there is no cookie or `Set-Cookie`.
+- *What it collects:* the beacon reads the browser Performance API (load timings, Core Web Vitals) plus page URL,
+  referrer, UA and country derived from IP. Cloudflare says IPs are not stored (secondary sources, M).
+  - The FAQ says query strings are not logged "to avoid collecting potentially sensitive data" (H). We also strip
+    them before the beacon loads (spec).
+  - Visits count page views with an external or empty referrer (ctrl.blog, M).
+  - Retention: the 2020 review said 7 days; the current dashboard window is UNVERIFIED.
+- *Endpoints:* the script is `https://static.cloudflareinsights.com/beacon.min.js`. A manual (non-proxied) install
+  reports to `https://cloudflareinsights.com/cdn-cgi/rum`. CSP needs `script-src …/beacon.min.js` and
+  `connect-src cloudflareinsights.com` (developers.cloudflare.com/web-analytics/faq, H). Non-proxied sites are the
+  primary use case (FAQ, H).
+- **SRI (key finding, H):** the FAQ says that with a manual snippet "there is no current way to safely apply an
+  `integrity` attribute because we do not support version-pinning our beacon script". Cloudflare updates the file in
+  place for security and bug fixes, and community threads report SRI mismatches. **A hard-coded SRI hash on the CF
+  URL will break, failing closed, whenever Cloudflare ships an update.** Only Cloudflare's automatic injection, which
+  needs its proxy, adds a matching integrity attribute. That path is excluded.
+- *Self-hosting:* no Cloudflare document permits or forbids serving a copy of `beacon.min.js` from our own origin.
+  Third-party proxies exist (Workers, PHP), but redistribution rights are **UNVERIFIED**, so we must ask Cloudflare
+  (task 3.2).
+- *DNT/GPC:* the FAQ doesn't mention either (H). The 2020 review said DNT was honoured (UNVERIFIED today). We suppress
+  the beacon ourselves (spec).
+- *DPA, sub-processors and location:*
+  - Cloudflare's DPA is at cloudflare.com/cloudflare-customer-dpa (v6.4, effective 3 Apr 2026, per secondary source:
+    M). It uses the EU-US DPF plus SCCs (cloudflare.com/cloudflare-customer-scc).
+  - Sub-processors: cloudflare.com/gdpr/subprocessors.
+  - Metadata is processed in Cloudflare's US and EU data centres (Cloudflare GDPR FAQ / trust hub, M). EU-only
+    storage needs the Data Localization Suite, an Enterprise add-on (M), so **assume US storage**.
+  - Cloudflare, Inc. is a US company. Free plan.
 
-Sources: plausible.io/data-policy, plausible.io/docs/events-api, plausible.io/dpa, docs.simpleanalytics.com/unique-visits,
-simpleanalytics.com/subprocessors, usefathom.com/features/data-isolation, usefathom.com/legal/dpa,
-docs.umami.is/docs/api/sending-stats, vendor pricing pages (accessed 2026-10-02).
+**Decision: how the SRI pin is achieved.**
+- **D4a, preferred if Cloudflare permits redistribution:** self-host a reviewed copy as
+  `/assets/cf-beacon.<sha384-prefix>.js`, loaded with `integrity` + `crossorigin` (same-origin SRI is still checked).
+  `script-src` stays `'self'`; only `connect-src https://cloudflareinsights.com` is added on `/`. Updates never break
+  silently: we choose when to adopt one.
+- **D4b, fallback:** load `https://static.cloudflareinsights.com/beacon.min.js` with a committed SHA-384 integrity
+  hash. When Cloudflare updates the file, browsers refuse it and analytics stops; the page is unaffected.
+- **Both paths:**
+  - a weekly CI drift job (`.github/workflows/beacon-drift.yml`: read-only, no secrets) fetches the live file,
+    compares its hash with `apps/web/analytics/beacon.lock.json`, and fails with both hashes;
+  - a reviewer (SR) diffs the de-minified old and new files, checking for new storage, DOM, `eval` or network sinks,
+    then bumps the lock;
+  - a CI unit test asserts the `integrity` attribute is present and matches the lock.
+- **Trusted Types:** the landing CSP keeps `require-trusted-types-for 'script'`. If the beacon uses a DOM sink it will
+  be blocked; E2E task 4.5 detects this. We would not loosen Trusted Types for analytics (UNVERIFIED that the beacon
+  is TT-clean).
+- **Configuration:** `data-cf-beacon='{"token":"<site token>","spa":false}'` on a script element created by
+  `src/landing/analytics.ts` after the GPC/DNT/host gate. The token is public by design and lives in `.env` as
+  `VITE_CF_BEACON_TOKEN`.
 
-**Decision: Plausible Cloud.** It is EU-owned and EU-hosted with a public DPA, and it has the only documented
-first-party Events API meant for direct POSTs. That lets us skip the vendor's script entirely. We write the request
-ourselves: `fetch('https://plausible.io/api/event', { method: 'POST', keepalive: true, credentials: 'omit',
-referrerPolicy: 'no-referrer', body: JSON.stringify({ name: 'pageview', domain: 'cryoshield.app', url:
-'https://cryoshield.app/' }) })`. The URL is a constant and no referrer is sent (D5). So:
-- `script-src 'self'` is unchanged and no third-party code runs, which also sidesteps the npm tracker's localStorage
-  read (banned by our lint) and any Trusted Types surprise;
-- only `connect-src https://plausible.io` is added, on `/` only;
-- we gate GPC/DNT ourselves (Plausible doesn't).
+**Same-origin threat (H, our analysis):** `/` and `/app/` share an origin, so third-party code on the landing page is
+not isolated from the app. Two attack paths and their mitigations:
+1. A ceremony started on `/` (phishing a key tap to harvest PRF outputs for the RP ID) → the landing Permissions-Policy
+   disables WebAuthn.
+2. `window.open('/app/')` and then scripting the opened same-origin window → the app refuses to initialise when
+   `window.opener` is non-null. `frame-ancestors 'none'` already blocks framing.
 
-*Trade-off accepted:* Plausible's server needs the visitor's IP and UA to compute the daily hash, so the IP is seen in
-transit by an EU processor and then discarded. Simple Analytics avoids even that and is the documented fallback if
-the founder prefers "vendor never needs the IP" over first-party bundling and price.
-*Rejected:* a Caddy `reverse_proxy` to Plausible. It would make the endpoint same-origin and dodge ad-blockers, but
-Plausible requires the real client IP in `X-Forwarded-For`, so the same IP still reaches the vendor, now through our
-edge. It also turns our static server into a forwarding proxy that needs its own tests. Ad-blocked visits are an
-acceptable undercount.
+Integrity pinning means only reviewed bytes run at all. Moving the landing page to its own origin (e.g.
+`www.cryoshield.app`) would remove this class entirely. It is out of scope and recorded as a founder option.
+
+*Rejected:* Plausible (the previous recommendation) was superseded by the founder decision; it remains the fallback if
+Cloudflare refuses self-hosting *and* the D4b failure mode proves unacceptable.
 
 ### D5. Consent posture for the landing analytics
-- **No cookies or storage** on the device, and the event is built from constants only: name, domain and a fixed URL.
-  Nothing is read from the device (no referrer, screen size or URL parameters). The IP and UA are what the browser
-  sends with any request.
-- **The residual EU risk is real.** EDPB Guidelines 2/2023 v2 (7 Oct 2024), para 32, treats JavaScript that instructs
-  the browser to send requests as "gaining access" under ePrivacy Art. 5(3), so "cookieless" alone is not an
-  exemption. Two things narrow the risk: (a) the CNIL's audience-measurement exemption (publisher-only, anonymous
-  statistics, IP not kept, user informed and able to object; cnil.fr "sheet n°16"); (b) the UK's new PECR statistical
-  exception under the Data (Use and Access) Act 2025 (ico.org.uk "what are the exceptions"; in force from
-  5 Feb 2026 per secondary sources, UNVERIFIED). Neither applies EU-wide.
-- **Recommended posture:** no banner. Inform on `/privacy` and the landing footer, honour GPC/DNT as an objection, and
-  keep the constant-only payload so there is as little "access" as possible. Mark this **needs lawyer review**
-  (`add-privacy-and-compliance` D5). Founder decision: accept this residual EU risk or add a one-click opt-out. A
-  remembered opt-out would need storage, which itself falls under 5(3) but is exempt as strictly necessary for the
-  user's own request.
+- No cookies or storage are set by us or (per Cloudflare) by the beacon. But the beacon **reads device information**:
+  Performance API timings, screen and navigation data, the URL and the referrer. Under EDPB Guidelines 2/2023 v2
+  para 32 that is "gaining access" (ePrivacy Art. 5(3)), more clearly than a constant-only payload would be (H for
+  the guideline, M for application).
+- Cover is partial:
+  - the CNIL audience-measurement exemption requires publisher-only, anonymous statistics with no transfer to third
+    parties for their own purposes (cnil.fr sheet n°16). Cloudflare as a US processor under a DPA can fit that, but it
+    is not on any CNIL list;
+  - the UK DUAA 2025 statistical exception (in force 5 Feb 2026 per secondary sources, UNVERIFIED);
+  - performance measurement is arguably "strictly necessary" only for the publisher, not for the user.
+- **Posture:** no banner. Disclose on `/privacy` and `/cookies`, honour GPC/DNT, landing only, **needs lawyer review**
+  (`add-privacy-and-compliance` D5). If counsel disagrees for the EU, the cheapest compliant option is to skip the
+  beacon for EU/UK timezones or locales (no geo-IP needed) or to add a one-click opt-in on the landing page.
 - **A banner becomes necessary** if we add cookies or storage, cross-site identifiers, a second vendor, campaign
-  attribution, URL or referrer collection beyond the constant URL, or any analytics on `/app`.
+  attribution, Cloudflare proxying, or any analytics outside `/`.
 
 ## Risks / Trade-offs
 
-- [Analytics leaks into `/app` through a shared chunk] → `verify-build` walks the `/app` module graph for the marker and origin (task 4.2); E2E network log (task 4.5).
-- [Meta CSP and HTTP CSP disagree] → the container test compares header vs meta per document, as today.
-- [Public metrics reveal adoption to competitors] → accepted; the data is public on-chain anyway.
-- [Pimlico paymaster address changes] → `paymasters.json` lists all known addresses with a source URL; the report counts unknown paymasters separately so drift is visible.
-- [`eth_getLogs` limits on public RPCs] → reuse the adaptive paging of the recovery tool; on mainnet consider a public indexer (D1).
-- [Ad-blockers undercount] → accepted; analytics is directional only. Product truth comes from on-chain data.
+- [Cloudflare updates the beacon → SRI rejects it (D4b)] → fail-closed by design; the drift job alerts and SR reviews and bumps. An analytics gap of days is acceptable.
+- [Malicious or compromised beacon on a same-origin page] → integrity-pinned reviewed bytes, no WebAuthn on `/`, the app refuses a same-origin opener, no Cloudflare origin in the app CSP.
+- [Analytics leaks into `/app/` through a shared chunk] → `verify-build` module-graph scan (task 4.2) and the E2E network log (task 4.5).
+- [Meta CSP and HTTP CSP disagree] → the container test compares the header with the meta tag per document.
+- [Beacon reads more than we would choose] → disclosed; query and fragment stripped first; lawyer review of the consent posture.
+- [US data location] → DPF + SCCs in the DPA; disclosed as an international transfer.
+- [Public metrics reveal adoption] → accepted; on-chain data is public anyway.
+- [Pimlico paymaster address changes] → `paymasters.json` with sources; unknown paymasters are reported separately.
+- [`eth_getLogs` limits] → reuse the recovery tool's adaptive paging; consider a public indexer on mainnet (D1).
+- [Ad-blockers block `cloudflareinsights.com`] → accepted undercount. Product truth comes from on-chain data.
 
 ## Migration Plan
 
-Groups 1–2 ship independently. Groups 4–5 ship in one deploy after `redesign-landing-and-app-ui` and the `/privacy`
-page exist. Rollback: remove the origin from the landing CSP config and redeploy. The client then fails closed, with
-requests blocked by CSP and no errors shown.
+Groups 1–2 (metrics) ship independently. Groups 3–5 ship in one deploy together with the legal pages from
+`add-privacy-and-compliance` (both are before public launch). Rollback: remove `VITE_CF_BEACON_TOKEN` and the landing
+CSP additions, then redeploy. The gate then never inserts the beacon.
 
 ## Open Questions
 
-- Does `plausible.io/api/event` accept `Content-Type: application/json` cross-origin from a `fetch` with `credentials: 'omit'` (CORS preflight)? Verify in task 3.2; fall back to `text/plain` if needed. This does not change the design.
+- Does Cloudflare permit serving a copy of `beacon.min.js` first-party (D4a vs D4b)? Asked in task 3.2. Either answer fits the specs.
 - Pimlico's OP Sepolia and OP Mainnet paymaster addresses for `paymasters.json` (task 1.5).

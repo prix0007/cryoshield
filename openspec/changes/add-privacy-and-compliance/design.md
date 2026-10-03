@@ -46,7 +46,7 @@ any data "about an individual who is identifiable by or in relation to such data
 | 5 | Public chain (OP Sepolia → OP Mainnet) | Smart-account address, vaultId, locators (≤8), blob: RP ID, key count N, credential IDs, PRF salts, wrapped keys, ciphertext; timestamps; `VaultCreated.owner` | **Likely yes for GDPR** (pseudonymous identifiers that a node operator, bundler or the user can link; credential IDs are stable device-bound IDs). Ciphertext is PD for anyone with a key, arguably not for others (SRB relative test) | **Controller** for the decision to publish (we designed the protocol, the app builds and signs the transaction), jointly with the user who submits it; EDPB 02/2025 treats a dApp provider that determines on-chain processing as a controller | Validators/sequencer/nodes: neither our processors nor controllers we instruct (no contract) | **Permanent, public, cannot be erased** |
 | 6 | Arweave via ArDrive Turbo (Permanent Data Solutions Inc., US) + arweave.net gateway (ar.io, NL; operator UNVERIFIED) | Upload: client IP, signed data item = blob + tags `App-Name`, `CryoShield-Vault-Id`, `CryoShield-Version`, `CryoShield-Locator`×N, ephemeral uploader public key; reads: IP, GraphQL query (vaultId, locators) | Yes (IP; same pseudonymous IDs as #5). Uploader key is ephemeral per session, so it does not link sessions | Controller (upload decision) | Turbo/gateway: independent controllers of their logs (their own ToS/privacy, no DPA offered to us; UNVERIFIED) | Data permanent; gateway may blocklist but the network keeps it |
 | 7 | Public RPCs (`sepolia.optimism.io`/OP Labs; publicnode; drpc) | IP, `eth_call`/`eth_getLogs` params (locators, vaultIds) | Yes (IP linked to locator lookups = "this IP owns this vault") | Controller (we chose the endpoints) | Independent controllers in practice (no contract); OP Labs logging policy **unpublished (UNVERIFIED)**; PublicNode ≤24h; dRPC weekly purge | Plan: rotate/let user choose RPC; disclose |
-| 8 | Analytics vendor (landing only, `add-privacy-preserving-analytics`) | IP + UA in transit, page URL without query, referrer origin, screen class | Yes in transit (IP); stored aggregates are not PD if the vendor discards IP and rotates salts daily | Controller | Processor (DPA) | Vendor-dependent; see that change's design D4 |
+| 8 | Cloudflare Web Analytics (landing `/` only, beacon only, `add-privacy-preserving-analytics`) | IP + UA in transit; page path (query and fragment stripped first), referrer, Performance API timings; country derived from IP | Yes in transit (IP). Cloudflare says IPs are not stored and no cookies or localStorage are used (cloudflare.com/web-analytics, H for the claim) | Controller | Processor (Cloudflare DPA, cloudflare.com/cloudflare-customer-dpa; sub-processors cloudflare.com/gdpr/subprocessors) | Metadata processed in US + EU data centres; EU-only needs the Enterprise Data Localization Suite (M). Retention UNVERIFIED |
 | 9 | GitHub (public repo, issues, private vulnerability reports, Actions) | Reporter/contributor GitHub accounts, emails in commits, report contents | Yes | Controller for report handling; GitHub is an independent controller of its users' accounts | GitHub: controller of accounts; processor for our repo content (GitHub DPA for org customers; UNVERIFIED for free plan) | Delete reports/issue content on request where we control it |
 | 10 | Email (security@ / privacy@ / grievance@) | Sender address, request contents, possibly account address | Yes | Controller | Mail provider = processor (provider not chosen yet: **founder decision**) | Retain 3 years after closure (DPDP Rules log-retention minimum is 1 year; lawyer to confirm) |
 | 11 | Domain/DNS (GoDaddy), CAA iodef mail | WHOIS (company, not users) | No user PD | n/a | n/a | n/a |
@@ -166,7 +166,7 @@ https://www.optimism.io/data-privacy-policy (does not cover RPC traffic).
 - **CryoShield can delete:**
   - email and grievance correspondence;
   - GitHub issues and comments in our repo;
-  - vendor-held logs, by request to Fly, Pimlico, Plausible and Turbo, each under its own policy;
+  - vendor-held logs, by request to Fly, Pimlico, Cloudflare and Turbo, each under its own policy;
   - nothing else, because we hold nothing else.
 - **Nobody can delete:** the on-chain blob, account address, vaultId, locators and events, or the Arweave items and tags.
   Gateways may *hide* items (arweave.net honours takedowns), but the network keeps them (M).
@@ -226,23 +226,31 @@ https://www.optimism.io/data-privacy-policy (does not cover RPC traffic).
 
 ### D5. Cookie and consent posture
 - **No banner on any page today, and none needed:**
-  - no cookies, no storage, no client identifiers, and no analytics on `/app`, `/privacy` or `/terms`;
+  - no cookies, no storage, no client identifiers, and no analytics on `/app/`, `/privacy`, `/terms` or `/cookies`
+    (the device-storage inventory on `/cookies` lists no entries, and an E2E test enforces it);
   - the only device "access" is the browser's own requests to services the user asked for. ePrivacy Art. 5(3) has a
     "strictly necessary for a service explicitly requested" exemption, and these requests fall under it (H).
-- **Landing analytics** (`add-privacy-preserving-analytics` D5):
-  - EDPB Guidelines 2/2023 v2, para 32, treats script-triggered requests as "gaining access", so cookieless is not
-    automatically exempt in the EU (H).
-  - Partial cover: CNIL's audience-measurement exemption (FR) and the UK DUAA 2025 statistical exception to PECR reg 6
-    (in force 5 Feb 2026 per secondary sources, UNVERIFIED).
-  - Posture: no banner; a constant-only payload; GPC/DNT honoured as objection; disclosure on `/privacy`.
-    **[lawyer]**
+- **Landing analytics** (`add-privacy-preserving-analytics` D5): Cloudflare Web Analytics, beacon only, on `/` only.
+  - It sets no cookies or storage (Cloudflare's claim, enforced by E2E). But it reads device data: Performance API
+    timings, URL and referrer. EDPB Guidelines 2/2023 v2 para 32 treats script-triggered requests that carry such data
+    as "gaining access" under Art. 5(3), so "cookieless" is not automatically exempt in the EU (H).
+  - Partial cover: CNIL's audience-measurement exemption (FR) and the UK DUAA 2025 statistical exception to PECR
+    reg 6 (in force 5 Feb 2026 per secondary sources, UNVERIFIED).
+  - Posture: **no banner**; disclose on `/privacy` and `/cookies`; GPC/DNT suppress the beacon entirely; query and
+    fragment stripped first. **[lawyer]** Fallback if counsel disagrees for the EU: skip the beacon for EU/UK
+    locales/timezones, or add a one-click opt-in.
 - **A banner (or opt-in) becomes required if:** any cookie or storage for non-essential purposes, cross-site or
   persistent identifiers, a second analytics or marketing vendor, URL or referrer capture, ads or pixels, or any
   analytics on `/app`.
 
-### D6. Privacy Policy and Terms of Service: outlines and key clauses (**needs lawyer review**)
+### D6. Privacy Policy, Terms of Service and Cookie Policy: outlines and key clauses (**needs lawyer review**)
+All three pages are drafted **now, before public launch** (founder decision 2026-10-03). Each shows a visible banner
+"Draft, pending legal review" and keeps the placeholders `[ENTITY]`, `[REGISTERED ADDRESS]`, `[GRIEVANCE OFFICER]` and
+`[CONTACT EMAIL]` verbatim until the founder and counsel fill them in. A build check enforces this (spec `legal-pages`
+"Draft status and placeholders").
+
 **Privacy Policy (`/privacy`)**, written in plain English with a summary box first:
-1. *Who we are:* legal entity name, CIN, registered address; Data Fiduciary/controller; contact email; EU/UK
+1. *Who we are:* `[ENTITY]`, CIN, `[REGISTERED ADDRESS]`; Data Fiduciary/controller; `[CONTACT EMAIL]`; EU/UK
    representative if appointed.
 2. *What we never see:* your secrets, PRF outputs, keys, labels. "We cannot recover, read or hand over your vault."
 3. *Data held by third parties when you use the site:* one row per inventory item (D1), naming the vendor, data,
@@ -254,13 +262,13 @@ https://www.optimism.io/data-privacy-policy (does not cover RPC traffic).
 6. *Retention:* D8.
 7. *Your rights:* DPDP (access, correction, erasure, grievance, nomination, complaint to the Board); GDPR (Arts. 15–22,
    complaint to a supervisory authority); US state rights; how to ask and what we can realistically do.
-8. *Grievance Officer:* name, email, 24 h acknowledgement, 15-day resolution, escalation to the Data Protection Board
+8. *Grievance Officer:* `[GRIEVANCE OFFICER]`, `[CONTACT EMAIL]`, 24 h acknowledgement, 15-day resolution, escalation to the Data Protection Board
    of India.
-9. *International transfers:* India, Singapore (Fly region), US (Fly, ArDrive), UK (Pimlico), EU (Plausible); the
+9. *International transfers:* India, Singapore (Fly region), US (Fly, ArDrive), UK (Pimlico), US/EU (Cloudflare); the
    safeguards (DPF, SCCs, UK adequacy). **[lawyer]**
 10. *Children:* D12.
 11. *Security:* client-side encryption, no audit yet, the disclosure policy link.
-12. *Analytics:* landing only, Plausible, the fields sent, GPC/DNT.
+12. *Analytics:* Cloudflare Web Analytics on the landing page only: what the beacon reads, no cookies, US/EU processing under Cloudflare's DPA, GPC/DNT suppression, and none on `/app/`. Links to `/cookies`.
 13. *Changes:* effective date, changelog, Git history link.
 
 **Terms of Service (`/terms`)**, key clauses:
@@ -279,6 +287,17 @@ https://www.optimism.io/data-privacy-policy (does not cover RPC traffic).
   **[lawyer]**: enforceability under the Indian Contract Act, EU consumer law and the UK CRA.
 - *Governing law and venue:* India (city of registered office), with consumer-protection carve-outs where mandatory.
 - *Changes:* notice on the site; effective date.
+
+**Cookie Policy (`/cookies`)**, key content:
+- *Summary:* "CryoShield sets no cookies. No page stores anything on your device."
+- *What we store on your device:* the device-storage inventory table (route × cookie / localStorage / sessionStorage /
+  IndexedDB / Cache Storage / service worker × purpose × lifetime). Today every cell is "none". The WebAuthn credential
+  lives on your hardware key, not in the browser. An E2E test keeps the table true.
+- *Analytics on the landing page:* Cloudflare Web Analytics beacon on `/` only; what it reads; that it sets no cookie
+  (Cloudflare's statement); the integrity pin; that `/app/` and the legal pages have none.
+- *Your choices:* GPC or DNT turns the beacon off entirely; blocking `cloudflareinsights.com` has no side effects.
+- *When this would change:* the banner triggers from D5. Any change updates the effective date and changelog.
+- Contact `[CONTACT EMAIL]`; draft banner and placeholders as above.
 
 ### D7. security.txt and responsible disclosure
 - `/.well-known/security.txt` (RFC 9116: `Contact` and `Expires` are required, with `Expires` ≤ 1 year recommended;
@@ -303,7 +322,7 @@ https://www.optimism.io/data-privacy-policy (does not cover RPC traffic).
 |---|---|
 | Caddy request logs | none (none written). If counsel requires them: truncated-IP format, 180 days (CERT-In) or 1 year (DPDP Rule 8(3)), then deleted |
 | Fly platform logs | Fly's policy (unpublished); `fly logs` ~7 days |
-| Vendor logs (Pimlico, Turbo, RPC, Plausible) | each vendor's policy, listed in the inventory; "unpublished" where unknown |
+| Vendor logs (Pimlico, Turbo, RPC, Cloudflare Web Analytics) | each vendor's policy, listed in the inventory; "unpublished" where unknown |
 | Privacy, grievance and security email | 3 years after closure (limitation period; at least the 1-year DPDP log minimum) **[lawyer]** |
 | Admin audit exports (Fly, GitHub, Pimlico, DNS) | 1 year rolling, India-resident store (CERT-In 180 d / DPDP 1 y) |
 | On-chain and Arweave data | permanent; outside our control |
@@ -337,7 +356,7 @@ rights limits; residual-risk sign-off by F. A full DPIA happens before mainnet w
 | ArDrive Turbo | Permanent Data Solutions Inc., US | independent controller (its ToS) | none | n/a; disclose |
 | arweave.net gateway | ar.io (Stichting, NL); operator UNVERIFIED | independent controller | none | n/a; disclose |
 | OP public RPC / PublicNode / dRPC | OP Labs (US/Cayman, UNVERIFIED) / Allnodes / dRPC | independent controllers | none | disclose |
-| Plausible (landing only) | Plausible Insights OÜ, Estonia; Hetzner DE | processor | plausible.io/dpa | EU |
+| Cloudflare Web Analytics (landing only) | Cloudflare, Inc., US; US + EU data centres | processor | cloudflare.com/cloudflare-customer-dpa (v6.4, 3 Apr 2026, M); sub-processors cloudflare.com/gdpr/subprocessors | EU-US DPF + SCCs (cloudflare.com/cloudflare-customer-scc) |
 | GitHub | GitHub Inc., US | controller of accounts; processor for repo content | GitHub DPA (plan-dependent, UNVERIFIED) | DPF |
 | Mail provider | **TBD (founder)** | processor | required | per provider |
 | GoDaddy | registrar | n/a (no user data) | n/a | n/a |
@@ -398,7 +417,10 @@ evidence would mostly be "not applicable".
 **Sequence:**
 - **Before public launch (testnet):**
   - inventory, sub-processor list, retention statement;
-  - `/privacy` and `/terms` after a lawyer's light review;
+  - `/privacy`, `/terms` and `/cookies` drafted with placeholders and the "Draft, pending legal review" banner, then a
+    lawyer's light review;
+  - the device-storage inventory and its E2E test;
+  - landing analytics (`add-privacy-preserving-analytics` groups 3–6) shipped in the same deploy as the pages;
   - security.txt, SECURITY.md and GitHub private reporting;
   - permanence + 18+ acknowledgements;
   - the no-access-log test;

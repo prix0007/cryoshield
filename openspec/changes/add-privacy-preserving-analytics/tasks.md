@@ -1,8 +1,9 @@
 # Tasks
 
 Owners: **FE** = frontend-engineer, **SR** = security-reviewer, **OW** = overwatcher, **F** = founder.
-Groups 1–2 can start now. Groups 3–6 are **blocked on `redesign-landing-and-app-ui`** (branch `feat/ui-redesign`)
-being merged, and group 5 also on `add-privacy-and-compliance` group 3 (the `/privacy` page).
+Phases: **P1** = before public launch. Groups 3–6 (landing analytics) are P1 and ship in the same deploy as the legal
+pages from `add-privacy-and-compliance` (its group 3). Groups 1–2 (metrics) can start now and are not launch-blocking.
+`redesign-landing-and-app-ui` is merged, so nothing else blocks this change.
 
 ## 1. Metrics CLI: chain metrics (FE, can start now)
 
@@ -20,26 +21,41 @@ being merged, and group 5 also on `add-privacy-and-compliance` group 3 (the `/pr
 - [ ] 2.3 OW: run it once on OP Sepolia via `workflow_dispatch` and verify the artifact contains only aggregates
 - [ ] 2.4 F: monthly, export Pimlico dashboard spend for the sponsorship policy and reconcile it with the on-chain gas total in `docs/metrics/sponsorship-log.md` (USD bill vs ETH gas; note Pimlico's surcharge); verify the first entry exists
 
-## 3. Vendor setup (F; blocked on redesign merge for go-live only)
+## 3. Vendor setup (P1, F)
 
-- [ ] 3.1 F: create the analytics site for `cryoshield.app` with the vendor chosen in design D4, sign or accept its DPA, enable IP-anonymised/no-IP settings, disable any optional features that store identifiers; record the DPA link in the sub-processor list (`add-privacy-and-compliance` 2.3)
-- [ ] 3.2 F: confirm (or reject) design D4's assumptions in writing: data location, retention, that the event API accepts first-party POSTs without the vendor script; record answers in design.md Open Questions
+- [ ] 3.1 F: create a Cloudflare account and a Web Analytics site for `cryoshield.app` with the **manual JS snippet** (no proxy, no DNS change), accept Cloudflare's DPA (cloudflare.com/cloudflare-customer-dpa), and record the token in `apps/web/.env` as `VITE_CF_BEACON_TOKEN`; verify the sub-processor list (`add-privacy-and-compliance` 2.3) has the Cloudflare row with DPA and sub-processor links
+- [ ] 3.2 F: ask Cloudflare in writing whether a reviewed copy of `beacon.min.js` may be served from our own origin (design D4a), and file the answer in `docs/compliance/vendors/cloudflare.md`; verify design D4 records the chosen path (D4a self-hosted or D4b CF-hosted)
 
-## 4. Landing client and per-route CSP (FE; blocked on `redesign-landing-and-app-ui`)
+## 4. Beacon loader, pinning and per-route CSP (P1, FE)
 
-- [ ] 4.1 Test first (unit): the client builds an event with `name`, `domain`, the constant `url = https://<host>/` and nothing read from the device (no query, fragment, referrer or screen data), and sends nothing when GPC is true, DNT is `"1"`, the host is not the production host, or the build is dev/E2E (spec "Query parameters stripped", "Referrer not sent", "GPC set", "DNT set"); then implement `src/landing/analytics.ts` (~40 lines, `fetch` with `keepalive`, `credentials: 'omit'`, `referrerPolicy: 'no-referrer'`, one attempt, errors swallowed silently without console)
-- [ ] 4.2 Test first (`verify-build`): no file in the `/app` entry's module graph contains the analytics marker or origin; the landing entry does (spec "App bundle contains no analytics code"); then add the check
-- [ ] 4.3 Test first (`vite-plugins/csp.ts` unit): two CSPs are emitted, landing = app + exactly one origin in `connect-src`, `script-src 'self'` in both; then implement
-- [ ] 4.4 Test first (`deploy/test/container.test.ts`): `/` gets the landing CSP; `/app`, `/app/`, `/privacy`, an unknown path and a 404 get the unchanged app CSP (spec "Landing CSP", "App CSP unchanged"); then implement per-route `header` blocks in `deploy/gen-context.mjs` keyed on exact path matchers, with the app CSP as the default
-- [ ] 4.5 Test first (Playwright): network log on `/app` create/unlock flows shows zero requests to the analytics origin; landing → `/app` navigation sends exactly one event; no cookies or storage; blocked endpoint leaves the page working (spec scenarios under "Analytics confined to the landing route", "No storage or cookies", "Blocked endpoint"); then wire the client into the landing entry only
+- [ ] 4.1 Test first (unit): `src/landing/analytics.ts` inserts no script element when GPC is true, DNT is `"1"`, the host isn't the production host, the token is unset, or the build is dev/E2E; otherwise it first calls `history.replaceState` to drop the query and fragment, then inserts one script with `integrity`, `crossorigin="anonymous"`, and `data-cf-beacon` containing `"spa":false` (spec "GPC set", "DNT set", "Query parameters stripped"); then implement it and call it only from the landing entry
+- [ ] 4.2 Test first (`verify-build`): no file reachable from `app/index.html` contains `cloudflareinsights`, the beacon file name or the token, while the landing entry does (spec "App bundle contains no analytics code"); then add the check
+- [ ] 4.3 Test first: `apps/web/analytics/beacon.lock.json` holds `{url, sha384, reviewedBy, reviewedAt}`, and a unit test fails if the emitted `integrity` differs from the lock. For D4a, the build copies the vendored file to `/assets/` and the test recomputes its hash (spec "Integrity-pinned beacon"); then implement
+- [ ] 4.4 Test first (`vite-plugins/csp.ts` + `deploy/test/gen-context.test.ts` + `container.test.ts`):
+  - the landing CSP = the app CSP + `https://cloudflareinsights.com` in `connect-src` (+ the beacon URL in `script-src` for D4b only);
+  - the generator refuses any other difference;
+  - `/` and `/index.html` get the landing CSP and a Permissions-Policy with `publickey-credentials-get=()` and `publickey-credentials-create=()`;
+  - `/app`, `/app/`, `/app/index.html`, `/privacy`, `/cookies`, `//`, `/App/`, an unknown path and a 404 get the unchanged app CSP (spec `landing-page` scenarios, "Ceremony blocked on landing");
+  - then implement the per-route header blocks
+- [ ] 4.5 Test first (Playwright):
+  - `/app/` create, unlock and update flows make zero requests to Cloudflare origins;
+  - landing → `/app/` sends nothing after navigation;
+  - no cookies, storage or `Set-Cookie`;
+  - captured beacon bodies contain no `abc`, `utm_source` or `frag`;
+  - a hash-mismatched beacon is refused with the page intact;
+  - blocked origins leave the page working;
+  - no Trusted Types violation from the beacon (spec scenarios under "Analytics confined to the landing document", "No URL parameters or identifiers sent", "Hash mismatch fails closed", "Blocked endpoint");
+  - then make them pass
+- [ ] 4.6 Test first (UI + E2E): the app shows "Open CryoShield directly" and makes no WebAuthn, bundler or RPC call when `window.opener` is non-null (spec "Opened from the landing page by script"); then implement in the app boot
+- [ ] 4.7 OW: add `.github/workflows/beacon-drift.yml` (weekly, read-only, no secrets, SHA-pinned actions). It fetches `beacon.min.js`, compares SHA-384 with the lock, and fails with both hashes (spec "Drift detected"). Document the SR review-and-bump procedure in `apps/web/analytics/README.md`; verify that zizmor passes and a manual dispatch run succeeds against the current lock
 
-## 5. Disclosure (FE; blocked on `add-privacy-and-compliance` group 3)
+## 5. Disclosure (P1, FE; with `add-privacy-and-compliance` group 3)
 
-- [ ] 5.1 Add the analytics section to `/privacy` (vendor, location, fields, IP/UA seen in transit, retention, GPC/DNT, `/app` excluded) and the vendor row to the sub-processor list; verify the `verify-build` drift check (spec "Policy drift check") passes, and fails when the origin is changed in a test fixture
+- [ ] 5.1 Add the Cloudflare Web Analytics sections to `/privacy` and `/cookies`: vendor, role, US/EU processing, fields read (path, referrer, UA, Performance API timings, IP in transit), no cookies, GPC/DNT suppression, landing only. Add the device-storage inventory row. Verify the `verify-build` drift check (spec "Policy drift check") passes, and fails when the origin is removed from either page in a fixture
 
 ## 6. Review and integration (SR, OW)
 
-- [ ] 6.1 SR: security review of the CSP split, the client, and the Caddy matchers (path normalisation, `/app` vs `/app/` vs `/App`, `/index.html`), recorded in `apps/web/docs/security-review-analytics.md`; verify all findings are fixed or accepted
-- [ ] 6.2 OW: deploy, then verify `curl -sI https://cryoshield.app/` vs `/app` CSP headers and a live browser network log on `/app` with zero vendor requests
-- [ ] 6.3 F: after 30 days, confirm the dashboard shows only page-view counts plus the country and device class Plausible derives from IP/UA, and no referrer or URL parameters; record in `docs/metrics/sponsorship-log.md`
+- [ ] 6.1 SR: security review of the CSP split, the beacon loader and pinning, the reviewed beacon bytes, the landing Permissions-Policy, the opener guard, and the Caddy matchers (path normalisation, `/app` vs `/app/` vs `/App/`, `/index.html`), recorded in `apps/web/docs/security-review-analytics.md`; verify all findings are fixed or accepted
+- [ ] 6.2 OW: deploy, then verify `curl -sI https://cryoshield.app/` vs `/app/` CSP and Permissions-Policy headers, and a live browser network log on `/app/` with zero Cloudflare requests
+- [ ] 6.3 F: after 30 days, confirm the dashboard shows no query strings or fragments in paths; record in `docs/metrics/sponsorship-log.md`
 - [ ] 6.4 OW: when `add-fly-hosting` is archived, reconcile `web-hosting` with the per-route CSP requirement and verify `openspec validate --all --strict` passes

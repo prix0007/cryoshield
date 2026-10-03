@@ -20,8 +20,10 @@ acknowledgement checkboxes and build checks.
 - **Legal analysis record** (`docs/compliance/legal-analysis.md`): DPDP Act + Rules, GDPR + EDPB 02/2025 v2, ePrivacy,
   CCPA/US states, COPPA, IT Act / Intermediary Rules / CERT-In, PMLA-VDA / FIU-IND, sanctions. Sources and confidence
   for each, with the gaps that need an external lawyer marked. Design D2–D4 summarise it.
-- **Static pages:** `/privacy` and `/terms` (outlines and key clauses in design D6, **needs lawyer review** before
-  publication), `/.well-known/security.txt` (RFC 9116) and a responsible-disclosure policy (`SECURITY.md` + GitHub
+- **Static pages:** `/privacy`, `/terms` and a **Cookie Policy** at `/cookies`, drafted now with placeholders
+  (`[ENTITY]`, `[REGISTERED ADDRESS]`, `[GRIEVANCE OFFICER]`, `[CONTACT EMAIL]`) and a visible "Draft, pending legal
+  review" banner (founder decision 2026-10-03; outlines in design D6). The cookie policy publishes a device-storage
+  inventory, kept true by an E2E test, and discloses the landing-page Cloudflare Web Analytics beacon, `/.well-known/security.txt` (RFC 9116) and a responsible-disclosure policy (`SECURITY.md` + GitHub
   private vulnerability reporting).
 - **In-app disclosures:** a permanence acknowledgement and an 18+ confirmation before the first vault write.
 - **Operational records:** data-retention statement, DPIA-lite + risk register, sub-processor list, erasure-request
@@ -36,7 +38,7 @@ acknowledgement checkboxes and build checks.
   representative (founder decision after lawyer advice, see design Open Questions);
 - KYC, sanctions screening code, or geoblocking (analysed in D4 and not recommended for the testnet; revisit before
   mainnet);
-- analytics (separate change `add-privacy-preserving-analytics`);
+- the analytics implementation (separate change `add-privacy-preserving-analytics`; only its disclosure is required here);
 - any change to the vault format, contracts or crypto. Moving locators or credential IDs off-chain would answer
   EDPB 02/2025 para 104 but break keyless recovery. It is recorded as a risk with a post-MVP option (D3).
 
@@ -56,7 +58,7 @@ archived). Both are specified here as new requirements and reconciled at archive
 
 ## Impact
 
-- New docs: `docs/compliance/*`, `SECURITY.md`, `apps/web/public/.well-known/security.txt`, `/privacy` and `/terms` pages.
+- New docs: `docs/compliance/*`, `SECURITY.md`, `apps/web/public/.well-known/security.txt`, `/privacy`, `/terms` and `/cookies` pages.
 - Changed: the create flow UI (two checkboxes), `scripts/verify-build.mjs` (inventory, security.txt and policy-date checks), `deploy/test/container.test.ts` (no-log test), and CI (mainnet-gate check).
 - Coordination: the landing/app split comes from `redesign-landing-and-app-ui`. The pages can ship on today's single-page app and move with the redesign.
 - People: founder (entity details, Grievance Officer, email, vendor DPAs), external Indian + EU privacy counsel.
