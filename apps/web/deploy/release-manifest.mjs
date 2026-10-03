@@ -67,7 +67,7 @@ writeFileSync(out, JSON.stringify(manifest, null, 2) + '\n');
 if (process.argv.includes('--site-release')) {
   // Served as /release.json (add-continuous-deploy D3): which commit is live, its treeHash and the public config.
   // No file list (that stays in the full manifest) and, like the manifest, no key values.
-  const { files: _files, ...identity } = manifest;
+  const identity = { name: manifest.name, commit: manifest.commit, treeHash: manifest.treeHash, config: manifest.config };
   writeFileSync(join(site, 'release.json'), JSON.stringify(identity, null, 2) + '\n');
 }
 console.log(`release ${commit.slice(0, 12)} treeHash ${treeHash} (${files.length} files) -> ${out}`);
