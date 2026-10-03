@@ -5,7 +5,7 @@ import * as ops from '../../src/ui/operations';
 import * as unlockMod from '../../src/chain/unlock';
 import { WriteError } from '../../src/account/writes';
 import { KeyError } from '../../src/webauthn';
-import { renderApp } from './helpers';
+import { acknowledge, renderApp } from './helpers';
 
 const id = (n: number) => new Uint8Array(48).fill(n);
 const key = (n: number) => ({ credId: id(n), publicKey: ('0x' + 'aa'.repeat(64)) as `0x${string}`, prf: new Uint8Array(32).fill(n) });
@@ -51,6 +51,7 @@ describe('create flow (8.1)', () => {
     await u.type(screen.getByLabelText('Name'), 'Bitcoin seed');
     await u.type(screen.getByLabelText('Secret'), 'abandon art');
     expect(screen.getByText(/characters of space left/)).toBeInTheDocument();
+    await acknowledge(u); // add-privacy-and-compliance 4.1: permanence + 18+ before the first write
     await u.click(screen.getByRole('button', { name: 'Save' }));
     expect(await screen.findByRole('heading', { name: 'Your vault is saved' })).toHaveFocus();
     expect(screen.getByText(/Keep your keys in separate places/)).toBeInTheDocument();
@@ -83,6 +84,7 @@ describe('create flow (8.1)', () => {
     await screen.findByText('Key 2 is ready.');
     await u.click(screen.getByRole('button', { name: 'Continue' }));
     await u.type(screen.getByLabelText('Secret'), 'x');
+    await acknowledge(u); // add-privacy-and-compliance 4.1: permanence + 18+ before the first write
     await u.click(screen.getByRole('button', { name: 'Save' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('set up your keys again');
     expect(screen.getByText('Key 1 is ready.')).toBeInTheDocument();
@@ -128,6 +130,7 @@ describe('10.7: VaultIdTaken retry is explained in plain language', () => {
     await screen.findByText('Key 2 is ready.');
     await u.click(screen.getByRole('button', { name: 'Continue' }));
     await u.type(screen.getByLabelText('Secret'), 'x');
+    await acknowledge(u); // add-privacy-and-compliance 4.1: permanence + 18+ before the first write
     await u.click(screen.getByRole('button', { name: 'Save' }));
     expect(await screen.findByText(/touch key 1 once more to finish/)).toBeInTheDocument();
     await act(async () => release());

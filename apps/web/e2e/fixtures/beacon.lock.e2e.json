@@ -1,0 +1,8 @@
+{
+  "$comment": "E2E-only lock for the stub beacon (mode e2e-analytics). Never used by production builds.",
+  "mode": "cf-hosted",
+  "url": "https://static.cloudflareinsights.com/beacon.min.js",
+  "sha384": "sha384-Hroo/GeNLtrO+GOSEUrFhCJ44PSnPwRc6a4LUR/ONQq+x65A+QKy3LEhda5jaaLb",
+  "reviewedBy": "e2e fixture",
+  "reviewedAt": "2026-10-03"
+}

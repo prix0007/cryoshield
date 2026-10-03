@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { SecretItem } from '../vault/payload';
 import { cleanItems, KeyPrompt, Notice, SecretsEditor, StepHeading } from './components';
 import { MirrorLine } from './CreateFlow';
-import { ensureMirror, messageFor, mirrorWrite, saveAddKey, saveEdit, type MirrorStatus, type VaultSession } from './operations';
+import { ensureMirror, errorReference, messageFor, mirrorWrite, saveAddKey, saveEdit, type MirrorStatus, type VaultSession } from './operations';
 import { useServices } from './services';
 import { S } from './strings';
 import { ActionBar, EmptyState } from './chrome';
@@ -23,6 +23,7 @@ export function VaultView(props: {
   const [shown, setShown] = useState<Set<number>>(new Set());
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [errorRef, setErrorRef] = useState<string | undefined>(undefined);
   const [prompt, setPrompt] = useState<string | null>(null);
   const [waiting, setWaiting] = useState<(() => void) | null>(null);
   /** Shows `text` with a Continue button and resolves when the user presses it (physical key swap). */
@@ -58,6 +59,7 @@ export function VaultView(props: {
   async function saveDraft() {
     setBusy(true);
     setError(null);
+    setErrorRef(undefined);
     setStatus(null);
     setPrompt(S.edit.touchAny);
     try {
@@ -66,6 +68,7 @@ export function VaultView(props: {
       afterWrite(next);
     } catch (e) {
       setError(messageFor(e));
+      setErrorRef(errorReference(e));
     } finally {
       setPrompt(null);
       setBusy(false);
@@ -75,6 +78,7 @@ export function VaultView(props: {
   async function addKey() {
     setBusy(true);
     setError(null);
+    setErrorRef(undefined);
     setStatus(null);
     setPrompt(S.addKey.touchCurrent);
     try {
@@ -88,6 +92,7 @@ export function VaultView(props: {
       setStatus(S.addKey.done);
     } catch (e) {
       setError(messageFor(e));
+      setErrorRef(errorReference(e));
     } finally {
       setPrompt(null);
       setWaiting(null);
@@ -111,7 +116,11 @@ export function VaultView(props: {
   return (
     <section aria-labelledby="vault-title" className="step">
       <h1 id="vault-title">{S.vault.title}</h1>
-      {error && <Notice kind="error">{error}</Notice>}
+      {error && (
+        <Notice kind="error" reference={errorRef}>
+          {error}
+        </Notice>
+      )}
       {status && <Notice kind="success">{status}</Notice>}
       {prompt && <KeyPrompt text={prompt} {...(waiting ? { onContinue: waiting } : {})} />}
       {mirror && <MirrorLine status={mirror} onRetry={() => {

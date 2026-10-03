@@ -154,8 +154,8 @@ export async function saveAddKey(
   }
 }
 
-/** Plain-language message for any failure. Never includes secret material. */
-export function messageFor(e: unknown): string {
+/** Plain-language message for any failure. Never includes secret material. `create`: no vault exists yet. */
+export function messageFor(e: unknown, context: 'create' | 'edit' = 'edit'): string {
   if (e instanceof ChainMismatchError) return S.wrongNetwork;
   if (e instanceof KeyError) {
     if (e.code === 'WRONG_KEY' && e.message === 'not in vault') return S.edit.notInVault;
@@ -164,7 +164,7 @@ export function messageFor(e: unknown): string {
   if (e instanceof WriteError) {
     switch (e.code) {
       case 'SPONSORSHIP_REFUSED':
-        return S.save.paused;
+        return context === 'create' ? S.save.pausedCreate : S.save.paused;
       case 'LOCATOR_FULL':
         return S.create.freshKeys;
       case 'TOO_MANY_KEYS':
@@ -185,4 +185,38 @@ export function messageFor(e: unknown): string {
     return S.save.nothingSaved;
   }
   return S.save.nothingSaved;
+}
+
+/**
+ * Non-secret error reference for the "Details" disclosure (improve-write-failure-feedback): our code plus the
+ * bundler/paymaster JSON-RPC code and message. Sanitized: no URLs (the bundler URL carries the API key), no hex longer
+ * than 8 characters (keys, signatures, PRF output, calldata, addresses), capped length. Displayed only, never sent.
+ */
+export function errorReference(e: unknown): string | undefined {
+  if (!(e instanceof WriteError)) return undefined;
+  const parts: string[] = [e.code];
+  let cur: unknown = e.detail.cause;
+  for (let i = 0; i < 10 && cur && typeof cur === 'object'; i++) {
+    const c = cur as { code?: unknown; details?: unknown; shortMessage?: unknown; message?: unknown; cause?: unknown };
+    if (typeof c.code === 'number') {
+      const msg = typeof c.details === 'string' ? c.details : typeof c.shortMessage === 'string' ? c.shortMessage : '';
+      parts.push(`RPC ${c.code}`);
+      if (msg) parts.push(sanitize(msg));
+      break;
+    }
+    cur = c.cause;
+  }
+  return parts.join(' · ').slice(0, 200);
+}
+
+function sanitize(s: string): string {
+  return s
+    .replace(/[a-z][a-z0-9+.-]*:\/\/\S+/gi, '[url]')
+    .replace(/\b(api[-_]?key|apikey|token|key)=\S+/gi, '[redacted]')
+    .replace(/\bpim_\w+/g, '[redacted]')
+    .replace(/0x[0-9a-fA-F]{9,}/g, '0x…')
+    .replace(/\b[0-9a-fA-F]{20,}\b/g, '…')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 160);
 }

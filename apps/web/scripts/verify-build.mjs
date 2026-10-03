@@ -19,8 +19,14 @@ import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { gzipSync } from 'node:zlib';
+import { checkOrigins } from './origins-check.mjs';
+import { checkLegalDraft, unlistedStorageApis } from './legal-check.mjs';
+import { checkSecurityTxt } from './securitytxt-check.mjs';
+import { analyticsLeaks, landingCspDiff, policyDrift } from './analytics-check.mjs';
 
 const root = new URL('..', import.meta.url).pathname;
+const storageInventory = JSON.parse(readFileSync(join(root, 'legal', 'storage-inventory.json'), 'utf8'));
+const originsInventory = JSON.parse(readFileSync(join(root, '..', '..', 'docs', 'compliance', 'origins.json'), 'utf8'));
 const modeIdx = process.argv.indexOf('--mode');
 const mode = modeIdx > 0 ? process.argv[modeIdx + 1] : 'e2e';
 const dist = join(root, 'dist');
@@ -37,7 +43,10 @@ const PROD_ENV = {
   VITE_ARWEAVE_GATEWAY_URL: 'https://arweave.net',
   VITE_RP_ID: 'cryoshield.app',
   VITE_RP_NAME: 'CryoShield',
+  // Landing analytics on, so the per-route CSP, the beacon pin and the app/legal confinement are verified.
+  VITE_CF_BEACON_TOKEN: 'ab'.repeat(16),
 };
+const beaconLock = JSON.parse(readFileSync(join(root, 'analytics', 'beacon.lock.json'), 'utf8'));
 
 function build(buildMode = mode, extraEnv = {}) {
   rmSync(dist, { recursive: true, force: true });
@@ -86,7 +95,8 @@ const pages = all.filter((f) => f.endsWith('.html'));
 if (!pages.some((f) => relative(dist, f) === 'index.html') || !pages.some((f) => relative(dist, f) === join('app', 'index.html'))) {
   fail(`[${label}] expected index.html and app/index.html, got ${pages.map((f) => relative(dist, f)).join(', ')}`);
 }
-let firstCsp;
+const cspOf = (rel) => readFileSync(join(dist, rel), 'utf8').match(/<meta http-equiv="Content-Security-Policy" content="([^"]+)">/)?.[1] ?? '';
+const appCsp = cspOf(join('app', 'index.html'));
 for (const page of pages) {
   const name = relative(dist, page);
   const h = readFileSync(page, 'utf8');
@@ -97,15 +107,69 @@ for (const page of pages) {
     if (!csp.includes(d)) fail(`${name}: CSP missing ${d}`);
   }
   if (/unsafe-inline|unsafe-eval|wasm-unsafe-eval/.test(csp)) fail(`${name}: CSP allows unsafe-*`);
-  if (firstCsp !== undefined && csp !== firstCsp) fail(`[${label}] ${name}: CSP differs from the other pages`);
-  firstCsp = csp;
+  // add-privacy-preserving-analytics D3: every page but the landing document carries the identical app CSP; the
+  // landing CSP may add only the analytics beacon and its report origin.
+  if (name === 'index.html') {
+    const diff = landingCspDiff(appCsp, csp);
+    if (diff.length) fail(`[${label}] landing CSP differs from the app CSP by more than the analytics sources: ${diff.join('; ')}`);
+  } else if (csp !== appCsp) fail(`[${label}] ${name}: CSP differs from the app CSP`);
+  // add-privacy-and-compliance 2.2: every contacted origin is in the data-flow inventory.
+  const o = checkOrigins(csp, originsInventory);
+  if (o.missing.length) fail(`[${label}] ${name}: origin(s) not in docs/compliance/origins.json: ${o.missing.join(', ')}`);
+  if (name === 'index.html') for (const l of o.listed) console.log(`info [${label}] origin ${l.origin} -> inventory row ${l.row} (${l.role})`);
   if (/<script(?![^>]*\bsrc=)[^>]*>/.test(h)) fail(`inline script in ${name}`);
   if (/\sstyle=|<style[\s>]/i.test(h)) fail(`inline style in ${name}`);
-  if (/(src|href)="(https?:)?\/\//.test(h.replace(/<a\s[^>]*>/g, ''))) fail(`${name} loads a resource from another origin`);
+  // Only the integrity-pinned beacon, inert in its <template> on the landing page, may name another origin.
+  let rest = h.replace(/<a\s[^>]*>/g, '');
+  if (name === 'index.html') {
+    const tpl = rest.match(/<template id="cf-beacon" data-host="[^"]+"><script defer src="([^"]+)" integrity="([^"]+)" crossorigin="anonymous" data-cf-beacon="[^"]+"><\/script><\/template>/);
+    if (tpl) {
+      if (tpl[1] !== beaconLock.url && label === 'production') fail(`[${label}] beacon src ${tpl[1]} != analytics/beacon.lock.json url`);
+      if (tpl[2] !== beaconLock.sha384 && label === 'production') fail(`[${label}] beacon integrity ${tpl[2]} != analytics/beacon.lock.json sha384`);
+      rest = rest.replace(tpl[0], '');
+    }
+  }
+  if (/(src|href)="(https?:)?\/\//.test(rest)) fail(`${name} loads a resource from another origin`);
 }
+// add-privacy-preserving-analytics 4.2: no file of the app or the legal pages (HTML + reachable JS) mentions analytics.
+const token = label === 'production' && !realEnv ? PROD_ENV.VITE_CF_BEACON_TOKEN : undefined;
+const confined = {};
+for (const rel of [join('app', 'index.html'), join('privacy', 'index.html'), join('terms', 'index.html'), join('cookies', 'index.html')]) {
+  // The legal pages must NAME the analytics in their prose (5.1); everything else on them must not reference it.
+  confined[rel] = readFileSync(join(dist, rel), 'utf8').replace(/<article class="legal-doc">[\s\S]*?<\/article>/, '');
+  for (const f of graphOf(rel)) confined[f] = readFileSync(join(dist, f), 'utf8');
+}
+const leaks = analyticsLeaks(confined, token);
+if (leaks.length) fail(`[${label}] analytics outside the landing document: ${leaks.join('; ')}`);
+const landingHtml = readFileSync(join(dist, 'index.html'), 'utf8');
+const analyticsOn = landingHtml.includes('id="cf-beacon"');
+if (label === 'production' && !realEnv && !analyticsOn) fail(`[${label}] expected the beacon template on the landing page (token set)`);
+if (analyticsOn) {
+  // 5.1 policy drift: the shipped analytics must be named on /privacy and /cookies.
+  const drift = policyDrift({ 'privacy/index.html': readFileSync(join(dist, 'privacy', 'index.html'), 'utf8'), 'cookies/index.html': readFileSync(join(dist, 'cookies', 'index.html'), 'utf8') });
+  if (drift.length) fail(`[${label}] ${drift.join('; ')}`);
+}
+console.log(`ok   [${label}] analytics confined to the landing document${analyticsOn ? ' (beacon pinned to the lock; disclosed on /privacy and /cookies)' : ' (no beacon in this build)'}`);
 const html = pages.map((f) => readFileSync(f, 'utf8')).join('\n');
+// add-privacy-and-compliance 3.2/3.3: the legal pages exist, and keep placeholders only under the draft banner.
+for (const p of ['privacy', 'terms', 'cookies']) {
+  const f = join(dist, p, 'index.html');
+  if (!all.includes(f)) fail(`[${label}] missing legal page ${p}/index.html`);
+  const errs = checkLegalDraft(readFileSync(f, 'utf8'), `${p}/index.html`);
+  if (errs.length) fail(`[${label}] ${errs.join('; ')}`);
+}
+// Device-storage inventory (spec legal-pages): no shipped bundle may reference a storage API not listed.
+const unlisted = unlistedStorageApis(js, storageInventory);
+if (unlisted.length) fail(`[${label}] bundle uses ${unlisted.join(', ')}, which legal/storage-inventory.json (the /cookies table) does not list`);
+console.log(`ok   [${label}] legal pages present; no unlisted device-storage API in any bundle`);
+// add-privacy-and-compliance 5.1: RFC 9116 security.txt, Expires in the future and <= 365 days ahead.
+const stxt = join(dist, '.well-known', 'security.txt');
+if (!all.includes(stxt)) fail(`[${label}] missing .well-known/security.txt`);
+const stxtErrors = checkSecurityTxt(readFileSync(stxt, 'utf8'));
+if (stxtErrors.length) fail(`[${label}] ${stxtErrors.join('; ')}`);
+console.log(`ok   [${label}] security.txt valid (Expires within 365 days)`);
 if (!readFileSync(join(dist, '_headers'), 'utf8').includes("frame-ancestors 'none'")) fail('_headers lacks frame-ancestors');
-console.log(`ok   [${label}] identical strict CSP in ${pages.length} pages and _headers`);
+console.log(`ok   [${label}] strict CSP in ${pages.length} pages (app CSP everywhere but the landing document) and _headers`);
 landingBudget(label);
 return { js, html };
 }
@@ -116,6 +180,22 @@ const KB = 1024;
 const scale = Number(process.env.VERIFY_LANDING_BUDGET_SCALE ?? '1');
 // cinematic-landing D3: raised for the scroll scenes (founder brief); the measured total is far below the ceiling.
 const BUDGET = { initial: 15 * KB * scale, lazyChunk: 40 * KB * scale, total: 120 * KB * scale };
+/** Every JS file reachable (static + dynamic imports) from an HTML page's entry scripts and modulepreloads. */
+function graphOf(htmlRel) {
+  const html = readFileSync(join(dist, htmlRel), 'utf8');
+  const entries = [...html.matchAll(/<(?:script|link rel="modulepreload")[^>]*\b(?:src|href)="\/([^"]+\.js)"/g)].map((m) => m[1]);
+  const seen = new Set();
+  const visit = (f) => {
+    if (seen.has(f)) return;
+    seen.add(f);
+    const code = readFileSync(join(dist, f), 'utf8');
+    const dir = f.slice(0, f.lastIndexOf('/') + 1);
+    for (const m of code.matchAll(/["'`](\.\/[^"'`]+\.js)["'`]/g)) visit(dir + m[1].slice(2));
+  };
+  entries.forEach(visit);
+  return [...seen];
+}
+
 function landingBudget(label) {
   const html = readFileSync(join(dist, 'index.html'), 'utf8');
   const entries = [...html.matchAll(/<(?:script|link rel="modulepreload")[^>]*\b(?:src|href)="\/([^"]+\.js)"/g)].map((m) => m[1]);

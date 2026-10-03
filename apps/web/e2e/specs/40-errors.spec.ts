@@ -28,6 +28,27 @@ test('paymaster refusal shows "Saving is paused" and keeps the edits', async ({ 
   }
 });
 
+test('a refusal on the FIRST create says nothing was saved and shows a Details reference (improve-write-failure-feedback 1.2)', async ({ page }) => {
+  const arweave = new ArweaveStub();
+  await arweave.install(page);
+  await page.goto(APP);
+  const keys = await VirtualKeys.attach(page);
+  await keys.add();
+  await keys.add();
+  await rpc('cryoshield_setPolicy', [{ refuseAll: true }]);
+  try {
+    await createVault(page, keys, [{ label: 'Seed', secret: 'one' }], { expectSaved: false });
+    const alert = page.getByRole('alert');
+    await expect(alert).toContainText('Nothing was saved. Please try again later.', { timeout: 30_000 });
+    await expect(alert).not.toContainText('existing vault');
+    await alert.getByText('Details').click();
+    await expect(alert.locator('details code')).toContainText('SPONSORSHIP_REFUSED');
+    await expect(alert.locator('details code')).not.toContainText('http');
+  } finally {
+    await rpc('cryoshield_setPolicy', [{ refuseAll: false }]);
+  }
+});
+
 test('mirror failure is non-blocking with Retry; the next unlock self-heals; downloads the exact blob', async ({ page }) => {
   const arweave = new ArweaveStub();
   arweave.failUploads = true;

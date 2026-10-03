@@ -134,7 +134,7 @@ To change protection, edit those files in a PR and re-run the script after it me
 
 ## Security
 
-There is no external audit for the MVP. Mitigations: an open specification, deterministic cross-implementation test vectors, symmetric-only cryptography, and an internal adversarial review of every security-relevant change (`docs/reviews/`, `apps/web/docs/security-review.md`). Please report vulnerabilities privately to the maintainers rather than in public issues.
+There is no external audit for the MVP. Mitigations: an open specification, deterministic cross-implementation test vectors, symmetric-only cryptography, and an internal adversarial review of every security-relevant change (`docs/reviews/`, `apps/web/docs/security-review.md`). Please report vulnerabilities privately, never in public issues: see [`SECURITY.md`](SECURITY.md) (scope, safe harbour, timelines) and [`/.well-known/security.txt`](https://cryoshield.app/.well-known/security.txt), or use [GitHub private vulnerability reporting](https://github.com/prix0007/cryoshield/security/advisories/new).
 
 ## License
 

@@ -1,12 +1,15 @@
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import { cryoshield, defaultContractsDir } from './vite-plugins/cryoshield.ts';
+import { legalPagesPlugin } from './vite-plugins/legal-plugin.ts';
 
 export default defineConfig(({ mode }) => {
   const root = import.meta.dirname;
   const env = { ...loadEnv(mode, root, 'VITE_'), ...pick(process.env) };
   return {
-    plugins: [react(), cryoshield(env, process.env.CRYOSHIELD_CONTRACTS_DIR ?? defaultContractsDir(root))],
+    // Multi-page: unknown paths are 404 (no SPA fallback), as in production.
+    appType: 'mpa',
+    plugins: [react(), legalPagesPlugin(root), cryoshield(env, process.env.CRYOSHIELD_CONTRACTS_DIR ?? defaultContractsDir(root), mode, root)],
     // Always build against the vault-crypto source (never a stale dist/).
     resolve: { alias: [{ find: /^@cryoshield\/vault-crypto$/, replacement: `${root}/../../packages/vault-crypto/src/index.ts` }] },
     build: {
@@ -17,7 +20,13 @@ export default defineConfig(({ mode }) => {
       // Strip every console call from the shipped bundle (our code is also lint-banned from using console).
       rolldownOptions: {
         // Two pages (redesign-landing-and-app-ui D1): the landing page at / and the vault app at /app/.
-        input: { landing: `${root}/index.html`, app: `${root}/app/index.html` },
+        input: {
+          landing: `${root}/index.html`,
+          app: `${root}/app/index.html`,
+          privacy: `${root}/privacy/index.html`,
+          terms: `${root}/terms/index.html`,
+          cookies: `${root}/cookies/index.html`,
+        },
         output: { minify: { compress: { dropConsole: true } } },
       },
     },

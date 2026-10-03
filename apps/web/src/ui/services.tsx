@@ -11,6 +11,8 @@ import type { CredentialsApi } from '../webauthn';
 export interface Services {
   rpId: string;
   rpName: string;
+  /** Configured chain (testnet warning in the shell). */
+  chainId: number;
   credentials?: CredentialsApi;
   reader: RegistryReader;
   client: PublicClient;
@@ -27,6 +29,7 @@ export function defaultServices(): Services {
   return {
     rpId: config.rpId,
     rpName: config.rpName,
+    chainId: config.chainId,
     reader: createRegistryReader(),
     client,
     sponsor: createSponsor(client),

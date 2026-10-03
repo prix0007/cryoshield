@@ -82,3 +82,28 @@ test('app: home, ceremony, error, dark', async ({ page }) => {
   await page.emulateMedia({ colorScheme: 'dark' });
   await page.screenshot({ path: `${dir}/app-key-not-supported-dark.png` });
 });
+
+test('legal pages and the create acknowledgement (add-privacy-and-compliance)', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  for (const p of ['privacy', 'terms', 'cookies']) {
+    await page.goto(`/${p}`);
+    await page.screenshot({ path: `${dir}/legal-${p}.png`, fullPage: true });
+  }
+  await page.goto(APP);
+  const keys = await VirtualKeys.attach(page);
+  await keys.add();
+  await keys.add();
+  await page.getByRole('button', { name: 'Create a new vault' }).click();
+  await page.getByRole('button', { name: 'Get started' }).click();
+  await keys.use(0);
+  await page.getByRole('button', { name: 'Set up key 1' }).click();
+  await expect(page.getByText('Key 1 is ready.')).toBeVisible();
+  await keys.use(1);
+  await page.getByRole('button', { name: 'Set up key 2' }).click();
+  await expect(page.getByText('Key 2 is ready.')).toBeVisible();
+  await page.getByRole('button', { name: 'Continue' }).click();
+  await page.locator('#label-0').fill('Bitcoin seed');
+  await page.locator('#secret-0').fill('abandon ability able about');
+  await page.locator('.ack').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: `${dir}/app-acknowledgement.png` });
+});

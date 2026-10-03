@@ -88,10 +88,36 @@ export function useFocusClearOfActionBar() {
       const el = e.target as HTMLElement | null;
       const bar = document.querySelector('.action-bar');
       if (!el || !bar || bar.contains(el) || getComputedStyle(bar).position !== 'sticky') return;
-      const overlap = el.getBoundingClientRect().bottom - bar.getBoundingClientRect().top;
+      const r = el.getBoundingClientRect();
+      const b = bar.getBoundingClientRect();
+      const overlap = r.top < b.bottom ? r.bottom - b.top : 0; // only when the element is actually under the bar
       if (overlap > 0) window.scrollBy({ top: overlap + 16, behavior: 'instant' });
     };
     document.addEventListener('focusin', onFocus);
     return () => document.removeEventListener('focusin', onFocus);
   }, []);
+}
+
+/** Slim app footer: legal links (add-privacy-and-compliance "Linked everywhere"). */
+export function AppFooter() {
+  return (
+    <footer className="app-footer">
+      <ul>
+        <li>
+          <a href="/privacy">Privacy</a>
+        </li>
+        <li>
+          <a href="/terms">Terms</a>
+        </li>
+        <li>
+          <a href="/cookies">Cookies</a>
+        </li>
+        <li>
+          <a href={`${REPO}/blob/main/SECURITY.md`} rel="noopener noreferrer">
+            Security
+          </a>
+        </li>
+      </ul>
+    </footer>
+  );
 }

@@ -14,8 +14,10 @@ function fixture(html: string, appHtml: string | null = html) {
   mkdirSync(join(d, 'dist', 'assets'), { recursive: true });
   writeFileSync(join(d, 'dist', 'index.html'), html);
   if (appHtml !== null) {
-    mkdirSync(join(d, 'dist', 'app'));
-    writeFileSync(join(d, 'dist', 'app', 'index.html'), appHtml);
+    for (const p of ['app', 'privacy', 'terms', 'cookies']) {
+      mkdirSync(join(d, 'dist', p));
+      writeFileSync(join(d, 'dist', p, 'index.html'), appHtml);
+    }
   }
   writeFileSync(join(d, 'dist', 'assets', 'index-abc.js'), 'x');
   writeFileSync(join(d, 'dist', '_headers'), '/*\n');
@@ -58,14 +60,47 @@ describe('deploy context generator (1.2)', () => {
     run(d);
     expect(existsSync(join(d, 'out', 'site', 'app', 'index.html'))).toBe(true);
     const caddy = readFileSync(join(d, 'out', 'Caddyfile'), 'utf8');
-    expect(caddy).toContain('@html path / /index.html /app/ /app/index.html');
-    expect(caddy).not.toMatch(/try_files|rewrite/); // no SPA fallback
+    expect(caddy).toContain('@html path / /index.html /app/ /app/index.html /privacy /privacy/ /privacy/index.html');
+    expect(caddy).toContain('@legal path /privacy /terms /cookies');
+    expect(caddy).toContain('rewrite @legal {path}/index.html');
+    expect(caddy).not.toMatch(/try_files|rewrite \* /); // no SPA fallback: only the exact legal paths are rewritten
+    expect(caddy.match(/rewrite /g)).toHaveLength(1);
   });
 
   it('refuses pages whose CSPs differ, or a missing app page', () => {
     const page = (csp: string) => `<html><head><meta http-equiv="Content-Security-Policy" content="${csp}"></head></html>`;
     expect(() => run(fixture(page(META), page(`${META}; img-src *`)))).toThrow(/differ/);
     expect(() => run(fixture(page(META), null))).toThrow(/app\/index\.html/);
+  });
+
+  it('per-route CSP: the landing CSP may add only the analytics sources; landing gets no WebAuthn (analytics 4.4)', () => {
+    const page = (csp: string) => `<html><head><meta http-equiv="Content-Security-Policy" content="${csp}"></head></html>`;
+    const APP = "default-src 'none'; script-src 'self'; connect-src 'self' https://rpc.example; require-trusted-types-for 'script'";
+    const LANDING = "default-src 'none'; script-src 'self' https://static.cloudflareinsights.com/beacon.min.js; connect-src 'self' https://rpc.example https://cloudflareinsights.com; require-trusted-types-for 'script'";
+    const d = fixture(page(LANDING), page(APP));
+    run(d);
+    const caddy = readFileSync(join(d, 'out', 'Caddyfile'), 'utf8');
+    expect(caddy).toContain('@landing expression `{http.request.orig_uri.path} in ["/", "/index.html"]`');
+    expect(caddy).toContain('@notlanding not expression');
+    const block = (name: string) => caddy.slice(caddy.indexOf(`header @${name} {`), caddy.indexOf('}', caddy.indexOf(`header @${name} {`)));
+    expect(block('landing')).toContain(`Content-Security-Policy \`${LANDING}; frame-ancestors 'none'\``);
+    expect(block('landingdoc')).toContain('publickey-credentials-get=()');
+    expect(block('landingdoc')).toContain('publickey-credentials-create=()');
+    expect(caddy).toContain('@landingdoc path / /index.html');
+    expect(block('notlanding')).toContain(`Content-Security-Policy \`${APP}; frame-ancestors 'none'\``);
+    expect(block('notlandingdoc')).toContain('publickey-credentials-get=(self)');
+    expect(block('notlanding')).not.toContain('cloudflareinsights');
+  });
+
+  it('refuses any other landing difference, or a non-landing page that differs from the app CSP', () => {
+    const page = (csp: string) => `<html><head><meta http-equiv="Content-Security-Policy" content="${csp}"></head></html>`;
+    const APP = "default-src 'none'; script-src 'self'; connect-src 'self' https://rpc.example";
+    expect(() => run(fixture(page(`default-src 'none'; script-src 'self'; connect-src 'self' https://rpc.example https://evil.example`), page(APP)))).toThrow(/allowed analytics sources/);
+    expect(() => run(fixture(page(`default-src 'none'; script-src 'self' https://cdn.example/x.js; connect-src 'self' https://rpc.example`), page(APP)))).toThrow(/allowed analytics sources/);
+    expect(() => run(fixture(page(`default-src 'none'; script-src 'self'; connect-src 'self'`), page(APP)))).toThrow(/allowed analytics sources/);
+    const d = fixture(page(APP), page(APP));
+    writeFileSync(join(d, 'dist', 'privacy', 'index.html'), page(`${APP} https://cloudflareinsights.com`));
+    expect(() => run(d)).toThrow(/privacy\/index\.html and app\/index\.html differ/);
   });
 
   it('refuses a CSP containing a backtick (cannot be quoted safely)', () => {

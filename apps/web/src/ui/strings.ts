@@ -67,6 +67,18 @@ export const S = {
       'One of your keys can’t be used for a new vault right now (someone filled its slot). Please set up your keys again; this creates fresh, unused slots.',
   },
 
+  ack: {
+    title: 'Before you save',
+    permanent:
+      'I understand that my encrypted vault, its account address, a locator for each key, the number of keys and their credential IDs are published permanently on a public blockchain and on Arweave, and that nobody, including CryoShield, can delete them.',
+    adult: 'I am 18 or over.',
+    adultRequired: 'CryoShield is only for people aged 18 or over. You can’t save a vault unless you confirm this.',
+    needBoth: 'Tick both boxes to save. Only the locked (encrypted) vault is published; your secrets never leave this device unencrypted.',
+  },
+
+  testnet: (network: string) =>
+    `Testnet preview: CryoShield runs on ${network}, a test network, and has not been independently audited. Please don’t rely on it as your only backup yet.`,
+
   editor: {
     label: 'Name',
     labelHint: 'For example “Bitcoin seed” or “GitHub recovery codes”',
@@ -141,6 +153,8 @@ export const S = {
     saved: 'Saved.',
     nothingSaved: 'Nothing was saved. Your changes are still here, so you can try again.',
     paused: 'Saving is paused right now. Your existing vault is safe; please try again later.',
+    pausedCreate: 'Nothing was saved. Please try again later.',
+    details: 'Details',
     tooMany: 'This vault can’t hold more keys.',
     tooLarge: 'This is too much to store. Please shorten your secrets.',
     notConfirmed: 'We couldn’t confirm the save yet. Please unlock again in a minute to check.',

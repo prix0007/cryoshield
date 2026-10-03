@@ -1,0 +1,11 @@
+{
+  "$comment": "Reviewed Cloudflare Web Analytics beacon (add-privacy-preserving-analytics D4b: Cloudflare-hosted, SRI-pinned, until Cloudflare answers the self-hosting question, task 3.2). The build emits this exact integrity; browsers refuse any other bytes. Bump only after the review procedure in README.md. A weekly drift check (.github/workflows/beacon-drift.yml) compares the live file with this hash.",
+  "mode": "cf-hosted",
+  "url": "https://static.cloudflareinsights.com/beacon.min.js",
+  "sha384": "sha384-rZU/V+RlKzHYA4/iZCw3bxslsQ5p/NEWjmbcnlJgM+uAQl7yofrR6Wa/+l+S8x0M",
+  "bytes": 30294,
+  "version": "2026.9.1 (ETag W/\"2026.9.1\", Last-Modified Wed, 02 Sep 2026 15:29:47 GMT)",
+  "reviewedBy": "frontend-engineer; security-reviewer sign-off pending (add-privacy-preserving-analytics 6.1)",
+  "reviewedAt": "2026-10-03",
+  "reviewNotes": "No innerHTML/outerHTML/insertAdjacentHTML/document.write/eval/new Function/WebAssembly; no cookie, localStorage, sessionStorage or indexedDB access; no DOM element creation. Reads the data-cf-beacon config from the current script, location.pathname/search (we strip the query and fragment first), document.referrer, navigator.userAgent and Performance API entries; reports with navigator.sendBeacon / XMLHttpRequest to https://cloudflareinsights.com/cdn-cgi/rum. History hooks (pushState) only when spa is true; we set spa:false. Response sets no cookie; ACAO * so SRI with crossorigin=anonymous works."
+}
