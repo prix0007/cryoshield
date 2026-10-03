@@ -1,0 +1,217 @@
+// add-continuous-deploy: detect.sh, previous-image.sh, smoke.sh and rollback.sh, against a local HTTP server
+// standing in for https://cryoshield.app and a stub flyctl.
+import { test, before, after } from 'node:test';
+import assert from 'node:assert/strict';
+import { execFile } from 'node:child_process';
+import { chmodSync, mkdtempSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { createServer } from 'node:http';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const script = (n) => fileURLToPath(new URL(`../deploy/${n}`, import.meta.url));
+const flyStub = fileURLToPath(new URL('./fixtures/fly-stub.sh', import.meta.url));
+chmodSync(flyStub, 0o755);
+
+const SHA = 'a'.repeat(40);
+const OTHER = 'b'.repeat(40);
+const ADDRESS = '0xB43f58cF17e64B603aE5588a1DD17E96a0849e44';
+const IMAGE = 'registry.fly.io/cryoshield-web:deployment-01M41Z2MXSZQKZWXR97MSQG02X';
+const GOOD_HEADERS = {
+  'content-security-policy': "default-src 'none'; frame-ancestors 'none'",
+  'strict-transport-security': 'max-age=63072000; includeSubDomains; preload',
+  'x-frame-options': 'DENY',
+  'x-content-type-options': 'nosniff',
+  'referrer-policy': 'no-referrer',
+  'cross-origin-opener-policy': 'same-origin',
+  'cross-origin-resource-policy': 'same-origin',
+};
+
+// Mutable site state per test.
+let site;
+const healthySite = () => ({
+  release: { status: 200, body: JSON.stringify({ name: 'cryoshield-web', commit: SHA, treeHash: 'sha256:' + 'c'.repeat(64) }) },
+  status: {},
+  headers: { ...GOOD_HEADERS },
+  architecture: `<td class="mono">${ADDRESS.toLowerCase()}</td>`,
+  hits: {},
+  healthyAfter: 0, // number of /healthz-or-page requests before the site turns healthy (rolling deploy)
+});
+
+let server;
+let base;
+before(async () => {
+  server = createServer((req, res) => {
+    const path = req.url.split('?')[0];
+    site.hits[path] = (site.hits[path] ?? 0) + 1;
+    const total = Object.values(site.hits).reduce((a, b) => a + b, 0);
+    if (total <= site.healthyAfter) {
+      res.writeHead(503);
+      return res.end('starting');
+    }
+    if (path === '/release.json') {
+      res.writeHead(site.release.status, { 'content-type': 'application/json', ...site.headers });
+      return res.end(site.release.body);
+    }
+    const known = ['/', '/app/', '/architecture', '/privacy', '/healthz'];
+    if (!known.includes(path)) {
+      res.writeHead(404);
+      return res.end();
+    }
+    res.writeHead(site.status[path] ?? 200, { 'content-type': 'text/html', ...site.headers });
+    res.end(path === '/architecture' ? site.architecture : path === '/healthz' ? 'ok' : '<html></html>');
+  });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  base = `http://127.0.0.1:${server.address().port}`;
+});
+after(() => server.close());
+
+function run(name, env = {}) {
+  const dir = mkdtempSync(join(tmpdir(), 'deploy-scripts-'));
+  const output = join(dir, 'github_output');
+  const flyLog = join(dir, 'fly.log');
+  writeFileSync(output, '');
+  return new Promise((resolve) => {
+    execFile('bash', [script(name)], {
+      env: { PATH: process.env.PATH, BASE_URL: base, GITHUB_OUTPUT: output, FLY: flyStub, FLY_LOG: flyLog, SMOKE_SLEEP: '0', ROLLBACK_SLEEP: '0', ...env },
+      encoding: 'utf8',
+    }, (err, stdout, stderr) => {
+      resolve({
+        status: err ? err.code : 0,
+        stdout,
+        stderr,
+        output: readFileSync(output, 'utf8'),
+        fly: existsSync(flyLog) ? readFileSync(flyLog, 'utf8').trim().split('\n') : [],
+      });
+    });
+  });
+}
+
+// ---- detect.sh ----
+test('detect: live commit equals main -> deploy=false', async () => {
+  site = healthySite();
+  const r = await run('detect.sh', { TARGET_SHA: SHA });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.output, /^deploy=false$/m);
+});
+
+test('detect: different commit, 404, invalid JSON, bad commit field, or unreachable -> deploy=true', async () => {
+  for (const release of [
+    { status: 200, body: JSON.stringify({ commit: OTHER }) },
+    { status: 404, body: '' },
+    { status: 200, body: 'not json' },
+    { status: 200, body: JSON.stringify({ commit: 'zz' }) },
+  ]) {
+    site = { ...healthySite(), release };
+    const r = await run('detect.sh', { TARGET_SHA: SHA });
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.output, /^deploy=true$/m, JSON.stringify(release));
+  }
+  const r = await run('detect.sh', { TARGET_SHA: SHA, BASE_URL: 'http://127.0.0.1:9' });
+  assert.match(r.output, /^deploy=true$/m);
+});
+
+test('detect: FORCE=true always deploys; an invalid TARGET_SHA exits 2', async () => {
+  site = healthySite();
+  assert.match((await run('detect.sh', { TARGET_SHA: SHA, FORCE: 'true' })).output, /^deploy=true$/m);
+  assert.equal((await run('detect.sh', { TARGET_SHA: 'main' })).status, 2);
+});
+
+// ---- previous-image.sh ----
+const releases = (list) => {
+  const f = join(mkdtempSync(join(tmpdir(), 'rel-')), 'r.json');
+  writeFileSync(f, JSON.stringify(list));
+  return f;
+};
+
+test('previous-image: newest complete release ImageRef', async () => {
+  const f = releases([
+    { Version: 8, Status: 'failed', ImageRef: 'registry.fly.io/cryoshield-web:deployment-01M41Z2MXSZQKZWXR97MSQG0ZZ' },
+    { Version: 7, Status: 'complete', ImageRef: IMAGE },
+    { Version: 6, Status: 'complete', ImageRef: 'registry.fly.io/cryoshield-web:deployment-01M419CTD8JK4CP2H2HRG21AF6' },
+  ]);
+  const r = await run('previous-image.sh', { STUB_RELEASES: f });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.output, new RegExp(`^previous_image=${IMAGE}$`, 'm'));
+  assert.deepEqual(r.fly, ['releases --app cryoshield-web --json --image']);
+});
+
+test('previous-image: no complete release -> empty output (first deploy), not an error', async () => {
+  const r = await run('previous-image.sh', { STUB_RELEASES: releases([]) });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.output, /^previous_image=$/m);
+});
+
+test('previous-image: an unexpected ImageRef or a fly error fails', async () => {
+  for (const ref of ['docker.io/evil/image:latest', 'registry.fly.io/other-app:deployment-01M41Z2MXSZQKZWXR97MSQG02X', 'registry.fly.io/cryoshield-web:latest; rm -rf /']) {
+    const r = await run('previous-image.sh', { STUB_RELEASES: releases([{ Status: 'complete', ImageRef: ref }]) });
+    assert.notEqual(r.status, 0, ref);
+  }
+  const r = await run('previous-image.sh', { STUB_RELEASES: releases([]), STUB_FLY_FAIL: '1' });
+  assert.notEqual(r.status, 0);
+});
+
+// ---- smoke.sh ----
+const smokeEnv = (over = {}) => ({ EXPECT_SHA: SHA, REGISTRY_ADDRESS: ADDRESS, SMOKE_ATTEMPTS: '2', ...over });
+
+test('smoke: a healthy release passes', async () => {
+  site = healthySite();
+  const r = await run('smoke.sh', smokeEnv());
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+});
+
+test('smoke: every failure class fails and is named', async () => {
+  const cases = [
+    [{ status: { '/app/': 500 } }, /\/app\/.*500/],
+    [{ status: { '/privacy': 404 } }, /\/privacy.*404/],
+    [{ headers: { ...GOOD_HEADERS, 'x-frame-options': 'SAMEORIGIN' } }, /x-frame-options/i],
+    [{ headers: Object.fromEntries(Object.entries(GOOD_HEADERS).filter(([k]) => k !== 'strict-transport-security')) }, /strict-transport-security/i],
+    [{ headers: { ...GOOD_HEADERS, 'content-security-policy': "default-src 'none'" } }, /frame-ancestors/],
+    [{ architecture: '<td>0x0000000000000000000000000000000000000000</td>' }, /registry address/],
+    [{ release: { status: 200, body: JSON.stringify({ commit: OTHER }) } }, /release\.json.*bbbb/],
+  ];
+  for (const [over, why] of cases) {
+    site = { ...healthySite(), ...over };
+    const r = await run('smoke.sh', smokeEnv());
+    assert.notEqual(r.status, 0, JSON.stringify(over));
+    assert.match(r.stdout + r.stderr, why, JSON.stringify(over));
+  }
+});
+
+test('smoke: retries until the rolling deploy is healthy', async () => {
+  site = { ...healthySite(), healthyAfter: 3 };
+  const r = await run('smoke.sh', smokeEnv({ SMOKE_ATTEMPTS: '3' }));
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+});
+
+test('smoke: rejects malformed inputs', async () => {
+  site = healthySite();
+  assert.equal((await run('smoke.sh', smokeEnv({ EXPECT_SHA: 'main' }))).status, 2);
+  assert.equal((await run('smoke.sh', smokeEnv({ REGISTRY_ADDRESS: '0x12' }))).status, 2);
+});
+
+// ---- rollback.sh ----
+test('rollback: deploys exactly the recorded image, then waits for /healthz', async () => {
+  site = healthySite();
+  const r = await run('rollback.sh', { PREVIOUS_IMAGE: IMAGE });
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.deepEqual(r.fly, [`deploy --app cryoshield-web --config apps/web/fly.toml --image ${IMAGE}`]);
+  assert.match(r.stdout, /rolled back/);
+});
+
+test('rollback: no recorded image fails loudly without calling fly', async () => {
+  const r = await run('rollback.sh', { PREVIOUS_IMAGE: '' });
+  assert.notEqual(r.status, 0);
+  assert.match(r.stdout + r.stderr, /no previous image/i);
+  assert.deepEqual(r.fly, []);
+});
+
+test('rollback: refuses an unexpected image ref, and fails if fly or /healthz fails', async () => {
+  site = healthySite();
+  const bad = await run('rollback.sh', { PREVIOUS_IMAGE: 'docker.io/evil/x:1' });
+  assert.notEqual(bad.status, 0);
+  assert.deepEqual(bad.fly, []);
+  assert.notEqual((await run('rollback.sh', { PREVIOUS_IMAGE: IMAGE, STUB_FLY_FAIL: '1' })).status, 0);
+  site = { ...healthySite(), status: { '/healthz': 503 } };
+  assert.notEqual((await run('rollback.sh', { PREVIOUS_IMAGE: IMAGE, ROLLBACK_ATTEMPTS: '2' })).status, 0);
+});
