@@ -8,7 +8,7 @@ import { enrollKey, evaluatePrf, KeyError, type EnrolledKey } from '../webauthn'
 import { addKeyToBlob, createVaultBlob, editVaultBlob } from '../vault/adapter';
 import type { SecretItem } from '../vault/payload';
 import { existingVaultAccount, newVaultAccount } from '../account/account';
-import { addKeyOnChain, createVaultOnChain, updateVaultOnChain, WriteError } from '../account/writes';
+import { addKeyOnChain, createVaultOnChain, notify, updateVaultOnChain, WriteError, type ProgressListener } from '../account/writes';
 import { bytesEqual, toHex, wipe } from '../lib/bytes';
 import { MirrorError } from '../mirror/mirror';
 import type { Services } from './services';
@@ -94,6 +94,7 @@ export async function saveNewVault(
   items: SecretItem[],
   onSign: () => void,
   onRetry: () => void = () => undefined,
+  onProgress?: ProgressListener,
 ): Promise<{ session: VaultSession; locators: Hex[] }> {
   let signerLocator: Uint8Array | undefined;
   try {
@@ -108,7 +109,7 @@ export async function saveNewVault(
       const r = await createVaultBlob({ vaultId, rpId: svc.rpId, keys: keys.map((k) => ({ credId: k.credId, prf: k.prf!.slice() })), items });
       return { blob: r.blob, locators: r.locators.map(toHex) };
     };
-    const res = await createVaultOnChain({ account, build }, { client: svc.client, sponsor: svc.sponsor, reader: svc.reader, onSign, onRetry });
+    const res = await createVaultOnChain({ account, build }, { client: svc.client, sponsor: svc.sponsor, reader: svc.reader, onSign, onRetry, ...(onProgress ? { onProgress } : {}) });
     return {
       session: { vaultId: res.vaultId, owner: res.owner, version: res.version, blob: res.blob, items, credIds: keys.map((k) => k.credId) },
       locators: res.locators,
@@ -120,7 +121,7 @@ export async function saveNewVault(
 }
 
 /** Edit: PRF tap with any key of this vault, re-encrypt payload, sign tap with the same key. */
-export async function saveEdit(svc: Services, s: VaultSession, items: SecretItem[], onSign: () => void): Promise<VaultSession> {
+export async function saveEdit(svc: Services, s: VaultSession, items: SecretItem[], onSign: () => void, onProgress?: ProgressListener): Promise<VaultSession> {
   const { credId, prf } = await evaluatePrf({ rpId: svc.rpId }, svc.credentials);
   let locator: Uint8Array | undefined;
   try {
@@ -128,8 +129,9 @@ export async function saveEdit(svc: Services, s: VaultSession, items: SecretItem
     if (entryIndex < 0) throw new KeyError('WRONG_KEY', 'not in vault');
     locator = deriveLocator(prf);
     const blob = await editVaultBlob(s.blob, prf, s.vaultId, items); // wipes prf
+    notify(onProgress, 'encrypted');
     const account = await existingVaultAccount({ client: svc.client, address: s.owner, entryIndex, credId, expectedLocator: locator, ...(svc.credentials ? { credentials: svc.credentials } : {}) });
-    const res = await updateVaultOnChain({ account, vaultId: s.vaultId, blob }, { client: svc.client, sponsor: svc.sponsor, reader: svc.reader, onSign });
+    const res = await updateVaultOnChain({ account, vaultId: s.vaultId, blob }, { client: svc.client, sponsor: svc.sponsor, reader: svc.reader, onSign, ...(onProgress ? { onProgress } : {}) });
     return { ...s, version: res.version, blob, items };
   } finally {
     wipe(prf, locator);
@@ -140,7 +142,7 @@ export async function saveEdit(svc: Services, s: VaultSession, items: SecretItem
 export async function saveAddKey(
   svc: Services,
   s: VaultSession,
-  steps: { onInsertNew: () => void | Promise<void>; onNewAgain: () => void; onSign: () => void | Promise<void> },
+  steps: { onInsertNew: () => void | Promise<void>; onNewAgain: () => void; onSign: () => void | Promise<void>; onProgress?: ProgressListener },
 ): Promise<{ session: VaultSession; newLocator: Hex }> {
   const current = await evaluatePrf({ rpId: svc.rpId }, svc.credentials);
   let locator: Uint8Array | undefined;
@@ -153,10 +155,11 @@ export async function saveAddKey(
     await steps.onInsertNew();
     fresh = await enrollWithPrf(svc, decoded.keyCount + 1, decoded.entries.map((e) => e.credId), steps.onNewAgain);
     const added = await addKeyToBlob(s.blob, current.prf, s.vaultId, { credId: fresh.credId, prf: fresh.prf! }); // wipes both
+    notify(steps.onProgress, 'encrypted');
     const account = await existingVaultAccount({ client: svc.client, address: s.owner, entryIndex, credId: current.credId, expectedLocator: locator, ...(svc.credentials ? { credentials: svc.credentials } : {}) });
     const res = await addKeyOnChain(
       { account, vaultId: s.vaultId, blob: added.blob, newLocator: toHex(added.locator), newPublicKey: fresh.publicKey, keyCountBefore: decoded.keyCount },
-      { client: svc.client, sponsor: svc.sponsor, reader: svc.reader, onSign: steps.onSign },
+      { client: svc.client, sponsor: svc.sponsor, reader: svc.reader, onSign: steps.onSign, ...(steps.onProgress ? { onProgress: steps.onProgress } : {}) },
     );
     return {
       session: { ...s, version: res.version, blob: added.blob, credIds: [...s.credIds, fresh.credId] },

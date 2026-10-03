@@ -108,8 +108,29 @@ export async function preflight(client: PublicClient, from: Hex, calls: readonly
   }
 }
 
+/** Real write-path events, in order, for the save checklist (app-motion-ux D5). */
+export type SaveStage = 'encrypted' | 'sponsored' | 'sent' | 'confirmed';
+export type ProgressListener = (stage: SaveStage) => void;
+
+/**
+ * Fire-and-forget notification: never awaited, and a throwing (or async-rejecting) listener can never break, delay
+ * or alter a write.
+ */
+export function notify(listener: ProgressListener | undefined, stage: SaveStage): void {
+  if (!listener) return;
+  try {
+    const r = listener(stage) as unknown;
+    if (r && typeof (r as Promise<unknown>).catch === 'function') (r as Promise<unknown>).catch(() => undefined);
+  } catch {
+    /* presentation only */
+  }
+}
+
+/** A listener that can be handed to code we don't control (e.g. a Sponsor implementation) without risk. */
+const guarded = (listener: ProgressListener | undefined): ProgressListener | undefined => (listener ? (stage) => notify(listener, stage) : undefined);
+
 export interface Sponsor {
-  send(account: SmartAccount, calls: readonly Call[]): Promise<{ userOpHash: Hex; success: boolean; reason?: Hex; txHash?: Hex }>;
+  send(account: SmartAccount, calls: readonly Call[], onProgress?: ProgressListener): Promise<{ userOpHash: Hex; success: boolean; reason?: Hex; txHash?: Hex }>;
 }
 
 /** Bundler + ERC-7677 paymaster (Pimlico in production; the dev bundler in E2E). */
@@ -120,7 +141,7 @@ export function createSponsor(client: PublicClient, bundlerUrl = config.bundlerU
   });
   const bundlerChain = { getChainId: async () => Number(await pimlico.request({ method: 'eth_chainId' } as never)) };
   return {
-    async send(account, calls) {
+    async send(account, calls, onProgress) {
       // The bundler/paymaster must serve the configured chain too (checked once per session).
       await ensureChain(bundlerChain, config.chainId, 'bundler');
       const address = await account.getAddress();
@@ -140,11 +161,14 @@ export function createSponsor(client: PublicClient, bundlerUrl = config.bundlerU
         },
         async getPaymasterData(p: Parameters<typeof pimlico.getPaymasterData>[0]) {
           guard(p as never);
+          let data;
           try {
-            return await pimlico.getPaymasterData(p);
+            data = await pimlico.getPaymasterData(p);
           } catch (e) {
             throw new WriteError('SPONSORSHIP_REFUSED', { cause: e });
           }
+          notify(onProgress, 'sponsored');
+          return data;
         },
       };
       const bundler = createBundlerClient({
@@ -163,6 +187,7 @@ export function createSponsor(client: PublicClient, bundlerUrl = config.bundlerU
       } catch (e) {
         throw classify(e);
       }
+      notify(onProgress, 'sent');
       try {
         const r = await bundler.waitForUserOperationReceipt({ hash: userOpHash, timeout: 120_000, pollingInterval: 1_000 });
         const out: { userOpHash: Hex; success: boolean; reason?: Hex; txHash?: Hex } = {
@@ -219,6 +244,8 @@ export interface WriteDeps {
   reader: RegistryReader;
   /** Called right before each signing tap so the UI can say "touch your key" (and may wait for the user). */
   onSign?: () => void | Promise<void>;
+  /** Save-checklist notifications (never awaited; see notify). */
+  onProgress?: ProgressListener;
   randomId?: () => Hex;
 }
 
@@ -245,6 +272,7 @@ export async function createVaultOnChain(
     if (attempt > 0) await deps.onRetry?.();
     const vaultId = nextId();
     const { blob, locators } = await p.build(vaultId);
+    notify(deps.onProgress, 'encrypted');
     const calls = [createCall(vaultId, blob, locators)];
     try {
       await preflight(deps.client, owner, calls);
@@ -256,7 +284,7 @@ export async function createVaultOnChain(
       throw e;
     }
     await deps.onSign?.();
-    const r = await deps.sponsor.send(p.account, calls);
+    const r = await deps.sponsor.send(p.account, calls, guarded(deps.onProgress));
     if (!r.success) {
       const err = revertOf(r.reason);
       if (err.code === 'VAULT_ID_TAKEN') {
@@ -266,6 +294,7 @@ export async function createVaultOnChain(
       throw err;
     }
     const v = await confirm(deps.reader, vaultId, owner, blob);
+    notify(deps.onProgress, 'confirmed');
     return { vaultId, owner, version: v.version, blob, userOpHash: r.userOpHash, ...(r.txHash ? { txHash: r.txHash } : {}), locators: [...locators] };
   }
   throw lastErr ?? new WriteError('VAULT_ID_TAKEN');
@@ -281,9 +310,10 @@ export async function updateVaultOnChain(
   ];
   await preflight(deps.client, owner, calls);
   await deps.onSign?.();
-  const r = await deps.sponsor.send(p.account, calls);
+  const r = await deps.sponsor.send(p.account, calls, guarded(deps.onProgress));
   if (!r.success) throw revertOf(r.reason);
   const v = await confirm(deps.reader, p.vaultId, owner, p.blob);
+    notify(deps.onProgress, 'confirmed');
   return { vaultId: p.vaultId, owner, version: v.version, blob: p.blob, userOpHash: r.userOpHash, ...(r.txHash ? { txHash: r.txHash } : {}) };
 }
 
@@ -306,8 +336,9 @@ export async function addKeyOnChain(
   ];
   await preflight(deps.client, owner, calls);
   await deps.onSign?.();
-  const r = await deps.sponsor.send(p.account, calls);
+  const r = await deps.sponsor.send(p.account, calls, guarded(deps.onProgress));
   if (!r.success) throw revertOf(r.reason);
   const v = await confirm(deps.reader, p.vaultId, owner, p.blob);
+    notify(deps.onProgress, 'confirmed');
   return { vaultId: p.vaultId, owner, version: v.version, blob: p.blob, userOpHash: r.userOpHash, ...(r.txHash ? { txHash: r.txHash } : {}) };
 }
