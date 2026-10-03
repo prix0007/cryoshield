@@ -29,13 +29,14 @@ describe('landing structure', () => {
 
   it('presents the story in order: hero, numbers, six scenes, free, final CTA, FAQ', () => {
     const ids = [...doc.querySelectorAll('main > section')].map((s) => s.id);
-    expect(ids).toEqual(['hero', 'numbers', 'fragile', 'how', 'stored', 'lose-a-key', 'survives', 'timeline', 'free', 'start', 'faq']);
+    expect(ids).toEqual(['hero', 'numbers', 'fragile', 'how', 'stored', 'only-you', 'lose-a-key', 'survives', 'timeline', 'free', 'start', 'faq']);
     const h2 = [...doc.querySelectorAll('main > section h2')].map((h) => h.textContent?.trim());
     expect(h2).toEqual([
       'By the numbers.',
       'Drives fail. Paper fades.',
       'One tap. Sealed in your browser.',
       'Stored on-chain. Copied to Arweave.',
+      'Only you can read it.',
       'Lose a key, not your vault.',
       'Survives us too.',
       'Built for decades.',
@@ -150,5 +151,43 @@ describe('honest copy', () => {
 
   it('uses no Apple names or marks', () => {
     expect(text).not.toMatch(/\b(Apple|iPhone|iPad|Mac|macOS|Safari|iCloud|Touch ID|Face ID|SF Pro)\b/);
+  });
+});
+
+describe('"Only you can read it." comparison (landing-only-you-can-read 1.1)', () => {
+  const tile = doc.querySelector('#only-you')!;
+  const t = (tile?.textContent ?? '').replace(/\s+/g, ' ');
+
+  it('is a light tile with the checked headline and body', () => {
+    expect(tile.classList.contains('tile-parchment') || tile.classList.contains('tile-light')).toBe(true);
+    expect(t).toContain('Your secrets are locked on your device before anything leaves it. The keys that open them live in the security keys you hold, never with us or anyone else.');
+  });
+
+  it('has an accessible table: caption, column headers, four row headers with answers', () => {
+    const table = tile.querySelector('table')!;
+    expect(table.querySelector('caption')?.textContent?.trim()).toBeTruthy();
+    expect([...table.querySelectorAll('thead th')].map((th) => [th.getAttribute('scope'), th.textContent?.trim()])).toEqual([
+      ['col', 'Typical cloud storage'],
+      ['col', 'CryoShield'],
+    ]);
+    const rows = [...table.querySelectorAll('tbody tr')].map((tr) => [tr.querySelector('th[scope="row"]')?.textContent?.trim(), ...[...tr.querySelectorAll('td')].map((td) => td.textContent?.replace(/\s+/g, ' ').trim())]);
+    expect(rows).toEqual([
+      ['Who can read your data', 'You, and the provider (who holds or can reset the keys)', 'Only you'],
+      ['Account and password to lose or have hacked', 'Yes', 'None'],
+      ['Can be frozen, deleted or shut down', 'Yes, by the provider', 'No: stored on a public blockchain and Arweave'],
+      ['Works if the company disappears', 'No', 'Yes: the open-source recovery tool reads it directly'],
+    ]);
+  });
+
+  it('keeps the honesty fine print directly after the table', () => {
+    const after = tile.querySelector('.table-wrap, table')!.nextElementSibling!;
+    expect(after.textContent?.replace(/\s+/g, ' ').trim()).toBe(
+      'Some password managers also encrypt end to end. The difference is that CryoShield has no account, no servers holding your data, and no company you have to outlast.',
+    );
+  });
+
+  it('never claims the data stays on the device, and names no competitor', () => {
+    expect(t).not.toMatch(/stays on your device|never leaves your device|remains on your device/i);
+    expect(t).not.toMatch(/\b(Google|Drive|iCloud|Dropbox|OneDrive|Box|1Password|LastPass|Bitwarden|Dashlane|Keeper|Proton|Ledger|Trezor)\b/);
   });
 });

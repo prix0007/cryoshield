@@ -994,3 +994,102 @@
   font-size: 22px;
   font-weight: 600;
 }
+
+/* ---- "Only you can read it." comparison (landing-only-you-can-read) ---- */
+.only-you .compare-wrap {
+  max-width: 880px;
+  margin: var(--space-xl) auto var(--space-md);
+  overflow-x: auto;
+}
+.compare {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: var(--body-size);
+  line-height: 1.35;
+}
+.compare caption {
+  caption-side: top;
+  text-align: left;
+  font-size: var(--caption-size);
+  font-weight: 600;
+  letter-spacing: -0.224px;
+  color: var(--ink-muted-48);
+  padding-bottom: var(--space-sm);
+}
+.compare th,
+.compare td {
+  padding: var(--space-md) var(--space-sm);
+  border-bottom: 1px solid var(--hairline);
+  vertical-align: top;
+}
+.compare thead th {
+  font-size: var(--caption-size);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-muted-48);
+  border-bottom: 2px solid var(--ink-muted-48);
+}
+.compare thead th:last-child {
+  color: var(--color-primary);
+}
+.compare tbody th {
+  font-weight: 600;
+  width: 30%;
+}
+.compare tbody td:last-child {
+  font-weight: 600;
+}
+.compare .mark {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: var(--space-xs);
+  border-radius: 50%;
+  vertical-align: 1px;
+}
+.compare .mark-no {
+  border: 2px solid var(--ink-muted-48);
+}
+.compare .mark-yes {
+  background: var(--color-primary);
+}
+.compare-note {
+  max-width: 880px;
+  margin: 0 auto;
+  text-align: left;
+}
+/* Row-by-row reveal, only when boot.ts armed the table (motion allowed). Transforms + opacity only. */
+.compare.armed tbody tr {
+  opacity: 0;
+  transform: translateY(12px);
+  transition:
+    opacity 0.5s ease,
+    transform 0.5s ease;
+}
+.compare.armed.in tbody tr {
+  opacity: 1;
+  transform: none;
+}
+.compare.armed.in tbody tr:nth-child(2) {
+  transition-delay: 0.12s;
+}
+.compare.armed.in tbody tr:nth-child(3) {
+  transition-delay: 0.24s;
+}
+.compare.armed.in tbody tr:nth-child(4) {
+  transition-delay: 0.36s;
+}
+@media (max-width: 640px) {
+  .compare {
+    font-size: var(--caption-size);
+  }
+  .compare th,
+  .compare td {
+    padding: var(--space-sm) var(--space-xs);
+  }
+  .compare tbody th {
+    width: 34%;
+  }
+}

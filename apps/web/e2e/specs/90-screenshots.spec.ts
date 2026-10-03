@@ -143,3 +143,20 @@ test('brand icon (add-brand-icon 2.3): tab mock in light and dark, icon at 16, 3
   await page.screenshot({ path: `${dir}/brand-icon-sizes.png` });
   await ctx.close();
 });
+
+test('"Only you can read it." tile (landing-only-you-can-read 2.2): desktop revealed and phone', async ({ browser }) => {
+  for (const [name, width, height] of [['only-you-desktop', 1280, 900], ['only-you-phone', 390, 844]] as const) {
+    const ctx = await browser.newContext({ viewport: { width, height } });
+    const page = await ctx.newPage();
+    await page.goto(LANDING);
+    await page.evaluate(() => {
+      const t = document.querySelector('#only-you')!;
+      window.scrollTo({ top: t.getBoundingClientRect().top + scrollY - innerHeight * 1.5, behavior: 'instant' });
+    });
+    await page.waitForTimeout(300);
+    await page.evaluate(() => document.querySelector('#only-you')!.scrollIntoView({ behavior: 'instant' }));
+    await page.waitForTimeout(1200);
+    await page.locator('#only-you').screenshot({ path: `${dir}/${name}.png` });
+    await ctx.close();
+  }
+});
