@@ -16,6 +16,17 @@ emit() {
   if [ -n "${GITHUB_OUTPUT:-}" ]; then echo "$1" >> "$GITHUB_OUTPUT"; fi
 }
 
+# The reusable CI tests github.sha, so a run may only deploy its own commit. If main has moved on, a newer run
+# (push or schedule) owns the deploy; skipping here keeps an older commit from ever replacing a newer one.
+if [ -n "${MAIN_SHA:-}" ]; then
+  [[ "$MAIN_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "detect: MAIN_SHA must be a full 40-hex commit" >&2; exit 2; }
+  if [ "$MAIN_SHA" != "$TARGET_SHA" ]; then
+    echo "detect: superseded: main is now $MAIN_SHA, this run is for $TARGET_SHA; a newer run deploys"
+    emit "deploy=false"
+    exit 0
+  fi
+fi
+
 if [ "${FORCE:-false}" = "true" ]; then
   echo "detect: forced redeploy of $TARGET_SHA"
   emit "deploy=true"

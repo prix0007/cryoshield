@@ -6,7 +6,11 @@
 //           ecc-review, allow-listed actions and per-job write scopes); everywhere else top-level permissions exactly
 //           `contents: read` (or {}), read-only job permissions, timeout-minutes, no secrets context in PR-triggered
 //           workflows; no inline `zizmor: ignore`; zizmor.yml keeps hash-pin for "*" and ignores only
-//           dangerous-triggers on the privileged files' trigger lines.
+//           dangerous-triggers on the privileged files' trigger lines and self-repository on deploy.yml.
+//   deploy: (add-continuous-deploy D7) deploy.yml only on push(main)/schedule/workflow_dispatch, first job gated on
+//           refs/heads/main, concurrency deploy-production never cancelled, secrets only in environment production
+//           jobs, FLY_API_TOKEN only in the step env of steps `deploy`/`rollback`; no other workflow may use
+//           FLY_API_TOKEN or environment production. zizmor ignores: only self-repository on deploy.yml:<line>.
 //   zizmor: SHA pinning (via that hash-pin policy), persist-credentials (artipacked), template injection, etc.
 //
 // CLI: node workflow-policy.mjs [<.github dir>]   (default: .github)  exit 0 ok, 1 violations.
@@ -223,6 +227,15 @@ export function currentDigests(dir) {
   return out;
 }
 
+// Accepted zizmor ignores, each as file:line, at most once per file (a moved line or another file is reported again):
+// dangerous-triggers on the privileged workflows' trigger lines (adopt-ecc-review-and-auto-merge D1); self-repository
+// on deploy.yml's reusable-CI call, because actionlint 1.7.12 rejects the `$/` syntax zizmor suggests
+// (add-continuous-deploy D4).
+const ZIZMOR_IGNORES = {
+  'dangerous-triggers': new RegExp(`^(${Object.keys(PRIVILEGED).map((f) => f.replace('.', '\\.')).join('|')}):\\d+$`),
+  'self-repository': /^deploy\.yml:\d+$/,
+};
+
 function triggers(on) {
   if (typeof on === 'string') return [on];
   if (Array.isArray(on)) return on.map(String);
@@ -301,8 +314,60 @@ export function checkWorkflow(file, text) {
     const hits = [...exprs.filter((e) => /\bsecrets\b/i.test(e)), ...strings(wf).filter((s) => s === 'inherit')];
     if (hits.length) errors.push(`${file}: secrets must not be referenced in a PR-triggered workflow (${hits.length} reference(s))`);
   }
+
+  // Production deployment (OpenSpec change add-continuous-deploy, design D7).
+  const mentionsToken = strings(wf).some((s) => /FLY_API_TOKEN/i.test(s));
+  const usesProduction = Object.values(isObj(wf.jobs) ? wf.jobs : {}).some((j) => isObj(j) && envName(j.environment) === 'production');
+  if (name === DEPLOY_WORKFLOW) errors.push(...checkDeploy(file, wf, on));
+  else {
+    if (mentionsToken) errors.push(`${file}: FLY_API_TOKEN may only be referenced by ${DEPLOY_WORKFLOW} (only deploy.yml deploys)`);
+    if (usesProduction) errors.push(`${file}: environment production may only be used by ${DEPLOY_WORKFLOW} (only deploy.yml deploys)`);
+  }
   return errors;
 }
+
+const DEPLOY_WORKFLOW = 'deploy.yml';
+const DEPLOY_TRIGGERS = ['push', 'schedule', 'workflow_dispatch'];
+const DEPLOY_TOKEN_STEPS = ['deploy', 'rollback'];
+const envName = (e) => (isObj(e) ? e.name : e);
+const exprsOf = (node) => strings(node).flatMap((s) => [...s.matchAll(/\$\{\{([\s\S]*?)\}\}/g)].map((m) => m[1]));
+const usesSecret = (node, re = /\bsecrets\b/i) => exprsOf(node).some((e) => re.test(e) && !/^\s*secrets\.GITHUB_TOKEN\s*$/i.test(e));
+
+function checkDeploy(file, wf, on) {
+  const errors = [];
+  const err = (m) => errors.push(`${file}: ${m}`);
+  for (const t of on) if (!DEPLOY_TRIGGERS.includes(t)) err(`trigger '${t}' is not allowed (deploy.yml runs only on ${DEPLOY_TRIGGERS.join(', ')}; never on pull requests)`);
+  const branches = isObj(wf.on) && isObj(wf.on.push) ? wf.on.push.branches : undefined;
+  if (on.includes('push') && JSON.stringify(branches) !== JSON.stringify(['main'])) err('push must be limited to branches: [main]');
+  const c = wf.concurrency;
+  if (!isObj(c) || c.group !== 'deploy-production' || c['cancel-in-progress'] !== false) {
+    err('concurrency must be { group: deploy-production, cancel-in-progress: false } (one deploy at a time, never cancelled)');
+  }
+  if (strings(wf).includes('inherit')) err('secrets: inherit is not allowed');
+  if (strings(wf.env).some((s) => /FLY_API_TOKEN/i.test(s)) || usesSecret(wf.env)) err('no secrets (FLY_API_TOKEN or any other) in the workflow-level env');
+
+  for (const [id, job] of Object.entries(isObj(wf.jobs) ? wf.jobs : {})) {
+    if (!isObj(job)) continue;
+    const needs = [].concat(job.needs ?? []);
+    if (needs.length === 0 && !norm(job.if).split('&&').map(norm).includes("github.ref == 'refs/heads/main'")) {
+      err(`job '${id}' has no needs, so its condition must include "github.ref == 'refs/heads/main'"`);
+    }
+    const prod = envName(job.environment) === 'production';
+    if (job.environment !== undefined && !prod) err(`job '${id}': the only allowed environment is production`);
+    if (usesSecret(job) && !prod) err(`job '${id}' uses secrets, so it must run in environment production`);
+    if (strings(job.env).some((s) => /FLY_API_TOKEN/i.test(s))) err(`job '${id}': FLY_API_TOKEN must not be in a job-level env`);
+    for (const step of Array.isArray(job.steps) ? job.steps : []) {
+      if (!isObj(step)) continue;
+      const { env, ...rest } = step;
+      if (strings(rest).some((s) => /FLY_API_TOKEN/i.test(s))) err(`job '${id}' step '${step.name ?? step.id}': FLY_API_TOKEN may only be passed through the step env`);
+      if (strings(env).some((s) => /FLY_API_TOKEN/i.test(s)) && !(prod && DEPLOY_TOKEN_STEPS.includes(step.id))) {
+        err(`job '${id}' step '${step.name ?? step.id}': FLY_API_TOKEN is only allowed in steps with id ${DEPLOY_TOKEN_STEPS.join(' or ')} in a production job`);
+      }
+    }
+  }
+  return errors;
+}
+
 
 export function checkZizmorConfig(text) {
   const errors = [];
@@ -323,13 +388,11 @@ export function checkZizmorConfig(text) {
     if (!isObj(rule)) continue;
     if (rule.disable) errors.push(`zizmor.yml: rule '${name}' must not be disabled`);
     if (rule.ignore === undefined) continue;
-    // The single accepted exception: dangerous-triggers on the trigger line of the privileged workflows,
-    // pinned to file:line so a moved trigger or any other file is reported again.
+    const allowed = ZIZMOR_IGNORES[name];
     const entries = Array.isArray(rule.ignore) ? rule.ignore.map(String) : [];
-    const narrow = new RegExp(`^(${Object.keys(PRIVILEGED).map((f) => f.replace('.', '\\.')).join('|')}):\\d+$`);
     const files = entries.map((e) => e.split(':')[0]);
-    if (name !== 'dangerous-triggers' || entries.length === 0 || !entries.every((e) => narrow.test(e)) || new Set(files).size !== files.length) {
-      errors.push(`zizmor.yml: rule '${name}' must not ignore findings (only dangerous-triggers may, as <privileged workflow>:<line>, once per file)`);
+    if (!allowed || entries.length === 0 || !entries.every((e) => allowed.test(e)) || new Set(files).size !== files.length) {
+      errors.push(`zizmor.yml: rule '${name}' must not ignore findings (accepted, as <file>:<line> once per file: ${Object.entries(ZIZMOR_IGNORES).map(([r, re]) => `${r} ${re}`).join('; ')})`);
     }
   }
   return errors;

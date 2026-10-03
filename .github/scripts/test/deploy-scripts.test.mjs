@@ -87,6 +87,49 @@ function run(name, env = {}) {
   });
 }
 
+// ---- write-env.sh ----
+const FULL_ENV = {
+  VITE_CHAIN_ID: '11155420',
+  VITE_RPC_URL: 'https://sepolia.optimism.io',
+  VITE_BUNDLER_URL: 'https://api.pimlico.io/v2/optimism-sepolia/rpc?apikey=pim_TEST',
+  VITE_SPONSORSHIP_POLICY_ID: 'sp_test',
+  VITE_TURBO_UPLOAD_URL: 'https://upload.ardrive.io',
+  VITE_ARWEAVE_GATEWAY_URL: 'https://arweave.net',
+  VITE_RP_ID: 'cryoshield.app',
+  VITE_RP_NAME: 'CryoShield',
+};
+
+test('write-env: writes every set key in a fixed order, masks the bundler URL, 0600, never echoes values', async () => {
+  const out = join(mkdtempSync(join(tmpdir(), 'env-')), '.env');
+  const r = await run('write-env.sh', { ...FULL_ENV, VITE_CF_BEACON_TOKEN: 'ab'.repeat(16), OUT: out });
+  assert.equal(r.status, 0, r.stderr);
+  const lines = readFileSync(out, 'utf8').trim().split('\n');
+  assert.deepEqual(lines.map((l) => l.split('=')[0]), [...Object.keys(FULL_ENV), 'VITE_CF_BEACON_TOKEN']);
+  assert.ok(lines.includes(`VITE_BUNDLER_URL=${FULL_ENV.VITE_BUNDLER_URL}`));
+  assert.match(r.stdout, new RegExp(`^::add-mask::${FULL_ENV.VITE_BUNDLER_URL.replace(/[?.]/g, '\\$&')}$`, 'm'));
+  const visible = r.stdout.split('\n').filter((l) => !l.startsWith('::add-mask::')).join('\n') + r.stderr;
+  assert.doesNotMatch(visible, /pim_TEST|sp_test/);
+  assert.equal((await import('node:fs')).statSync(out).mode & 0o777, 0o600);
+});
+
+test('write-env: optional keys may be absent; a missing required key fails naming only the key', async () => {
+  const out = join(mkdtempSync(join(tmpdir(), 'env-')), '.env');
+  assert.equal((await run('write-env.sh', { ...FULL_ENV, OUT: out })).status, 0);
+  const { VITE_BUNDLER_URL: _omit, ...rest } = FULL_ENV;
+  const r = await run('write-env.sh', { ...rest, OUT: join(mkdtempSync(join(tmpdir(), 'env-')), '.env') });
+  assert.notEqual(r.status, 0);
+  assert.match(r.stdout + r.stderr, /VITE_BUNDLER_URL/);
+});
+
+test('write-env: refuses newlines (key injection) and an existing file', async () => {
+  const out = join(mkdtempSync(join(tmpdir(), 'env-')), '.env');
+  const r = await run('write-env.sh', { ...FULL_ENV, VITE_RP_NAME: 'x\nVITE_RP_ID=evil.com', OUT: out });
+  assert.notEqual(r.status, 0);
+  assert.equal(existsSync(out), false);
+  writeFileSync(out, 'x');
+  assert.notEqual((await run('write-env.sh', { ...FULL_ENV, OUT: out })).status, 0);
+});
+
 // ---- detect.sh ----
 test('detect: live commit equals main -> deploy=false', async () => {
   site = healthySite();
@@ -109,6 +152,17 @@ test('detect: different commit, 404, invalid JSON, bad commit field, or unreacha
   }
   const r = await run('detect.sh', { TARGET_SHA: SHA, BASE_URL: 'http://127.0.0.1:9' });
   assert.match(r.output, /^deploy=true$/m);
+});
+
+test('detect: a run whose commit is no longer main HEAD is superseded (deploy=false), even when forced', async () => {
+  site = { ...healthySite(), release: { status: 404, body: '' } };
+  for (const FORCE of ['false', 'true']) {
+    const r = await run('detect.sh', { TARGET_SHA: SHA, MAIN_SHA: OTHER, FORCE });
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.output, /^deploy=false$/m);
+    assert.match(r.stdout, /superseded/);
+  }
+  assert.equal((await run('detect.sh', { TARGET_SHA: SHA, MAIN_SHA: 'nope' })).status, 2);
 });
 
 test('detect: FORCE=true always deploys; an invalid TARGET_SHA exits 2', async () => {

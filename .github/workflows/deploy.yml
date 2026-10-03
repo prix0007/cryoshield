@@ -1,0 +1,232 @@
+# Continuous deployment of https://cryoshield.app from main (OpenSpec change add-continuous-deploy).
+#
+#   detect -> test (the FULL ci.yml on this exact commit) -> deploy (guarded deploy.sh) -> smoke (+ auto rollback)
+#
+# Triggers: push to main (human merges); every 15 minutes (merges by GitHub auto-merge do not start push
+# workflows); workflow_dispatch (with `force` to redeploy). Never on pull requests (enforced by
+# .github/scripts/workflow-policy.mjs). One deploy at a time, never cancelled mid-flight.
+#
+# Credentials: FLY_API_TOKEN (Fly deploy token scoped to cryoshield-web) and VITE_BUNDLER_URL live only in the
+# GitHub Environment `production`, restricted to main; FLY_API_TOKEN is referenced only by the steps with id
+# `deploy` and `rollback`. Build config comes from that environment's variables. Runbook: docs/deploy.md.
+
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "*/15 * * * *" # catches auto-merges; see docs/deploy.md -> "Polling cost"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Redeploy even if the live site already serves main's HEAD
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: "22"
+  SITE_URL: https://cryoshield.app
+  # flyctl from the GitHub release, verified against flyctl_0.4.111_checksums.txt (2026-10-04).
+  FLYCTL_VERSION: "0.4.111"
+  FLYCTL_SHA256: 1878d7fb1f8a418039042cf0749e4b7216c6c7018b66ae10611a64c2b6d9aa9e # flyctl_0.4.111_Linux_x86_64.tar.gz
+
+jobs:
+  detect:
+    name: detect
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read # read main's HEAD and the detect script
+    outputs:
+      deploy: ${{ steps.detect.outputs.deploy }}
+      sha: ${{ github.sha }}
+    steps:
+      - name: Checkout (deploy scripts only)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/scripts/deploy
+      - name: Compare the live commit with main
+        id: detect
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_SHA: ${{ github.sha }}
+          FORCE: ${{ inputs.force == true }}
+          BASE_URL: ${{ env.SITE_URL }}
+        run: |
+          MAIN_SHA="$(gh api "repos/${GITHUB_REPOSITORY}/commits/main" --jq .sha)"
+          export MAIN_SHA
+          .github/scripts/deploy/detect.sh
+
+  test:
+    name: test
+    needs: detect
+    if: needs.detect.outputs.deploy == 'true'
+    uses: ./.github/workflows/ci.yml # not `$/...`: actionlint 1.7.12 rejects it (rhysd/actionlint#711); zizmor ignore in .github/zizmor.yml
+    with:
+      full: true
+    permissions:
+      contents: read # the called CI checks out code
+      pull-requests: read # the most any called job declares (its PR path filter, skipped here)
+
+  deploy:
+    name: deploy
+    needs: [detect, test]
+    if: needs.detect.outputs.deploy == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment:
+      name: production
+      url: https://cryoshield.app
+    permissions:
+      contents: read # checkout only
+    outputs:
+      previous_image: ${{ steps.deploy.outputs.previous_image }}
+    steps:
+      - name: Checkout the tested commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.detect.outputs.sha }}
+          persist-credentials: false
+      - name: Set up pnpm
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0 (version from packageManager)
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          package-manager-cache: false
+      - name: Install (frozen lockfile)
+        run: pnpm install --frozen-lockfile
+      - name: Install flyctl (pinned, checksum-verified)
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 -o "${RUNNER_TEMP}/flyctl.tar.gz" \
+            "https://github.com/superfly/flyctl/releases/download/v${FLYCTL_VERSION}/flyctl_${FLYCTL_VERSION}_Linux_x86_64.tar.gz"
+          echo "${FLYCTL_SHA256}  ${RUNNER_TEMP}/flyctl.tar.gz" | sha256sum -c -
+          mkdir -p "${RUNNER_TEMP}/fly-bin"
+          tar -xzf "${RUNNER_TEMP}/flyctl.tar.gz" -C "${RUNNER_TEMP}/fly-bin" flyctl
+          ln -sf flyctl "${RUNNER_TEMP}/fly-bin/fly"
+          echo "${RUNNER_TEMP}/fly-bin" >> "${GITHUB_PATH}"
+      - name: Write apps/web/.env from the production environment
+        id: web-env
+        env:
+          VITE_CHAIN_ID: ${{ vars.VITE_CHAIN_ID }}
+          VITE_RPC_URL: ${{ vars.VITE_RPC_URL }}
+          VITE_BUNDLER_URL: ${{ secrets.VITE_BUNDLER_URL }}
+          VITE_SPONSORSHIP_POLICY_ID: ${{ vars.VITE_SPONSORSHIP_POLICY_ID }}
+          VITE_TURBO_UPLOAD_URL: ${{ vars.VITE_TURBO_UPLOAD_URL }}
+          VITE_ARWEAVE_GATEWAY_URL: ${{ vars.VITE_ARWEAVE_GATEWAY_URL }}
+          VITE_ARWEAVE_FAST_INDEX_URL: ${{ vars.VITE_ARWEAVE_FAST_INDEX_URL }}
+          VITE_RP_ID: ${{ vars.VITE_RP_ID }}
+          VITE_RP_NAME: ${{ vars.VITE_RP_NAME }}
+          VITE_CF_BEACON_TOKEN: ${{ vars.VITE_CF_BEACON_TOKEN }}
+        run: .github/scripts/deploy/write-env.sh
+      # The only step (with `rollback`) that sees the Fly token. deploy.sh is the guarded manual deploy, unchanged:
+      # clean tree, no exported VITE_*, RP ID == host, double reproducible build, then fly deploy.
+      - name: Deploy (record the live image, then deploy.sh)
+        id: deploy
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          .github/scripts/deploy/previous-image.sh
+          apps/web/deploy/deploy.sh
+      - name: Record the release in the job summary
+        env:
+          SHA: ${{ needs.detect.outputs.sha }}
+        run: |
+          set -euo pipefail
+          m=apps/web/deploy/.build/release-manifest.json
+          {
+            echo "### Deployed https://cryoshield.app"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| commit | \`$(jq -r .commit "$m")\` |"
+            echo "| treeHash | \`$(jq -r .treeHash "$m")\` |"
+            echo "| chain | \`$(jq -r .config.chainId "$m")\` |"
+            echo "| registry | \`$(jq -r .config.registry.address "$m")\` |"
+          } >> "${GITHUB_STEP_SUMMARY}"
+          [ "$(jq -r .commit "$m")" = "$SHA" ] || { echo "::error::manifest commit differs from the tested commit"; exit 1; }
+      - name: Upload the release manifest
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-manifest-${{ needs.detect.outputs.sha }}
+          path: apps/web/deploy/.build/release-manifest.json
+          if-no-files-found: error
+          retention-days: 90
+
+  smoke:
+    name: smoke
+    needs: [detect, deploy]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment:
+      name: production
+      url: https://cryoshield.app
+    permissions:
+      contents: read # checkout only
+    steps:
+      - name: Checkout (scripts, deployment records, fly.toml)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.detect.outputs.sha }}
+          persist-credentials: false
+          sparse-checkout: |
+            .github/scripts/deploy
+            contracts/deployments
+            apps/web/fly.toml
+          sparse-checkout-cone-mode: false
+      - name: Smoke test the live site
+        id: smoke
+        env:
+          EXPECT_SHA: ${{ needs.detect.outputs.sha }}
+          BASE_URL: ${{ env.SITE_URL }}
+          CHAIN_ID: ${{ vars.VITE_CHAIN_ID }}
+        run: |
+          set -euo pipefail
+          [[ "$CHAIN_ID" =~ ^[0-9]+$ ]] || { echo "::error::vars.VITE_CHAIN_ID is not a chain id"; exit 1; }
+          REGISTRY_ADDRESS="$(jq -r .address "contracts/deployments/${CHAIN_ID}.json")"
+          export REGISTRY_ADDRESS
+          .github/scripts/deploy/smoke.sh
+      - name: Install flyctl for the rollback (pinned, checksum-verified)
+        if: failure() && steps.smoke.outcome == 'failure'
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 -o "${RUNNER_TEMP}/flyctl.tar.gz" \
+            "https://github.com/superfly/flyctl/releases/download/v${FLYCTL_VERSION}/flyctl_${FLYCTL_VERSION}_Linux_x86_64.tar.gz"
+          echo "${FLYCTL_SHA256}  ${RUNNER_TEMP}/flyctl.tar.gz" | sha256sum -c -
+          mkdir -p "${RUNNER_TEMP}/fly-bin"
+          tar -xzf "${RUNNER_TEMP}/flyctl.tar.gz" -C "${RUNNER_TEMP}/fly-bin" flyctl
+          ln -sf flyctl "${RUNNER_TEMP}/fly-bin/fly"
+          echo "${RUNNER_TEMP}/fly-bin" >> "${GITHUB_PATH}"
+      - name: Roll back to the previous release
+        id: rollback
+        if: failure() && steps.smoke.outcome == 'failure'
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          PREVIOUS_IMAGE: ${{ needs.deploy.outputs.previous_image }}
+          BASE_URL: ${{ env.SITE_URL }}
+        run: .github/scripts/deploy/rollback.sh
+      - name: Fail loudly
+        if: failure()
+        env:
+          SHA: ${{ needs.detect.outputs.sha }}
+          ROLLBACK: ${{ steps.rollback.outcome }}
+        run: |
+          {
+            echo "### Deploy of \`$SHA\` FAILED the smoke test"
+            echo ""
+            echo "Automatic rollback: **${ROLLBACK:-not attempted}**. See docs/deploy.md -> Rollback."
+          } >> "${GITHUB_STEP_SUMMARY}"
+          echo "::error title=deploy::The deploy of $SHA failed its smoke test; rollback outcome: ${ROLLBACK:-not attempted}."
+          exit 1
