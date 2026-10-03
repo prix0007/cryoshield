@@ -52,8 +52,9 @@ node deploy/gen-context.mjs --dist dist --out deploy/.build --host "$HOST" || di
 
 # 6. Publishable release manifest: commit, deterministic tree hash, config summary (no key values).
 node deploy/release-manifest.mjs --site deploy/.build/site --out deploy/.build/release-manifest.json \
-  --commit "$(git -C "$ROOT" rev-parse HEAD)" --env .env --contracts "$ROOT/contracts" || die "release manifest failed"
-echo "deploy: publish deploy/.build/release-manifest.json as a GitHub release asset for this commit"
+  --commit "$(git -C "$ROOT" rev-parse HEAD)" --env .env --contracts "$ROOT/contracts" --site-release || die "release manifest failed"
+# --site-release also publishes deploy/.build/site/release.json, served as /release.json (add-continuous-deploy D3).
+echo "deploy: the site serves /release.json; keep deploy/.build/release-manifest.json (CI uploads it as an artifact)"
 
 echo "deploy: commit $(git -C "$ROOT" rev-parse --short HEAD) -> https://$HOST ($APP)"
 fly deploy --config fly.toml --remote-only --app "$APP"

@@ -106,7 +106,7 @@ describe('deploy.sh guards', () => {
     expect(r.calls()).toEqual([
       'node scripts/verify-build.mjs --real-env --expect-host cryoshield.app',
       'node deploy/gen-context.mjs --dist dist --out deploy/.build --host cryoshield.app',
-      expect.stringMatching(/^node deploy\/release-manifest\.mjs --site deploy\/\.build\/site --out deploy\/\.build\/release-manifest\.json --commit [0-9a-f]{40} --env \.env --contracts .+\/contracts$/),
+      expect.stringMatching(/^node deploy\/release-manifest\.mjs --site deploy\/\.build\/site --out deploy\/\.build\/release-manifest\.json --commit [0-9a-f]{40} --env \.env --contracts .+\/contracts --site-release$/),
       'fly deploy --config fly.toml --remote-only --app cryoshield-web',
     ]);
   });

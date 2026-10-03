@@ -67,6 +67,18 @@ describe('deploy context generator (1.2)', () => {
     expect(caddy.match(/rewrite /g)).toHaveLength(1);
   });
 
+  it('serves /release.json uncached (add-continuous-deploy 1.2), and refuses a build that already contains one', () => {
+    const page = `<html><head><meta charset="utf-8" /><meta http-equiv="Content-Security-Policy" content="${META}"></head></html>`;
+    const d = fixture(page);
+    run(d);
+    const caddy = readFileSync(join(d, 'out', 'Caddyfile'), 'utf8');
+    expect(caddy).toContain('@release path /release.json');
+    expect(caddy).toContain('header @release Cache-Control `no-store`');
+    const bad = fixture(page);
+    writeFileSync(join(bad, 'dist', 'release.json'), '{}');
+    expect(() => run(bad)).toThrow(/release\.json/);
+  });
+
   it('refuses pages whose CSPs differ, or a missing app page', () => {
     const page = (csp: string) => `<html><head><meta http-equiv="Content-Security-Policy" content="${csp}"></head></html>`;
     expect(() => run(fixture(page(META), page(`${META}; img-src *`)))).toThrow(/differ/);

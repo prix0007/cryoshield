@@ -64,4 +64,24 @@ describe('release manifest', () => {
     expect(json).not.toMatch(/pim_|apikey|sp_hidden/);
     expect(stdout).toContain(m.treeHash);
   });
+
+  it('--site-release publishes site/release.json (identity + config, no file list, no keys) without changing treeHash (add-continuous-deploy 1.1)', () => {
+    const d = fixture(['index.html', 'assets/index-abc.js', 'assets/index-def.css']);
+    const before = JSON.parse(run(d, 'c'.repeat(40)).json);
+    const out = join(d, 'release-manifest.json');
+    execFileSync('node', [SCRIPT, '--site', join(d, 'site'), '--out', out, '--commit', 'c'.repeat(40), '--env', join(d, '.env'), '--contracts', join(d, 'contracts'), '--site-release'], { encoding: 'utf8' });
+    const after = JSON.parse(readFileSync(out, 'utf8'));
+    const pub = readFileSync(join(d, 'site', 'release.json'), 'utf8');
+    const rel = JSON.parse(pub);
+    expect(after.treeHash).toBe(before.treeHash);
+    expect(after.files.map((f: { path: string }) => f.path)).not.toContain('release.json');
+    expect(rel).toEqual({ name: 'cryoshield-web', commit: 'c'.repeat(40), treeHash: before.treeHash, config: before.config });
+    expect(pub).not.toMatch(/pim_|apikey|sp_hidden/);
+  });
+
+  it('refuses to run twice into a site that already has release.json (it would hash itself)', () => {
+    const d = fixture(['index.html', 'assets/index-abc.js', 'assets/index-def.css']);
+    writeFileSync(join(d, 'site', 'release.json'), '{}');
+    expect(() => run(d)).toThrow(/release\.json/);
+  });
 });

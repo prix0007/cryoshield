@@ -5,10 +5,11 @@
  *              paths relative to the site root, sorted bytewise (LC_ALL=C).
  * Anyone can rebuild the tagged commit with the published config and compare (see deploy/README.md).
  * Never records key values: only chain ID, RP ID, registry record, and connect-src ORIGINS.
- * Usage: node deploy/release-manifest.mjs --site deploy/.build/site --out <file> --commit <sha> --env .env --contracts ../../contracts
+ * Usage: node deploy/release-manifest.mjs --site deploy/.build/site --out <file> --commit <sha> --env .env --contracts ../../contracts [--site-release]
+ *   --site-release also writes <site>/release.json (served as /release.json; excluded from treeHash).
  */
 import { createHash } from 'node:crypto';
-import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 
 function arg(name) {
@@ -28,6 +29,8 @@ function walk(dir) {
   });
 }
 const sha256 = (b) => createHash('sha256').update(b).digest('hex');
+// add-continuous-deploy: release.json is published INTO the site after hashing, so it must not be hashed itself.
+if (existsSync(join(site, 'release.json'))) throw new Error(`${site}/release.json already exists; regenerate the site first`);
 const paths = walk(site).sort((a, b) => (Buffer.from(a) < Buffer.from(b) ? -1 : Buffer.from(a) > Buffer.from(b) ? 1 : 0));
 const files = paths.map((path) => ({ path, sha256: sha256(readFileSync(join(site, path))) }));
 const treeHash = `sha256:${sha256(files.map((f) => `${f.sha256}  ${f.path}\n`).join(''))}`;
@@ -61,4 +64,10 @@ const manifest = {
   files,
 };
 writeFileSync(out, JSON.stringify(manifest, null, 2) + '\n');
+if (process.argv.includes('--site-release')) {
+  // Served as /release.json (add-continuous-deploy D3): which commit is live, its treeHash and the public config.
+  // No file list (that stays in the full manifest) and, like the manifest, no key values.
+  const { files: _files, ...identity } = manifest;
+  writeFileSync(join(site, 'release.json'), JSON.stringify(identity, null, 2) + '\n');
+}
 console.log(`release ${commit.slice(0, 12)} treeHash ${treeHash} (${files.length} files) -> ${out}`);

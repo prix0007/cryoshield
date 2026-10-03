@@ -4,7 +4,8 @@
  * Requires Docker. Uses a production build for host cryoshield.app against the local chain record (31337).
  */
 import { execFileSync, spawnSync } from 'node:child_process';
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { request } from 'node:http';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -15,6 +16,7 @@ const IMAGE = 'cryoshield-web:test';
 const NAME = `cs-web-test-${process.pid}`;
 const PORT = 18080;
 const DIST = join(web, 'deploy', '.test-dist');
+const RELEASE_COMMIT = 'd'.repeat(40);
 const ENV = {
   VITE_CHAIN_ID: '31337',
   VITE_RPC_URL: 'https://rpc.verify.invalid',
@@ -51,6 +53,11 @@ function get(path: string, host = 'cryoshield.app'): Promise<{ status: number; h
 beforeAll(async () => {
   sh('pnpm', ['exec', 'vite', 'build', '--mode', 'production', '--outDir', DIST, '--emptyOutDir'], { env: { ...process.env, ...ENV, NODE_ENV: 'production' } });
   sh('node', ['deploy/gen-context.mjs', '--dist', DIST, '--out', 'deploy/.build', '--host', 'cryoshield.app']);
+  // As deploy.sh does (add-continuous-deploy 1.2): publish site/release.json for the container to serve.
+  const envFile = join(mkdtempSync(join(tmpdir(), 'cs-release-')), '.env');
+  writeFileSync(envFile, Object.entries(ENV).map(([k, v]) => `${k}=${v}`).join('\n') + '\n');
+  sh('node', ['deploy/release-manifest.mjs', '--site', 'deploy/.build/site', '--out', 'deploy/.build/release-manifest.json',
+    '--commit', RELEASE_COMMIT, '--env', envFile, '--contracts', join(web, '..', '..', 'contracts'), '--site-release']);
   sh('docker', ['build', '-q', '-t', IMAGE, '-f', 'deploy/Dockerfile', '.']);
   sh('docker', ['run', '-d', '--rm', '--name', NAME, '-p', `127.0.0.1:${PORT}:8080`, IMAGE]);
   for (let i = 0; i < 100; i++) {
@@ -256,6 +263,20 @@ describe('served by the container', () => {
     const r = await get('/healthz');
     expect(r.status).toBe(200);
     expect(r.body).toBe('ok');
+  });
+
+  it('/release.json names the deployed commit, uncached, as JSON, with every security header (add-continuous-deploy 1.2)', async () => {
+    const r = await get('/release.json');
+    expect(r.status).toBe(200);
+    expect(String(r.headers['content-type'])).toMatch(/^application\/json/);
+    expect(r.headers['cache-control']).toBe('no-store');
+    for (const k of Object.keys(SECURITY_HEADERS)) expect(r.headers[k.toLowerCase()], k).toBeDefined();
+    expect(r.headers['content-security-policy']).toContain("frame-ancestors 'none'");
+    const rel = JSON.parse(r.body);
+    expect(rel.commit).toBe(RELEASE_COMMIT);
+    expect(rel.treeHash).toMatch(/^sha256:[0-9a-f]{64}$/);
+    expect(rel.files).toBeUndefined();
+    expect(r.body).not.toMatch(/sp_verify|apikey/);
   });
 
 });

@@ -18,6 +18,8 @@ function arg(name) {
 }
 
 const dist = arg('dist');
+// /release.json is published by release-manifest.mjs at deploy time only; a build must never ship its own.
+if (existsSync(join(dist, 'release.json'))) throw new Error(`${dist}/release.json must not be part of the build`);
 const out = arg('out');
 const host = arg('host');
 if (!/^(?=.{1,253}$)([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,63}$/.test(host)) throw new Error(`invalid host: ${host}`);
@@ -128,6 +130,10 @@ ${ppLine(appPermissions)}
 	# add-brand-icon D4: Go's MIME table has no .webmanifest entry.
 	@manifest path /site.webmanifest
 	header @manifest Content-Type ${quote('application/manifest+json')}
+
+	# add-continuous-deploy D3: which commit is live. Written at deploy time; never cached.
+	@release path /release.json
+	header @release Cache-Control ${quote('no-store')}
 
 	@assets path /assets/*
 	header @assets Cache-Control ${quote('public, max-age=31536000, immutable')}
