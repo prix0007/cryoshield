@@ -5,3 +5,12 @@
 # No exceptions. The 2026-10-02 baseline (elliptic, secp256k1, ws via the dev-only @dha-team/arbundles)
 # was resolved in redesign-landing-and-app-ui by replacing the arbundles test oracle with a checked-in
 # vector and removing the dependency.
+
+# 2026-10-03: braces (all versions; no fixed release yet). Reached only via the CI-only OpenSpec CLI
+# (.github/openspec-cli, transitively through its glob dependencies). It never ships to users and only
+# expands glob patterns written in this repo, so an attacker cannot supply the deeply nested pattern
+# the DoS needs. Re-check on expiry; upgrade or override as soon as a fixed version exists.
+[[IgnoredVulns]]
+id = "GHSA-vfj7-8cjw-p6xm"
+ignoreUntil = 2026-12-31
+reason = "braces stack-exhaustion DoS, no fix released; CI-only tooling (openspec-cli) expanding repo-authored globs only; not shipped"
