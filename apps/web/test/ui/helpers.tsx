@@ -1,4 +1,5 @@
-import { render } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
+import type userEvent from '@testing-library/user-event';
 import { App } from '../../src/ui/App';
 import type { Services } from '../../src/ui/services';
 
@@ -6,6 +7,7 @@ export function fakeServices(over: Partial<Services> = {}): Services {
   return {
     rpId: 'localhost',
     rpName: 'test',
+    chainId: 31337,
     host: 'localhost',
     reader: {} as Services['reader'],
     client: {} as Services['client'],
@@ -20,4 +22,10 @@ export function renderApp(over: Partial<Services> = {}) {
     getClientCapabilities: async () => ({ 'extension:prf': true }),
   };
   return render(<App services={fakeServices(over)} />);
+}
+
+/** Ticks the create flow's permanence + 18+ acknowledgement (add-privacy-and-compliance 4.1). */
+export async function acknowledge(u: ReturnType<typeof userEvent.setup>) {
+  await u.click(screen.getByRole('checkbox', { name: /published permanently/ }));
+  await u.click(screen.getByRole('checkbox', { name: 'I am 18 or over.' }));
 }

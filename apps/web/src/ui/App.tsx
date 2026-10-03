@@ -5,10 +5,14 @@ import { Notice } from './components';
 import type { VaultSession } from './operations';
 import { ServicesProvider, useServices, type Services } from './services';
 import { S } from './strings';
-import { ActionBar, GlobalNav, SubNav, useFocusClearOfActionBar } from './chrome';
+import { ActionBar, AppFooter, GlobalNav, SubNav, useFocusClearOfActionBar } from './chrome';
 import { UnlockFlow, type Unlocked } from './UnlockFlow';
 import { useAutoLock } from './useAutoLock';
 import { VaultView } from './VaultView';
+
+/** Test networks get the testnet + unaudited warning (add-privacy-and-compliance 4.3). */
+const TESTNETS: Record<number, string> = { 11155420: 'OP Sepolia', 421614: 'Arbitrum Sepolia', 11155111: 'Sepolia', 31337: 'a local test chain' };
+const testnetName = (chainId: number): string | undefined => TESTNETS[chainId];
 
 type Screen = { name: 'home' } | { name: 'create' } | { name: 'unlock' } | { name: 'vault'; locator: `0x${string}`; fresh: boolean };
 
@@ -57,6 +61,11 @@ function Shell() {
         <SubNav name={S.vault.surface} />
       </header>
       <main id="main" className="app-main" tabIndex={-1}>
+        {testnetName(svc.chainId) && (
+          <p className="testnet-banner" role="note">
+            {S.testnet(testnetName(svc.chainId)!)}
+          </p>
+        )}
         {!allowed && <Notice kind="error">{S.misconfigured}</Notice>}
         {allowed && prf === 'unsupported' && screen.name !== 'vault' && (
           <Notice kind="error" title="Browser not supported">
@@ -107,6 +116,7 @@ function Shell() {
           <VaultView session={session} locator={screen.locator} freshMirror={screen.fresh} onChange={setSession} onLock={lock} />
         )}
       </main>
+      <AppFooter />
     </div>
   );
 }

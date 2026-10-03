@@ -18,7 +18,7 @@ export function StepHeading({ children }: { children: ReactNode }) {
   );
 }
 
-export function Notice({ kind, title, children }: { kind: 'error' | 'info' | 'success'; title?: string; children: ReactNode }) {
+export function Notice({ kind, title, reference, children }: { kind: 'error' | 'info' | 'success'; title?: string; reference?: string | undefined; children: ReactNode }) {
   const heading = title ?? (kind === 'error' && typeof children === 'string' ? noticeTitle(children) : undefined);
   return (
     <div className={`notice notice-${kind}`} role={kind === 'error' ? 'alert' : 'status'}>
@@ -26,6 +26,12 @@ export function Notice({ kind, title, children }: { kind: 'error' | 'info' | 'su
       <div className="notice-body">
         {heading && <p className="notice-title">{heading}</p>}
         {typeof children === 'string' ? <p className="notice-text">{children}</p> : children}
+        {reference && (
+          <details className="notice-details">
+            <summary>{S.save.details}</summary>
+            <code className="mono">{reference}</code>
+          </details>
+        )}
       </div>
     </div>
   );
@@ -81,6 +87,8 @@ export function SecretsEditor(props: {
   onSave: () => void;
   onCancel?: () => void;
   busy?: boolean;
+  /** Extra confirmation shown above Save (create flow: permanence + 18+). Save stays disabled until `ok`. */
+  gate?: { ok: boolean; content: ReactNode; hintId: string };
 }) {
   const { items, onChange } = props;
   const cap = capacity(props.rpId, props.credIds, items);
@@ -93,7 +101,7 @@ export function SecretsEditor(props: {
       className="editor"
       onSubmit={(e) => {
         e.preventDefault();
-        if (cap.fits && nonEmpty) props.onSave();
+        if (cap.fits && nonEmpty && (props.gate?.ok ?? true)) props.onSave();
       }}
       aria-describedby={meterId}
     >
@@ -142,8 +150,13 @@ export function SecretsEditor(props: {
         {cap.remaining >= 0 ? S.editor.space(cap.remaining, cap.max) : S.editor.tooBig(-cap.remaining)}
       </p>
       {!nonEmpty && <p className="hint">{S.editor.needOne}</p>}
+      {props.gate?.content}
       <ActionBar>
-        <button type="submit" disabled={!cap.fits || !nonEmpty || props.busy}>
+        <button
+          type="submit"
+          disabled={!cap.fits || !nonEmpty || props.busy || (props.gate ? !props.gate.ok : false)}
+          {...(props.gate && !props.gate.ok ? { 'aria-describedby': props.gate.hintId } : {})}
+        >
           {S.editor.save}
         </button>
         {props.onCancel && (
@@ -161,4 +174,24 @@ export function cleanItems(items: SecretItem[]): SecretItem[] {
   return items
     .filter((i) => i.secret.trim() !== '' || i.label.trim() !== '')
     .map((i, n) => ({ label: i.label.trim() || `${S.editor.secret} ${n + 1}`, secret: i.secret }));
+}
+
+/** Permanence + age acknowledgement (add-privacy-and-compliance 4.1). Held in component state only: never stored. */
+export function PermanenceAck(props: { permanent: boolean; adult: boolean; onPermanent: (v: boolean) => void; onAdult: (v: boolean) => void; hintId: string }) {
+  return (
+    <fieldset className="ack card">
+      <legend>{S.ack.title}</legend>
+      <label className="check">
+        <input type="checkbox" checked={props.permanent} onChange={(e) => props.onPermanent(e.target.checked)} />
+        <span>{S.ack.permanent}</span>
+      </label>
+      <label className="check">
+        <input type="checkbox" checked={props.adult} onChange={(e) => props.onAdult(e.target.checked)} />
+        <span>{S.ack.adult}</span>
+      </label>
+      <p id={props.hintId} className="hint" aria-live="polite">
+        {props.permanent && !props.adult ? S.ack.adultRequired : !(props.permanent && props.adult) ? S.ack.needBoth : null}
+      </p>
+    </fieldset>
+  );
 }

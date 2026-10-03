@@ -8,6 +8,7 @@ coverage/
 # non-secret local/E2E web configs (localhost endpoints only)
 !apps/web/.env.development
 !apps/web/.env.e2e
+!apps/web/.env.e2e-analytics
 # foundry
 contracts/out/
 contracts/cache/

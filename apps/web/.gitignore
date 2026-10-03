@@ -6,3 +6,4 @@ e2e/contracts/cache/
 node_modules/
 deploy/.build/
 deploy/.test-dist/
+dist-analytics/

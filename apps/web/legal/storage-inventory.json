@@ -1,0 +1,19 @@
+{
+  "$comment": "Device-storage inventory (add-privacy-and-compliance, spec legal-pages 'Device-storage inventory'). Single source for the table on /cookies. Enforced by verify-build (no storage API in any shipped bundle unless listed under 'apis') and by e2e/specs/08-legal.spec.ts (per-route sweep). Audit 2026-10-03: no source file or bundled dependency in the shipped build references document.cookie, localStorage, sessionStorage, indexedDB, caches, serviceWorker, cookieStore or navigator.storage.",
+  "apis": [],
+  "routes": {
+    "/": { "cookies": [], "localStorage": [], "sessionStorage": [], "indexedDB": [], "cacheStorage": [], "serviceWorkers": [] },
+    "/app/": { "cookies": [], "localStorage": [], "sessionStorage": [], "indexedDB": [], "cacheStorage": [], "serviceWorkers": [] },
+    "/privacy": { "cookies": [], "localStorage": [], "sessionStorage": [], "indexedDB": [], "cacheStorage": [], "serviceWorkers": [] },
+    "/terms": { "cookies": [], "localStorage": [], "sessionStorage": [], "indexedDB": [], "cacheStorage": [], "serviceWorkers": [] },
+    "/cookies": { "cookies": [], "localStorage": [], "sessionStorage": [], "indexedDB": [], "cacheStorage": [], "serviceWorkers": [] }
+  },
+  "thirdParty": [
+    {
+      "who": "Cloudflare Web Analytics beacon",
+      "route": "/",
+      "entries": [],
+      "note": "Cloudflare states the beacon uses no cookies or localStorage. It runs only on the landing page, only when enabled, and never when GPC or Do Not Track is on."
+    }
+  ]
+}

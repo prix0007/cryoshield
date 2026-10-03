@@ -403,3 +403,84 @@ dd {
     transform: none;
   }
 }
+
+/* Write-failure reference (improve-write-failure-feedback): collapsed, non-secret, for operators. */
+.notice-details {
+  margin-top: var(--space-xs);
+}
+.notice-details summary {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--target);
+  min-width: var(--target);
+  cursor: pointer;
+  color: var(--app-link);
+}
+.notice-details code {
+  display: block;
+  font-size: var(--caption-size);
+  color: var(--app-ink);
+  word-break: break-word;
+}
+
+/* App footer: legal links (no underline: chrome links, cinematic-landing D6). */
+.app-footer {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: var(--space-lg) var(--space-md) var(--space-xxl);
+  border-top: 1px solid var(--app-hairline);
+}
+.app-footer ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs) var(--space-lg);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.app-footer a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--target);
+  min-width: var(--target);
+  color: var(--app-muted);
+  font-size: var(--caption-size);
+  text-decoration: none;
+  transition: opacity 0.15s ease;
+}
+.app-footer a:hover {
+  opacity: 0.72;
+}
+
+/* Permanence + 18+ acknowledgement (add-privacy-and-compliance 4.1). */
+.ack legend {
+  font-weight: 600;
+  padding: 0 var(--space-xxs);
+}
+.check {
+  display: flex;
+  gap: var(--space-sm);
+  align-items: flex-start;
+  font-weight: 400;
+  margin: var(--space-sm) 0;
+  min-height: var(--target);
+  cursor: pointer;
+}
+.check input {
+  width: 24px;
+  height: 24px;
+  min-height: 0;
+  margin: 2px 0 0;
+  flex: none;
+  accent-color: var(--color-primary);
+}
+/* Testnet + unaudited warning in the app shell (4.3). */
+.testnet-banner {
+  margin: 0 0 var(--space-md);
+  padding: var(--space-sm) var(--space-lg);
+  border: 1px solid var(--app-hairline);
+  border-radius: var(--radius-lg);
+  background: var(--app-surface);
+  font-size: var(--caption-size);
+}

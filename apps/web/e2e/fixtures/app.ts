@@ -10,7 +10,7 @@ export async function rpc(method: string, params: unknown[] = [], url = 'http://
 }
 
 /** Full create flow with keys 0 and 1 and the given secrets. Returns when the "saved" screen shows. */
-export async function createVault(page: Page, keys: VirtualKeys, items: { label: string; secret: string }[]) {
+export async function createVault(page: Page, keys: VirtualKeys, items: { label: string; secret: string }[], opts: { expectSaved?: boolean } = {}) {
   await page.getByRole('button', { name: 'Create a new vault' }).click();
   await page.getByRole('button', { name: 'Get started' }).click();
   await keys.use(0);
@@ -25,8 +25,12 @@ export async function createVault(page: Page, keys: VirtualKeys, items: { label:
     await page.locator(`#label-${i}`).fill(items[i]!.label);
     await page.locator(`#secret-${i}`).fill(items[i]!.secret);
   }
+  // add-privacy-and-compliance 4.1: permanence + 18+ acknowledgement before the first write.
+  await page.getByRole('checkbox', { name: /published permanently/ }).check();
+  await page.getByRole('checkbox', { name: 'I am 18 or over.' }).check();
   await keys.use(0); // key 1 signs
   await page.getByRole('button', { name: 'Save' }).click();
+  if (opts.expectSaved === false) return;
   await expect(page.getByRole('heading', { name: 'Your vault is saved' })).toBeVisible({ timeout: 60_000 });
 }
 

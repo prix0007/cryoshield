@@ -1,0 +1,38 @@
+# Weekly drift check for the integrity-pinned Cloudflare Web Analytics beacon
+# (OpenSpec change add-privacy-preserving-analytics, task 4.7; spec landing-analytics "Drift detected").
+# Read-only: fetches the public beacon.min.js and compares its SHA-384 with apps/web/analytics/beacon.lock.json.
+# It never updates anything; a mismatch fails the run with both hashes and a link to the review procedure.
+
+name: Beacon drift
+
+on:
+  schedule:
+    - cron: '17 6 * * 1' # Mondays 06:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: beacon-drift
+  cancel-in-progress: true
+
+jobs:
+  beacon-drift:
+    name: beacon-drift
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read # checkout only
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+          package-manager-cache: false
+      - name: Compare the live beacon with the committed lock
+        run: node apps/web/scripts/beacon-drift.mjs

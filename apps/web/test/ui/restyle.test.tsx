@@ -1,5 +1,5 @@
 /** redesign-landing-and-app-ui 4.2: restyled screens keep behaviour and add validation/empty states. */
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { SecretsEditor } from '../../src/ui/components';
 import * as ops from '../../src/ui/operations';
@@ -67,6 +67,16 @@ describe('disabled actions', () => {
       expect(b).toBeDisabled();
       expect(b).toHaveProperty('disabled', true);
       expect(b).not.toHaveAttribute('aria-disabled', 'false');
+    }
+  });
+});
+
+describe('app footer (add-privacy-and-compliance 3.2 "Linked everywhere")', () => {
+  it('links to /privacy, /terms and /cookies', () => {
+    renderApp();
+    const footer = screen.getByRole('contentinfo');
+    for (const [name, href] of [['Privacy', '/privacy'], ['Terms', '/terms'], ['Cookies', '/cookies']]) {
+      expect(within(footer).getByRole('link', { name })).toHaveAttribute('href', href);
     }
   });
 });

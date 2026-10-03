@@ -176,3 +176,19 @@ pnpm --filter @cryoshield/web test:deploy   # generator, fly.toml, deploy.sh gua
 
 Both HTML pages must carry the byte-identical meta CSP; `gen-context.mjs` refuses to build the context otherwise.
 The vault does not depend on the path: the RP ID is the domain.
+
+## Landing analytics (Cloudflare Web Analytics)
+
+Set `VITE_CF_BEACON_TOKEN=<32-hex site token>` in `apps/web/.env` before `deploy.sh`. With it, the build adds the
+integrity-pinned beacon to `/` only, and Caddy sends the landing CSP (app CSP + the beacon + `cloudflareinsights.com`)
+and a Permissions-Policy without WebAuthn for `/` and `/index.html` only. Every other path keeps the app CSP. Without
+it, nothing changes. Post-deploy checks:
+
+```sh
+curl -sI https://cryoshield.app/ | grep -iE 'content-security-policy|permissions-policy'      # landing: cloudflareinsights, publickey-credentials-get=()
+curl -sI https://cryoshield.app/app/ | grep -iE 'content-security-policy|permissions-policy'  # app: no cloudflareinsights, publickey-credentials-get=(self)
+curl -s https://cryoshield.app/.well-known/security.txt                                         # RFC 9116, Expires within a year
+```
+
+If the weekly `Beacon drift` workflow fails, analytics is off (fail closed) until the review in
+`apps/web/analytics/README.md` bumps the lock.

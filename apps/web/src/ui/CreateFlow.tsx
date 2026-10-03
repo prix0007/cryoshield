@@ -3,8 +3,8 @@ import { deriveLocator } from '@cryoshield/vault-crypto';
 import { toHex, wipe } from '../lib/bytes';
 import type { SecretItem } from '../vault/payload';
 import { WriteError } from '../account/writes';
-import { cleanItems, KeyPrompt, Notice, SecretsEditor, StepHeading } from './components';
-import { enrollWithPrf, messageFor, mirrorWrite, saveNewVault, type MirrorStatus, type PendingKey, type VaultSession } from './operations';
+import { cleanItems, KeyPrompt, Notice, PermanenceAck, SecretsEditor, StepHeading } from './components';
+import { enrollWithPrf, errorReference, messageFor, mirrorWrite, saveNewVault, type MirrorStatus, type PendingKey, type VaultSession } from './operations';
 import { useServices } from './services';
 import { useAutoLock } from './useAutoLock';
 import { S } from './strings';
@@ -20,10 +20,14 @@ export function CreateFlow(props: { onDone: (s: VaultSession) => void; onCancel:
   const keysRef = useRef<PendingKey[]>([]);
   const [prompt, setPrompt] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [errorRef, setErrorRef] = useState<string | undefined>(undefined);
   const [items, setItems] = useState<SecretItem[]>([{ label: '', secret: '' }]);
   const [session, setSession] = useState<VaultSession | null>(null);
   const [mirror, setMirror] = useState<MirrorStatus>('pending');
   const [busy, setBusy] = useState(false);
+  // Permanence + 18+ acknowledgement: required for every create, kept in memory only (never stored or sent).
+  const [ackPermanent, setAckPermanent] = useState(false);
+  const [ackAdult, setAckAdult] = useState(false);
 
   keysRef.current = keys;
   // Idle wipe: PRF outputs held for an unfinished setup are zeroized after 5 minutes without interaction.
@@ -40,6 +44,7 @@ export function CreateFlow(props: { onDone: (s: VaultSession) => void; onCancel:
   async function addKey() {
     const n = keys.length + 1;
     setError(null);
+    setErrorRef(undefined);
     setBusy(true);
     setPrompt(S.create.insertKey(n));
     try {
@@ -55,6 +60,7 @@ export function CreateFlow(props: { onDone: (s: VaultSession) => void; onCancel:
 
   async function save() {
     setError(null);
+    setErrorRef(undefined);
     setBusy(true);
     setStep('saving');
     setPrompt(S.save.waitingForKey);
@@ -77,7 +83,8 @@ export function CreateFlow(props: { onDone: (s: VaultSession) => void; onCancel:
       void mirrorWrite(svc, { vaultId: s.vaultId, version: s.version, blob: s.blob, locators }).then(setMirror);
     } catch (e) {
       setPrompt(null);
-      setError(messageFor(e));
+      setError(messageFor(e, 'create'));
+      setErrorRef(errorReference(e));
       if (e instanceof WriteError && e.code === 'LOCATOR_FULL' && e.detail.locator) {
         // That key's locator is full (possibly front-run): drop it so the user sets it up again as a fresh
         // credential (new PRF output -> new locator). The other keys stay set up.
@@ -101,7 +108,11 @@ export function CreateFlow(props: { onDone: (s: VaultSession) => void; onCancel:
   return (
     <section aria-labelledby="create-title" className="step">
       <h1 id="create-title">{S.create.title}</h1>
-      {error && <Notice kind="error">{error}</Notice>}
+      {error && (
+        <Notice kind="error" reference={errorRef}>
+          {error}
+        </Notice>
+      )}
       {prompt && <KeyPrompt text={prompt} />}
 
       {step === 'intro' && (
@@ -157,7 +168,19 @@ export function CreateFlow(props: { onDone: (s: VaultSession) => void; onCancel:
       {step === 'secrets' && (
         <div>
           <StepHeading>{S.create.secretsTitle}</StepHeading>
-          <SecretsEditor rpId={svc.rpId} credIds={keys.map((k) => k.credId)} items={items} onChange={setItems} onSave={save} busy={busy} />
+          <SecretsEditor
+            rpId={svc.rpId}
+            credIds={keys.map((k) => k.credId)}
+            items={items}
+            onChange={setItems}
+            onSave={save}
+            busy={busy}
+            gate={{
+              ok: ackPermanent && ackAdult,
+              hintId: 'ack-hint',
+              content: <PermanenceAck permanent={ackPermanent} adult={ackAdult} onPermanent={setAckPermanent} onAdult={setAckAdult} hintId="ack-hint" />,
+            }}
+          />
         </div>
       )}
 

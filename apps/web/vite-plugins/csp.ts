@@ -4,17 +4,23 @@
  * and also as a Netlify/Cloudflare-style `_headers` file for hosts that support it
  * (frame-ancestors only works as a real header).
  */
-import { SECURITY_HEADERS } from './security-headers.ts';
+import { LANDING_PERMISSIONS_POLICY, SECURITY_HEADERS } from './security-headers.ts';
 
-export function buildCsp(connectOrigins: readonly string[]): string {
+/** Extra sources allowed only on the landing document (add-privacy-preserving-analytics D3). */
+export interface CspExtras {
+  script?: readonly string[];
+  connect?: readonly string[];
+}
+
+export function buildCsp(connectOrigins: readonly string[], extras: CspExtras = {}): string {
   return [
     "default-src 'none'",
-    "script-src 'self'",
+    ['script-src', "'self'", ...(extras.script ?? [])].join(' '),
     "style-src 'self'",
     "img-src 'self' data:",
     "font-src 'self'",
     "manifest-src 'self'",
-    `connect-src 'self' ${connectOrigins.join(' ')}`,
+    `connect-src 'self' ${[...connectOrigins, ...(extras.connect ?? [])].join(' ')}`,
     "base-uri 'none'",
     "form-action 'none'",
     "object-src 'none'",
@@ -23,25 +29,33 @@ export function buildCsp(connectOrigins: readonly string[]): string {
   ].join('; ');
 }
 
-export function injectCsp(html: string, connectOrigins: readonly string[]): string {
+export function injectCsp(html: string, connectOrigins: readonly string[], extras: CspExtras = {}): string {
   if (/<script(?![^>]*\bsrc=)[^>]*>/i.test(html)) {
     throw new Error('index.html contains an inline <script>; the CSP forbids inline scripts');
   }
   if (/\sstyle=|<style[\s>]/i.test(html)) {
     throw new Error('index.html contains inline styles; the CSP forbids them');
   }
-  const meta = `<meta http-equiv="Content-Security-Policy" content="${buildCsp(connectOrigins)}">`;
+  const meta = `<meta http-equiv="Content-Security-Policy" content="${buildCsp(connectOrigins, extras)}">`;
   if (!/<head>/i.test(html)) throw new Error('index.html has no <head>');
   // Keep <meta charset> first; the CSP meta must precede every script and stylesheet.
   if (/<meta charset="utf-8"\s*\/?>/i.test(html)) return html.replace(/(<meta charset="utf-8"\s*\/?>)/i, `$1${meta}`);
   return html.replace(/<head>/i, `<head>${meta}`);
 }
 
-export function headersFile(connectOrigins: readonly string[]): string {
+export function headersFile(connectOrigins: readonly string[], landing: CspExtras = {}): string {
+  const block = (path: string, csp: string, pp: string) => [
+    path,
+    `  Content-Security-Policy: ${csp}; frame-ancestors 'none'`,
+    ...Object.entries({ ...SECURITY_HEADERS, 'Permissions-Policy': pp }).map(([k, v]) => `  ${k}: ${v}`),
+  ];
+  const app = buildCsp(connectOrigins);
+  const land = buildCsp(connectOrigins, landing);
   return [
-    '/*',
-    `  Content-Security-Policy: ${buildCsp(connectOrigins)}; frame-ancestors 'none'`,
-    ...Object.entries(SECURITY_HEADERS).map(([k, v]) => `  ${k}: ${v}`),
+    ...block('/*', app, SECURITY_HEADERS['Permissions-Policy']!),
+    // The landing document: analytics sources (if any) and no WebAuthn (add-privacy-preserving-analytics D3/D4).
+    ...block('/', land, LANDING_PERMISSIONS_POLICY),
+    ...block('/index.html', land, LANDING_PERMISSIONS_POLICY),
     '',
   ].join('\n');
 }

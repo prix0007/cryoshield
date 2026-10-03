@@ -12,7 +12,11 @@ async function audit(page: Page, screen: string) {
   const small = await page.evaluate(() =>
     [...document.querySelectorAll('button, input, textarea, summary, a[href]')]
       .filter((el) => (el as HTMLElement).offsetParent !== null && !el.closest('p') && !el.classList.contains('skip-link'))
-      .map((el) => ({ el: el.outerHTML.slice(0, 80), r: el.getBoundingClientRect() }))
+      .map((el) => {
+        // A checkbox wrapped in its <label> is activated by the whole label: that is its target.
+        const label = (el as HTMLInputElement).type === 'checkbox' ? el.closest('label') : null;
+        return { el: el.outerHTML.slice(0, 80), r: (label ?? el).getBoundingClientRect() };
+      })
       .filter(({ r }) => r.width < 44 || r.height < 44)
       .map(({ el }) => el),
   );
@@ -57,6 +61,18 @@ test('keyboard-only create and unlock; every screen passes axe', async ({ page }
   await page.keyboard.press('Tab');
   await page.keyboard.type('abandon art');
   await audit(page, 'create/secrets');
+  // Keyboard-only acknowledgement: Tab to each checkbox and press Space.
+  for (const label of ['published permanently', 'I am 18 or over.']) {
+    for (let i = 0; i < 20; i++) {
+      await page.keyboard.press('Tab');
+      const hit = await page.evaluate((l) => {
+        const el = document.activeElement as HTMLInputElement | null;
+        return el?.type === 'checkbox' && !!el.closest('label')?.textContent?.includes(l);
+      }, label);
+      if (hit) break;
+    }
+    await page.keyboard.press('Space');
+  }
   await keys.use(0);
   await press('Save');
   await expect(page.getByRole('heading', { name: 'Your vault is saved' })).toBeFocused({ timeout: 60_000 });
@@ -108,7 +124,7 @@ test('the floating action bar never hides the focused field (WCAG 2.4.11), on a 
       const r = el.getBoundingClientRect();
       const b = bar.getBoundingClientRect();
       const header = document.querySelector('.site-header')!.getBoundingClientRect();
-      return r.bottom > b.top + 1 || r.top < header.bottom - 1 ? `${el.id || el.textContent} [${r.top},${r.bottom}] bar ${b.top}` : null;
+      return (r.bottom > b.top + 1 && r.top < b.bottom - 1) || r.top < header.bottom - 1 ? `${el.id || el.textContent} [${r.top},${r.bottom}] bar ${b.top}` : null;
     });
     expect(hidden).toBeNull();
     await page.keyboard.press('Tab');

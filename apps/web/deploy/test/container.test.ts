@@ -3,12 +3,12 @@
  * add-fly-hosting 2.1/2.2: build the real image from a production-mode build and assert what it serves.
  * Requires Docker. Uses a production build for host cryoshield.app against the local chain record (31337).
  */
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { request } from 'node:http';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { SECURITY_HEADERS } from '../../vite-plugins/security-headers';
+import { LANDING_PERMISSIONS_POLICY, SECURITY_HEADERS } from '../../vite-plugins/security-headers';
 
 const web = join(__dirname, '..', '..');
 const IMAGE = 'cryoshield-web:test';
@@ -24,6 +24,8 @@ const ENV = {
   VITE_ARWEAVE_GATEWAY_URL: 'https://arweave.net',
   VITE_RP_ID: 'cryoshield.app',
   VITE_RP_NAME: 'CryoShield',
+  // Landing analytics on (add-privacy-preserving-analytics 4.4): per-route CSP and Permissions-Policy.
+  VITE_CF_BEACON_TOKEN: 'ab'.repeat(16),
 };
 const sh = (cmd: string, args: string[], opts: object = {}) => execFileSync(cmd, args, { cwd: web, encoding: 'utf8', stdio: 'pipe', ...opts });
 
@@ -77,9 +79,40 @@ describe('served by the container', () => {
     const r = await get('/');
     expect(r.status).toBe(200);
     expect(r.headers['content-security-policy']).toBe(`${metaCsp(r.body)}; frame-ancestors 'none'`);
-    for (const [k, v] of Object.entries(SECURITY_HEADERS)) expect(r.headers[k.toLowerCase()], k).toBe(v);
+    for (const [k, v] of Object.entries({ ...SECURITY_HEADERS, 'Permissions-Policy': LANDING_PERMISSIONS_POLICY })) expect(r.headers[k.toLowerCase()], k).toBe(v);
     expect(r.headers['server']).toBeUndefined();
     expect(r.headers['cache-control']).toBe('no-cache');
+  });
+
+  it.each(['/', '/index.html'])('%s gets the landing CSP (+ analytics sources only) and a Permissions-Policy without WebAuthn (analytics 4.4)', async (p) => {
+    const r = await get(p);
+    const csp = r.headers['content-security-policy'] as string;
+    expect(csp).toBe(`${metaCsp(r.body)}; frame-ancestors 'none'`);
+    expect(csp).toContain('https://cloudflareinsights.com');
+    expect(csp).toContain("script-src 'self' https://static.cloudflareinsights.com/beacon.min.js;");
+    expect(r.headers['permissions-policy']).toContain('publickey-credentials-get=()');
+    expect(r.headers['permissions-policy']).toContain('publickey-credentials-create=()');
+    expect(r.body).toContain('<template id="cf-beacon" data-host="cryoshield.app">');
+  });
+
+  it.each(['/app', '/app/', '/app/index.html', '/privacy', '/terms', '/cookies', '//', '/App/', '/%2F', '/nope', '/app/nope'])(
+    '%s gets the app CSP with no Cloudflare origin (analytics 4.4)',
+    async (p) => {
+      const app = await get('/app/');
+      const r = await get(p);
+      expect(r.headers['content-security-policy'], p).toBe(app.headers['content-security-policy']);
+      expect(r.headers['content-security-policy'], p).not.toMatch(/cloudflareinsights/);
+    },
+  );
+
+  it.each(['/app/', '/app/index.html', '/privacy', '/nope'])('%s allows WebAuthn for self', async (p) => {
+    expect((await get(p)).headers['permissions-policy']).toBe(SECURITY_HEADERS['Permissions-Policy']);
+  });
+
+  it('// serves the landing document, so it gets no WebAuthn too (and the app CSP: no beacon can load there)', async () => {
+    const r = await get('//');
+    expect(r.headers['permissions-policy']).toBe(LANDING_PERMISSIONS_POLICY);
+    expect(r.headers['content-security-policy']).not.toMatch(/cloudflareinsights/);
   });
 
   it('/index.html is no-cache; hashed assets are immutable', async () => {
@@ -101,14 +134,15 @@ describe('served by the container', () => {
     expect(r.headers['server']).toBeUndefined();
   });
 
-  it('/app/ serves the vault app with every header, the same CSP as /, and no-cache (redesign-landing-and-app-ui 2.4)', async () => {
+  it('/app/ serves the vault app with every header, its own app CSP (not the landing one), and no-cache (2.4, analytics 4.4)', async () => {
     const landing = await get('/');
     const app = await get('/app/');
     expect(app.status).toBe(200);
     expect(app.body).toContain('<div id="root">');
     expect(landing.body).toContain('Backups that outlive the drive.');
     expect(app.headers['content-security-policy']).toBe(`${metaCsp(app.body)}; frame-ancestors 'none'`);
-    expect(app.headers['content-security-policy']).toBe(landing.headers['content-security-policy']);
+    expect(app.headers['content-security-policy']).not.toBe(landing.headers['content-security-policy']);
+    expect(app.body).not.toMatch(/cloudflareinsights|cf-beacon/);
     for (const [k, v] of Object.entries(SECURITY_HEADERS)) expect(app.headers[k.toLowerCase()], k).toBe(v);
     expect(app.headers['server']).toBeUndefined();
     expect(app.headers['cache-control']).toBe('no-cache');
@@ -130,6 +164,54 @@ describe('served by the container', () => {
     const r = await get(p);
     expect(r.status).toBe(404);
     expect(r.headers['content-security-policy']).toMatch(/frame-ancestors 'none'$/);
+  });
+
+  it.each(['/privacy', '/terms', '/cookies'])('%s serves its legal page with the app CSP, all headers, no-cache (add-privacy-and-compliance 3.2)', async (p) => {
+    const app = await get('/app/');
+    const r = await get(p);
+    expect(r.status).toBe(200);
+    expect(r.body).toContain('Draft, pending legal review');
+    expect(r.body).not.toMatch(/<script/i);
+    expect(r.headers['content-security-policy']).toBe(`${metaCsp(r.body)}; frame-ancestors 'none'`);
+    expect(r.headers['content-security-policy']).toBe(app.headers['content-security-policy']);
+    for (const [k, v] of Object.entries(SECURITY_HEADERS)) expect(r.headers[k.toLowerCase()], k).toBe(v);
+    expect(r.headers['cache-control']).toBe('no-cache');
+    expect((await get(`${p}/`)).status).toBe(200);
+  });
+
+  it.each(['/privacyx', '/privacy/x', '/Privacy'])('%s is 404 (exact legal paths only)', async (p) => {
+    expect((await get(p)).status).toBe(404);
+  });
+
+  it('/.well-known/security.txt is served as text with the canonical line (add-privacy-and-compliance 5.1)', async () => {
+    const r = await get('/.well-known/security.txt');
+    expect(r.status).toBe(200);
+    expect(r.headers['content-type']).toBe('text/plain; charset=utf-8');
+    expect(r.body).toContain('Canonical: https://cryoshield.app/.well-known/security.txt');
+    expect(r.headers['x-frame-options']).toBe('DENY');
+  });
+
+  it('logs nothing identifying: 100 requests with distinct IPs, UAs and query strings leave no trace (6.1)', async () => {
+    const markers: string[] = [];
+    for (let i = 0; i < 100; i++) {
+      const ip = `203.0.113.${i + 1}`;
+      const ua = `cs-ua-marker-${i}-${process.pid}`;
+      const q = `qmark${i}x${process.pid}`;
+      markers.push(ip, ua, q);
+      await new Promise<void>((resolve, reject) => {
+        const req = request({ host: '127.0.0.1', port: PORT, path: `/${i % 2 ? 'app/' : ''}?ref=${q}`, headers: { host: 'cryoshield.app', 'fly-client-ip': ip, 'x-forwarded-for': ip, 'user-agent': ua, referer: `https://ref.example/${q}` } }, (res) => {
+          res.resume();
+          res.on('end', () => resolve());
+        });
+        req.on('error', reject);
+        req.end();
+      });
+    }
+    const out = spawnSync('docker', ['logs', NAME], { encoding: 'utf8' });
+    const logs = `${out.stdout}${out.stderr}`; // Caddy logs to stderr
+    expect(logs.length, 'container output was captured').toBeGreaterThan(0);
+    for (const m of markers) expect(logs.includes(m), m).toBe(false);
+    expect(readFileSync(join(web, 'deploy', '.build', 'Caddyfile'), 'utf8')).not.toMatch(/^\s*log\b/m);
   });
 
   it('/healthz is 200', async () => {
