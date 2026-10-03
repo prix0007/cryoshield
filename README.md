@@ -94,7 +94,7 @@ The gate scripts live in `.github/scripts` and are tested with `npm ci --ignore-
 
 ## Contributing / PR workflow
 
-`main` is protected by the ruleset in `.github/rulesets/main.json`. Every change, including the maintainer's, goes through a pull request.
+`main` is protected by the ruleset in `.github/rulesets/main.json`. Every change, including the maintainer's, goes through a pull request. The step-by-step flow for agents and humans is in [`CLAUDE.md`](CLAUDE.md) → "Change flow (one PR per change)".
 
 1. **OpenSpec first.** Propose a change under `openspec/changes/<name>/` before writing code (see above).
    - A PR that touches code or CI configuration (`apps/`, `packages/`, `contracts/src/`, `tools/recover/src/`, `.github/`, `scripts/`, `.gitleaks.toml`, the root workspace manifests or `contracts/foundry.toml`) must also add or modify something under `openspec/changes/`, archiving included.
@@ -104,10 +104,20 @@ The gate scripts live in `.github/scripts` and are tested with `npm ci --ignore-
 3. **PR title** in Conventional Commits form, `type(scope)!: subject`, for example `fix(recover): handle empty log page`. It becomes the commit on `main`.
 4. **Fill in the PR template:**
    - the OpenSpec change;
-   - the tests you ran;
+   - the tasks covered;
+   - verification (the tests you ran);
    - a security-review link, or N/A;
    - screenshots for UI changes.
-5. **Merge rules:**
+5. **Automatic ECC review** (`.github/workflows/ecc-review.yml`):
+   - every push to a same-repo, non-draft PR gets one review from the ECC reviewer agents chosen by path;
+   - it posts *request changes* on CRITICAL/HIGH findings, *comment* otherwise;
+   - push fixes to re-run it, or, as the owner, comment `/ecc-review`;
+   - fork PRs are refused;
+   - it needs the repo secret `CLAUDE_CODE_OAUTH_TOKEN` (from `claude setup-token`) or `ANTHROPIC_API_KEY`.
+6. **Auto-merge** (`.github/workflows/auto-merge.yml`):
+   - every same-repo, non-draft PR squash-merges by itself once all required checks pass;
+   - the `hold` label is the owner's veto.
+7. **Merge rules:**
    - `ci-ok` must be green and up to date with `main`;
    - all conversations must be resolved;
    - squash merge only, so history stays linear;
@@ -128,7 +138,10 @@ The script syncs:
 - the `main` ruleset;
 - the repository merge settings in `.github/rulesets/repo-settings.json` (squash only, PR title as the commit title, delete the branch on merge);
 - the Actions workflow permissions in `.github/rulesets/actions-permissions.json` (read-only default token; Actions may not approve PRs);
-- the `no-spec` label.
+- the `no-spec` and `hold` labels;
+- auto-merge, enabled in the repository settings.
+
+`ecc-review` is **not** a required check by default. After the founder adds the `CLAUDE_CODE_OAUTH_TOKEN` (or `ANTHROPIC_API_KEY`) repo secret and an ECC review has succeeded on a PR, run `.github/rulesets/apply.sh --with-ecc-review --apply`. Keep passing `--with-ecc-review` from then on: without it, `--apply` refuses to drop the requirement.
 
 To change protection, edit those files in a PR and re-run the script after it merges.
 
