@@ -28,6 +28,17 @@ export default tseslint.config(
         { name: 'indexedDB', message: 'No browser storage: secrets live in memory only' },
       ],
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
+      // app-motion-ux D1: LazyMotion + `m` only, so the full `motion` component (all features) never enters /app.
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            { name: 'motion/react', importNames: ['motion'], message: 'Use `m` from motion/react-m inside <LazyMotion> (bundle budget).' },
+            { name: 'framer-motion', message: 'Use the pinned `motion` package (motion/react + motion/react-m).' },
+          ],
+          patterns: [{ group: ['framer-motion/*'], message: 'Use the pinned `motion` package.' }],
+        },
+      ],
     },
   },
   {

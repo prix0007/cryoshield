@@ -171,6 +171,7 @@ console.log(`ok   [${label}] security.txt valid (Expires within 365 days)`);
 if (!readFileSync(join(dist, '_headers'), 'utf8').includes("frame-ancestors 'none'")) fail('_headers lacks frame-ancestors');
 console.log(`ok   [${label}] strict CSP in ${pages.length} pages (app CSP everywhere but the landing document) and _headers`);
 landingBudget(label);
+appBudget(label);
 return { js, html };
 }
 
@@ -196,10 +197,10 @@ function graphOf(htmlRel) {
   return [...seen];
 }
 
-function landingBudget(label) {
-  const html = readFileSync(join(dist, 'index.html'), 'utf8');
+/** A page's JS split into the initial graph (entries + static imports) and lazily imported chunks. */
+function splitGraph(htmlRel) {
+  const html = readFileSync(join(dist, htmlRel), 'utf8');
   const entries = [...html.matchAll(/<(?:script|link rel="modulepreload")[^>]*\b(?:src|href)="\/([^"]+\.js)"/g)].map((m) => m[1]);
-  const gz = (f) => gzipSync(readFileSync(join(dist, f)), { level: 9 }).length;
   const edges = (f) => {
     const code = readFileSync(join(dist, f), 'utf8');
     const dir = f.slice(0, f.lastIndexOf('/') + 1);
@@ -219,6 +220,27 @@ function landingBudget(label) {
   };
   entries.forEach((e) => walk(e, initial));
   for (const f of initial) lazy.delete(f);
+  return { initial, lazy };
+}
+const gz = (f) => gzipSync(readFileSync(join(dist, f)), { level: 9 }).length;
+
+/**
+ * /app initial JS budget (app-motion-ux, guardrail c): Motion for React may add at most 20 KB gzip to the vault app's
+ * initial JS. Baseline measured on origin/main 32ae235 (pre-motion) in both e2e and production modes.
+ */
+const APP_BASELINE = 194_690;
+const APP_ALLOWANCE = 20 * KB;
+function appBudget(label) {
+  const { initial } = splitGraph(join('app', 'index.html'));
+  const bytes = [...initial].reduce((n, f) => n + gz(f), 0);
+  const delta = bytes - APP_BASELINE;
+  console.log(`info [${label}] /app initial JS gzip: ${bytes} B (baseline ${APP_BASELINE} B, ${delta >= 0 ? '+' : ''}${delta} B; allowance +${APP_ALLOWANCE} B)`);
+  if (bytes > APP_BASELINE + APP_ALLOWANCE) fail(`[${label}] /app initial JS ${bytes} B exceeds baseline + 20 KB (${APP_BASELINE + APP_ALLOWANCE} B)`);
+  console.log(`ok   [${label}] /app initial JS within budget`);
+}
+
+function landingBudget(label) {
+  const { initial, lazy } = splitGraph('index.html');
   const sum = (set) => [...set].reduce((n, f) => n + gz(f), 0);
   const initialBytes = sum(initial);
   const totalBytes = initialBytes + sum(lazy);
