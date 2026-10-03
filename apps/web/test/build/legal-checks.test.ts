@@ -1,20 +1,23 @@
 // @vitest-environment node
-/** add-privacy-and-compliance 3.3 (draft banner vs placeholders) and 3.5 (effective date changes with content). */
+/** adopt-oss-project-defaults 1.1 (no placeholders/mailboxes) and add-privacy-and-compliance 3.5 (effective date). */
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { checkLegalDraft, unlistedStorageApis } from '../../scripts/legal-check.mjs';
+import { checkNoPlaceholders, unlistedStorageApis } from '../../scripts/legal-check.mjs';
 import { readFileSync } from 'node:fs';
 
-describe('draft banner guard (3.3)', () => {
-  it('fails a page that still has a placeholder but no banner, naming page and token', () => {
-    expect(checkLegalDraft('<main><p>Operated by [ENTITY].</p></main>', 'privacy/index.html')).toEqual(['privacy/index.html: placeholder [ENTITY] without the "Draft, pending legal review" banner']);
+describe('no placeholders or project mailboxes in shipped files (adopt-oss-project-defaults 1.1)', () => {
+  it('fails on any bracketed ALL-CAPS placeholder or @cryoshield.app address, naming file and token', () => {
+    expect(checkNoPlaceholders('<p>Operated by [ENTITY], [REGISTERED ADDRESS].</p>', 'privacy/index.html')).toEqual([
+      'privacy/index.html: placeholder [ENTITY]',
+      'privacy/index.html: placeholder [REGISTERED ADDRESS]',
+    ]);
+    expect(checkNoPlaceholders('Contact: mailto:security@cryoshield.app', '.well-known/security.txt')).toEqual(['.well-known/security.txt: address security@cryoshield.app']);
   });
-  it('passes with the banner, or with no placeholders at all', () => {
-    expect(checkLegalDraft('<p class="draft-banner">Draft, pending legal review.</p><p>[CONTACT EMAIL]</p>', 'x')).toEqual([]);
-    expect(checkLegalDraft('<p>Operated by Example Pvt Ltd.</p>', 'x')).toEqual([]);
+  it('passes normal prose, links and code', () => {
+    expect(checkNoPlaceholders('<p>See [our docs](https://x) and <code>[a]</code>, the 18+ rule, [1] and [Note].</p>', 'x')).toEqual([]);
   });
 });
 
@@ -58,6 +61,12 @@ describe('effective date changes with content (3.5)', () => {
     r.write({ 'privacy.md': doc('2026-11-01', 'new text') });
     expect(run(r.d, r.base).ok).toBe(true);
   });
+  it('accepts a same-day revision marker as a date change (adopt-oss-project-defaults)', () => {
+    const r = repo({ 'privacy.md': doc('2026-10-03', 'old') });
+    r.write({ 'privacy.md': doc('2026-10-03 (revision 2)', 'new text') });
+    expect(run(r.d, r.base).ok).toBe(true);
+  });
+
   it('fails a new or edited page that has no effective date line', () => {
     const r = repo({ 'privacy.md': doc('2026-10-03', 'old') });
     r.write({ 'cookies.md': '# Cookies\n\nNo date.\n' });

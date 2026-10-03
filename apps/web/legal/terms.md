@@ -1,6 +1,8 @@
 # Terms of service
 
-**Effective date:** 2026-10-03
+**Effective date:** 2026-10-03 (revision 2)
+
+<!--legal-note-->
 
 > **In short.** CryoShield is a free, open-source **testnet preview** that has **not been independently audited**.
 > It never holds your secrets or keys. If you lose every enrolled key, nobody can open your vault. What you save is
@@ -8,8 +10,9 @@
 
 ## Who we are
 
-These terms are an agreement between you and [ENTITY], [REGISTERED ADDRESS] ("CryoShield", "we"), for the website at
-`cryoshield.app`. Contact: [CONTACT EMAIL].
+These terms apply to your use of the website at `cryoshield.app`, run by CryoShield, an open-source project maintained by its contributors (github.com/prix0007/cryoshield) ("CryoShield", "we"). There is no company
+behind it. Questions: open an issue in the [repository](https://github.com/prix0007/cryoshield); security reports go through
+[private vulnerability reporting](https://github.com/prix0007/cryoshield/security/advisories/new).
 
 ## Testnet and unaudited
 
@@ -64,22 +67,29 @@ our control.
 
 ## Disclaimers
 
-CryoShield is provided **"as is" and "as available"**, without warranties of any kind, to the extent the law allows.
+The CryoShield software is licensed under the MIT license, and the hosted site is provided on the same terms. As the
+license says: THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT
+LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. This applies to the
+website as well, to the extent the law allows.
 
 ## Limitation of liability
 
-To the extent the law allows, our total liability to you is limited to the greater of INR 1 and the fees you paid us
-(currently zero). Nothing in these terms limits liability that cannot be limited by law, or your rights as a consumer
-under mandatory law where you live.
+As the license says: IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE
+OR THE USE OR OTHER DEALINGS IN THE SOFTWARE. The same applies to your use of this website, to the extent the law
+allows. Nothing here limits liability that cannot be limited by law, or your rights as a consumer under mandatory law
+where you live.
 
 ## Governing law
 
-These terms are governed by the laws of India. The courts of the city of our registered office have jurisdiction,
-except where mandatory consumer law gives you the right to bring a claim where you live.
+These terms are governed by the laws of India, where the project maintainer is based, without depriving you of the
+protection of mandatory consumer law where you live.
 
 ## Changes
 
 We will post changes here and update the effective date. The full history is public in our
 [source repository](https://github.com/prix0007/cryoshield/commits/main/apps/web/legal/terms.md).
 
-- 2026-10-03: first draft, pending legal review.
+- 2026-10-03 (revision 2): CryoShield is an open-source project: operator and GitHub contact filled in; the
+  disclaimer and liability clauses now mirror the MIT license.
+- 2026-10-03: first draft.

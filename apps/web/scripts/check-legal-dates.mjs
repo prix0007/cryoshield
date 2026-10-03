@@ -10,7 +10,8 @@ const i = process.argv.indexOf('--base');
 const base = i > 0 ? process.argv[i + 1] : 'origin/main';
 const git = (...a) => execFileSync('git', a, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
 const DIR = 'apps/web/legal';
-const dateOf = (text) => text.match(/^\*\*Effective date:\*\*\s*(\d{4}-\d{2}-\d{2})\s*$/m)?.[1];
+// "YYYY-MM-DD", optionally "YYYY-MM-DD (revision N)" for a second change on the same day.
+const dateOf = (text) => text.match(/^\*\*Effective date:\*\*\s*(\d{4}-\d{2}-\d{2}(?: \(revision \d+\))?)\s*$/m)?.[1];
 
 const changed = git('diff', '--name-only', `${base}...HEAD`, '--', DIR)
   .split('\n')

@@ -170,7 +170,8 @@ describe('served by the container', () => {
     const app = await get('/app/');
     const r = await get(p);
     expect(r.status).toBe(200);
-    expect(r.body).toContain('Draft, pending legal review');
+    expect(r.body).toContain('Written for an open-source project; not legal advice.');
+    expect(r.body).not.toMatch(/Draft, pending legal review|@cryoshield\.app/);
     expect(r.body).not.toMatch(/<script/i);
     expect(r.headers['content-security-policy']).toBe(`${metaCsp(r.body)}; frame-ancestors 'none'`);
     expect(r.headers['content-security-policy']).toBe(app.headers['content-security-policy']);
@@ -188,6 +189,8 @@ describe('served by the container', () => {
     expect(r.status).toBe(200);
     expect(r.headers['content-type']).toBe('text/plain; charset=utf-8');
     expect(r.body).toContain('Canonical: https://cryoshield.app/.well-known/security.txt');
+    expect(r.body).toContain('Contact: https://github.com/prix0007/cryoshield/security/advisories/new');
+    expect(r.body).not.toMatch(/mailto:/);
     expect(r.headers['x-frame-options']).toBe('DENY');
   });
 

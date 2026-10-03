@@ -1,10 +1,12 @@
-/** add-privacy-and-compliance 3.3: a legal page may keep placeholders only while it shows the draft banner. */
-export const PLACEHOLDERS = ['[ENTITY]', '[REGISTERED ADDRESS]', '[GRIEVANCE OFFICER]', '[CONTACT EMAIL]'];
-export const DRAFT_BANNER = 'Draft, pending legal review';
-
-export function checkLegalDraft(html, name) {
-  if (html.includes(DRAFT_BANNER)) return [];
-  return PLACEHOLDERS.filter((p) => html.includes(p)).map((p) => `${name}: placeholder ${p} without the "${DRAFT_BANNER}" banner`);
+/**
+ * adopt-oss-project-defaults D3: no shipped file may contain a bracketed ALL-CAPS placeholder (e.g. [ENTITY],
+ * [CONTACT EMAIL]) or an @cryoshield.app address (no project mailbox exists; contact is GitHub only).
+ */
+export function checkNoPlaceholders(text, name) {
+  const out = [];
+  for (const m of new Set(text.match(/\[[A-Z][A-Z ]{2,}\]/g) ?? [])) out.push(`${name}: placeholder ${m}`);
+  for (const m of new Set(text.match(/[A-Za-z0-9._%+-]+@cryoshield\.app/g) ?? [])) out.push(`${name}: address ${m}`);
+  return out;
 }
 
 /** Storage APIs referenced by shipped JS that the device-storage inventory (legal/storage-inventory.json) omits. */

@@ -20,7 +20,7 @@ import { readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { gzipSync } from 'node:zlib';
 import { checkOrigins } from './origins-check.mjs';
-import { checkLegalDraft, unlistedStorageApis } from './legal-check.mjs';
+import { checkNoPlaceholders, unlistedStorageApis } from './legal-check.mjs';
 import { checkSecurityTxt } from './securitytxt-check.mjs';
 import { analyticsLeaks, landingCspDiff, policyDrift } from './analytics-check.mjs';
 
@@ -151,13 +151,13 @@ if (analyticsOn) {
 }
 console.log(`ok   [${label}] analytics confined to the landing document${analyticsOn ? ' (beacon pinned to the lock; disclosed on /privacy and /cookies)' : ' (no beacon in this build)'}`);
 const html = pages.map((f) => readFileSync(f, 'utf8')).join('\n');
-// add-privacy-and-compliance 3.2/3.3: the legal pages exist, and keep placeholders only under the draft banner.
+// add-privacy-and-compliance 3.2: the legal pages exist.
 for (const p of ['privacy', 'terms', 'cookies']) {
-  const f = join(dist, p, 'index.html');
-  if (!all.includes(f)) fail(`[${label}] missing legal page ${p}/index.html`);
-  const errs = checkLegalDraft(readFileSync(f, 'utf8'), `${p}/index.html`);
-  if (errs.length) fail(`[${label}] ${errs.join('; ')}`);
+  if (!all.includes(join(dist, p, 'index.html'))) fail(`[${label}] missing legal page ${p}/index.html`);
 }
+// adopt-oss-project-defaults D3: no placeholder token and no @cryoshield.app address in any shipped HTML/text file.
+const leftovers = all.filter((f) => /\.(html|txt)$/.test(f)).flatMap((f) => checkNoPlaceholders(readFileSync(f, 'utf8'), relative(dist, f)));
+if (leftovers.length) fail(`[${label}] ${leftovers.join('; ')}`);
 // Device-storage inventory (spec legal-pages): no shipped bundle may reference a storage API not listed.
 const unlisted = unlistedStorageApis(js, storageInventory);
 if (unlisted.length) fail(`[${label}] bundle uses ${unlisted.join(', ')}, which legal/storage-inventory.json (the /cookies table) does not list`);

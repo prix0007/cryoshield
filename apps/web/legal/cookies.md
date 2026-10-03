@@ -1,6 +1,8 @@
 # Cookie policy
 
-**Effective date:** 2026-10-03
+**Effective date:** 2026-10-03 (revision 2)
+
+<!--legal-note-->
 
 > **In short.** CryoShield sets no cookies. No page stores anything on your device. The only analytics is a
 > cookieless Cloudflare beacon on the home page, which is off if your browser sends Global Privacy Control or Do Not
@@ -43,12 +45,13 @@ pixels, or any analytics in the vault app. Any change will update the effective 
 
 ## Contact
 
-Questions about this policy: [CONTACT EMAIL]. See also our [privacy policy](/privacy) and
-[terms of service](/terms).
+Questions about this policy: open an issue in the [repository](https://github.com/prix0007/cryoshield) (there is no email address). See also our
+[privacy policy](/privacy) and [terms of service](/terms).
 
 ## Changes
 
 The full history is public in our
 [source repository](https://github.com/prix0007/cryoshield/commits/main/apps/web/legal/cookies.md).
 
-- 2026-10-03: first draft, pending legal review.
+- 2026-10-03 (revision 2): contact via GitHub (open-source project; no email address).
+- 2026-10-03: first draft.

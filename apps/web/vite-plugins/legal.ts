@@ -2,13 +2,14 @@
  * Legal pages (add-privacy-and-compliance D6, task 3.1/3.2): the source text lives in apps/web/legal/*.md (public
  * history); at build time it is rendered into static HTML shells (privacy/, terms/, cookies/). No JS, no third-party
  * resources. A deliberately small Markdown subset, so no new dependency: headings, paragraphs, lists, tables,
- * blockquotes, **bold**, `code`, [links](url). Everything is HTML-escaped; placeholders like [ENTITY] are highlighted.
+ * blockquotes, **bold**, `code`, [links](url). Everything is HTML-escaped.
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-export const PLACEHOLDERS = ['[ENTITY]', '[REGISTERED ADDRESS]', '[GRIEVANCE OFFICER]', '[CONTACT EMAIL]'] as const;
-export const DRAFT_BANNER = 'Draft, pending legal review';
+/** adopt-oss-project-defaults D3: shown under each effective date (marker `<!--legal-note-->` in the source). */
+export const LEGAL_NOTE =
+  '<p class="legal-note">Written for an open-source project; not legal advice. Suggestions welcome via <a href="https://github.com/prix0007/cryoshield/issues" rel="noopener noreferrer">GitHub</a>.</p>';
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
@@ -25,7 +26,6 @@ function inline(raw: string): string {
         const ext = url.startsWith('https://');
         return `<a href="${esc(url)}"${ext ? ' rel="noopener noreferrer"' : ''}>${text}</a>`;
       });
-      for (const ph of PLACEHOLDERS) s = s.split(esc(ph)).join(`<mark class="placeholder">${esc(ph)}</mark>`);
       s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
       return s;
     })
@@ -141,7 +141,7 @@ export function inventoryTable(inv: StorageInventory): string {
 
 export function renderLegalPage(root: string, name: string): string {
   const md = readFileSync(join(root, 'legal', `${name}.md`), 'utf8');
-  let html = renderMarkdown(md);
+  let html = renderMarkdown(md).replace('<!--legal-note-->', LEGAL_NOTE);
   if (html.includes('<!--storage-inventory-->')) {
     const inv = JSON.parse(readFileSync(join(root, 'legal', 'storage-inventory.json'), 'utf8')) as StorageInventory;
     html = html.replace('<!--storage-inventory-->', inventoryTable(inv));

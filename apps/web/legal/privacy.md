@@ -1,6 +1,8 @@
 # Privacy policy
 
-**Effective date:** 2026-10-03
+**Effective date:** 2026-10-03 (revision 2)
+
+<!--legal-note-->
 
 > **In short.** CryoShield never sees your secrets, your keys or anything that could open your vault. We set no
 > cookies and keep no accounts. When you save a vault, its locked (encrypted) form is published permanently on a
@@ -10,10 +12,17 @@
 
 ## Who we are
 
-CryoShield is operated by [ENTITY], [REGISTERED ADDRESS]. For the data described here we are the "data controller"
-under the EU and UK GDPR and the "Data Fiduciary" under India's Digital Personal Data Protection Act, 2023 (DPDP).
+This website is run by CryoShield, an open-source project maintained by its contributors (github.com/prix0007/cryoshield). There is no company behind it: the source code, its
+history and every decision are public in the [repository](https://github.com/prix0007/cryoshield).
 
-Contact: [CONTACT EMAIL]. We have not appointed an EU or UK representative yet; this page will name them if we do.
+The site itself collects and keeps no personal data (no accounts, no cookies, no server logs of our own). For the
+little personal data that exists, the messages you send us through GitHub, the project maintainers act as the data
+controller under the EU and UK GDPR and as the Data Fiduciary under India's Digital Personal Data Protection Act, 2023
+(DPDP), only for the correspondence they receive.
+
+**How to reach us:** open a [privacy request](https://github.com/prix0007/cryoshield/issues/new?template=privacy-request.yml) on GitHub, or, for
+anything sensitive, a [private security advisory](https://github.com/prix0007/cryoshield/security/advisories/new), which only the maintainers can see.
+There is no email address.
 
 ## What we never see
 
@@ -98,8 +107,9 @@ More detail is in the [cookie policy](/cookies).
 
 ## Retention
 
-We hold no visitor data ourselves, except correspondence you send us, which we keep for 3 years after the matter is
-closed. Each service above keeps its logs under its own policy. Data published on the blockchain and Arweave is
+We hold no visitor data ourselves. The GitHub issues and advisories you open stay on GitHub: we delete or redact
+personal data in them on request, and close private advisories once handled (keeping them at most 3 years after
+closure). Each service above keeps its logs under its own policy. Data published on the blockchain and Arweave is
 permanent. The full table is in our
 [retention statement](https://github.com/prix0007/cryoshield/blob/main/docs/compliance/retention.md).
 
@@ -118,19 +128,22 @@ delete data published on the blockchain or Arweave** (see crypto-shredding above
   California Consumer Privacy Act (CCPA/CPRA) or similar state laws. If that changes, we will honour Global Privacy
   Control as an opt-out of sale or sharing, as we already do for analytics.
 
-To make a request, write to [CONTACT EMAIL]. We will never ask for your secrets, your keys or your PIN, and we cannot
-act on a vault: anyone who claims otherwise is not us.
+To make a request, open a [privacy request](https://github.com/prix0007/cryoshield/issues/new?template=privacy-request.yml) on GitHub. Issues
+are public: for anything sensitive, use a [private security advisory](https://github.com/prix0007/cryoshield/security/advisories/new) instead. If you
+post personal data in a public issue by mistake, tell us and we will delete or redact it. We will never ask for your
+secrets, your keys or your PIN, and we cannot act on a vault: anyone who claims otherwise is not us.
 
 ## Grievance Officer
 
-[GRIEVANCE OFFICER], [ENTITY], [REGISTERED ADDRESS], [CONTACT EMAIL].
+The Grievance Officer is **the project maintainer**, reachable through a
+[private security advisory](https://github.com/prix0007/cryoshield/security/advisories/new) (mark it as a privacy grievance).
 
 We acknowledge grievances within 24 hours and resolve them within 15 days. If you are not satisfied, you can escalate
-to the Data Protection Board of India.
+to the Data Protection Board of India, or complain to your data protection authority.
 
 ## International transfers
 
-Your data is handled in India (our company), Singapore and the US (hosting), the UK (fee sponsor), the US (archive
+Your data is handled by the maintainers (via GitHub), in Singapore and the US (hosting), the UK (fee sponsor), the US (archive
 upload, analytics) and the EU (analytics). We rely on the safeguards each provider offers, such as the EU-US Data
 Privacy Framework, standard contractual clauses and the UK adequacy decision.
 
@@ -151,4 +164,6 @@ Your vault is encrypted on your device with AES-256-GCM, using keys derived from
 We will update the effective date at the top whenever this policy changes, and record each change below. The full
 history is public in our [source repository](https://github.com/prix0007/cryoshield/commits/main/apps/web/legal/privacy.md).
 
-- 2026-10-03: first draft, pending legal review.
+- 2026-10-03 (revision 2): CryoShield is an open-source project: operator, contact (GitHub only, no email) and
+  Grievance Officer (the project maintainer) filled in.
+- 2026-10-03: first draft.

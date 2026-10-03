@@ -11,7 +11,7 @@
 | Public RPC logs | OP Labs / PublicNode / dRPC (7) | unpublished / ≤24 h / weekly purge |
 | Cloudflare Web Analytics | Cloudflare (8) | Cloudflare's policy (UNVERIFIED); aggregate dashboard |
 | GitHub issues, reports, commits | GitHub (9) | until deleted by us or the author |
-| Privacy, grievance and security email | mail provider (10) | 3 years after closure (at least the 1-year DPDP log minimum) **[lawyer]** |
-| Admin audit exports (Fly, GitHub, Pimlico, DNS) | CryoShield | 1 year rolling, India-resident store (CERT-In 180 d / DPDP 1 y) |
+| Privacy requests and grievances (GitHub issues, private advisories) | GitHub (10) | issues: until deleted/redacted on request; private advisories: at most 3 years after closure. No email exists |
+| Admin audit exports (Fly, GitHub, Pimlico, DNS) | the maintainer | 1 year rolling, maintainer-held (re-scoped by adopt-oss-project-defaults) |
 | On-chain and Arweave data | public networks (5, 6) | permanent; outside anyone's control |
 | Aggregate metrics | CryoShield | indefinite (not personal data) |

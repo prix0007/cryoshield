@@ -103,7 +103,6 @@ target host is a constant, so it can't be used as an open redirect.
 | CNAME | `_acme-challenge.www` | `www.cryoshield.app.rkqjzy6.flydns.net` | 600 |
 | CAA | `@` | `0 issue "letsencrypt.org"` | 3600 |
 | CAA | `@` | `0 issuewild ";"` (no wildcard certs) | 3600 |
-| CAA | `@` | `0 iodef "mailto:security@cryoshield.app"` (optional: misissuance reports) | 3600 |
 
 Notes:
 - **CAA:** Fly.io issues certificates through **Let's Encrypt** (Fly custom-domain docs). Any other CA is refused once

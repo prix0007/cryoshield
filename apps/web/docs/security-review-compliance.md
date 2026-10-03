@@ -18,10 +18,11 @@
 
 ## Findings
 
-- **LOW-1 (open, founder task 1.2):** `security@cryoshield.app` is listed in security.txt but the mailbox does not
+- **LOW-1 (resolved by `adopt-oss-project-defaults`: no mailbox; GitHub only):** `security@cryoshield.app` is listed in security.txt but the mailbox does not
   exist yet. Mitigation: the GitHub private-report link is listed second and is the preferred channel in SECURITY.md.
   Create the mailbox before launch.
-- **LOW-2 (open, OW task 5.2):** GitHub private vulnerability reporting must be enabled in the repository settings for
+- **LOW-2 (resolved: private vulnerability reporting enabled 2026-10-03):** GitHub private vulnerability reporting must be enabled in the repository settings for
   the advisory link to work.
-- **INFO:** the legal text is a draft with placeholders and has not had a lawyer's review (tasks 3.1/3.6/3.7). The
-  banner says so on every page, and the build enforces it.
+- **INFO (updated by `adopt-oss-project-defaults`):** placeholders were replaced with open-source-project defaults;
+  each page carries a "not legal advice" note, and the build now fails on any leftover placeholder or
+  `@cryoshield.app` address.
