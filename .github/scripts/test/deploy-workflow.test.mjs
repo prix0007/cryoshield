@@ -107,6 +107,12 @@ test('M1/L3: smoke and rollback also run when the deploy job failed after fly de
   assert.match(String(rollback.if), /fly_started/);
 });
 
+test('the privileged workflows may not use the Fly token or environment production either', () => {
+  const am = real('auto-merge.yml');
+  expectError('auto-merge.yml', am.replace('    runs-on: ubuntu-24.04\n', '    environment: production\n    runs-on: ubuntu-24.04\n'), /production/);
+  expectError('auto-merge.yml', am.replace('      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n', '      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n      T: ${{ secrets.FLY_API_TOKEN }}\n'), /FLY_API_TOKEN/);
+});
+
 test('ci.yml: `full` (workflow_call) forces every area job and workflow-lint on', () => {
   const wf = parse(ci);
   assert.equal(wf.on.workflow_call.inputs.full.type, 'boolean');

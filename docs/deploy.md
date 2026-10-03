@@ -6,7 +6,7 @@ This covers continuous deployment of `main` to Fly.io (OpenSpec change `add-cont
 
 `.github/workflows/deploy.yml` runs on:
 - every push to `main` (human merges);
-- every 15 minutes (merges made by GitHub auto-merge start no push workflow);
+- every 15 minutes (merges made by GitHub auto-merge start no push workflow; the repository is public, so Actions minutes are free);
 - on demand.
 
 It has four stages:
@@ -115,22 +115,3 @@ gh workflow run deploy.yml --ref main -f force=true                 # prove the 
 ```
 
 If the Pimlico key changes, re-run step 3 of the setup. If any other value changes, re-run step 4 and then a forced deploy.
-
-## Polling cost
-
-On a private repository GitHub bills every job as at least one minute. A 15-minute `detect` comes to about 2,900 runner-minutes a month, close to the GitHub Pro allowance of 3,000, and CI needs minutes too. To spend less, change the cron in `deploy.yml`:
-
-| Cadence | cron | Approx. minutes/month |
-|---|---|---|
-| every 15 min (default) | `*/15 * * * *` | 2,900 |
-| every 30 min | `*/30 * * * *` | 1,440 |
-| hourly | `7 * * * *` | 720 |
-| business hours, 15 min (UTC 03-15, Mon-Fri) | `*/15 3-15 * * 1-5` | 1,040 |
-
-Human merges deploy at once on `push` whatever the cadence. Making the repository public makes Actions free.
-
-## Change flow addition (for CLAUDE.md)
-
-Add this after the "Auto-merge" step of the "Change flow (one PR per change)" in CLAUDE.md, once that file exists on `main`:
-
-> **Deploy.** After the merge, `deploy.yml` deploys `main` automatically within about 15 minutes: the full CI on the merge commit, then the guarded `deploy.sh`, then a smoke test. Check what is live with `curl -s https://cryoshield.app/release.json`. If the smoke test fails, it rolls back by itself and the run fails. Fix forward with a new PR, or roll back by hand (`docs/deploy.md` → Rollback).

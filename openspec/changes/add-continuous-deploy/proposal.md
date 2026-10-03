@@ -62,5 +62,5 @@ A merge done by GitHub auto-merge (enabled with the workflow token) does not sta
   - `.github/scripts/workflow-policy.mjs` and its tests;
   - `apps/web/deploy/{deploy.sh,gen-context.mjs,release-manifest.mjs}` and their tests;
   - `CLAUDE.md`, `README.md` and `docs/system-design.md`.
-- **Actions minutes:** the 15-minute `detect` poll costs about 2,900 runner-minutes per month on a private repo (billed at least 1 minute per job). That is close to the GitHub Pro allowance of 3,000. See design decision 2.
+- **Actions minutes:** none to worry about. The repository is public, so the 15-minute `detect` poll is free (design decision 2).
 - **Merge order:** this branch and `ci/ecc-review-auto-merge` both edit `workflow-policy.mjs`, `ci.yml` and `CLAUDE.md`, so whichever merges second needs a rebase.

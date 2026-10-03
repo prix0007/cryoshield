@@ -18,7 +18,7 @@ on:
   push:
     branches: [main]
   schedule:
-    - cron: "*/15 * * * *" # catches auto-merges; see docs/deploy.md -> "Polling cost"
+    - cron: "*/15 * * * *" # catches auto-merges (public repo: Actions minutes are free)
   workflow_dispatch:
     inputs:
       force:

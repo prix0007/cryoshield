@@ -284,6 +284,11 @@ export function checkWorkflow(file, text) {
       if (!isObj(job.permissions)) errors.push(`${file}: job '${id}' must declare its own permissions as a mapping (least privilege)`);
       if (job['timeout-minutes'] === undefined) errors.push(`${file}: job '${id}' must set timeout-minutes`);
     }
+    // Deploy credentials stay in deploy.yml (add-continuous-deploy D7), privileged workflows included.
+    if (strings(wf).some((s) => /FLY_API_TOKEN/i.test(s))) errors.push(`${file}: FLY_API_TOKEN may only be referenced by deploy.yml`);
+    for (const [id, j] of Object.entries(isObj(wf.jobs) ? wf.jobs : {})) {
+      if (isObj(j) && j.environment !== undefined) errors.push(`${file}: job '${id}': privileged workflows may not use an environment (production belongs to deploy.yml)`);
+    }
     return errors;
   }
 

@@ -169,7 +169,7 @@ Every new commit on `main` is deployed to https://cryoshield.app automatically b
 4. **deploy:** a token-holding job that runs only pinned flyctl on the verified build artifact.
 5. **smoke:** check the routes, headers, registry address and `/release.json`. On failure, roll back to the previous image automatically.
 
-The pipeline never runs on pull requests. To redeploy by hand, run `gh workflow run deploy.yml -f force=true`. To roll back, see [`docs/deploy.md`](docs/deploy.md), which also covers first-time setup and token rotation. Note that polling every 15 minutes costs about 2,900 Actions minutes a month on a private repo; the runbook lists cheaper cadences.
+The pipeline never runs on pull requests. To redeploy by hand, run `gh workflow run deploy.yml -f force=true`. To roll back, see [`docs/deploy.md`](docs/deploy.md), which also covers first-time setup and token rotation.
 
 ## Security
 

@@ -38,13 +38,7 @@ Every job is restricted to `github.ref == 'refs/heads/main'`. This matters for `
 
 ### 2. Polling cost
 
-On a private repo, GitHub bills each job as at least one minute. 96 `detect` runs a day come to about 2,900 minutes a month, against the Pro plan's 3,000 included minutes. That would leave too little for CI.
-
-The cadence is one cron line. The founder asked for 15 minutes, so that is the default, and the cost is surfaced in the README and runbook along with cheaper options:
-- `*/30`, about 1,440 minutes a month;
-- hourly, about 720;
-- business hours only;
-- making the repository public, which makes Actions free.
+The repository is public, so GitHub Actions minutes are free, and the 15-minute schedule (96 short `detect` runs a day) costs nothing. The cadence is one cron line if that ever changes.
 
 *Alternative:* have auto-merge use a GitHub App token, so merges emit `push`. Rejected for now: it needs another long-lived credential.
 
@@ -129,7 +123,6 @@ The existing rules still apply: read-only job permissions, timeouts, top-level `
 
 ## Risks / Trade-offs
 
-- **Actions-minutes cost** of polling (decision 2).
 - **The rollback restores the previous image only.** It cannot fix a bad DNS or certificate state. Documented in the runbook.
 - **The first deploy after merge always runs,** because the current site has no `/release.json` yet.
 - **The `production` environment must exist** (founder setup). Until it does, `deploy` fails with a clear missing-token error after `test` passes, and nothing is deployed.
@@ -144,7 +137,7 @@ Rollback of the pipeline: disable the workflow (`gh workflow disable deploy.yml`
 
 ## Implementation notes (apply, 2026-10-04)
 
-- **CLAUDE.md does not exist on `main` yet.** It is added by the unmerged `adopt-ecc-review-and-auto-merge`. Creating it here would conflict, so the "Change flow" deploy step is written in `docs/deploy.md` → "Change flow addition (for CLAUDE.md)". Whichever branch merges second adds it to CLAUDE.md during its rebase.
+- **The CLAUDE.md "Change flow" deploy step** was added after rebasing onto `adopt-ecc-review-and-auto-merge` (#16), which introduced CLAUDE.md.
 - **`detect` also takes `MAIN_SHA`** from `GET repos/{repo}/commits/main`. A run whose `github.sha` is no longer the `main` HEAD is "superseded" and skips, so an older commit can never replace a newer one. This is needed because the reusable CI tests `github.sha`.
 - **`write-env.sh` (tested) generates `apps/web/.env`.**
   - Required keys must be present, values may not contain line breaks, and an existing file is never overwritten.
