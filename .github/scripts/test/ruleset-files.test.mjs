@@ -37,8 +37,15 @@ test('Actions default token is read-only and Actions cannot approve PRs', () => 
   assert.deepEqual(load('actions-permissions.json'), { default_workflow_permissions: 'read', can_approve_pull_request_reviews: false });
 });
 
-test('repo merge settings allow squash only, titled from the PR', () => {
+test('the opt-in ecc-review check is bound to GitHub Actions and not required by default', () => {
+  assert.deepEqual(load('ecc-review-check.json'), { context: 'ecc-review', integration_id: 15368 });
+  const checks = rule('required_status_checks').parameters.required_status_checks.map((c) => c.context);
+  assert.deepEqual(checks, ['ci-ok']);
+});
+
+test('repo merge settings allow squash only, titled from the PR, with auto-merge', () => {
   const s = load('repo-settings.json');
+  assert.equal(s.allow_auto_merge, true);
   assert.equal(s.allow_squash_merge, true);
   assert.equal(s.allow_merge_commit, false);
   assert.equal(s.allow_rebase_merge, false);
