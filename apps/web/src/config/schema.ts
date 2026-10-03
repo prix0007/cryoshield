@@ -14,7 +14,10 @@ export const REQUIRED_ENV = [
   'VITE_RP_NAME',
 ] as const;
 
-export type EnvName = (typeof REQUIRED_ENV)[number];
+export type EnvName = (typeof REQUIRED_ENV)[number] | 'VITE_ARWEAVE_FAST_INDEX_URL';
+
+/** Turbo's fast-finality index (fix-arweave-mirror-status D4); optional, https only. */
+export const DEFAULT_ARWEAVE_FAST_INDEX_URL = 'https://turbo-gateway.com';
 
 export interface AppEnvConfig {
   chainId: number;
@@ -25,8 +28,12 @@ export interface AppEnvConfig {
   arweaveGatewayUrl: string;
   rpId: string;
   rpName: string;
-  /** Distinct origins the app may contact (CSP connect-src and the E2E network allowlist). */
+  /** Turbo's fast-finality Arweave index, for looking up and linking the mirror copy. */
+  arweaveFastIndexUrl: string;
+  /** Distinct origins every page's CSP lists in connect-src (landing included). */
   connectOrigins: string[];
+  /** Origins only the app's CSP adds (never the landing document, which runs third-party analytics). */
+  appOnlyOrigins: string[];
 }
 
 export class ConfigError extends Error {
@@ -70,6 +77,10 @@ export function parseEnv(env: Record<string, string | undefined>): AppEnvConfig 
   const turboUploadUrl = endpoint(env, 'VITE_TURBO_UPLOAD_URL');
   const arweaveGatewayUrl = endpoint(env, 'VITE_ARWEAVE_GATEWAY_URL');
   const connectOrigins = [...new Set([rpcUrl, bundlerUrl, turboUploadUrl, arweaveGatewayUrl].map((u) => new URL(u).origin))];
+  const arweaveFastIndexUrl = env.VITE_ARWEAVE_FAST_INDEX_URL?.trim()
+    ? endpoint(env, 'VITE_ARWEAVE_FAST_INDEX_URL')
+    : DEFAULT_ARWEAVE_FAST_INDEX_URL;
+  const appOnlyOrigins = [new URL(arweaveFastIndexUrl).origin].filter((o) => !connectOrigins.includes(o));
 
   return {
     chainId: Number(chainIdRaw),
@@ -78,8 +89,10 @@ export function parseEnv(env: Record<string, string | undefined>): AppEnvConfig 
     sponsorshipPolicyId: policy,
     turboUploadUrl,
     arweaveGatewayUrl,
+    arweaveFastIndexUrl,
     rpId,
     rpName: env.VITE_RP_NAME!.trim().slice(0, 64),
     connectOrigins,
+    appOnlyOrigins,
   };
 }

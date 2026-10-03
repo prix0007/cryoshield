@@ -47,7 +47,7 @@ describe('secrets editor validation', () => {
 
 describe('empty vault', () => {
   it('shows the empty state and keeps "Edit secrets" available', () => {
-    vi.spyOn(ops, 'ensureMirror').mockResolvedValue('saved');
+    vi.spyOn(ops, 'ensureMirror').mockResolvedValue({ status: 'saved' });
     const session = { vaultId: ('0x' + '12'.repeat(32)) as `0x${string}`, owner: ('0x' + '34'.repeat(20)) as `0x${string}`, version: 1, blob: new Uint8Array(4), items: [], credIds };
     render(
       <ServicesProvider value={fakeServices()}>

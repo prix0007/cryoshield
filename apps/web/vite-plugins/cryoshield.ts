@@ -44,11 +44,11 @@ export function cryoshield(env: Record<string, string | undefined>, contractsDir
           const out = injectCsp(html, config.connectOrigins, landingExtras);
           return analytics ? out.replace('</body>', `${beaconTemplate(analytics)}\n  </body>`) : out;
         }
-        return injectCsp(html, config.connectOrigins);
+        return injectCsp(html, [...config.connectOrigins, ...config.appOnlyOrigins]);
       },
     },
     generateBundle() {
-      this.emitFile({ type: 'asset', fileName: '_headers', source: headersFile(config.connectOrigins, landingExtras) });
+      this.emitFile({ type: 'asset', fileName: '_headers', source: headersFile([...config.connectOrigins, ...config.appOnlyOrigins], config.connectOrigins, landingExtras) });
     },
     // `vite preview` (E2E) sends the per-route Permissions-Policy like production: no WebAuthn on the landing page.
     configurePreviewServer(server) {

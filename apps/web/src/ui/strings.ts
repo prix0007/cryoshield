@@ -163,6 +163,8 @@ export const S = {
 
   mirror: {
     saved: 'Backup copy saved.',
+    item: 'Arweave item',
+    settleNote: 'Its permanent arweave.net link works once it settles, usually within a few hours.',
     pending: 'Saving an extra backup copy…',
     failed: 'Extra backup copy not saved yet.',
     retry: 'Retry',

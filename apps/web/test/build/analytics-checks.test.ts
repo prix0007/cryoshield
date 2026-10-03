@@ -12,6 +12,9 @@ describe('landing CSP difference', () => {
     expect(landingCspDiff(APP, APP)).toEqual([]);
     expect(landingCspDiff(APP, LANDING.replace('https://cloudflareinsights.com', 'https://evil.example'))).toEqual(['connect-src adds https://evil.example']);
     expect(landingCspDiff(APP, LANDING.replace("require-trusted-types-for 'script'", ''))).toContain('require-trusted-types-for present on only one of the pages');
+    // fix-arweave-mirror-status: dropping a connect-src source on the landing page is allowed (stricter).
+    expect(landingCspDiff(`${APP.replace('https://rpc.example', 'https://rpc.example https://turbo-gateway.com')}`, LANDING)).toEqual([]);
+    expect(landingCspDiff(APP, LANDING.replace("script-src 'self' ", 'script-src '))).toContain("script-src drops 'self'");
   });
 });
 

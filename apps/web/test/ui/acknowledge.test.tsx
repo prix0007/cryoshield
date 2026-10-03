@@ -14,7 +14,7 @@ const PERMANENCE = /published permanently on a public blockchain and on Arweave/
 
 beforeEach(async () => {
   vi.restoreAllMocks();
-  vi.spyOn(ops, 'mirrorWrite').mockResolvedValue('saved');
+  vi.spyOn(ops, 'mirrorWrite').mockResolvedValue({ status: 'saved' });
   vi.spyOn(ops, 'enrollWithPrf').mockImplementation(async (_s, n) => key(n));
 });
 

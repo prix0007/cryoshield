@@ -41,37 +41,50 @@ export interface VaultSession {
 }
 
 export type MirrorStatus = 'pending' | 'saved' | 'failed';
+/** fix-arweave-mirror-status D3: the outcome plus, when known, the Arweave item id or a sanitized failure reference. */
+export interface MirrorResult {
+  status: 'saved' | 'failed';
+  itemId?: string;
+  ref?: string;
+}
 
-export async function mirrorWrite(svc: Services, s: { vaultId: Hex; version: number; blob: Uint8Array; locators?: readonly Hex[] }): Promise<MirrorStatus> {
+/** `CODE · HTTP nnn · step`: no URLs, keys or contents (same rule as the write-failure reference). */
+function mirrorRef(e: unknown): string {
+  if (e instanceof MirrorError) return [e.code, ...(e.status ? [`HTTP ${e.status}`] : []), e.step].join(' · ');
+  return 'UPLOAD_FAILED · upload';
+}
+
+export async function mirrorWrite(svc: Services, s: { vaultId: Hex; version: number; blob: Uint8Array; locators?: readonly Hex[] }): Promise<MirrorResult> {
+  // Locators we already know (creation, the unlocking key) come first; chain logs can only add more. A log failure
+  // (e.g. public-RPC eth_getLogs range limits) never prevents the upload (fix-arweave-mirror-status D2).
+  let locators = s.locators ? [...new Set(s.locators.map((l) => l.toLowerCase() as Hex))] : [];
   try {
-    let locators = s.locators ? [...s.locators] : [];
-    try {
-      const fromChain = await svc.reader.locatorsOf(s.vaultId);
-      locators = [...new Set([...locators.map((l) => l.toLowerCase() as Hex), ...fromChain])];
-    } catch {
-      /* logs unavailable (RPC range limits): use what we know */
-    }
-    if (locators.length === 0) return 'failed';
-    await svc.mirror.upload({ vaultId: s.vaultId, version: s.version, blob: s.blob, locators: locators.slice(0, 8) });
-    return 'saved';
+    const fromChain = await svc.reader.locatorsOf(s.vaultId);
+    locators = [...new Set([...locators, ...fromChain.map((l) => l.toLowerCase() as Hex)])];
+  } catch {
+    /* logs unavailable: use what we know */
+  }
+  if (locators.length === 0) return { status: 'failed', ref: 'NO_LOCATORS · lookup' };
+  try {
+    const itemId = await svc.mirror.upload({ vaultId: s.vaultId, version: s.version, blob: s.blob, locators: locators.slice(0, 8) });
+    return { status: 'saved', itemId };
   } catch (e) {
-    if (e instanceof MirrorError) return 'failed';
-    return 'failed';
+    return { status: 'failed', ref: mirrorRef(e) };
   }
 }
 
-export async function ensureMirror(svc: Services, s: { vaultId: Hex; version: number; blob: Uint8Array; locator: Hex }): Promise<MirrorStatus> {
+export async function ensureMirror(svc: Services, s: { vaultId: Hex; version: number; blob: Uint8Array; locator: Hex }): Promise<MirrorResult> {
+  let locators: Hex[] = [s.locator.toLowerCase() as Hex];
   try {
-    let locators: Hex[] = [s.locator];
-    try {
-      locators = [...new Set([s.locator.toLowerCase() as Hex, ...(await svc.reader.locatorsOf(s.vaultId))])];
-    } catch {
-      /* keep the known locator */
-    }
-    await svc.mirror.ensure({ vaultId: s.vaultId, version: s.version, blob: s.blob, locators: locators.slice(0, 8) });
-    return 'saved';
+    locators = [...new Set([...locators, ...(await svc.reader.locatorsOf(s.vaultId)).map((l) => l.toLowerCase() as Hex)])];
   } catch {
-    return 'failed';
+    /* keep the known locator */
+  }
+  try {
+    await svc.mirror.ensure({ vaultId: s.vaultId, version: s.version, blob: s.blob, locators: locators.slice(0, 8) });
+    return { status: 'saved' };
+  } catch (e) {
+    return { status: 'failed', ref: mirrorRef(e) };
   }
 }
 

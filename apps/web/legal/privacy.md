@@ -1,6 +1,6 @@
 # Privacy policy
 
-**Effective date:** 2026-10-03 (revision 2)
+**Effective date:** 2026-10-04
 
 <!--legal-note-->
 
@@ -46,7 +46,7 @@ user agent, as any website or server you connect to does.
 | Public blockchain | OP Sepolia test network (later OP Mainnet), run by independent node operators | Everything listed under "Public and permanent data" | Storing your encrypted vault | Worldwide | Public network |
 | Blockchain access (RPC) | OP Labs public endpoint (`sepolia.optimism.io`) | IP address; which vault locators you look up | Reading and checking your vault | Unpublished | [Optimism privacy](https://www.optimism.io/data-privacy-policy) |
 | Archive upload | ArDrive Turbo (Permanent Data Solutions Inc., US) | IP address; the encrypted vault and its tags | Copying your encrypted vault to Arweave | US | [ArDrive terms and privacy](https://ardrive.io/tos-and-privacy/) |
-| Archive reads | arweave.net gateway (ar.io) | IP address; which vault you look up | Checking and restoring the Arweave copy | Netherlands and worldwide | [ar.io privacy](https://ar.io/legal/terms-of-service-and-privacy-policy/) |
+| Archive reads | arweave.net gateway (ar.io), and Turbo's index `turbo-gateway.com` (ArDrive), which lists the copy before it settles on Arweave | IP address; which vault you look up | Checking and restoring the Arweave copy | Netherlands, US and worldwide | [ar.io privacy](https://ar.io/legal/terms-of-service-and-privacy-policy/), [ArDrive terms and privacy](https://ardrive.io/tos-and-privacy/) |
 | Landing-page analytics | Cloudflare, Inc. (US) | See "Analytics" below | Counting visits to the home page | US and EU | [Cloudflare privacy](https://www.cloudflare.com/privacypolicy/) |
 | Source code and security reports | GitHub, Inc. (US) | Whatever you post in issues or reports | Running the open-source project | US | [GitHub privacy](https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement) |
 
@@ -164,6 +164,8 @@ Your vault is encrypted on your device with AES-256-GCM, using keys derived from
 We will update the effective date at the top whenever this policy changes, and record each change below. The full
 history is public in our [source repository](https://github.com/prix0007/cryoshield/commits/main/apps/web/legal/privacy.md).
 
+- 2026-10-04: the vault app also checks the Arweave copy on Turbo's index (`turbo-gateway.com`), which lists it
+  before it settles.
 - 2026-10-03 (revision 2): CryoShield is an open-source project: operator, contact (GitHub only, no email) and
   Grievance Officer (the project maintainer) filled in.
 - 2026-10-03: first draft.

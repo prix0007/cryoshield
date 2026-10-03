@@ -59,6 +59,9 @@ export function parseDataItem(b: Buffer): StoredItem {
 export class ArweaveStub {
   items: StoredItem[] = [];
   failUploads = false;
+  /** Realistic lag (fix-arweave-mirror-status): arweave.net lists bundled items only after settlement, while Turbo's
+   *  fast-finality index (turbo-gateway.com) lists them immediately. Tests start unsettled. */
+  settled = false;
 
   async install(page: Page) {
     await page.route('https://upload.ardrive.io/**', async (route) => {
@@ -67,12 +70,13 @@ export class ArweaveStub {
       this.items.push(item);
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ id: item.id }) });
     });
-    await page.route('https://arweave.net/**', async (route) => {
+    const gateway = (index: 'fast' | 'arweave') => async (route: import('@playwright/test').Route) => {
       const url = new URL(route.request().url());
       if (url.pathname === '/graphql') {
         const { variables } = route.request().postDataJSON();
         const filters: { name: string; values: string[] }[] = variables.tags;
-        const hits = this.items.filter((it) => filters.every((f) => it.tags.some((t) => t.name === f.name && f.values.includes(t.value))));
+        const visible = index === 'fast' || this.settled ? this.items : [];
+        const hits = visible.filter((it) => filters.every((f) => it.tags.some((t) => t.name === f.name && f.values.includes(t.value))));
         return route.fulfill({
           contentType: 'application/json',
           body: JSON.stringify({ data: { transactions: { edges: hits.reverse().map((h) => ({ node: { id: h.id, data: { size: String(h.data.length) } } })) } } }),
@@ -81,7 +85,9 @@ export class ArweaveStub {
       const id = url.pathname.slice(1);
       const it = this.items.find((x) => x.id === id);
       return it ? route.fulfill({ status: 200, body: it.data }) : route.fulfill({ status: 404 });
-    });
+    };
+    await page.route('https://arweave.net/**', gateway('arweave'));
+    await page.route('https://turbo-gateway.com/**', gateway('fast'));
   }
 
   byLocator(locator: string) {

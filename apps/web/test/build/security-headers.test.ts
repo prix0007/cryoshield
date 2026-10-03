@@ -28,7 +28,7 @@ describe('security headers (add-fly-hosting 1.1)', () => {
   });
 
   it('_headers uses the same set', () => {
-    const h = headersFile(['https://x.example']);
+    const h = headersFile(['https://x.example'], ['https://x.example']);
     for (const [k, v] of Object.entries(SECURITY_HEADERS)) expect(h).toContain(`  ${k}: ${v}`);
   });
 });

@@ -43,17 +43,17 @@ export function injectCsp(html: string, connectOrigins: readonly string[], extra
   return html.replace(/<head>/i, `<head>${meta}`);
 }
 
-export function headersFile(connectOrigins: readonly string[], landing: CspExtras = {}): string {
+export function headersFile(appOrigins: readonly string[], landingOrigins: readonly string[], landing: CspExtras = {}): string {
   const block = (path: string, csp: string, pp: string) => [
     path,
     `  Content-Security-Policy: ${csp}; frame-ancestors 'none'`,
     ...Object.entries({ ...SECURITY_HEADERS, 'Permissions-Policy': pp }).map(([k, v]) => `  ${k}: ${v}`),
   ];
-  const app = buildCsp(connectOrigins);
-  const land = buildCsp(connectOrigins, landing);
+  const app = buildCsp(appOrigins);
+  const land = buildCsp(landingOrigins, landing);
   return [
     ...block('/*', app, SECURITY_HEADERS['Permissions-Policy']!),
-    // The landing document: analytics sources (if any) and no WebAuthn (add-privacy-preserving-analytics D3/D4).
+    // The landing document: analytics sources (if any), no app-only origins, and no WebAuthn.
     ...block('/', land, LANDING_PERMISSIONS_POLICY),
     ...block('/index.html', land, LANDING_PERMISSIONS_POLICY),
     '',

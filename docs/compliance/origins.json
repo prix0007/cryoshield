@@ -1,12 +1,45 @@
 {
   "$comment": "Every origin the production build may contact (CSP connect-src / script-src), mapped to its row in data-inventory.md. verify-build fails on any production origin missing here. Loopback and *.invalid origins (dev/E2E/verification fixtures) are exempt.",
   "origins": {
-    "https://sepolia.optimism.io": { "row": 7, "vendor": "OP Labs public RPC (OP Sepolia)", "role": "independent controller (RPC logs); reads vault data" },
-    "https://mainnet.optimism.io": { "row": 7, "vendor": "OP Labs public RPC (OP Mainnet)", "role": "independent controller (RPC logs); reads vault data" },
-    "https://api.pimlico.io": { "row": 4, "vendor": "Pimlico bundler/paymaster (Austerlitz Labs Ltd, UK)", "role": "processor; sponsors and relays vault writes" },
-    "https://upload.ardrive.io": { "row": 6, "vendor": "ArDrive Turbo (Permanent Data Solutions Inc., US)", "role": "independent controller; Arweave upload" },
-    "https://arweave.net": { "row": 6, "vendor": "arweave.net gateway (ar.io)", "role": "independent controller; Arweave reads" },
-    "https://cloudflareinsights.com": { "row": 8, "vendor": "Cloudflare Web Analytics (landing / only)", "role": "processor; aggregate page analytics" },
-    "https://static.cloudflareinsights.com": { "row": 8, "vendor": "Cloudflare Web Analytics beacon script (landing / only)", "role": "processor; serves the integrity-pinned beacon" }
+    "https://sepolia.optimism.io": {
+      "row": 7,
+      "vendor": "OP Labs public RPC (OP Sepolia)",
+      "role": "independent controller (RPC logs); reads vault data"
+    },
+    "https://mainnet.optimism.io": {
+      "row": 7,
+      "vendor": "OP Labs public RPC (OP Mainnet)",
+      "role": "independent controller (RPC logs); reads vault data"
+    },
+    "https://api.pimlico.io": {
+      "row": 4,
+      "vendor": "Pimlico bundler/paymaster (Austerlitz Labs Ltd, UK)",
+      "role": "processor; sponsors and relays vault writes"
+    },
+    "https://upload.ardrive.io": {
+      "row": 6,
+      "vendor": "ArDrive Turbo (Permanent Data Solutions Inc., US)",
+      "role": "independent controller; Arweave upload"
+    },
+    "https://arweave.net": {
+      "row": 6,
+      "vendor": "arweave.net gateway (ar.io)",
+      "role": "independent controller; Arweave reads"
+    },
+    "https://cloudflareinsights.com": {
+      "row": 8,
+      "vendor": "Cloudflare Web Analytics (landing / only)",
+      "role": "processor; aggregate page analytics"
+    },
+    "https://static.cloudflareinsights.com": {
+      "row": 8,
+      "vendor": "Cloudflare Web Analytics beacon script (landing / only)",
+      "role": "processor; serves the integrity-pinned beacon"
+    },
+    "https://turbo-gateway.com": {
+      "row": 6,
+      "vendor": "Turbo fast-finality index (ArDrive / Permanent Data Solutions Inc., US), app only",
+      "role": "independent controller; finds and serves the Arweave copy before settlement"
+    }
   }
 }

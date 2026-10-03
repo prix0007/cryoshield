@@ -97,10 +97,19 @@ describe('deploy context generator (1.2)', () => {
     const APP = "default-src 'none'; script-src 'self'; connect-src 'self' https://rpc.example";
     expect(() => run(fixture(page(`default-src 'none'; script-src 'self'; connect-src 'self' https://rpc.example https://evil.example`), page(APP)))).toThrow(/allowed analytics sources/);
     expect(() => run(fixture(page(`default-src 'none'; script-src 'self' https://cdn.example/x.js; connect-src 'self' https://rpc.example`), page(APP)))).toThrow(/allowed analytics sources/);
-    expect(() => run(fixture(page(`default-src 'none'; script-src 'self'; connect-src 'self'`), page(APP)))).toThrow(/allowed analytics sources/);
+    expect(() => run(fixture(page(`default-src 'none'; script-src 'self'; connect-src https://rpc.example`), page(APP)))).toThrow(/allowed analytics sources/); // dropping 'self' is not a plain origin drop
     const d = fixture(page(APP), page(APP));
     writeFileSync(join(d, 'dist', 'privacy', 'index.html'), page(`${APP} https://cloudflareinsights.com`));
     expect(() => run(d)).toThrow(/privacy\/index\.html and app\/index\.html differ/);
+  });
+
+  it('the landing CSP may DROP connect-src sources (e.g. the app-only fast index) but not add any (fix-arweave-mirror-status 1.3)', () => {
+    const page = (csp: string) => `<html><head><meta http-equiv="Content-Security-Policy" content="${csp}"></head></html>`;
+    const APP = "default-src 'none'; script-src 'self'; connect-src 'self' https://rpc.example https://turbo-gateway.com";
+    const LANDING = "default-src 'none'; script-src 'self'; connect-src 'self' https://rpc.example";
+    expect(() => run(fixture(page(LANDING), page(APP)))).not.toThrow();
+    expect(() => run(fixture(page("default-src 'none'; script-src 'self'; connect-src 'self' https://rpc.example https://evil.example"), page(APP)))).toThrow(/allowed analytics sources/);
+    expect(() => run(fixture(page("default-src 'self'; script-src 'self'; connect-src 'self' https://rpc.example"), page(APP)))).toThrow(/allowed analytics sources/);
   });
 
   it('refuses a CSP containing a backtick (cannot be quoted safely)', () => {

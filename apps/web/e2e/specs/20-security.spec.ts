@@ -5,7 +5,7 @@ import { ArweaveStub } from '../fixtures/arweave';
 import { VirtualKeys } from '../fixtures/webauthn';
 import { createVault, unlockWith } from '../fixtures/app';
 
-const ALLOWED = ['http://localhost:4173', 'http://127.0.0.1:8545', 'http://127.0.0.1:4337', 'https://upload.ardrive.io', 'https://arweave.net'];
+const ALLOWED = ['http://localhost:4173', 'http://127.0.0.1:8545', 'http://127.0.0.1:4337', 'https://upload.ardrive.io', 'https://arweave.net', 'https://turbo-gateway.com'];
 
 test('every flow: only configured origins, nothing stored, PRF outputs never sent, CSP enforced', async ({ page }) => {
   // Test-only instrumentation (never in the app bundle): record every PRF output the page receives.
