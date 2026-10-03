@@ -14,9 +14,9 @@ describe('fly.toml', () => {
     expect(line(/^primary_region = "([^"]+)"/m)).toBe('sin');
     expect(line(/internal_port = (\d+)/)).toBe('8080');
     expect(line(/force_https = (\w+)/)).toBe('true');
-    expect(line(/auto_stop_machines = "(\w+)"/)).toBe('stop');
+    expect(line(/auto_stop_machines = "(\w+)"/)).toBe('suspend'); // fly-scale-to-zero
     expect(line(/auto_start_machines = (\w+)/)).toBe('true');
-    expect(line(/min_machines_running = (\d+)/)).toBe('1');
+    expect(line(/min_machines_running = (\d+)/)).toBe('0'); // fly-scale-to-zero
     expect(line(/path = "([^"]+)"/)).toBe('/healthz');
     expect(line(/dockerfile = "([^"]+)"/)).toBe('deploy/Dockerfile');
   });

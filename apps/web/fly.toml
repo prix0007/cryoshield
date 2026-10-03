@@ -10,9 +10,9 @@ primary_region = "sin" # Singapore: nearest Fly region to the founder (IST); Fly
 [http_service]
   internal_port = 8080
   force_https = true
-  auto_stop_machines = "stop"
+  auto_stop_machines = "suspend"
   auto_start_machines = true
-  min_machines_running = 1 # one warm machine: no cold start on first load (~$2/month); 0 is a one-line change
+  min_machines_running = 0 # scale to zero when idle (fly-scale-to-zero); suspended machines resume quickly
   processes = ["app"]
 
   [http_service.concurrency]
