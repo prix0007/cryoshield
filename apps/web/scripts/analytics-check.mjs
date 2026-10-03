@@ -24,7 +24,9 @@ export function landingCspDiff(appCsp, landingCsp) {
     const av = a.get(k) ?? [];
     const lv = l.get(k) ?? [];
     if (!a.has(k) || !l.has(k)) errors.push(`${k} present on only one of the pages`);
-    for (const t of av) if (!lv.includes(t)) errors.push(`${k} drops ${t}`);
+    // Dropping a connect-src source on the landing document is strictly fewer permissions (e.g. the app-only
+    // Arweave fast index, fix-arweave-mirror-status D4); any other drop changes the policy shape and is refused.
+    for (const t of av) if (!lv.includes(t) && !(k === 'connect-src' && t !== "'self'")) errors.push(`${k} drops ${t}`);
     for (const t of lv) if (!av.includes(t) && !(ALLOWED_LANDING_EXTRAS[k] ?? []).includes(t)) errors.push(`${k} adds ${t}`);
   }
   return errors;

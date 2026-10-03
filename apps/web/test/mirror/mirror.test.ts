@@ -133,3 +133,56 @@ describe('review fix 7: a gateway listing alone is never trusted', () => {
     await expect(m.upload({ vaultId, version: 1, locators: locs, blob })).rejects.toBeInstanceOf(MirrorError);
   });
 });
+
+describe('fix-arweave-mirror-status 1.1: copy found on either index', () => {
+  const blob = new Uint8Array(300).fill(7);
+  const FAST = 'https://fast.example';
+  const GW = 'https://gw.example';
+  const ID = 'A'.repeat(43);
+  function server(over: { fastHas?: Uint8Array | null; gwHas?: Uint8Array | null; fastDown?: boolean } = {}) {
+    const calls: string[] = [];
+    const fetchFn = vi.fn(async (url: string) => {
+      calls.push(url);
+      const host = url.startsWith(FAST) ? 'fast' : url.startsWith(GW) ? 'gw' : 'upload';
+      if (host === 'upload') return new Response(JSON.stringify({ id: 'up' }), { status: 200 });
+      if (host === 'fast' && over.fastDown) throw new TypeError('network');
+      const has = host === 'fast' ? over.fastHas : over.gwHas;
+      if (url.endsWith('/graphql')) {
+        const edges = has ? [{ node: { id: ID, data: { size: String(has.length) } } }] : [];
+        return new Response(JSON.stringify({ data: { transactions: { edges } } }), { status: 200 });
+      }
+      return has ? new Response(has.slice().buffer, { status: 200 }) : new Response('nf', { status: 404 });
+    });
+    const m = createMirror({ turboUploadUrl: 'https://upload.example', arweaveGatewayUrl: GW, fastIndexUrl: FAST, fetchFn: fetchFn as any });
+    return { m, calls };
+  }
+  const input = { vaultId, version: 1, locators: [locs[0]!], blob };
+
+  it('present (no upload) when arweave.net has nothing yet but the fast index serves identical bytes', async () => {
+    const { m, calls } = server({ fastHas: blob, gwHas: null });
+    expect(await m.ensure(input)).toBe('present');
+    expect(calls.some((u) => u.includes('upload.example'))).toBe(false);
+    expect(calls).toContain(`${FAST}/${ID}`); // data fetched from the host that listed it
+  });
+
+  it('uploads when the fast index serves different bytes and the gateway has nothing', async () => {
+    const { m, calls } = server({ fastHas: new Uint8Array(300).fill(8), gwHas: null });
+    expect(await m.ensure(input)).toBe('uploaded');
+    expect(calls.some((u) => u.includes('upload.example/v1/tx/ethereum'))).toBe(true);
+  });
+
+  it('tolerates one index being down and still finds the copy on the other', async () => {
+    const { m } = server({ fastDown: true, gwHas: blob });
+    expect(await m.ensure(input)).toBe('present');
+  });
+
+  it('upload() reports the Turbo item id and MirrorError carries status and step', async () => {
+    const ok = server({});
+    expect(typeof (await ok.m.upload(input))).toBe('string');
+    const fetchFn = vi.fn(async () => new Response('pay', { status: 402 }));
+    const bad = createMirror({ turboUploadUrl: 'https://upload.example', arweaveGatewayUrl: GW, fastIndexUrl: FAST, fetchFn: fetchFn as any });
+    const e = await bad.upload(input).catch((x) => x);
+    expect(e).toBeInstanceOf(MirrorError);
+    expect([e.code, e.status, e.step]).toEqual(['UPLOAD_FAILED', 402, 'upload']);
+  });
+});

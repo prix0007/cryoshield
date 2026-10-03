@@ -33,10 +33,12 @@ describe('two pages', () => {
     expect(existsSync(join(out, 'app', 'index.html'))).toBe(true);
   });
 
-  it('both carry exactly one, byte-identical, strict CSP meta and no inline script or style', () => {
+  it('both carry exactly one strict CSP meta (the app adds only the Arweave fast index) and no inline script or style', () => {
     const [a, b] = [html('index.html'), html('app/index.html')];
     expect(metaCsp(a)).toHaveLength(1);
-    expect(metaCsp(a)).toEqual(metaCsp(b));
+    expect(metaCsp(b)).toHaveLength(1);
+    // fix-arweave-mirror-status D4: the fast index is app-only; otherwise the two policies are identical.
+    expect(metaCsp(b)[0]).toBe(metaCsp(a)[0]!.replace(/(connect-src [^;]*)/, '$1 https://turbo-gateway.com'));
     expect(metaCsp(a)[0]).not.toMatch(/unsafe-inline|unsafe-eval/);
     expect(metaCsp(a)[0]).toContain("trusted-types 'none'");
     for (const h of [a, b]) {

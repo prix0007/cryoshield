@@ -60,6 +60,9 @@ test('mirror failure is non-blocking with Retry; the next unlock self-heals; dow
   await createVault(page, keys, [{ label: 'Seed', secret: 'one' }]);
   await expect(page.getByText('Your vault is saved')).toBeVisible();
   await expect(page.getByText('Extra backup copy not saved yet.')).toBeVisible({ timeout: 15_000 });
+  // fix-arweave-mirror-status: a sanitized reason under Details.
+  await page.getByText('Details').click();
+  await expect(page.locator('.notice-details code')).toHaveText('UPLOAD_FAILED · HTTP 503 · upload');
   arweave.failUploads = false;
   await page.getByRole('button', { name: 'Retry' }).click();
   await expect(page.getByText('Backup copy saved.')).toBeVisible({ timeout: 15_000 });
@@ -120,4 +123,23 @@ test('a key without PRF is refused with a plain message', async ({ page }) => {
   await page.getByRole('button', { name: 'Set up key 1' }).click();
   await expect(page.getByText('This key is too old', { exact: false })).toBeVisible({ timeout: 15_000 });
   await expect(page.getByText('Key 1 is ready.')).toHaveCount(0);
+});
+
+test('a fresh upload is found on Turbo\'s fast index before arweave.net settles: no duplicate on unlock, item link shown', async ({ page }) => {
+  const arweave = new ArweaveStub(); // settled = false: arweave.net lists nothing yet
+  await arweave.install(page);
+  await page.goto(APP);
+  const keys = await VirtualKeys.attach(page);
+  await keys.add();
+  await keys.add();
+  await createVault(page, keys, [{ label: 'Seed', secret: 'fast index' }]);
+  await expect(page.getByText('Backup copy saved.')).toBeVisible({ timeout: 15_000 });
+  const link = page.locator('.mirror-saved a');
+  await expect(link).toHaveAttribute('href', `https://turbo-gateway.com/${arweave.items[0]!.id}`);
+  await expect(page.getByText('permanent arweave.net link works once it settles', { exact: false })).toBeVisible();
+  expect(arweave.items).toHaveLength(1);
+  await unlockWith(page, keys, 1);
+  await page.waitForTimeout(1500);
+  expect(arweave.items).toHaveLength(1); // before the fix, every unlock re-uploaded a duplicate
+  await expect(page.getByText('Extra backup copy not saved yet.')).toHaveCount(0);
 });

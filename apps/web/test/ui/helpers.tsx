@@ -13,6 +13,7 @@ export function fakeServices(over: Partial<Services> = {}): Services {
     client: {} as Services['client'],
     sponsor: { send: async () => ({ userOpHash: '0x', success: true }) },
     mirror: { upload: async () => 'id', ensure: async () => 'present', lookup: async () => [] } as unknown as Services['mirror'],
+    fastIndexUrl: 'https://turbo-gateway.com',
     ...over,
   };
 }

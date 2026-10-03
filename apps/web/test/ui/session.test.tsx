@@ -28,7 +28,7 @@ async function unlocked() {
 
 beforeEach(async () => {
   vi.useFakeTimers({ shouldAdvanceTime: false });
-  vi.spyOn(ops, 'ensureMirror').mockResolvedValue('saved');
+  vi.spyOn(ops, 'ensureMirror').mockResolvedValue({ status: 'saved' });
   vi.spyOn(await import('@cryoshield/vault-crypto'), 'decodeVault').mockReturnValue({ entries: [{ credId: id(1) }, { credId: id(2) }] } as never);
 });
 afterEach(() => {

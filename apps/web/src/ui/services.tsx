@@ -18,6 +18,8 @@ export interface Services {
   client: PublicClient;
   sponsor: Sponsor;
   mirror: ReturnType<typeof createMirror>;
+  /** Turbo's fast-finality index (fix-arweave-mirror-status): item links right after upload. */
+  fastIndexUrl: string;
   /** Hostname check for the RP ID guard (overridable in tests). */
   host: string;
 }
@@ -33,7 +35,8 @@ export function defaultServices(): Services {
     reader: createRegistryReader(),
     client,
     sponsor: createSponsor(client),
-    mirror: createMirror({ turboUploadUrl: config.turboUploadUrl, arweaveGatewayUrl: config.arweaveGatewayUrl }),
+    mirror: createMirror({ turboUploadUrl: config.turboUploadUrl, arweaveGatewayUrl: config.arweaveGatewayUrl, fastIndexUrl: config.arweaveFastIndexUrl }),
+    fastIndexUrl: config.arweaveFastIndexUrl,
     host: typeof location === 'undefined' ? '' : location.hostname,
   };
 }

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { SecretItem } from '../vault/payload';
 import { cleanItems, KeyPrompt, Notice, SecretsEditor, StepHeading } from './components';
 import { MirrorLine } from './CreateFlow';
-import { ensureMirror, errorReference, messageFor, mirrorWrite, saveAddKey, saveEdit, type MirrorStatus, type VaultSession } from './operations';
+import { ensureMirror, errorReference, messageFor, mirrorWrite, saveAddKey, saveEdit, type MirrorResult, type VaultSession } from './operations';
 import { useServices } from './services';
 import { S } from './strings';
 import { ActionBar, EmptyState } from './chrome';
@@ -37,7 +37,7 @@ export function VaultView(props: {
     });
   const [draft, setDraft] = useState<SecretItem[]>(s.items);
   const [busy, setBusy] = useState(false);
-  const [mirror, setMirror] = useState<MirrorStatus | null>(null);
+  const [mirror, setMirror] = useState<MirrorResult | { status: 'pending' } | null>(null);
   const healed = useRef(false);
 
   // Self-heal the Arweave mirror once per unlock (no key tap needed: the blob is public ciphertext).
@@ -45,14 +45,14 @@ export function VaultView(props: {
     if (healed.current || props.freshMirror) return;
     healed.current = true;
     void ensureMirror(svc, { vaultId: s.vaultId, version: s.version, blob: s.blob, locator: props.locator }).then((m) => {
-      if (m === 'failed') setMirror('failed');
+      if (m.status === 'failed') setMirror(m);
     });
   }, [svc, s.vaultId, s.version, s.blob, props.locator, props.freshMirror]);
 
   function afterWrite(next: VaultSession, extraLocators: `0x${string}`[] = []) {
     props.onChange(next);
     setStatus(S.save.saved);
-    setMirror('pending');
+    setMirror({ status: 'pending' });
     void mirrorWrite(svc, { vaultId: next.vaultId, version: next.version, blob: next.blob, locators: [props.locator, ...extraLocators] }).then(setMirror);
   }
 
@@ -123,8 +123,8 @@ export function VaultView(props: {
       )}
       {status && <Notice kind="success">{status}</Notice>}
       {prompt && <KeyPrompt text={prompt} {...(waiting ? { onContinue: waiting } : {})} />}
-      {mirror && <MirrorLine status={mirror} onRetry={() => {
-        setMirror('pending');
+      {mirror && <MirrorLine result={mirror} fastIndexUrl={svc.fastIndexUrl} onRetry={() => {
+        setMirror({ status: 'pending' });
         void mirrorWrite(svc, { vaultId: s.vaultId, version: s.version, blob: s.blob, locators: [props.locator] }).then(setMirror);
       }} />}
 

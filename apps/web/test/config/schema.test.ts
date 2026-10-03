@@ -46,3 +46,17 @@ describe('parseEnv', () => {
     );
   });
 });
+
+describe('VITE_ARWEAVE_FAST_INDEX_URL (fix-arweave-mirror-status 1.3)', () => {
+  it('defaults to Turbo’s gateway and is an app-only origin (not in the shared connect origins)', () => {
+    const c = parseEnv(good);
+    expect(c.arweaveFastIndexUrl).toBe('https://turbo-gateway.com');
+    expect(c.appOnlyOrigins).toEqual(['https://turbo-gateway.com']);
+    expect(c.connectOrigins).not.toContain('https://turbo-gateway.com');
+  });
+  it('is configurable and validated like the other endpoints', () => {
+    expect(parseEnv({ ...good, VITE_ARWEAVE_FAST_INDEX_URL: 'https://index.example/' }).arweaveFastIndexUrl).toBe('https://index.example');
+    expect(() => parseEnv({ ...good, VITE_ARWEAVE_FAST_INDEX_URL: 'http://index.example' })).toThrow('VITE_ARWEAVE_FAST_INDEX_URL');
+    expect(() => parseEnv({ ...good, VITE_ARWEAVE_FAST_INDEX_URL: 'https://u:p@index.example' })).toThrow('VITE_ARWEAVE_FAST_INDEX_URL');
+  });
+});

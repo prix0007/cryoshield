@@ -27,7 +27,7 @@ describe('CSP', () => {
   });
 
   it('emits _headers with frame-ancestors (header-only directive)', () => {
-    const h = headersFile(origins);
+    const h = headersFile(origins, origins);
     expect(h).toContain("frame-ancestors 'none'");
     expect(h).toContain('X-Content-Type-Options: nosniff');
     expect(h).toContain('Referrer-Policy: no-referrer');

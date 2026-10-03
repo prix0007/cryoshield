@@ -4,7 +4,7 @@ import { toHex, wipe } from '../lib/bytes';
 import type { SecretItem } from '../vault/payload';
 import { WriteError } from '../account/writes';
 import { cleanItems, KeyPrompt, Notice, PermanenceAck, SecretsEditor, StepHeading } from './components';
-import { enrollWithPrf, errorReference, messageFor, mirrorWrite, saveNewVault, type MirrorStatus, type PendingKey, type VaultSession } from './operations';
+import { enrollWithPrf, errorReference, messageFor, mirrorWrite, saveNewVault, type MirrorResult, type PendingKey, type VaultSession } from './operations';
 import { useServices } from './services';
 import { useAutoLock } from './useAutoLock';
 import { S } from './strings';
@@ -23,7 +23,9 @@ export function CreateFlow(props: { onDone: (s: VaultSession) => void; onCancel:
   const [errorRef, setErrorRef] = useState<string | undefined>(undefined);
   const [items, setItems] = useState<SecretItem[]>([{ label: '', secret: '' }]);
   const [session, setSession] = useState<VaultSession | null>(null);
-  const [mirror, setMirror] = useState<MirrorStatus>('pending');
+  const [mirror, setMirror] = useState<MirrorResult | { status: 'pending' }>({ status: 'pending' });
+  // Locators known from creation, reused on Retry (fix-arweave-mirror-status D2).
+  const [knownLocators, setKnownLocators] = useState<`0x${string}`[]>([]);
   const [busy, setBusy] = useState(false);
   // Permanence + 18+ acknowledgement: required for every create, kept in memory only (never stored or sent).
   const [ackPermanent, setAckPermanent] = useState(false);
@@ -80,6 +82,7 @@ export function CreateFlow(props: { onDone: (s: VaultSession) => void; onCancel:
       setSession(s);
       setStep('done');
       setPrompt(null);
+      setKnownLocators(locators);
       void mirrorWrite(svc, { vaultId: s.vaultId, version: s.version, blob: s.blob, locators }).then(setMirror);
     } catch (e) {
       setPrompt(null);
@@ -193,9 +196,9 @@ export function CreateFlow(props: { onDone: (s: VaultSession) => void; onCancel:
           {S.create.done.map((t) => (
             <p key={t}>{t}</p>
           ))}
-          <MirrorLine status={mirror} onRetry={() => {
-            setMirror('pending');
-            void mirrorWrite(svc, { vaultId: session.vaultId, version: session.version, blob: session.blob }).then(setMirror);
+          <MirrorLine result={mirror} fastIndexUrl={svc.fastIndexUrl} onRetry={() => {
+            setMirror({ status: 'pending' });
+            void mirrorWrite(svc, { vaultId: session.vaultId, version: session.version, blob: session.blob, locators: knownLocators }).then(setMirror);
           }} />
           <ActionBar>
             <button onClick={() => props.onDone(session)}>{S.create.continue}</button>
@@ -206,15 +209,37 @@ export function CreateFlow(props: { onDone: (s: VaultSession) => void; onCancel:
   );
 }
 
-export function MirrorLine({ status, onRetry }: { status: MirrorStatus; onRetry: () => void }) {
-  if (status === 'saved') return <p role="status">{S.mirror.saved}</p>;
-  if (status === 'pending') return <p role="status">{S.mirror.pending}</p>;
+export function MirrorLine({ result, fastIndexUrl, onRetry }: { result: MirrorResult | { status: 'pending' }; fastIndexUrl: string; onRetry: () => void }) {
+  if (result.status === 'pending') return <p role="status">{S.mirror.pending}</p>;
+  if (result.status === 'saved') {
+    const id = 'itemId' in result && result.itemId && /^[A-Za-z0-9_-]{43}$/.test(result.itemId) ? result.itemId : null;
+    return (
+      <div role="status" className="mirror-saved">
+        <p className="notice-text">{S.mirror.saved}</p>
+        {id && (
+          <p className="hint">
+            {S.mirror.item}{' '}
+            <a className="mono" href={`${fastIndexUrl}/${id}`} rel="noopener noreferrer">
+              {id}
+            </a>
+            . {S.mirror.settleNote}
+          </p>
+        )}
+      </div>
+    );
+  }
   return (
-    <div className="notice notice-info" role="status">
-      {S.mirror.failed}{' '}
+    <div className="notice notice-info notice-inline" role="status">
+      <p className="notice-text">{S.mirror.failed}</p>
       <button className="secondary" onClick={onRetry}>
         {S.mirror.retry}
       </button>
+      {'ref' in result && result.ref && (
+        <details className="notice-details">
+          <summary>{S.save.details}</summary>
+          <code className="mono">{result.ref}</code>
+        </details>
+      )}
     </div>
   );
 }

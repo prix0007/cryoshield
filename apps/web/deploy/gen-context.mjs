@@ -48,7 +48,8 @@ const directives = (c) => new Map(c.split(';').map((d) => d.trim()).filter(Boole
   for (const k of new Set([...a.keys(), ...l.keys()])) {
     const av = a.get(k) ?? [];
     const lv = l.get(k) ?? [];
-    const removed = av.filter((t) => !lv.includes(t));
+    // The landing document may drop connect-src sources (strictly fewer permissions; fix-arweave-mirror-status D4).
+    const removed = av.filter((t) => !lv.includes(t) && !(k === 'connect-src' && t !== "'self'"));
     const added = lv.filter((t) => !av.includes(t));
     const bad = added.filter((t) => !(ALLOWED_LANDING_EXTRAS[k] ?? []).includes(t));
     if (removed.length || bad.length || !a.has(k) || !l.has(k)) {

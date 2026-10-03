@@ -231,6 +231,13 @@ describe('served by the container', () => {
     expect(r.headers['server']).toBeUndefined();
   });
 
+  it('the Arweave fast index is in the /app/ CSP and NOT in the landing CSP (fix-arweave-mirror-status 1.3)', async () => {
+    const app = (await get('/app/')).headers['content-security-policy'] as string;
+    const landing = (await get('/')).headers['content-security-policy'] as string;
+    expect(app).toMatch(/connect-src [^;]*https:\/\/turbo-gateway\.com/);
+    expect(landing).not.toContain('turbo-gateway.com');
+  });
+
   it('/healthz is 200', async () => {
     const r = await get('/healthz');
     expect(r.status).toBe(200);
