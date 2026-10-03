@@ -87,8 +87,9 @@ export const collapse = {
 
 /** Looping "waiting for your key" pulse on a decorative element. */
 export function pulse(reduced: boolean): { animate: Record<string, number[]>; transition: Transition } {
+  // Reduced motion: a static ring (no looping animation at all), as before Motion.
   return reduced
-    ? { animate: { opacity: [0.5, 0.9, 0.5] }, transition: { duration: 1.6, repeat: Infinity } }
+    ? { animate: { opacity: [0.6] }, transition: { duration: 0 } }
     : { animate: { scale: [0.85, 1.15, 0.85], opacity: [0.5, 0, 0.5] }, transition: { duration: 1.6, repeat: Infinity, ease: 'easeInOut' } };
 }
 

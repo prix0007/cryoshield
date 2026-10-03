@@ -148,10 +148,16 @@ describe('stylesheets use tokens only', () => {
     expect(body).not.toMatch(/font-weight:\s*500/);
   });
 
-  it('every button scales to 0.95 when pressed (and not under reduced motion)', () => {
+  it('every app button presses to 0.95 through Motion (app-motion-ux), with no competing CSS press', () => {
     const g = readFileSync(join(__dirname, '..', '..', 'src/ui/global.css'), 'utf8');
-    expect(g).toMatch(/button:active:not\(:disabled\)\s*\{\s*transform: scale\(0\.95\)/);
-    expect(g).toMatch(/prefers-reduced-motion: reduce[\s\S]*transform: none/);
+    expect(g).not.toMatch(/button:active/);
+    expect(g).not.toMatch(/button[^{]*\{[^}]*transition: transform/);
+    const ui = join(__dirname, '..', '..', 'src/ui');
+    for (const f of ['App.tsx', 'CreateFlow.tsx', 'UnlockFlow.tsx', 'VaultView.tsx', 'components.tsx', 'motionkit.tsx']) {
+      const src = readFileSync(join(ui, f), 'utf8');
+      expect(src, f).not.toMatch(/<button\b/); // all buttons are <Btn> (m.button + whileTap)
+    }
+    expect(readFileSync(join(ui, 'motionkit.tsx'), 'utf8')).toMatch(/whileTap: TAP/);
     expect(g).toMatch(/scroll-padding-bottom/);
     expect(g).not.toMatch(/dashed/); // disabled pills keep the guide's solid pill shape
     expect(g).toMatch(/\.card \.action-bar \{[^}]*background: none[^}]*border: 0/);

@@ -231,10 +231,13 @@ const gz = (f) => gzipSync(readFileSync(join(dist, f)), { level: 9 }).length;
 const APP_BASELINE = 194_690;
 const APP_ALLOWANCE = 20 * KB;
 function appBudget(label) {
-  const { initial } = splitGraph(join('app', 'index.html'));
+  const { initial, lazy } = splitGraph(join('app', 'index.html'));
   const bytes = [...initial].reduce((n, f) => n + gz(f), 0);
+  const lazyBytes = [...lazy].reduce((n, f) => n + gz(f), 0);
   const delta = bytes - APP_BASELINE;
-  console.log(`info [${label}] /app initial JS gzip: ${bytes} B (baseline ${APP_BASELINE} B, ${delta >= 0 ? '+' : ''}${delta} B; allowance +${APP_ALLOWANCE} B)`);
+  console.log(
+    `info [${label}] /app initial JS gzip: ${bytes} B (baseline ${APP_BASELINE} B, ${delta >= 0 ? '+' : ''}${delta} B; allowance +${APP_ALLOWANCE} B); lazy ${lazyBytes} B`,
+  );
   if (bytes > APP_BASELINE + APP_ALLOWANCE) fail(`[${label}] /app initial JS ${bytes} B exceeds baseline + 20 KB (${APP_BASELINE + APP_ALLOWANCE} B)`);
   console.log(`ok   [${label}] /app initial JS within budget`);
 }

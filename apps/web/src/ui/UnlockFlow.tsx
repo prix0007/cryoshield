@@ -9,6 +9,10 @@ import { messageFor, type VaultSession } from './operations';
 import { useServices } from './services';
 import { S } from './strings';
 import { ActionBar } from './chrome';
+import { Btn, CeremonyPresence, StepTransition, useDirection } from './motionkit';
+
+type Phase = 'ready' | 'notFound' | 'choices';
+const PHASE_ORDER: readonly Phase[] = ['ready', 'notFound', 'choices'];
 
 export interface Unlocked {
   session: VaultSession;
@@ -32,6 +36,8 @@ export function UnlockFlow(props: { onUnlocked: (u: Unlocked) => void; onCreate:
   const [error, setError] = useState<string | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [choices, setChoices] = useState<{ matches: OpenedVault[]; locator: `0x${string}` } | null>(null);
+  const phase: Phase = choices ? 'choices' : notFound ? 'notFound' : 'ready';
+  const dir = useDirection(PHASE_ORDER, phase);
 
   async function go() {
     setBusy(true);
@@ -65,43 +71,45 @@ export function UnlockFlow(props: { onUnlocked: (u: Unlocked) => void; onCreate:
       <h1 id="unlock-title">{S.unlock.title}</h1>
       <StepHeading>{S.unlock.touch}</StepHeading>
       {error && <Notice kind="error">{error}</Notice>}
-      {busy && <KeyPrompt text={S.unlock.working} />}
-      {notFound && (
-        <div>
-          <Notice kind="info">{S.unlock.notFound}</Notice>
+      <CeremonyPresence>{busy && <KeyPrompt text={S.unlock.working} />}</CeremonyPresence>
+      <StepTransition id={phase} dir={dir}>
+        {notFound && (
+          <div>
+            <Notice kind="info">{S.unlock.notFound}</Notice>
+            <ActionBar>
+              <Btn onClick={props.onCreate}>{S.unlock.createInstead}</Btn>
+              <Btn className="secondary" onClick={go}>
+                {S.unlock.tryAgain}
+              </Btn>
+            </ActionBar>
+          </div>
+        )}
+        {choices && (
+          <div>
+            <Notice kind="info">{S.unlock.severalWarning}</Notice>
+            <p>{S.unlock.several}</p>
+            <ul className="plain-list">
+              {choices.matches.map((m, i) => (
+                <li key={m.vaultId}>
+                  <Btn className="secondary" onClick={() => finish(m, choices.locator)}>
+                    {S.unlock.vaultChoice(i, m.version)}
+                  </Btn>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {!notFound && !choices && (
           <ActionBar>
-            <button onClick={props.onCreate}>{S.unlock.createInstead}</button>
-            <button className="secondary" onClick={go}>
-              {S.unlock.tryAgain}
-            </button>
+            <Btn onClick={go} disabled={busy}>
+              {S.unlock.button}
+            </Btn>
+            <Btn className="secondary" onClick={props.onCancel} disabled={busy}>
+              {S.back}
+            </Btn>
           </ActionBar>
-        </div>
-      )}
-      {choices && (
-        <div>
-          <Notice kind="info">{S.unlock.severalWarning}</Notice>
-          <p>{S.unlock.several}</p>
-          <ul className="plain-list">
-            {choices.matches.map((m, i) => (
-              <li key={m.vaultId}>
-                <button className="secondary" onClick={() => finish(m, choices.locator)}>
-                  {S.unlock.vaultChoice(i, m.version)}
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-      {!notFound && !choices && (
-        <ActionBar>
-          <button onClick={go} disabled={busy}>
-            {S.unlock.button}
-          </button>
-          <button className="secondary" onClick={props.onCancel} disabled={busy}>
-            {S.back}
-          </button>
-        </ActionBar>
-      )}
+        )}
+      </StepTransition>
     </section>
   );
 }

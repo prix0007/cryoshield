@@ -49,9 +49,11 @@ h2.step-heading {
   letter-spacing: 0.231px;
   margin: 0 0 var(--space-md);
 }
-h2.step-heading:focus {
+h2.step-heading:focus,
+#home-title:focus {
   outline: none;
 }
+#home-title:focus-visible,
 h2.step-heading:focus-visible {
   outline: 2px solid var(--app-focus);
   outline-offset: 4px;
@@ -93,11 +95,8 @@ button {
   background: var(--color-primary);
   color: var(--on-primary);
   cursor: pointer;
-  transition: transform 0.12s ease;
 }
-button:active:not(:disabled) {
-  transform: scale(0.95);
-}
+/* Press feedback (scale 0.95) and the fine-pointer hover lift are Motion's whileTap/whileHover (app-motion-ux). */
 button.secondary {
   background: transparent;
   color: var(--app-link);
@@ -255,21 +254,7 @@ button:focus-visible {
   border: 2px solid var(--app-link);
   opacity: 0;
 }
-@media (prefers-reduced-motion: no-preference) {
-  .key-pulse {
-    animation: key-pulse 1.8s ease-out infinite;
-  }
-}
-@keyframes key-pulse {
-  from {
-    transform: scale(0.8);
-    opacity: 0.8;
-  }
-  to {
-    transform: scale(2.2);
-    opacity: 0;
-  }
-}
+/* The pulse is a Motion loop (app-motion-ux D4); MotionConfig reducedMotion="user" keeps it opacity-only. */
 .key-prompt-body > :last-child {
   margin-bottom: 0;
 }
@@ -295,11 +280,124 @@ button:focus-visible {
 .key-list li {
   margin-bottom: var(--space-xs);
 }
+.key-list {
+  list-style: none;
+  padding-left: 0;
+}
 .key-ready {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
   font-weight: 600;
 }
-.key-ready::marker {
-  color: var(--app-link);
+.key-slot-badge {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--app-link);
+}
+.check-mark {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: var(--on-primary);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* ---- Motion pieces (app-motion-ux) ---- */
+.step-motion {
+  min-width: 0;
+}
+.save-progress .progress-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.stage {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  min-height: var(--target);
+  color: var(--app-muted);
+}
+.stage-done {
+  color: var(--app-ink);
+  font-weight: 600;
+}
+.stage-icon {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid var(--app-hairline);
+}
+.stage-done .stage-icon {
+  border-color: var(--app-link);
+  background: var(--app-link);
+}
+.stage-done .check-mark {
+  width: 16px;
+  height: 16px;
+}
+.stage-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--app-muted);
+}
+.copy-feedback {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-xs) var(--space-sm);
+  margin-top: var(--space-sm);
+}
+.copy-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xxs);
+  padding: 2px 10px 2px 6px;
+  border-radius: var(--radius-pill);
+  background: var(--app-link);
+  color: var(--on-primary);
+  font-size: var(--caption-size);
+  font-weight: 600;
+}
+.copy-check {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: var(--on-primary);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.copy-clear {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  color: var(--app-muted);
+  font-size: var(--caption-size);
+}
+.copy-bar-track {
+  display: inline-block;
+  width: 72px;
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: var(--app-hairline);
+  overflow: hidden;
+}
+.copy-bar {
+  display: block;
+  height: 100%;
+  background: var(--app-link);
+  transform-origin: left center;
 }
 .hint {
   color: var(--app-muted);
@@ -396,25 +494,31 @@ dd {
   margin: 0;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  button,
-  button:active:not(:disabled) {
-    transition: none;
-    transform: none;
-  }
-}
 
 /* Write-failure reference (improve-write-failure-feedback): collapsed, non-secret, for operators. */
 .notice-details {
   margin-top: var(--space-xs);
 }
-.notice-details summary {
+.notice-details button.disclosure {
   display: inline-flex;
   align-items: center;
-  min-height: var(--target);
-  min-width: var(--target);
-  cursor: pointer;
+  gap: var(--space-xxs);
+  padding: 0;
+  border: 0;
+  background: transparent;
   color: var(--app-link);
+  border-radius: var(--radius-xs);
+}
+.disclosure-chevron {
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(-45deg);
+  margin-right: var(--space-xxs);
+}
+.disclosure[aria-expanded='true'] .disclosure-chevron {
+  transform: rotate(45deg);
 }
 .notice-details code {
   display: block;

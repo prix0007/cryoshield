@@ -7,8 +7,12 @@ import { useServices } from './services';
 import { S } from './strings';
 import { ActionBar, EmptyState } from './chrome';
 import { copySecret } from './clipboard';
+import type { SaveStage } from '../account/writes';
+import { AnimatePresence, Btn, CeremonyPresence, Collapse, CopyFeedback, m, SaveProgress, StepTransition, useDirection, useReduced } from './motionkit';
+import { reveal } from './motion';
 
 type Mode = 'view' | 'edit' | 'addKey' | 'details';
+const MODE_ORDER: readonly Mode[] = ['view', 'edit', 'addKey', 'details'];
 
 export function VaultView(props: {
   session: VaultSession;
@@ -39,6 +43,15 @@ export function VaultView(props: {
   const [busy, setBusy] = useState(false);
   const [mirror, setMirror] = useState<MirrorResult | { status: 'pending' } | null>(null);
   const healed = useRef(false);
+  const dir = useDirection(MODE_ORDER, mode);
+  const reduced = useReduced();
+  const unblur = reveal(reduced);
+  // Save checklist for edit / add key: only stages the write path really reported (app-motion-ux D5).
+  const [progress, setProgress] = useState<ReadonlySet<SaveStage> | null>(null);
+  const onProgress = (stage: SaveStage) => setProgress((prev) => new Set(prev ?? []).add(stage));
+  // Copy confirmation: `n` is a counter (the animation key), `i` the row; never the copied value.
+  const [copied, setCopied] = useState<{ i: number; n: number } | null>(null);
+  const copies = useRef(0);
 
   // Self-heal the Arweave mirror once per unlock (no key tap needed: the blob is public ciphertext).
   useEffect(() => {
@@ -61,12 +74,14 @@ export function VaultView(props: {
     setError(null);
     setErrorRef(undefined);
     setStatus(null);
+    setProgress(new Set());
     setPrompt(S.edit.touchAny);
     try {
-      const next = await saveEdit(svc, s, cleanItems(draft), () => setPrompt(S.edit.touchSame));
+      const next = await saveEdit(svc, s, cleanItems(draft), () => setPrompt(S.edit.touchSame), onProgress);
       setMode('view');
       afterWrite(next);
     } catch (e) {
+      setProgress(null);
       setError(messageFor(e));
       setErrorRef(errorReference(e));
     } finally {
@@ -80,17 +95,20 @@ export function VaultView(props: {
     setError(null);
     setErrorRef(undefined);
     setStatus(null);
+    setProgress(new Set());
     setPrompt(S.addKey.touchCurrent);
     try {
       const { session: next, newLocator } = await saveAddKey(svc, s, {
         onInsertNew: () => confirmStep(S.addKey.insertNew),
         onNewAgain: () => setPrompt(S.addKey.touchNewAgain),
         onSign: () => confirmStep(S.addKey.touchCurrentAgain),
+        onProgress,
       });
       setMode('view');
       afterWrite(next, [newLocator]);
       setStatus(S.addKey.done);
     } catch (e) {
+      setProgress(null);
       setError(messageFor(e));
       setErrorRef(errorReference(e));
     } finally {
@@ -122,106 +140,123 @@ export function VaultView(props: {
         </Notice>
       )}
       {status && <Notice kind="success">{status}</Notice>}
-      {prompt && <KeyPrompt text={prompt} {...(waiting ? { onContinue: waiting } : {})} />}
+      <CeremonyPresence>{prompt && <KeyPrompt text={prompt} {...(waiting ? { onContinue: waiting } : {})} />}</CeremonyPresence>
+      {progress && <SaveProgress reached={progress} {...(mirror && progress.has('confirmed') ? { arweave: mirror.status } : {})} />}
       {mirror && <MirrorLine result={mirror} fastIndexUrl={svc.fastIndexUrl} onRetry={() => {
         setMirror({ status: 'pending' });
         void mirrorWrite(svc, { vaultId: s.vaultId, version: s.version, blob: s.blob, locators: [props.locator] }).then(setMirror);
       }} />}
 
-      {mode === 'view' && (
-        <div>
-          {s.items.length === 0 && <EmptyState>{S.vault.empty}</EmptyState>}
-          <ul className="secrets" aria-label={S.vault.title} hidden={s.items.length === 0}>
-            {s.items.map((it, i) => (
-              <li key={i} className="secret card">
-                <h3>{it.label}</h3>
-                <div className="secret-value" aria-live="polite">
-                  {shown.has(i) ? <pre>{it.secret}</pre> : <span aria-label="hidden">{S.vault.hidden}</span>}
-                </div>
-                <div className="actions">
-                  <button
-                    className="secondary"
-                    aria-pressed={shown.has(i)}
-                    onClick={() =>
-                      setShown((prev) => {
-                        const n = new Set(prev);
-                        if (n.has(i)) n.delete(i);
-                        else n.add(i);
-                        return n;
-                      })
-                    }
-                  >
-                    {shown.has(i) ? S.vault.hide : S.vault.show} <span className="sr-only">{it.label}</span>
-                  </button>
-                  <button
-                    className="secondary"
-                    onClick={async () => {
-                      if (await copySecret(it.secret)) setStatus(S.vault.copied);
-                    }}
-                  >
-                    {S.vault.copy} <span className="sr-only">{it.label}</span>
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ul>
-          <ActionBar>
-            <button onClick={() => { setDraft(s.items); setMode('edit'); setStatus(null); }}>{S.vault.edit}</button>
-            <button className="secondary" onClick={() => { setMode('addKey'); setStatus(null); }}>{S.vault.addKey}</button>
-            <button className="secondary" onClick={() => setMode('details')}>{S.vault.details}</button>
-            <button className="secondary" onClick={props.onLock}>{S.vault.lock}</button>
-          </ActionBar>
-        </div>
-      )}
-
-      {mode === 'edit' && (
-        <div>
-          <StepHeading>{S.vault.edit}</StepHeading>
-          <SecretsEditor rpId={svc.rpId} credIds={s.credIds} items={draft} onChange={setDraft} onSave={saveDraft} onCancel={() => setMode('view')} busy={busy} />
-        </div>
-      )}
-
-      {mode === 'addKey' && (
-        <div className="card">
-          <StepHeading>{S.addKey.title}</StepHeading>
-          {s.credIds.length >= 8 ? (
-            <p>{S.addKey.max}</p>
-          ) : (
-            <ul className="plain-list">
-              {S.addKey.explain.map((t) => (
-                <li key={t}>{t}</li>
-              ))}
+      <StepTransition id={mode} dir={dir}>
+        {mode === 'view' && (
+          <div>
+            {s.items.length === 0 && <EmptyState>{S.vault.empty}</EmptyState>}
+            <ul className="secrets" aria-label={S.vault.title} hidden={s.items.length === 0}>
+              <AnimatePresence initial={false}>
+                {s.items.map((it, i) => (
+                  <Collapse as="li" key={i} className="secret card">
+                    <h3>{it.label}</h3>
+                    <div className="secret-value" aria-live="polite">
+                      {/* De-blur only after an explicit Show; the secret is children, never an animated value. */}
+                      {shown.has(i) ? (
+                        <m.pre initial={unblur.initial} animate={unblur.animate} transition={unblur.transition}>
+                          {it.secret}
+                        </m.pre>
+                      ) : (
+                        <span aria-label="hidden">{S.vault.hidden}</span>
+                      )}
+                    </div>
+                    <div className="actions">
+                      <Btn
+                        className="secondary"
+                        aria-pressed={shown.has(i)}
+                        onClick={() =>
+                          setShown((prev) => {
+                            const n = new Set(prev);
+                            if (n.has(i)) n.delete(i);
+                            else n.add(i);
+                            return n;
+                          })
+                        }
+                      >
+                        {shown.has(i) ? S.vault.hide : S.vault.show} <span className="sr-only">{it.label}</span>
+                      </Btn>
+                      <Btn
+                        className="secondary"
+                        onClick={async () => {
+                          const n = ++copies.current;
+                          if (await copySecret(it.secret, undefined, () => setCopied((c) => (c?.n === n ? null : c)))) {
+                            setStatus(S.vault.copied);
+                            setCopied({ i, n });
+                          }
+                        }}
+                      >
+                        {S.vault.copy} <span className="sr-only">{it.label}</span>
+                      </Btn>
+                    </div>
+                    {copied?.i === i && <CopyFeedback key={copied.n} />}
+                  </Collapse>
+                ))}
+              </AnimatePresence>
             </ul>
-          )}
-          <ActionBar>
-            {s.credIds.length < 8 && (
-              <button onClick={addKey} disabled={busy}>
-                {S.addKey.start}
-              </button>
-            )}
-            <button className="secondary" onClick={() => setMode('view')} disabled={busy}>
-              {S.back}
-            </button>
-          </ActionBar>
-        </div>
-      )}
+            <ActionBar>
+              <Btn onClick={() => { setDraft(s.items); setMode('edit'); setStatus(null); setProgress(null); }}>{S.vault.edit}</Btn>
+              <Btn className="secondary" onClick={() => { setMode('addKey'); setStatus(null); setProgress(null); }}>{S.vault.addKey}</Btn>
+              <Btn className="secondary" onClick={() => { setMode('details'); setProgress(null); }}>{S.vault.details}</Btn>
+              <Btn className="secondary" onClick={props.onLock}>{S.vault.lock}</Btn>
+            </ActionBar>
+          </div>
+        )}
 
-      {mode === 'details' && (
-        <div className="card">
-          <StepHeading>{S.details.title}</StepHeading>
-          <dl>
-            <dt>{S.details.vaultId}</dt>
-            <dd className="mono" data-testid="vault-id">{s.vaultId}</dd>
-          </dl>
-          <p>{S.details.downloadHint}</p>
-          <ActionBar>
-            <button onClick={download}>{S.details.download}</button>
-            <button className="secondary" onClick={() => setMode('view')}>
-              {S.details.close}
-            </button>
-          </ActionBar>
-        </div>
-      )}
+        {mode === 'edit' && (
+          <div>
+            <StepHeading>{S.vault.edit}</StepHeading>
+            <SecretsEditor rpId={svc.rpId} credIds={s.credIds} items={draft} onChange={setDraft} onSave={saveDraft} onCancel={() => setMode('view')} busy={busy} />
+          </div>
+        )}
+
+        {mode === 'addKey' && (
+          <div className="card">
+            <StepHeading>{S.addKey.title}</StepHeading>
+            {s.credIds.length >= 8 ? (
+              <p>{S.addKey.max}</p>
+            ) : (
+              <ul className="plain-list">
+                {S.addKey.explain.map((t) => (
+                  <li key={t}>{t}</li>
+                ))}
+              </ul>
+            )}
+            <ActionBar>
+              {s.credIds.length < 8 && (
+                <Btn onClick={addKey} disabled={busy}>
+                  {S.addKey.start}
+                </Btn>
+              )}
+              <Btn className="secondary" onClick={() => setMode('view')} disabled={busy}>
+                {S.back}
+              </Btn>
+            </ActionBar>
+          </div>
+        )}
+
+        {mode === 'details' && (
+          <div className="card">
+            <StepHeading>{S.details.title}</StepHeading>
+            <dl>
+              <dt>{S.details.vaultId}</dt>
+              <dd className="mono" data-testid="vault-id">{s.vaultId}</dd>
+            </dl>
+            <p>{S.details.downloadHint}</p>
+            <ActionBar>
+              <Btn onClick={download}>{S.details.download}</Btn>
+              <Btn className="secondary" onClick={() => setMode('view')}>
+                {S.details.close}
+              </Btn>
+            </ActionBar>
+          </div>
+        )}
+      </StepTransition>
     </section>
   );
 }

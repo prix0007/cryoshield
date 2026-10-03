@@ -1,7 +1,7 @@
 /** app-motion-ux 1.1: pure, state-driven variant factories. */
 import { describe, expect, it } from 'vitest';
 import { CLIPBOARD_CLEAR_MS } from '../../src/ui/clipboard';
-import { collapse, countdown, directionOf, keyCheck, pop, reveal, shake, slotFill, stepVariants, STEP_SECONDS, TAP } from '../../src/ui/motion';
+import { collapse, countdown, directionOf, keyCheck, pop, pulse, reveal, shake, slotFill, stepVariants, STEP_SECONDS, TAP } from '../../src/ui/motion';
 
 const TRANSFORM_KEYS = ['x', 'y', 'scale', 'scaleX', 'scaleY', 'rotate', 'filter'];
 const keysOf = (v: unknown) => Object.keys((typeof v === 'function' ? (v as (d: number) => object)(1) : v) as object);
@@ -57,6 +57,11 @@ describe('feedback variants', () => {
     expect(collapse.initial).toMatchObject({ height: 0, opacity: 0 });
     expect(collapse.animate).toMatchObject({ height: 'auto', opacity: 1 });
     expect(collapse.exit).toMatchObject({ height: 0, opacity: 0 });
+  });
+  it('waiting pulse loops only with motion allowed; reduced is a static ring', () => {
+    expect(pulse(false).transition).toMatchObject({ repeat: Infinity });
+    expect(pulse(true).transition).not.toHaveProperty('repeat');
+    expect(keysOf(pulse(true).animate)).toEqual(['opacity']);
   });
   it('press feedback is scale 0.95', () => expect(TAP).toEqual({ scale: 0.95 }));
 });
