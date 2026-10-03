@@ -1,0 +1,62 @@
+name: auto-merge
+# Turns on GitHub auto-merge for every PR, so it squash-merges into main the moment every required check
+# passes (ci-ok, plus ecc-review once enabled; see .github/rulesets/main.json and CLAUDE.md -> "Change flow").
+# Nothing merges with a failing or missing required check. (OpenSpec change adopt-ecc-review-and-auto-merge.)
+#
+# Owner veto: add the label `hold` and auto-merge is switched off for that PR; remove the label to switch it
+# back on. `gh pr merge <n> --disable-auto` also works.
+#
+# Auto-merge is only switched on while the base branch's ruleset REQUIRES the `ecc-review` check (enabled with
+# `.github/rulesets/apply.sh --with-ecc-review --apply`). Until then a PR could merge on ci-ok before its review
+# lands, so the review would only be post-merge (security review M2). PRs opened before that point get auto-merge
+# on their next labeled/unlabeled/reopened event.
+#
+# Dependabot PRs are never auto-merged (.github/dependabot.yml: every bump is merged by the maintainer).
+#
+# pull_request_target so this runs from main; it never checks out PR code and holds no third-party secret.
+# Same-repo, non-draft PRs only (job-level `if`). Enforced by .github/scripts/workflow-policy.mjs.
+
+on:
+  pull_request_target:
+    types: [opened, reopened, ready_for_review, labeled, unlabeled]
+
+permissions: {} # the job lists exactly what it needs
+
+jobs:
+  auto-merge:
+    name: auto-merge
+    if: >-
+      github.event.pull_request.draft == false
+      && github.event.pull_request.head.repo.full_name == github.repository
+      && github.event.pull_request.base.ref == github.event.repository.default_branch
+      && github.event.pull_request.user.login != 'dependabot[bot]'
+    concurrency:
+      group: auto-merge-${{ github.event.pull_request.number }}
+      cancel-in-progress: true # the newest label state wins
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write # enabling auto-merge requires merge rights
+      pull-requests: write # enable/disable auto-merge on the PR
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      PR: ${{ github.event.pull_request.number }}
+      HOLD: ${{ contains(github.event.pull_request.labels.*.name, 'hold') }}
+      BASE: ${{ github.event.pull_request.base.ref }}
+    steps:
+      - name: Enable auto-merge, or switch it off while the PR is on hold or ecc-review is not required
+        run: |
+          set -euo pipefail
+          gated=$(gh api "repos/$GH_REPO/rules/branches/$BASE" \
+            --jq '[.[] | select(.type == "required_status_checks") | .parameters.required_status_checks[].context] | index("ecc-review") != null')
+          if [ "$HOLD" = "true" ]; then
+            gh pr merge "$PR" --disable-auto 2>/dev/null || true
+            echo "::notice::PR #$PR is on hold; auto-merge is off until the 'hold' label is removed."
+          elif [ "$gated" != "true" ]; then
+            gh pr merge "$PR" --disable-auto 2>/dev/null || true
+            echo "::notice::Auto-merge stays off until ecc-review is a required check (apply.sh --with-ecc-review --apply)."
+          else
+            gh pr merge "$PR" --auto --squash --delete-branch
+            echo "PR #$PR will squash-merge into main once every required check passes."
+          fi

@@ -26,7 +26,7 @@ const liveMatching = () => ({
 
 const actionsCommitted = JSON.parse(readFileSync(new URL('../../rulesets/actions-permissions.json', import.meta.url), 'utf8'));
 
-function run({ rulesets = [], ruleset = {}, repo = { ...settings, id: 1, private: true }, labels = [{ name: 'no-spec' }], actions = actionsCommitted, args = [], env = {} }) {
+function run({ rulesets = [], ruleset = {}, repo = { ...settings, id: 1, private: true }, labels = [{ name: 'no-spec' }, { name: 'hold' }], actions = actionsCommitted, args = [], env = {} }) {
   const dir = mkdtempSync(join(tmpdir(), 'apply-sh-'));
   writeFileSync(join(dir, 'actions.json'), JSON.stringify(actions));
   writeFileSync(join(dir, 'rulesets.json'), JSON.stringify(rulesets));
@@ -73,6 +73,7 @@ test('matching ruleset, settings and label: no diff, no write (idempotent)', () 
     assert.match(r.stdout, /ruleset 'main': in sync/);
     assert.match(r.stdout, /repo merge settings: in sync/);
     assert.match(r.stdout, /label 'no-spec': present/);
+    assert.match(r.stdout, /label 'hold': present/);
     assert.deepEqual(r.writes, []);
   }
 });
@@ -86,7 +87,7 @@ test('drifted merge settings and missing label are applied', () => {
     args: ['--apply'],
   });
   assert.equal(r.status, 0, r.stderr + r.stdout);
-  assert.equal(r.writes.length, 2);
+  assert.equal(r.writes.length, 3);
   assert.match(r.writes[0], /^api -X PATCH repos\/prix0007\/cryoshield --input .*repo-settings\.json$/);
   assert.match(r.writes[1], /^api -X POST repos\/prix0007\/cryoshield\/labels /);
 });
@@ -132,6 +133,41 @@ test('--repo must be OWNER/NAME without dot segments', () => {
     const r = run({ args: ['--repo', repo] });
     assert.equal(r.status, 2, repo);
   }
+});
+
+test('missing hold label is created (owner veto for auto-merge)', () => {
+  const r = run({ rulesets: [{ id: 7, name: 'main', target: 'branch' }], ruleset: liveMatching(), labels: [{ name: 'no-spec' }], args: ['--apply'] });
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.equal(r.writes.length, 1);
+  assert.match(r.writes[0], /^api -X POST repos\/prix0007\/cryoshield\/labels -f name=hold /);
+});
+
+const withEcc = () => {
+  const live = liveMatching();
+  live.rules.find((x) => x.type === 'required_status_checks').parameters.required_status_checks.push({ context: 'ecc-review', integration_id: 15368 });
+  return live;
+};
+
+test('--with-ecc-review adds the ecc-review required check and PUTs it', () => {
+  const r = run({ rulesets: [{ id: 7, name: 'main', target: 'branch' }], ruleset: liveMatching(), args: ['--with-ecc-review', '--apply'] });
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.match(r.stdout, /\+.*"context": "ecc-review"/);
+  assert.equal(r.writes.length, 1);
+  assert.match(r.writes[0], /^api -X PUT repos\/prix0007\/cryoshield\/rulesets\/7 --input /);
+  assert.doesNotMatch(r.writes[0], /main\.json$/); // the merged ruleset, not the bare file
+});
+
+test('--with-ecc-review is idempotent once applied', () => {
+  const r = run({ rulesets: [{ id: 7, name: 'main', target: 'branch' }], ruleset: withEcc(), args: ['--with-ecc-review', '--apply'] });
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.deepEqual(r.writes, []);
+});
+
+test('without the flag, a live ecc-review requirement is never silently dropped', () => {
+  const r = run({ rulesets: [{ id: 7, name: 'main', target: 'branch' }], ruleset: withEcc(), args: ['--apply'] });
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /--with-ecc-review/);
+  assert.deepEqual(r.writes, []);
 });
 
 test('rejects unknown arguments', () => {

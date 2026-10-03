@@ -1,0 +1,19 @@
+{
+  "_comment": "Reviewed SHA-256 of every run step in the privileged workflows (OpenSpec change adopt-ecc-review-and-auto-merge, security review M1). Update ONLY after a security review of each changed run step: node .github/scripts/workflow-policy.mjs --digests .github",
+  "ecc-review.yml": {
+    "review/Refuse fork PRs (they get no secrets and are not reviewed automatically)": "b30ea158e7b09359aafeaaa1a09ae546a964ccc83a07ea9fcd38fafca09d451c",
+    "review/Require a Claude credential": "5215a09d9401d503cf53cbcd3418f7996a6770a404271a2956c709faff08f698",
+    "review/Assert no git credentials remain in .git/config": "07a1dfe55767bce1957d42c7dc5c7ad57c1935cedd664ae3a925f32d18f5233d",
+    "review/Restore agent configuration from the base commit": "a637c446587de926fb2aa7475649388cddeb70797f1b98b2a05b99be10dd2e9b",
+    "review/Remove any PR-provided copy of the plugin directory": "18674c450dd10c977107cab59fe527de67d06e8939e672e9eeafaaf7b73f82ce",
+    "review/Verify the plugin and move it out of the workspace": "af93a2fe223119f7c712c65872946bbf0ebe407ff581aa910f28c2e930b7a787",
+    "review/Collect the PR for the reviewer (the agent gets no GitHub access)": "ce82371b46327a5141db2c1d7592d953afa4a67d3d6a93828065d58077a674de",
+    "review/Install bubblewrap for credential isolation": "c521dcbdf185557935e139faeab293abfa7cd5b1fbe7ff3828adb4279665c0c9",
+    "review/Post the review": "aa5e12ba1cd3c126c988bef14229ca1fbe002f793bba8eab414ade15f6699998",
+    "review/Gate on the review of this commit": "13d1d34a1a5918a16a88c604e3a80cf2716ae76a2208731cf6a5e552c5fd437b",
+    "rerun/Re-run this PR's ECC review": "56ddea6fa67f8f9001fed506cbc7fb907ccf3cc5ec12cf697588a7a7f2246f66"
+  },
+  "auto-merge.yml": {
+    "auto-merge/Enable auto-merge, or switch it off while the PR is on hold or ecc-review is not required": "0d3926835e1e7131714fd576b5b568bdaa2f8b932523e4b6879a46a4ec05675c"
+  }
+}
