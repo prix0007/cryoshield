@@ -141,3 +141,22 @@ The existing rules still apply: read-only job permissions, timeouts, top-level `
 3. Verify with `curl https://cryoshield.app/release.json`.
 
 Rollback of the pipeline: disable the workflow (`gh workflow disable deploy.yml`). Manual `deploy.sh` keeps working.
+
+## Implementation notes (apply, 2026-10-04)
+
+- **CLAUDE.md does not exist on `main` yet.** It is added by the unmerged `adopt-ecc-review-and-auto-merge`. Creating it here would conflict, so the "Change flow" deploy step is written in `docs/deploy.md` → "Change flow addition (for CLAUDE.md)". Whichever branch merges second adds it to CLAUDE.md during its rebase.
+- **`detect` also takes `MAIN_SHA`** from `GET repos/{repo}/commits/main`. A run whose `github.sha` is no longer the `main` HEAD is "superseded" and skips, so an older commit can never replace a newer one. This is needed because the reusable CI tests `github.sha`.
+- **`write-env.sh` (tested) generates `apps/web/.env`.**
+  - Required keys must be present, values may not contain line breaks, and an existing file is never overwritten.
+  - The file is written `0600`, and the bundler URL is masked in the log.
+  - The optional keys are `VITE_ARWEAVE_FAST_INDEX_URL` and `VITE_CF_BEACON_TOKEN`.
+- **zizmor pedantic suggests `uses: $/.github/workflows/ci.yml`.** The CI-pinned actionlint 1.7.12 rejects it (rhysd/actionlint#711 and #732 are open), so the call stays `./…`. The one zizmor ignore is `self-repository` at `deploy.yml:74`, and the policy allows only that.
+- **The `/architecture` page in `apps/web` is not changed.** It is the frontend's, and the pipeline section lives in `docs/system-design.md`.
+- **Local results:**
+  - `.github/scripts` tests: 129/129;
+  - web deploy tests: manifest, gen-context, deploy-sh and fly-toml, plus the Docker container test (53 passed, including `/release.json`);
+  - actionlint and shellcheck: clean;
+  - zizmor pedantic: 0 findings (1 ignored);
+  - policy: OK;
+  - `openspec validate --all --strict` and the licence check: pass;
+  - gitleaks on the branch range: no leaks.

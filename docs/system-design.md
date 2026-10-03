@@ -139,7 +139,7 @@ sequenceDiagram
 
 ## 5. How code reaches cryoshield.app
 
-Nothing reaches `main` or production without a spec, a pull request and a green `ci-ok`. The `main` ruleset has no bypass actors, so this applies to admins too.
+Nothing reaches `main` or production without a spec, a pull request and a green `ci-ok`. The `main` ruleset has no bypass actors, so this applies to admins too. Every new commit on `main` is then deployed automatically by `.github/workflows/deploy.yml`, but only after the full CI passes again on that exact commit (runbook: `docs/deploy.md`).
 
 ```mermaid
 flowchart LR
@@ -149,13 +149,16 @@ flowchart LR
   jobs["Area jobs<br/>contracts · vault-crypto · web · web-e2e<br/>recover · openspec · workflow-lint"]
   ok["ci-ok<br/>required, strict"]
   main["main<br/>squash only, linear, no force-push"]
-  deploy["deploy.sh<br/>clean tree · 2 identical builds<br/>RP ID = host · release manifest"]
+  detect["detect<br/>/release.json ≠ main HEAD<br/>(push · every 15 min · manual)"]
+  full["full CI on that commit<br/>ci.yml, every job"]
+  deploy["deploy.sh (env production)<br/>clean tree · 2 identical builds<br/>RP ID = host · release manifest"]
   fly["Fly.io<br/>cryoshield-web"]
+  smoke["smoke test<br/>routes · headers · registry · /release.json<br/>auto rollback on failure"]
 
   spec --> pr
   pr --> checks --> ok
   pr --> jobs --> ok
-  ok --> main --> deploy --> fly
+  ok --> main --> detect --> full --> deploy --> fly --> smoke
 
   classDef ours fill:#e6f0fa,stroke:#0066cc,color:#0066cc;
   class fly ours;
@@ -163,7 +166,11 @@ flowchart LR
 
 - **Security review.** Every change touching crypto, contracts, the paymaster or secret handling ends with a security-review task. The records are in `docs/reviews/` and `apps/web/docs/`.
 - **Pinned toolchain.** All third-party GitHub Actions are pinned by commit SHA. The gitleaks and osv-scanner binaries are pinned by version and checksum. Installs fail on lockfile drift.
-- **Rebuildable deploys.** Every deploy writes `apps/web/deploy/.build/release-manifest.json` with the commit and a deterministic tree hash, so anyone can rebuild the site and compare it with what Fly serves.
+- **Rebuildable deploys.** Every deploy writes `apps/web/deploy/.build/release-manifest.json` with the commit and a deterministic tree hash, so anyone can rebuild the site and compare it with what Fly serves. The site also serves the commit, tree hash and public config at `https://cryoshield.app/release.json` (not part of the tree hash), so anyone can see which commit is live.
+- **Continuous deployment.** `deploy.yml` runs on every push to `main`, every 15 minutes (merges made by auto-merge start no push workflow), and on demand. It skips when `/release.json` already shows the `main` HEAD. It then:
+  - runs the full `ci.yml` on that commit;
+  - deploys with the unchanged guarded `deploy.sh` in the GitHub Environment `production`, the only place the Fly deploy token lives;
+  - smoke-tests the live site, and on any failure redeploys the previous image automatically and fails loudly.
 
 ## 6. Hosting and headers
 
