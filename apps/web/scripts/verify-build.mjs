@@ -134,9 +134,9 @@ for (const page of pages) {
 // add-privacy-preserving-analytics 4.2: no file of the app or the legal pages (HTML + reachable JS) mentions analytics.
 const token = label === 'production' && !realEnv ? PROD_ENV.VITE_CF_BEACON_TOKEN : undefined;
 const confined = {};
-for (const rel of [join('app', 'index.html'), join('privacy', 'index.html'), join('terms', 'index.html'), join('cookies', 'index.html')]) {
+for (const rel of [join('app', 'index.html'), join('privacy', 'index.html'), join('terms', 'index.html'), join('cookies', 'index.html'), join('architecture', 'index.html')]) {
   // The legal pages must NAME the analytics in their prose (5.1); everything else on them must not reference it.
-  confined[rel] = readFileSync(join(dist, rel), 'utf8').replace(/<article class="legal-doc">[\s\S]*?<\/article>/, '');
+  confined[rel] = readFileSync(join(dist, rel), 'utf8').replace(/<article class="(legal-doc|arch-doc)">[\s\S]*?<\/article>/, '');
   for (const f of graphOf(rel)) confined[f] = readFileSync(join(dist, f), 'utf8');
 }
 const leaks = analyticsLeaks(confined, token);
@@ -152,7 +152,7 @@ if (analyticsOn) {
 console.log(`ok   [${label}] analytics confined to the landing document${analyticsOn ? ' (beacon pinned to the lock; disclosed on /privacy and /cookies)' : ' (no beacon in this build)'}`);
 const html = pages.map((f) => readFileSync(f, 'utf8')).join('\n');
 // add-privacy-and-compliance 3.2: the legal pages exist.
-for (const p of ['privacy', 'terms', 'cookies']) {
+for (const p of ['privacy', 'terms', 'cookies', 'architecture']) {
   if (!all.includes(join(dist, p, 'index.html'))) fail(`[${label}] missing legal page ${p}/index.html`);
 }
 // adopt-oss-project-defaults D3: no placeholder token and no @cryoshield.app address in any shipped HTML/text file.

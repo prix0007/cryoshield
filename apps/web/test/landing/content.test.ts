@@ -63,7 +63,7 @@ describe('landing structure', () => {
       expect(n, id).toBeGreaterThanOrEqual(1);
       expect(n, id).toBeLessThanOrEqual(2);
     }
-    for (const p of doc.querySelectorAll('main a.pill')) expect(p.getAttribute('href')).toMatch(/^(\/app\/|#[a-z-]+|https:\/\/github\.com\/prix0007\/cryoshield)/);
+    for (const p of doc.querySelectorAll('main a.pill')) expect(p.getAttribute('href')).toMatch(/^(\/app\/|\/architecture|#[a-z-]+|https:\/\/github\.com\/prix0007\/cryoshield)/);
   });
 
   it('the numbers band shows its final values in the HTML (no JS needed)', () => {

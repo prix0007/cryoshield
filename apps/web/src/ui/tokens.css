@@ -105,6 +105,7 @@
   --app-error: var(--error-ink);
   --app-input-border: var(--input-border);
   --app-frost: var(--frost-light);
+  --app-accent-soft: rgba(0, 102, 204, 0.1); /* highlighted boxes in the system-design figures */
   --app-disabled-bg: var(--surface-pearl); /* disabled pills: Ink Muted 48 on Pearl (4.86:1) */
   --app-disabled-ink: var(--ink-muted-48);
 }
@@ -121,6 +122,7 @@
     --app-error: #ff6961;
     --app-input-border: #86868b;
     --app-frost: rgba(29, 29, 31, 0.8);
+    --app-accent-soft: rgba(41, 151, 255, 0.14);
     --app-disabled-bg: #2a2a2c;
     --app-disabled-ink: #a1a1a6;
   }
