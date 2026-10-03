@@ -2,7 +2,7 @@ import '../ui/tokens.css';
 import '../ui/chrome.css';
 import './landing.css';
 import { loadBeacon } from './analytics';
-import { bootCounters, bootLanding, bootScenes, wireMagnetic, wireSubnavTheme } from './boot';
+import { bootCompareReveal, bootCounters, bootLanding, bootScenes, wireMagnetic, wireSubnavTheme } from './boot';
 
 const matchMedia = (q: string) => window.matchMedia(q);
 const IO = typeof IntersectionObserver === 'undefined' ? undefined : IntersectionObserver;
@@ -23,6 +23,7 @@ bootScenes({
   loadScene: (name) => (SCENES[name] ?? (() => Promise.resolve({})))(),
 });
 bootCounters(document, matchMedia, IO);
+bootCompareReveal(document, matchMedia, IO);
 wireMagnetic(document, matchMedia);
 wireSubnavTheme(document, window);
 // Cloudflare Web Analytics (landing only): gated on GPC/DNT/host; inert unless the build shipped the beacon template.

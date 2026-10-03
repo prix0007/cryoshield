@@ -93,3 +93,52 @@ test('reflows at 320px with no horizontal scroll (landing and app)', async ({ pa
     expect(sw, url).toBeLessThanOrEqual(cw);
   }
 });
+
+test('"Only you can read it.": the comparison table renders, reveals row by row, and passes axe (landing-only-you-can-read 1.2)', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto(LANDING);
+  const tile = page.locator('#only-you');
+  await expect(tile.getByRole('heading', { level: 2, name: 'Only you can read it.' })).toBeVisible();
+  const table = tile.getByRole('table', { name: 'How CryoShield compares with typical cloud storage' });
+  await expect(table.getByRole('columnheader', { name: 'CryoShield' })).toBeAttached();
+  await expect(table.getByRole('rowheader')).toHaveCount(4);
+  await expect(table).not.toHaveClass(/armed/); // far below the fold on load: untouched (axe sees real contrast)
+  // Approach from below: arm just before it enters the viewport, then reveal.
+  await page.evaluate(() => {
+    const t = document.querySelector('#only-you table')!;
+    window.scrollTo({ top: t.getBoundingClientRect().top + scrollY - innerHeight * 1.5, behavior: 'instant' });
+  });
+  await expect(table).toHaveClass(/armed/);
+  await table.scrollIntoViewIfNeeded();
+  await expect(table).toHaveClass(/\bin\b/);
+  await expect.poll(() => table.locator('tbody tr').last().evaluate((tr) => getComputedStyle(tr).opacity)).toBe('1');
+  await expect(tile.getByText('Some password managers also encrypt end to end.', { exact: false })).toBeVisible();
+  const r = await new AxeBuilder({ page }).include('#only-you').withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa']).analyze();
+  expect(r.violations.map((v) => `${v.id} ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`)).toEqual([]);
+});
+
+test('"Only you can read it." under reduced motion: static, every row visible, nothing animates', async ({ browser }) => {
+  const ctx = await browser.newContext({ reducedMotion: 'reduce', viewport: { width: 1280, height: 800 } });
+  const page = await ctx.newPage();
+  await page.goto(LANDING);
+  const table = page.locator('#only-you table');
+  await table.scrollIntoViewIfNeeded();
+  await expect(table).not.toHaveClass(/armed/);
+  for (const tr of await table.locator('tbody tr').all()) {
+    await expect(tr).toBeVisible();
+    expect(await tr.evaluate((e) => [getComputedStyle(e).opacity, getComputedStyle(e).transform])).toEqual(['1', 'none']);
+  }
+  expect(await page.evaluate(() => document.getAnimations().length)).toBe(0);
+  await ctx.close();
+});
+
+test('"Only you can read it." at 390 px: no horizontal overflow, axe clean', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(LANDING);
+  await page.locator('#only-you table').scrollIntoViewIfNeeded();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  const box = await page.locator('#only-you table').boundingBox();
+  expect(box!.width).toBeLessThanOrEqual(390);
+  const r = await new AxeBuilder({ page }).include('#only-you').withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa']).analyze();
+  expect(r.violations.map((v) => v.id)).toEqual([]);
+});

@@ -175,3 +175,35 @@ export function wireSubnavTheme(doc: Document, win: Window): void {
   win.addEventListener('resize', queue, { passive: true });
   check();
 }
+
+/**
+ * "Only you can read it." comparison (landing-only-you-can-read D3): arm the table so its rows reveal one by one when
+ * it scrolls into view. Without JS, under reduced motion or without IntersectionObserver, it is never armed: static.
+ */
+export function bootCompareReveal(doc: Document, matchMedia: (q: string) => MediaQueryList, IO: typeof IntersectionObserver | undefined): void {
+  const table = doc.querySelector<HTMLElement>('#only-you table');
+  if (!table || !IO || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  // Arm only while the table is still BELOW the viewport and approaching (never hide text the reader can already see,
+  // e.g. after a deep link), then reveal once 40% of it is visible.
+  const arm = new IO(
+    (entries) => {
+      const e = entries.find((x) => x.isIntersecting);
+      if (!e) return;
+      arm.disconnect();
+      const view = doc.defaultView;
+      if (!view || e.boundingClientRect.top <= view.innerHeight) return; // already in view: stay static
+      table.classList.add('armed');
+      const reveal = new IO(
+        (r) => {
+          if (!r.some((x) => x.isIntersecting)) return;
+          reveal.disconnect();
+          table.classList.add('in');
+        },
+        { threshold: 0.4 },
+      );
+      reveal.observe(table);
+    },
+    { rootMargin: '0px 0px 75% 0px' },
+  );
+  arm.observe(table);
+}
