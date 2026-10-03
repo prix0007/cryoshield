@@ -160,3 +160,17 @@ test('"Only you can read it." tile (landing-only-you-can-read 2.2): desktop reve
     await ctx.close();
   }
 });
+
+test('system design page (add-architecture-page 2.2): light, dark and phone', async ({ browser }) => {
+  for (const [name, width, height, colorScheme] of [
+    ['architecture-light', 1280, 900, 'light'],
+    ['architecture-dark', 1280, 900, 'dark'],
+    ['architecture-phone', 390, 844, 'light'],
+  ] as const) {
+    const ctx = await browser.newContext({ viewport: { width, height }, colorScheme });
+    const page = await ctx.newPage();
+    await page.goto('/architecture');
+    await page.screenshot({ path: `${dir}/${name}.png`, fullPage: true });
+    await ctx.close();
+  }
+});

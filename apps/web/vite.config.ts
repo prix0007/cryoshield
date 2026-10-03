@@ -26,6 +26,7 @@ export default defineConfig(({ mode }) => {
           privacy: `${root}/privacy/index.html`,
           terms: `${root}/terms/index.html`,
           cookies: `${root}/cookies/index.html`,
+          architecture: `${root}/architecture/index.html`,
         },
         output: { minify: { compress: { dropConsole: true } } },
       },

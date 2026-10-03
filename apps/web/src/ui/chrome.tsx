@@ -113,6 +113,9 @@ export function AppFooter() {
           <a href="/cookies">Cookies</a>
         </li>
         <li>
+          <a href="/architecture">System design</a>
+        </li>
+        <li>
           <a href={`${REPO}/blob/main/SECURITY.md`} rel="noopener noreferrer">
             Security
           </a>

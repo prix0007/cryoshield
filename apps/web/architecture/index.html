@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="referrer" content="no-referrer" />
+    <meta name="description" content="How CryoShield works: trust boundaries, key derivation, the create and unlock flows, and how code reaches production." />
+    <link rel="icon" href="/favicon.ico" sizes="48x48" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)" />
+    <title>System design · CryoShield</title>
+    <link rel="stylesheet" href="/src/architecture/architecture.css" />
+  </head>
+  <body class="arch-page">
+    <!--partial:header:System design-->
+    <main id="main" tabindex="-1">
+      <article class="arch-doc">
+  <div class="arch-intro">
+    <p class="arch-tag">Reference · __CS_NETWORK__ · updated 4 Oct 2026</p>
+    <h1>CryoShield system map</h1>
+    <p class="arch-lede">How a secret goes from your browser to permanent storage and back, which pieces we run, and how code reaches production.</p>
+    <p class="arch-source">This page mirrors <a href="https://github.com/prix0007/cryoshield/blob/main/docs/system-design.md" rel="noopener noreferrer">docs/system-design.md</a> in the open-source repository.</p>
+  </div>
+
+  <section aria-labelledby="s1">
+    <h2 id="s1">Components and trust boundaries</h2>
+    <p>CryoShield runs exactly one thing: a static website on Fly. Everything else is either on your device or third-party infrastructure that never sees a plaintext secret.</p>
+    <figure>
+      <div class="arch-scroll" tabindex="0" aria-labelledby="arch-cap-1">
+      <svg viewBox="0 0 1000 560" role="img" aria-label="Architecture: the browser app and recovery tool on the user's device talk to the security key, to Pimlico for sponsored writes, to public RPCs for reads, and to Arweave for the mirror. The VaultRegistry on OP Sepolia and Arweave hold the encrypted vault. CryoShield only operates the static site host.">
+        <defs>
+          <marker id="arch-ar1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker>
+        </defs>
+        <g font-family="system-ui,-apple-system,sans-serif" font-size="12" fill="currentColor">
+          <g fill="none" stroke="currentColor" stroke-opacity=".25" stroke-dasharray="4 4">
+            <rect x="10" y="30" width="320" height="520" rx="14"/>
+            <rect x="360" y="30" width="290" height="520" rx="14"/>
+            <rect x="680" y="30" width="310" height="520" rx="14"/>
+          </g>
+          <g font-size="11" font-weight="600" letter-spacing=".06em" fill-opacity=".6">
+            <text x="24" y="22">YOUR DEVICE</text>
+            <text x="374" y="22">THIRD-PARTY INFRASTRUCTURE</text>
+            <text x="694" y="22">PUBLIC AND PERMANENT</text>
+          </g>
+
+          <g class="arch-box" stroke="currentColor" stroke-width="1.2">
+            <rect x="60" y="70" width="240" height="64" rx="10"/>
+            <rect x="60" y="220" width="240" height="96" rx="10"/>
+            <rect x="60" y="440" width="240" height="70" rx="10"/>
+          </g>
+          <text x="180" y="96" text-anchor="middle" font-weight="600" font-size="13">Security keys (2+ YubiKeys)</text>
+          <text x="180" y="116" text-anchor="middle" fill-opacity=".7">PRF secret + P-256 signer, UV required</text>
+          <text x="180" y="246" text-anchor="middle" font-weight="600" font-size="13">Web app (/app in browser)</text>
+          <text x="180" y="266" text-anchor="middle" fill-opacity=".7">encrypts / decrypts locally</text>
+          <text x="180" y="284" text-anchor="middle" fill-opacity=".7">AES-256-GCM, keys in memory only</text>
+          <text x="180" y="302" text-anchor="middle" fill-opacity=".7">smart-account owner = each key</text>
+          <text x="180" y="468" text-anchor="middle" font-weight="600" font-size="13">cryoshield-recover (CLI)</text>
+          <text x="180" y="488" text-anchor="middle" fill-opacity=".7">works if CryoShield is gone</text>
+
+          <rect x="380" y="60" width="250" height="70" rx="10" class="arch-hl" stroke-width="1.6"/>
+          <text x="505" y="88" text-anchor="middle" font-weight="600" font-size="13" class="arch-hl-text">Fly.io · cryoshield.app</text>
+          <text x="505" y="108" text-anchor="middle" fill-opacity=".8">static files only, the one thing we run</text>
+          <g class="arch-box" stroke="currentColor" stroke-width="1.2">
+            <rect x="380" y="190" width="250" height="70" rx="10"/>
+            <rect x="380" y="320" width="250" height="60" rx="10"/>
+            <rect x="380" y="440" width="250" height="70" rx="10"/>
+          </g>
+          <text x="505" y="218" text-anchor="middle" font-weight="600" font-size="13">Pimlico</text>
+          <text x="505" y="238" text-anchor="middle" fill-opacity=".7">bundler + paymaster (we pay gas)</text>
+          <text x="505" y="346" text-anchor="middle" font-weight="600" font-size="13">Public RPCs</text>
+          <text x="505" y="364" text-anchor="middle" fill-opacity=".7">2+ must agree (recovery)</text>
+          <text x="505" y="468" text-anchor="middle" font-weight="600" font-size="13">Arweave gateway / Turbo</text>
+          <text x="505" y="488" text-anchor="middle" fill-opacity=".7">free upload ≤105 KiB · GraphQL</text>
+
+          <g class="arch-box" stroke="currentColor" stroke-width="1.2">
+            <rect x="710" y="140" width="250" height="50" rx="10"/>
+            <rect x="710" y="220" width="250" height="50" rx="10"/>
+            <rect x="710" y="300" width="250" height="80" rx="10"/>
+            <rect x="710" y="440" width="250" height="70" rx="10"/>
+          </g>
+          <text x="835" y="128" text-anchor="middle" font-size="11" font-weight="600" fill-opacity=".6">__CS_NETWORK_UPPER__ (__CS_CHAIN_ID__)</text>
+          <text x="835" y="170" text-anchor="middle" font-weight="600" font-size="13">EntryPoint v0.6</text>
+          <text x="835" y="250" text-anchor="middle" font-weight="600" font-size="13">Coinbase Smart Wallet v1.1</text>
+          <text x="835" y="326" text-anchor="middle" font-weight="600" font-size="13">VaultRegistry</text>
+          <text x="835" y="346" text-anchor="middle" fill-opacity=".7">no admin, no upgrades</text>
+          <text x="835" y="364" text-anchor="middle" fill-opacity=".7">blob ≤1 KB · locator → vaultIds</text>
+          <text x="835" y="468" text-anchor="middle" font-weight="600" font-size="13">Arweave permaweb</text>
+          <text x="835" y="488" text-anchor="middle" fill-opacity=".7">mirror tagged by vaultId + locator</text>
+
+          <g fill="none" stroke="currentColor" stroke-width="1.4" marker-end="url(#arch-ar1)">
+            <line x1="180" y1="134" x2="180" y2="216" marker-start="url(#arch-ar1)"/>
+            <line x1="380" y1="110" x2="304" y2="232"/>
+            <line x1="300" y1="250" x2="376" y2="230"/>
+            <line x1="630" y1="215" x2="706" y2="172"/>
+            <line x1="835" y1="190" x2="835" y2="216"/>
+            <line x1="835" y1="270" x2="835" y2="296"/>
+            <line x1="300" y1="290" x2="376" y2="342"/>
+            <line x1="630" y1="350" x2="706" y2="345"/>
+            <line x1="300" y1="306" x2="376" y2="460"/>
+            <line x1="630" y1="475" x2="706" y2="475"/>
+            <line x1="300" y1="460" x2="376" y2="372"/>
+            <line x1="300" y1="490" x2="376" y2="490"/>
+            <polyline points="60,480 36,480 36,102 56,102" marker-start="url(#arch-ar1)"/>
+          </g>
+          <g font-size="11" fill-opacity=".85">
+            <text x="188" y="172">WebAuthn: PRF + signature</text>
+            <text x="330" y="150" transform="rotate(-57 330 150)" text-anchor="middle">serves HTML/JS</text>
+            <text x="338" y="226" text-anchor="middle">signed userOp</text>
+            <text x="668" y="184" text-anchor="middle">handleOps</text>
+            <text x="845" y="208">validates key signature</text>
+            <text x="845" y="288">createVault / updateVault</text>
+            <text x="340" y="308" text-anchor="middle">eth_call</text>
+            <text x="668" y="338" text-anchor="middle">reads</text>
+            <text x="318" y="400" text-anchor="middle" transform="rotate(64 318 400)">mirror upload</text>
+            <text x="668" y="468" text-anchor="middle">stores</text>
+            <text x="338" y="432" text-anchor="middle">eth_call + logs</text>
+            <text x="338" y="506" text-anchor="middle">GraphQL by tag</text>
+            <text x="26" y="300" text-anchor="middle" transform="rotate(-90 26 300)">CTAP2 hmac-secret over USB</text>
+          </g>
+        </g>
+      </svg>
+      </div>
+      <figcaption id="arch-cap-1">Only the blue box is operated by CryoShield, and it serves static files. Writes go through Pimlico because we sponsor gas. Reads, unlocks and recovery never touch Pimlico or Fly: the recovery tool talks to the key over USB and reads the chain or Arweave directly.</figcaption>
+    </figure>
+  </section>
+
+  <section aria-labelledby="s2">
+    <h2 id="s2">From one key tap to your secret</h2>
+    <p>Each tap returns one 32-byte PRF output for a fixed salt. Two separate keys are derived from it: one is public (the lookup), one never leaves memory (the wrap key).</p>
+    <figure>
+      <div class="arch-scroll" tabindex="0" aria-labelledby="arch-cap-2">
+      <svg viewBox="0 0 1000 300" role="img" aria-label="Key derivation: the PRF output feeds HKDF twice, once to make the public locator used for on-chain lookup, once with the vault's wrap salt to make the wrap key, which unwraps the data key, which decrypts the secrets. The vault ID is bound into the authenticated data.">
+        <defs>
+          <marker id="arch-ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker>
+        </defs>
+        <g font-family="system-ui,-apple-system,sans-serif" font-size="12" fill="currentColor">
+          <g class="arch-box" stroke="currentColor" stroke-width="1.2">
+            <rect x="10" y="115" width="170" height="70" rx="10"/>
+            <rect x="240" y="40" width="190" height="60" rx="10"/>
+            <rect x="240" y="200" width="190" height="60" rx="10"/>
+            <rect x="490" y="40" width="160" height="60" rx="10"/>
+            <rect x="490" y="200" width="160" height="60" rx="10"/>
+            <rect x="710" y="200" width="120" height="60" rx="10"/>
+          </g>
+          <rect x="870" y="200" width="120" height="60" rx="10" class="arch-hl" stroke-width="1.6"/>
+          <rect x="690" y="40" width="300" height="60" rx="10" fill="none" stroke="currentColor" stroke-opacity=".4" stroke-dasharray="4 4"/>
+
+          <text x="95" y="145" text-anchor="middle" font-weight="600" font-size="13">PRF output</text>
+          <text x="95" y="165" text-anchor="middle" fill-opacity=".7">32 bytes, UV required</text>
+          <text x="335" y="66" text-anchor="middle" font-weight="600" font-size="13">HKDF-SHA256</text>
+          <text x="335" y="86" text-anchor="middle" fill-opacity=".7">info cryoshield/v1/locator</text>
+          <text x="335" y="226" text-anchor="middle" font-weight="600" font-size="13">HKDF-SHA256</text>
+          <text x="335" y="246" text-anchor="middle" fill-opacity=".7">salt = vault wrapSalt</text>
+          <text x="570" y="66" text-anchor="middle" font-weight="600" font-size="13">Locator</text>
+          <text x="570" y="86" text-anchor="middle" fill-opacity=".7">bytes32, public</text>
+          <text x="570" y="226" text-anchor="middle" font-weight="600" font-size="13">Wrap key</text>
+          <text x="570" y="246" text-anchor="middle" fill-opacity=".7">memory only, wiped</text>
+          <text x="770" y="226" text-anchor="middle" font-weight="600" font-size="13">Data key</text>
+          <text x="770" y="246" text-anchor="middle" fill-opacity=".7">unwrapped</text>
+          <text x="930" y="226" text-anchor="middle" font-weight="600" font-size="13" class="arch-hl-text">Your secrets</text>
+          <text x="930" y="246" text-anchor="middle" fill-opacity=".8">decrypted locally</text>
+          <text x="840" y="66" text-anchor="middle" font-weight="600" font-size="13">resolveLocator → vaultIds</text>
+          <text x="840" y="86" text-anchor="middle" fill-opacity=".7">try each; keep the one that authenticates</text>
+
+          <g fill="none" stroke="currentColor" stroke-width="1.4" marker-end="url(#arch-ar2)">
+            <polyline points="180,140 210,140 210,70 236,70"/>
+            <polyline points="180,160 210,160 210,230 236,230"/>
+            <line x1="430" y1="70" x2="486" y2="70"/>
+            <line x1="430" y1="230" x2="486" y2="230"/>
+            <line x1="650" y1="70" x2="686" y2="70"/>
+            <line x1="650" y1="230" x2="706" y2="230"/>
+            <line x1="830" y1="230" x2="866" y2="230"/>
+          </g>
+          <g font-size="11" fill-opacity=".85" text-anchor="middle">
+            <text x="678" y="222">AES-GCM</text>
+            <text x="848" y="222">AES-GCM</text>
+            <text x="770" y="290">AAD binds the vault header and the 32-byte vaultId, so a copied blob fails anywhere else</text>
+          </g>
+        </g>
+      </svg>
+      </div>
+      <figcaption id="arch-cap-2">Symmetric primitives only, so the ciphertext that sits in public forever has no elliptic-curve layer for a future quantum computer to strip. Every enrolled key holds its own wrapped copy of the data key: losing one key loses nothing, losing every key loses the vault.</figcaption>
+    </figure>
+  </section>
+
+  <section aria-labelledby="s3">
+    <h2 id="s3">What each flow touches</h2>
+    <div class="arch-cols">
+      <div>
+        <h3>Create a vault</h3>
+        <ol>
+          <li>Tap key 1, then key 2. Each creates a discoverable credential and returns its PRF output; their P-256 public keys become smart-account owners.</li>
+          <li>The browser picks a random vaultId, encrypts the secret and wraps the data key once per key.</li>
+          <li>One more tap signs the userOp. Pimlico sponsors it and EntryPoint calls <code>createVault</code>.</li>
+          <li>The same blob is uploaded to Arweave with <code>CryoShield-Vault-Id</code> and <code>CryoShield-Locator</code> tags.</li>
+        </ol>
+      </div>
+      <div>
+        <h3>Unlock or recover</h3>
+        <ol>
+          <li>Tap any enrolled key once. The PRF output gives the locator and, after the lookup, the wrap key.</li>
+          <li><code>resolveLocator</code> over public RPCs returns candidate vaultIds. No account and no gas needed.</li>
+          <li>Each candidate is tried; only the genuine vault authenticates, so clones and junk are skipped.</li>
+          <li>The recovery CLI does the same over USB, falls back to Arweave, and checks copies against the latest on-chain event hash.</li>
+        </ol>
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="s4">
+    <h2 id="s4">How code reaches cryoshield.app</h2>
+    <p>Nothing reaches <code>main</code> or production without a spec, a pull request and a green <code>ci-ok</code>. There is no bypass, including for admins.</p>
+    <figure>
+      <div class="arch-scroll" tabindex="0" aria-labelledby="arch-cap-3">
+      <svg viewBox="0 0 1000 230" role="img" aria-label="Delivery pipeline: an OpenSpec change leads to a branch and pull request; PR checks and per-area jobs feed ci-ok; a squash merge to protected main follows; deploy.sh builds twice, checks the RP ID and deploys to Fly.">
+        <defs>
+          <marker id="arch-ar3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker>
+        </defs>
+        <g font-family="system-ui,-apple-system,sans-serif" font-size="12" fill="currentColor">
+          <g class="arch-box" stroke="currentColor" stroke-width="1.2">
+            <rect x="10" y="80" width="140" height="70" rx="10"/>
+            <rect x="190" y="80" width="140" height="70" rx="10"/>
+            <rect x="370" y="20" width="190" height="60" rx="10"/>
+            <rect x="370" y="150" width="190" height="60" rx="10"/>
+            <rect x="600" y="80" width="110" height="70" rx="10"/>
+            <rect x="750" y="80" width="110" height="70" rx="10"/>
+          </g>
+          <rect x="890" y="80" width="100" height="70" rx="10" class="arch-hl" stroke-width="1.6"/>
+          <text x="80" y="110" text-anchor="middle" font-weight="600" font-size="13">OpenSpec change</text>
+          <text x="80" y="130" text-anchor="middle" fill-opacity=".7">proposal → tasks</text>
+          <text x="260" y="110" text-anchor="middle" font-weight="600" font-size="13">Branch + PR</text>
+          <text x="260" y="130" text-anchor="middle" fill-opacity=".7">feat/ fix/ ci/ docs/</text>
+          <text x="465" y="46" text-anchor="middle" font-weight="600" font-size="13">pr-checks</text>
+          <text x="465" y="64" text-anchor="middle" fill-opacity=".7">title · spec gate · gitleaks · osv</text>
+          <text x="465" y="176" text-anchor="middle" font-weight="600" font-size="13">Area jobs</text>
+          <text x="465" y="194" text-anchor="middle" fill-opacity=".7">contracts · crypto · web · e2e · recover</text>
+          <text x="655" y="110" text-anchor="middle" font-weight="600" font-size="13">ci-ok</text>
+          <text x="655" y="130" text-anchor="middle" fill-opacity=".7">required</text>
+          <text x="805" y="110" text-anchor="middle" font-weight="600" font-size="13">main</text>
+          <text x="805" y="130" text-anchor="middle" fill-opacity=".7">squash only</text>
+          <text x="940" y="110" text-anchor="middle" font-weight="600" font-size="13" class="arch-hl-text">Fly</text>
+          <text x="940" y="130" text-anchor="middle" fill-opacity=".8">deploy.sh</text>
+          <g fill="none" stroke="currentColor" stroke-width="1.4" marker-end="url(#arch-ar3)">
+            <line x1="150" y1="115" x2="186" y2="115"/>
+            <polyline points="330,105 350,105 350,50 366,50"/>
+            <polyline points="330,125 350,125 350,180 366,180"/>
+            <polyline points="560,50 580,50 580,105 596,105"/>
+            <polyline points="560,180 580,180 580,125 596,125"/>
+            <line x1="710" y1="115" x2="746" y2="115"/>
+            <line x1="860" y1="115" x2="886" y2="115"/>
+          </g>
+          <text x="875" y="172" text-anchor="middle" font-size="11" fill-opacity=".85">clean tree · 2 identical builds · RP ID = host</text>
+        </g>
+      </svg>
+      </div>
+      <figcaption id="arch-cap-3">Each deploy writes a release manifest with the commit and a deterministic tree hash, so anyone can rebuild the site and compare it with what Fly serves.</figcaption>
+    </figure>
+  </section>
+
+  <section aria-labelledby="s5">
+    <h2 id="s5">Live reference values</h2>
+    <div class="table-wrap"><table class="arch-table">
+      <tr><th scope="row">Network</th><td>__CS_NETWORK__, chain __CS_CHAIN_ID__ (mainnet will be OP Mainnet)</td></tr>
+      <tr><th scope="row">VaultRegistry</th><td class="mono">__CS_REGISTRY__</td></tr>
+      <tr><th scope="row">Deploy block</th><td class="mono">__CS_DEPLOY_BLOCK__</td></tr>
+      <tr><th scope="row">Smart account</th><td>Coinbase Smart Wallet v1.1 on EntryPoint v0.6, P-256 precompile at <code>0x100</code></td></tr>
+      <tr><th scope="row">WebAuthn RP ID</th><td class="mono">__CS_RP_ID__ (permanent)</td></tr>
+      <tr><th scope="row">Hosting</th><td>Fly app <code>cryoshield-web</code>, org <code>cryoshield</code>, region sin; DNSSEC and CAA on</td></tr>
+      <tr><th scope="row">Vault limits</th><td>blob ≤ 1024 bytes · 2–8 keys · 16 vaults per locator</td></tr>
+      <tr><th scope="row">Source</th><td><a href="https://github.com/prix0007/cryoshield" rel="noopener noreferrer">github.com/prix0007/cryoshield</a> (MIT, public)</td></tr>
+    </table></div>
+  </section>
+      </article>
+    </main>
+    <!--partial:footer-->
+  </body>
+</html>

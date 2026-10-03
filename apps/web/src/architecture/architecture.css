@@ -1,0 +1,185 @@
+/* /architecture (add-architecture-page D2): the system map on the site's tokens. The --app-* tokens switch with
+   prefers-color-scheme, so the whole page (figures included) has light and dark appearances. No colour literals. */
+@import '../ui/tokens.css';
+@import '../ui/chrome.css';
+@import '../landing/landing.css';
+
+.arch-page {
+  background: var(--app-surface);
+  color: var(--app-ink);
+  color-scheme: light dark;
+}
+.arch-page main:focus {
+  outline: none;
+}
+.arch-doc {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: var(--space-xxl) var(--space-md) 72px;
+}
+.arch-tag {
+  margin: 0 0 10px;
+  font-size: var(--fine-size);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--app-link);
+}
+.arch-doc h1 {
+  font-size: clamp(34px, 6vw, 56px);
+  line-height: 1.07;
+  letter-spacing: -0.015em;
+  margin: 0 0 12px;
+}
+.arch-doc h2 {
+  font-size: clamp(24px, 3.4vw, 34px);
+  line-height: 1.15;
+  margin: 0 0 8px;
+}
+.arch-doc h3 {
+  font-size: var(--tagline-size);
+  margin: 0 0 4px;
+}
+.arch-lede {
+  font-size: var(--tagline-size);
+  font-weight: 400;
+  line-height: 1.38;
+  color: var(--app-muted);
+  max-width: 44ch;
+  margin: 0 0 var(--space-sm);
+}
+.arch-source {
+  font-size: var(--caption-size);
+  color: var(--app-muted);
+}
+.arch-doc a {
+  color: var(--app-link);
+}
+.arch-doc section {
+  padding-block: var(--space-xxl);
+  border-top: 1px solid var(--app-hairline);
+}
+.arch-doc p {
+  max-width: 65ch;
+  margin: 0 0 12px;
+}
+.arch-doc code,
+.arch-doc .mono {
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+  letter-spacing: 0;
+}
+.arch-doc figure {
+  margin: var(--space-lg) 0 0;
+  background: var(--app-bg);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+}
+/* Wide figures scroll inside their own focusable container; the page never scrolls sideways. */
+.arch-scroll {
+  overflow-x: auto;
+  border-radius: var(--radius-sm);
+}
+.arch-scroll:focus-visible {
+  outline: 2px solid var(--app-focus);
+  outline-offset: 2px;
+}
+.arch-doc svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  min-width: 720px;
+  color: var(--app-ink);
+}
+.arch-box {
+  fill: var(--app-surface);
+}
+.arch-hl {
+  fill: var(--app-accent-soft);
+  stroke: var(--app-link);
+}
+.arch-hl-text {
+  fill: var(--app-link);
+}
+.arch-doc figcaption {
+  font-size: var(--caption-size);
+  line-height: 1.43;
+  color: var(--app-muted);
+  margin-top: 14px;
+  max-width: 70ch;
+}
+.arch-doc ol {
+  margin: 8px 0 0;
+  padding-left: 22px;
+  max-width: 65ch;
+}
+.arch-doc ol li {
+  margin: 6px 0;
+}
+.arch-cols {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  gap: 20px;
+  margin-top: 20px;
+}
+.arch-cols > div {
+  min-width: 0;
+}
+.arch-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 15px;
+  margin-top: var(--space-md);
+}
+.arch-table th,
+.arch-table td {
+  text-align: left;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--app-hairline);
+  vertical-align: top;
+}
+.arch-table th {
+  font-weight: 600;
+  width: 34%;
+  color: var(--app-muted);
+}
+.arch-table td {
+  overflow-wrap: anywhere;
+}
+
+/* The shared chrome follows the scheme on this page too. */
+@media (prefers-color-scheme: dark) {
+  .arch-page .sub-nav {
+    background: var(--app-frost);
+    color: var(--app-ink);
+    border-bottom-color: var(--app-hairline);
+  }
+  .arch-page .chip {
+    background: transparent;
+    color: var(--app-ink);
+    border-color: var(--app-muted);
+  }
+  .arch-page .site-footer {
+    background: var(--app-bg);
+    color: var(--app-muted);
+  }
+  .arch-page .footer-heading {
+    color: var(--app-ink);
+  }
+  .arch-page .footer-links a {
+    color: var(--app-muted);
+  }
+  .arch-page .legal {
+    color: var(--app-muted);
+    border-top-color: var(--app-hairline);
+  }
+  .arch-page :focus-visible {
+    outline-color: var(--color-primary-on-dark);
+  }
+}
+
+/* The artifact's secondary SVG labels used fill-opacity .6-.7: too faint for 11-12 px text. 0.8 keeps the hierarchy
+   and gives >= 7:1 against the figure tile in both schemes (ink 80% over parchment/black). */
+.arch-doc svg [fill-opacity] {
+  fill-opacity: 0.8;
+}

@@ -44,6 +44,8 @@ export function cryoshield(env: Record<string, string | undefined>, contractsDir
           const out = injectCsp(html, config.connectOrigins, landingExtras);
           return analytics ? out.replace('</body>', `${beaconTemplate(analytics)}\n  </body>`) : out;
         }
+        // add-architecture-page D3: live reference values from the deployment record and the config.
+        if (ctx.path === '/architecture/index.html') html = architectureValues(html, config.chainId, deployment, config.rpId);
         return injectCsp(html, [...config.connectOrigins, ...config.appOnlyOrigins]);
       },
     },
@@ -59,6 +61,19 @@ export function cryoshield(env: Record<string, string | undefined>, contractsDir
       });
     },
   };
+}
+
+const NETWORKS: Record<number, string> = { 11155420: 'OP Sepolia testnet', 10: 'OP Mainnet', 31337: 'local test chain' };
+export function architectureValues(html: string, chainId: number, dep: { address: string; deployBlock: number }, rpId: string): string {
+  const network = NETWORKS[chainId];
+  if (!network) throw new Error(`add-architecture-page: no network name for chain ${chainId}`);
+  return html
+    .replaceAll('__CS_NETWORK_UPPER__', network.toUpperCase())
+    .replaceAll('__CS_NETWORK__', network)
+    .replaceAll('__CS_CHAIN_ID__', String(chainId))
+    .replaceAll('__CS_REGISTRY__', dep.address)
+    .replaceAll('__CS_DEPLOY_BLOCK__', String(dep.deployBlock))
+    .replaceAll('__CS_RP_ID__', rpId);
 }
 
 export const defaultContractsDir = (root: string) => join(root, '..', '..', 'contracts');

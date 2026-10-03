@@ -238,6 +238,20 @@ describe('served by the container', () => {
     expect(landing).not.toContain('turbo-gateway.com');
   });
 
+  it('/architecture serves the system design page with the app CSP, all headers, no-cache (add-architecture-page 1.2)', async () => {
+    const app = await get('/app/');
+    const r = await get('/architecture');
+    expect(r.status).toBe(200);
+    expect(r.body).toContain('CryoShield system map');
+    expect(r.body).not.toMatch(/<script|__CS_/);
+    expect(r.headers['content-security-policy']).toBe(`${metaCsp(r.body)}; frame-ancestors 'none'`);
+    expect(r.headers['content-security-policy']).toBe(app.headers['content-security-policy']);
+    for (const k of ['X-Frame-Options', 'Strict-Transport-Security', 'X-Content-Type-Options', 'Referrer-Policy', 'Permissions-Policy']) expect(r.headers[k.toLowerCase()], k).toBe(SECURITY_HEADERS[k]);
+    expect(r.headers['cache-control']).toBe('no-cache');
+    expect((await get('/architecture/')).status).toBe(200);
+    expect((await get('/architecture/x')).status).toBe(404);
+  });
+
   it('/healthz is 200', async () => {
     const r = await get('/healthz');
     expect(r.status).toBe(200);

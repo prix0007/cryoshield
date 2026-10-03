@@ -31,7 +31,7 @@ function pageCsp(rel) {
 }
 // Per-route CSP (add-privacy-preserving-analytics D3): every page except the landing document carries the identical
 // app CSP; the landing CSP may add ONLY the analytics beacon (script-src) and its report origin (connect-src).
-const APP_PAGES = ['app/index.html', 'privacy/index.html', 'terms/index.html', 'cookies/index.html'];
+const APP_PAGES = ['app/index.html', 'privacy/index.html', 'terms/index.html', 'cookies/index.html', 'architecture/index.html'];
 const appMeta = pageCsp('app/index.html');
 for (const p of APP_PAGES) {
   if (pageCsp(p) !== appMeta) throw new Error(`the meta CSP of ${p} and app/index.html differ; every non-landing page must carry the app CSP`);
@@ -119,11 +119,11 @@ ${ppLine(appPermissions)}
 		respond "ok" 200
 	}
 
-	@html path / /index.html /app/ /app/index.html /privacy /privacy/ /privacy/index.html /terms /terms/ /terms/index.html /cookies /cookies/ /cookies/index.html
+	@html path / /index.html /app/ /app/index.html /privacy /privacy/ /privacy/index.html /terms /terms/ /terms/index.html /cookies /cookies/ /cookies/index.html /architecture /architecture/ /architecture/index.html
 	header @html Cache-Control ${quote('no-cache')}
 
 	# Clean URLs for the static legal pages (add-privacy-and-compliance 3.2). Exact paths only: no SPA fallback.
-	@legal path /privacy /terms /cookies
+	@legal path /privacy /terms /cookies /architecture
 	rewrite @legal {path}/index.html
 	# add-brand-icon D4: Go's MIME table has no .webmanifest entry.
 	@manifest path /site.webmanifest
