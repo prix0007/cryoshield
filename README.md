@@ -19,7 +19,7 @@ Permanent, non-custodial backup for the secrets you can't afford to lose (seed p
 | `tools/recover` | `cryoshield-recover` Python CLI (CTAP2 hmac-secret), an independent second implementation of the format | `openspec/changes/add-desktop-recovery-tool` |
 | `docs/reviews` | Security review records | |
 
-The product requirements live in `.claude/PRPs/prds/cryoshield.prd.md`.
+The system design (architecture, key derivation, flows, delivery pipeline) is in [`docs/system-design.md`](docs/system-design.md). The product requirements live in `.claude/PRPs/prds/cryoshield.prd.md`.
 
 ## How we work: OpenSpec is mandatory
 
