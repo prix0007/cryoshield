@@ -124,6 +124,10 @@ ${ppLine(appPermissions)}
 	# Clean URLs for the static legal pages (add-privacy-and-compliance 3.2). Exact paths only: no SPA fallback.
 	@legal path /privacy /terms /cookies
 	rewrite @legal {path}/index.html
+	# add-brand-icon D4: Go's MIME table has no .webmanifest entry.
+	@manifest path /site.webmanifest
+	header @manifest Content-Type ${quote('application/manifest+json')}
+
 	@assets path /assets/*
 	header @assets Cache-Control ${quote('public, max-age=31536000, immutable')}
 

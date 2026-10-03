@@ -1,0 +1,15 @@
+{
+  "name": "CryoShield",
+  "short_name": "CryoShield",
+  "description": "Backups that outlive the drive: seed phrases and recovery codes sealed in your browser, unlocked only by your security keys.",
+  "start_url": "/app/",
+  "scope": "/",
+  "display": "standalone",
+  "theme_color": "#000000",
+  "background_color": "#f5f5f7",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

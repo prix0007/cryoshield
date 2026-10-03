@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!-- CryoShield mark, small drawing (add-brand-icon D1): the nav shield scaled to fill the frame, heavier snowflake
+       strokes so it reads at 16 px. Action Blue on light, Sky Link Blue on dark. No scripts, no external references. -->
+  <style>
+    .s { fill: #0066cc; }
+    .f { fill: none; stroke: #ffffff; stroke-width: 3.4; stroke-linecap: round; }
+    @media (prefers-color-scheme: dark) {
+      .s { fill: #2997ff; }
+    }
+  </style>
+  <path class="s" d="M16 1.5 4.4 5.85v8.7C4.4 21.8 9.33 28.18 16 30.5c6.67-2.32 11.6-8.7 11.6-15.95v-8.7L16 1.5Z"/>
+  <path class="f" d="M16 9v13M10.37 12.25l11.26 6.5M10.37 18.75l11.26-6.5"/>
+</svg>

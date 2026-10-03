@@ -107,3 +107,39 @@ test('legal pages and the create acknowledgement (add-privacy-and-compliance)', 
   await page.locator('.ack').scrollIntoViewIfNeeded();
   await page.screenshot({ path: `${dir}/app-acknowledgement.png` });
 });
+
+/** Screenshot-only mock page on the preview origin (so it loads the real served icon files), via a routed URL. */
+async function showMock(page: import('@playwright/test').Page, html: string) {
+  await page.route('**/__brand-preview', (r) => r.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: html }));
+  await page.goto('/__brand-preview');
+}
+
+test('brand icon (add-brand-icon 2.3): tab mock in light and dark, icon at 16, 32 and 180 px', async ({ browser }) => {
+  for (const scheme of ['light', 'dark'] as const) {
+    const ctx = await browser.newContext({ viewport: { width: 640, height: 120 }, colorScheme: scheme });
+    const page = await ctx.newPage();
+    const bar = scheme === 'dark' ? '#202124' : '#dee1e6';
+    const tab = scheme === 'dark' ? '#35363a' : '#ffffff';
+    const ink = scheme === 'dark' ? '#e8eaed' : '#1f1f1f';
+    await showMock(page, `<!doctype html><html><body style="margin:0;background:${bar};font:13px system-ui;color:${ink}">
+      <div style="display:flex;gap:2px;padding:10px 10px 0">
+        ${['CryoShield · Backups that outlive the drive', 'Your vault · CryoShield', 'Privacy policy · CryoShield']
+          .map((t, i) => `<div style="display:flex;align-items:center;gap:8px;width:190px;height:34px;padding:0 12px;border-radius:8px 8px 0 0;background:${i === 1 ? tab : 'transparent'}"><img src="/favicon.svg" width="16" height="16" alt=""><span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${t}</span></div>`)
+          .join('')}
+      </div><div style="height:60px;background:${tab}"></div></body></html>`);
+    await page.waitForTimeout(300);
+    await page.screenshot({ path: `${dir}/brand-tabs-${scheme}.png` });
+    await ctx.close();
+  }
+  const ctx = await browser.newContext({ viewport: { width: 520, height: 230 } });
+  const page = await ctx.newPage();
+  await showMock(page, `<!doctype html><html><body style="margin:0;padding:20px;background:#f5f5f7;font:12px system-ui;color:#1d1d1f;display:flex;gap:28px;align-items:flex-end">
+    <figure style="margin:0;text-align:center"><img src="/favicon.svg" width="16" height="16" alt=""><figcaption>16 px</figcaption></figure>
+    <figure style="margin:0;text-align:center"><img src="/favicon.svg" width="32" height="32" alt=""><figcaption>32 px</figcaption></figure>
+    <figure style="margin:0;text-align:center"><img src="/favicon.svg" width="128" height="128" alt=""><figcaption>small drawing, enlarged</figcaption></figure>
+    <figure style="margin:0;text-align:center"><img src="/apple-touch-icon.png" width="180" height="180" alt="" style="border-radius:40px"><figcaption>180 px (touch icon)</figcaption></figure>
+  </body></html>`);
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: `${dir}/brand-icon-sizes.png` });
+  await ctx.close();
+});

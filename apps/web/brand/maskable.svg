@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- CryoShield app icon, maskable (add-brand-icon D1): the nav glyph inverted onto an opaque Action Blue tile.
+       Mark kept inside the central 80% safe zone for adaptive-icon masks. Flat, single accent, no external references. -->
+  <rect width="512" height="512" fill="#0066cc"/>
+  <g transform="translate(256 256) scale(11.8) translate(-12 -12)">
+    <path fill="#ffffff" d="M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5l-8-3Z"/>
+    <path fill="none" stroke="#0066cc" stroke-width="2" stroke-linecap="round" d="M12 7v10M7.7 9.5l8.6 5M7.7 14.5l8.6-5"/>
+  </g>
+</svg>
