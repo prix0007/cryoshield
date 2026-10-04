@@ -136,7 +136,9 @@ sync_labels() {
   local existing name color desc
   existing="$TMP/labels.txt"
   "$GH" api "repos/$REPO/labels?per_page=100" --paginate --jq '.[].name' > "$existing"
-  while IFS=$'\t' read -r name color desc; do
+  # Fields joined by the ASCII unit separator (not tab: tab is IFS whitespace, so empty fields would collapse and
+  # @tsv would escape tabs in descriptions).
+  while IFS=$'\x1f' read -r name color desc; do
     # Literal, whole-line match: label names may contain regex characters such as '?'.
     if grep -Fx -- "$name" "$existing" > /dev/null; then
       echo "label '$name': present"
@@ -148,7 +150,7 @@ sync_labels() {
       "$GH" api -X POST "repos/$REPO/labels" -f name="$name" -f color="$color" -f description="$desc" > /dev/null
       echo "label '$name': created"
     fi
-  done < <(jq -r '.[] | [.name, .color, .description] | @tsv' "$LABELS_FILE")
+  done < <(jq -r '.[] | [.name, .color, (.description // "")] | map(gsub("[\u001f\n]"; " ")) | join("\u001f")' "$LABELS_FILE")
   return 0
 }
 

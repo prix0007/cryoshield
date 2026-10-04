@@ -2,7 +2,7 @@
 
 ## 1. Pre-screen, guard, labels and caps (tests first)
 
-- [ ] 1.1 Bundle `.github/scripts/data/bip39-english.txt`, hash-pinned. Write `test/triage.test.mjs` first:
+- [x] 1.1 Bundle `.github/scripts/data/bip39-english.txt`, hash-pinned. Write `test/triage.test.mjs` first:
   - a 12-word phrase split across lines and numbered;
   - 15-, 18-, 21- and 24-word phrases;
   - an 11-word near miss and ordinary English text;
@@ -20,8 +20,8 @@
   - wordlist tamper fails closed.
 
   Then implement `triage.mjs screen`. Verify with `npm test --prefix .github/scripts`.
-- [ ] 1.2 Tests first for `guard` (credential shapes, the exact token, BIP39) and `labels` (allowlist, at most 5, injection), then implement them. Verify with `npm test`.
-- [ ] 1.3 Tests first for `caps`:
+- [x] 1.2 Tests first for `guard` (credential shapes, the exact token, BIP39) and `labels` (allowlist, at most 5, injection), then implement them. Verify with `npm test`.
+- [x] 1.3 Tests first for `caps`:
   - daily 20 limit;
   - per-author per hour;
   - owner exemptions;
@@ -32,8 +32,8 @@
 
 ## 2. Workflow and policy
 
-- [ ] 2.1 Add `.github/workflows/issue-triage.yml` (decisions 1, 3–6). Verify that actionlint is clean.
-- [ ] 2.2 Tests first in `test/issue-triage-workflow.test.mjs`:
+- [x] 2.1 Add `.github/workflows/issue-triage.yml` (decisions 1, 3–6). Verify that actionlint is clean.
+- [x] 2.2 Tests first in `test/issue-triage-workflow.test.mjs`:
   - another workflow using `issues`;
   - a checkout with a `ref` or a persisting checkout;
   - a missing no-PR or no-bot conjunct;
@@ -48,12 +48,12 @@
 
 ## 3. Labels, templates, docs
 
-- [ ] 3.1 `apply.sh` creates the allowlist labels plus `sensitive-content`, `security` and `needs-triage`, with tests in `apply-sh.test.mjs`. Verify with `npm test` and shellcheck.
-- [ ] 3.2 Bug and feature templates (new) and the privacy-request template carry the bold warning line (test). Add the CLAUDE.md "Issue triage" section and the README line. Verify with `npm test`.
+- [x] 3.1 `apply.sh` creates the allowlist labels plus `sensitive-content`, `security` and `needs-triage`, with tests in `apply-sh.test.mjs`. Verify with `npm test` and shellcheck.
+- [x] 3.2 Bug and feature templates (new) and the privacy-request template carry the bold warning line (test). Add the CLAUDE.md "Issue triage" section and the README line. Verify with `npm test`.
 
 ## 4. Integration
 
-- [ ] 4.1 Run the full suite and verify that all are green:
+- [x] 4.1 Run the full suite and verify that all are green:
   - `npm test --prefix .github/scripts`;
   - actionlint;
   - zizmor pedantic;

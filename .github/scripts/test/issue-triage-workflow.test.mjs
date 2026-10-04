@@ -61,6 +61,17 @@ test('run steps are digest-pinned; only the triage script may be run with node',
   expectError('issue-triage.yml', replaceOnce(triage, '        run: rm -rf .ecc-plugin\n', '        run: rm -rf .ecc-plugin && node .github/scripts/other.mjs\n'), /executes code/);
 });
 
+test('review M3: the triage agent output is never published unchecked (display_report false)', () => {
+  expectError('issue-triage.yml', replaceOnce(triage, '          display_report: false\n', '          display_report: true\n'), /display_report/);
+});
+
+test('review L3: no interpreter-hijacking env keys in privileged workflows', () => {
+  for (const key of ['NODE_OPTIONS', 'BASH_ENV', 'LD_PRELOAD', 'PATH']) {
+    expectError('issue-triage.yml', replaceOnce(triage, '          GL_RC: ${{ steps.gitleaks.outputs.rc }}\n', `          GL_RC: \${{ steps.gitleaks.outputs.rc }}\n          ${key}: x\n`), new RegExp(key));
+  }
+  expectError('issue-triage.yml', replaceOnce(triage, '      ISSUE: ${{ github.event.issue.number }}\n      AUTHOR:', '      ISSUE: ${{ github.event.issue.number }}\n      NODE_OPTIONS: --require x\n      AUTHOR:'), /NODE_OPTIONS/);
+});
+
 test('ecc-review.yml may not use allowed_non_write_users (only the triage sandbox may)', () => {
   const ecc = real('ecc-review.yml');
   expectError('ecc-review.yml', replaceOnce(ecc, '          display_report: true\n', '          display_report: true\n          allowed_non_write_users: "*"\n'), /allowed_non_write_users/);

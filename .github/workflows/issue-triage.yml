@@ -99,13 +99,16 @@ jobs:
             "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
           echo "${GITLEAKS_SHA256}  ${RUNNER_TEMP}/gitleaks.tar.gz" | sha256sum -c - > /dev/null
           tar -xzf "${RUNNER_TEMP}/gitleaks.tar.gz" -C "${RUNNER_TEMP}" gitleaks
+      # 0 = clean, 42 = leak, anything else = error (fails closed in triage.mjs). The JSON report (redacted) is
+      # required by gitleaks 8.30.1 when --report-path is set, and is deleted right away (security review H1).
       - name: gitleaks over the issue text (exit code only, all output discarded)
         id: gitleaks
         run: |
           set +e
           "${RUNNER_TEMP}/gitleaks" dir "${RUNNER_TEMP}/triage-in" --no-banner --redact --log-level error \
-            --exit-code 1 --report-path /dev/null > /dev/null 2>&1
+            --exit-code 42 --report-format json --report-path "${RUNNER_TEMP}/gitleaks-screen.json" > /dev/null 2>&1
           echo "rc=$?" >> "${GITHUB_OUTPUT}"
+          rm -f "${RUNNER_TEMP}/gitleaks-screen.json"
       - name: Pre-screen (no model; prints only the verdict)
         id: screen
         env:
@@ -125,18 +128,54 @@ jobs:
           AUTHOR: ${{ github.event.issue.user.login }}
           AUTHOR_IS_OWNER: ${{ github.event.issue.author_association == 'OWNER' }}
           OWNER_RERUN: ${{ github.event_name == 'issue_comment' }}
+        # Reserve before diagnosing (security review H2): our run marker is written into the triage comment first, so
+        # failed runs count too, then the caps are re-checked counting only markers EARLIER than ours.
         run: |
           set -euo pipefail
+          d="${RUNNER_TEMP}/triage-in"
           now="$(date -u +%Y-%m-%dT%H:%M:%S.000Z)"
           since="$(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ)"
           today="$(date -u +%Y-%m-%dT00:00:00Z)"
           if [[ "$today" < "$since" ]]; then since="$today"; fi
-          gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/comments?since=${since}&per_page=100" \
-            --jq '.[] | {author: .user.login, body: .body}' | jq -s '.' > "${RUNNER_TEMP}/triage-in/markers.json"
-          r="$(node .github/scripts/triage.mjs caps --markers-file "${RUNNER_TEMP}/triage-in/markers.json" --now "$now" \
-                --author "$AUTHOR" --author-is-owner "$AUTHOR_IS_OWNER" --owner-rerun "$OWNER_RERUN" --daily-cap "$DAILY_CAP")"
-          echo "caps: $r"
-          if [ "$(jq -r .allowed <<<"$r")" = "true" ]; then echo "verdict=ok" >> "${GITHUB_OUTPUT}"; else echo "verdict=capped" >> "${GITHUB_OUTPUT}"; fi
+          markers() {
+            gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/comments?since=${since}&per_page=100" \
+              --jq '.[] | {author: .user.login, body: .body}' | jq -s '.' > "$1"
+          }
+          caps() {
+            node .github/scripts/triage.mjs caps --markers-file "$1" --now "$now" --author "$AUTHOR" \
+              --author-is-owner "$AUTHOR_IS_OWNER" --owner-rerun "$OWNER_RERUN" --daily-cap "$DAILY_CAP" "${@:2}"
+          }
+          markers "$d/markers-1.json"
+          r="$(caps "$d/markers-1.json")"
+          echo "caps before reserving: $r"
+          if [ "$(jq -r .allowed <<<"$r")" != "true" ]; then echo "verdict=capped" >> "${GITHUB_OUTPUT}"; exit 0; fi
+          id="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${ISSUE}/comments?per_page=100" \
+                 --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | startswith("<!-- cryoshield-triage -->"))) | .id' | head -n 1)"
+          : > "$d/previous.md"
+          if [ -n "$id" ]; then gh api "repos/${GITHUB_REPOSITORY}/issues/comments/${id}" --jq .body > "$d/previous.md"; fi
+          printf '%s\n' 'Automated triage in progress...' > "$d/placeholder.md"
+          node .github/scripts/triage.mjs compose --diagnosis "$d/placeholder.md" --previous "$d/previous.md" \
+            --now "$now" --author "$AUTHOR" --issue "$ISSUE" > "$d/reserve.md"
+          created=""
+          if [ -n "$id" ]; then
+            gh api -X PATCH "repos/${GITHUB_REPOSITORY}/issues/comments/${id}" -F "body=@$d/reserve.md" > /dev/null
+          else
+            id="$(gh api -X POST "repos/${GITHUB_REPOSITORY}/issues/${ISSUE}/comments" -F "body=@$d/reserve.md" --jq .id)"
+            created=1
+          fi
+          markers "$d/markers-2.json"
+          r="$(caps "$d/markers-2.json" --self-issue "$ISSUE")"
+          echo "caps after reserving: $r"
+          if [ "$(jq -r .allowed <<<"$r")" = "true" ]; then
+            echo "verdict=ok" >> "${GITHUB_OUTPUT}"
+          else
+            if [ -n "$created" ]; then
+              gh api -X DELETE "repos/${GITHUB_REPOSITORY}/issues/comments/${id}" > /dev/null
+            else
+              gh api -X PATCH "repos/${GITHUB_REPOSITORY}/issues/comments/${id}" -F "body=@$d/previous.md" > /dev/null
+            fi
+            echo "verdict=capped" >> "${GITHUB_OUTPUT}"
+          fi
       - name: Post the fixed notice and label (sensitive, security, privacy, capped)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -206,20 +245,36 @@ jobs:
           rm -f "$RUNNER_TEMP/ecc-plugin/.mcp.json"
           # No plugin hooks at all (ecc-review security review H1).
           printf '{"hooks":{}}\n' > "$RUNNER_TEMP/ecc-plugin/hooks/hooks.json"
+      - name: Install gitleaks (pinned, checksum-verified)
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 -o "${RUNNER_TEMP}/gitleaks.tar.gz" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  ${RUNNER_TEMP}/gitleaks.tar.gz" | sha256sum -c - > /dev/null
+          tar -xzf "${RUNNER_TEMP}/gitleaks.tar.gz" -C "${RUNNER_TEMP}" gitleaks
+      # The issue may have been edited since the screen, and comments were never screened: run the regex screen and
+      # gitleaks again over the issue and each comment, withhold flagged comments, abort on a flagged issue (review M2).
       - name: Collect the issue for the agent (screened again; the agent gets no GitHub access)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          mkdir -p "${RUNNER_TEMP}/triage"
+          d="${RUNNER_TEMP}/triage"
+          mkdir -p "$d"
           gh issue view "$ISSUE" -R "${GITHUB_REPOSITORY}" --json title,body,labels,authorAssociation \
-            --jq '{title, body, labels: [.labels[].name], authorAssociation}' > "${RUNNER_TEMP}/triage/raw-issue.json"
-          gh api "repos/${GITHUB_REPOSITORY}/issues/${ISSUE}/comments?per_page=100" \
-            --jq '[.[-20:][] | {author: .user.login, association: .author_association, body}]' > "${RUNNER_TEMP}/triage/raw-comments.json"
-          node .github/scripts/triage.mjs prepare --issue "${RUNNER_TEMP}/triage/raw-issue.json" \
-            --comments "${RUNNER_TEMP}/triage/raw-comments.json" --out "${RUNNER_TEMP}/triage"
-          rm -f "${RUNNER_TEMP}/triage/raw-issue.json" "${RUNNER_TEMP}/triage/raw-comments.json" \
-            "${RUNNER_TEMP}/triage/diagnosis.md" "${RUNNER_TEMP}/triage/labels.txt"
+            --jq '{title, body, labels: [.labels[].name], authorAssociation}' > "$d/raw-issue.json"
+          gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${ISSUE}/comments?per_page=100" \
+            --jq '.[] | {author: .user.login, association: .author_association, body}' | jq -s '.[-20:]' > "$d/raw-comments.json"
+          node .github/scripts/triage.mjs split --issue "$d/raw-issue.json" --comments "$d/raw-comments.json" --out "$d/split"
+          set +e
+          "${RUNNER_TEMP}/gitleaks" dir "$d/split" --no-banner --redact --log-level error \
+            --exit-code 42 --report-format json --report-path "$d/gitleaks.json" > /dev/null 2>&1
+          rc=$?
+          set -e
+          if [ "$rc" != "0" ] && [ "$rc" != "42" ]; then echo "::error::gitleaks failed (exit $rc)"; exit 1; fi
+          node .github/scripts/triage.mjs prepare --issue "$d/raw-issue.json" --comments "$d/raw-comments.json" \
+            --out "$d" --gitleaks-report "$d/gitleaks.json"
+          rm -rf "$d/split" "$d/gitleaks.json" "$d/raw-issue.json" "$d/raw-comments.json" "$d/diagnosis.md" "$d/labels.txt"
       # Claude Code's subprocess credential scrub needs bubblewrap; Ubuntu 24.04 blocks the unprivileged user
       # namespaces it uses (AppArmor); lifting that on this throwaway VM is safe. The last line proves it works.
       - name: Install bubblewrap for credential isolation
@@ -242,7 +297,8 @@ jobs:
           allowed_non_write_users: "*"
           plugin_marketplaces: ${{ runner.temp }}/ecc-plugin
           plugins: ecc@ecc
-          display_report: true
+          # Agent output is untrusted: never published unchecked to the step summary (security review M3).
+          display_report: false
           claude_args: >-
             --model ${{ env.REVIEW_MODEL }}
             --max-turns 60
@@ -291,7 +347,7 @@ jobs:
           : > "$prev"
           if [ -n "$id" ]; then gh api "repos/${GITHUB_REPOSITORY}/issues/comments/${id}" --jq .body > "$prev"; fi
           node .github/scripts/triage.mjs compose --diagnosis "$d/diagnosis.md" --previous "$prev" \
-            --now "$(date -u +%Y-%m-%dT%H:%M:%S.000Z)" --author "$AUTHOR" > "$d/comment.md"
+            --now "$(date -u +%Y-%m-%dT%H:%M:%S.000Z)" --author "$AUTHOR" --issue "$ISSUE" --no-run-marker > "$d/comment.md"
           node .github/scripts/triage.mjs guard "$d/comment.md"
           if [ -n "$id" ]; then
             gh api -X PATCH "repos/${GITHUB_REPOSITORY}/issues/comments/${id}" -F "body=@$d/comment.md" > /dev/null

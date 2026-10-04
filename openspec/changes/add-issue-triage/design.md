@@ -174,3 +174,36 @@ Node is the runner's preinstalled Node. `triage.mjs` uses only built-ins and run
 - **An English paragraph made of 12 consecutive BIP39 words** would trigger. This is extremely rare in practice, and a near-miss test covers it.
 - **The security heuristic will have false positives,** which a maintainer clears.
 - **The model sees issue text that passed the screen.** The reporter's GitHub content is public anyway.
+
+## Security review (2026-10-04): REJECT, then fixed
+
+Every fix below was test-first. The regression tests are in `test/triage-review.test.mjs` and `test/issue-triage-workflow.test.mjs`, and the gitleaks self-test runs the real binary.
+
+### HIGH
+
+1. **gitleaks 8.30.1 failed on every run.** With `--report-path /dev/null` it could not infer a report format, so it exited fatally with code 1, the same code as a leak. Every issue would have been flagged as sensitive.
+   - Fix: `--report-format json --report-path <tmp>` (deleted straight after) and `--exit-code 42`. `screen` accepts only 0 (clean) and 42 (leak); any other code fails closed.
+   - `gitleaks-selftest.sh`, which runs in `pr-checks` with the pinned binary, now also runs the exact triage invocation. Clean text must exit 0 and a leak 42.
+2. **The caps could be bypassed** by racing simultaneous issues, or by forcing runs to fail.
+   - Fix: the caps step **reserves** before diagnosing. It writes our run marker, now with `issue=N`, into the triage comment as an "in progress" placeholder, so failed runs count too. It then re-checks counting only markers **earlier** than ours (by time, then issue number). If capped after reserving, the reservation is removed and the issue gets `needs-triage`.
+   - The final post keeps the reservation marker and adds none (`--no-run-marker`), so nothing is counted twice.
+
+### MEDIUM
+
+1. **Run markers could be forged** with nested comments. Fixes:
+   - HTML comments are now stripped repeatedly until none remain, and any leftover `<!-`/`->` delimiters are removed;
+   - markers are parsed only from the block after the footer.
+2. **The diagnose re-screen skipped gitleaks.** Fix: diagnose now installs the pinned gitleaks. `triage.mjs split` writes the issue and each comment to their own files, gitleaks scans them, and `prepare --gitleaks-report` withholds flagged comments or aborts on a flagged issue (exit 3). The temporary files are deleted before the agent runs.
+3. **`display_report: true` published unchecked output.** Fix: it is now `false`, and the policy requires that for the triage agent.
+4. **The guard did not stop phishing-style output.** Fixes:
+   - links are allowed only to `https://github.com/prix0007/cryoshield/...`, `https://cryoshield.app` and `https://docs.github.com` (otherwise `foreign-link`);
+   - un-negated sentences asking someone to enter, post, share or send a phrase, words, PIN, seed or similar are refused (`secret-request`);
+   - `@mentions` are wrapped in code spans, so they never ping anyone.
+
+### LOW
+
+1. **Pre-screen evasions.** Fixed: the text is NFKC-normalised and format characters (`\p{Cf}`: zero-width spaces, soft hyphens) are removed. 64-hex written in groups of four with separators is caught, and URL query strings and fragments are scanned (only scheme, host and path are exempt).
+   - **Accepted residual risk,** documented here: words joined with no spaces, Cyrillic look-alikes that NFKC does not fold, base64-encoded keys (indistinguishable from Arweave transaction IDs, which this app uses), phrases of fewer than 12 words, and non-English wordlists.
+2. **Comments were not paginated.** Fixed: they are fetched with `--paginate`, and the last 20 kept.
+3. **Run-step `env` was not pinned.** Fixed: privileged workflows may not set interpreter-hijacking env keys (`NODE_OPTIONS`, `BASH_ENV`, `ENV`, `LD_*`, `DYLD_*`, `PATH`, `PYTHONPATH`, `GIT_*` and similar) at workflow, job or step level.
+4. **`apply.sh` parsed `labels.json` with tab separators.** Fixed: it uses the ASCII unit separator, so empty fields are kept and tabs in descriptions are not mangled.

@@ -11,8 +11,8 @@
 //   triage.mjs prepare --issue <json> --comments <json> --out <dir>  -> issue.md, comments.md (exit 3: no longer passes)
 //   triage.mjs text <ack|sensitive|security|queued|privacy>  -> fixed comment text
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { basename, join } from 'node:path';
 import { parseArgs } from 'node:util';
 import { pathToFileURL } from 'node:url';
 
@@ -55,7 +55,10 @@ const MAX_LABELS = 5;
 // ---------------------------------------------------------------------------------------------------------------
 // Sensitive-content detectors. Each returns a reason code or null; none returns the matched text.
 const B58 = '1-9A-HJ-NP-Za-km-z';
-const withoutUrls = (t) => t.replace(/https?:\/\/[^\s)<>\]]+/gi, ' ');
+// URL scheme+host+path only: query strings and fragments are still scanned (security review L1).
+const withoutUrls = (t) => t.replace(/https?:\/\/[^\s?#)<>\]]+/gi, ' ');
+// NFKC folds fullwidth/compatibility characters; format characters (zero-width, soft hyphen, BOM) are removed.
+export const normalize = (t) => String(t ?? '').normalize('NFKC').replace(/\p{Cf}/gu, '');
 
 function hasBip39Run(text, min = 12) {
   const set = words();
@@ -70,7 +73,8 @@ function hasBip39Run(text, min = 12) {
 
 const DETECTORS = [
   ['bip39', (t) => hasBip39Run(t)],
-  ['hex64', (t) => /(^|[^0-9A-Fa-f])(0x)?[0-9A-Fa-f]{64}(?![0-9A-Fa-f])/.test(withoutUrls(t))],
+  ['hex64', (t) => /(^|[^0-9A-Fa-f])(0x)?[0-9A-Fa-f]{64}(?![0-9A-Fa-f])/.test(withoutUrls(t)) ||
+    /(^|[^0-9A-Fa-f])(?:[0-9A-Fa-f]{4}[\s:._-]){15}[0-9A-Fa-f]{4}(?![0-9A-Fa-f])/.test(withoutUrls(t))],
   ['extended-key', (t) => new RegExp(`(^|[^${B58}])[xyztuv](prv|pub)[${B58}]{100,108}(?![${B58}])`).test(t)],
   ['wif', (t) => new RegExp(`(^|[^${B58}])(5[HJK][${B58}]{49}|[KLc][${B58}]{51})(?![${B58}])`).test(t)],
   ['totp', (t) =>
@@ -86,11 +90,14 @@ const SECURITY_PATTERNS = [
   /\bdrain\w*/i, /\bsteal\w*/i, /\bexfiltrat\w*/i, /\bphishing\b/i, /\battacker\b/i,
 ];
 
+// gitleaks runs with `--exit-code 42`: 0 clean, 42 leak, anything else (e.g. 1 = fatal error) fails closed
+// (security review H1).
+export const GITLEAKS_LEAK_EXIT = 42;
 export function screen(text, { gitleaksExit = 0, labels = [] } = {}) {
-  const t = String(text ?? '');
-  if (![0, 1].includes(Number(gitleaksExit))) throw new Error(`gitleaks exited ${gitleaksExit}; refusing to continue (fail closed)`);
+  const t = normalize(text);
+  if (![0, GITLEAKS_LEAK_EXIT].includes(Number(gitleaksExit))) throw new Error(`gitleaks exited ${gitleaksExit}; refusing to continue (fail closed)`);
   const reasons = DETECTORS.filter(([, f]) => f(t)).map(([code]) => code);
-  if (Number(gitleaksExit) === 1) reasons.push('gitleaks');
+  if (Number(gitleaksExit) === GITLEAKS_LEAK_EXIT) reasons.push('gitleaks');
   if (reasons.length) return { verdict: 'sensitive', reasons };
   if (SECURITY_PATTERNS.some((re) => re.test(t))) return { verdict: 'security', reasons: ['keywords'] };
   if (labels.map((l) => String(typeof l === 'string' ? l : l?.name).toLowerCase()).includes('privacy-request')) return { verdict: 'privacy', reasons: ['label'] };
@@ -102,14 +109,39 @@ const CREDENTIAL_SHAPES = [
   ['anthropic', /sk-ant-[A-Za-z0-9_-]{10,}/], ['github-token', /gh[pousr]_[A-Za-z0-9]{20,}/], ['github-pat', /github_pat_[A-Za-z0-9_]{20,}/],
   ['private-key-block', /-----BEGIN [A-Z ]*PRIVATE KEY-----/],
 ];
+// Links the bot may post: this repository on GitHub, the product site, GitHub docs (security review M4).
+function allowedUrl(raw) {
+  let u;
+  try {
+    u = new URL(raw);
+  } catch {
+    return false;
+  }
+  if (u.protocol !== 'https:') return false;
+  if (u.hostname === 'cryoshield.app' || u.hostname === 'www.cryoshield.app' || u.hostname === 'docs.github.com') return true;
+  return u.hostname === 'github.com' && /^\/prix0007\/cryoshield(\/|$)/.test(u.pathname);
+}
+const SECRET_REQUEST =
+  /\b(enter|type|paste|post|share|send|provide|give|upload|submit|reply with|tell us)\b[^.!?\n]{0,60}\b(seed|recovery|mnemonic|private key|secret key|phrase|words|pin|passphrase|2fa|backup codes?)\b/i;
+const NEGATION = /\b(never|not|don't|do not|no)\b/i;
+
 export function guard(text, { token } = {}) {
-  const t = String(text ?? '');
+  const raw = String(text ?? '');
+  const t = normalize(raw);
+  const urls = t.match(/https?:\/\/[^\s)<>\]"'`]+/gi) ?? [];
   const reasons = [
     ...CREDENTIAL_SHAPES.filter(([, re]) => re.test(t)).map(([c]) => c),
-    ...(token && token.length >= 8 && t.includes(token) ? ['exact-token'] : []),
+    ...(token && token.length >= 8 && raw.includes(token) ? ['exact-token'] : []),
     ...DETECTORS.filter(([, f]) => f(t)).map(([c]) => c),
+    ...(urls.some((u) => !allowedUrl(u)) ? ['foreign-link'] : []),
+    ...(t.split(/[.!?\n]+/).some((sentence) => SECRET_REQUEST.test(sentence) && !NEGATION.test(sentence)) ? ['secret-request'] : []),
   ];
   return { ok: reasons.length === 0, reasons };
+}
+
+// Wrap @mentions in code spans so a bot comment never pings people or teams (security review M4).
+export function neutralizeMentions(text) {
+  return String(text).replace(/(^|[^\w`@.])@([A-Za-z0-9][A-Za-z0-9-]{0,38}(?:\/[A-Za-z0-9_.-]+)?)/g, '$1`@$2`');
 }
 
 export function filterLabels(text) {
@@ -124,21 +156,33 @@ export function filterLabels(text) {
 // ---------------------------------------------------------------------------------------------------------------
 // Caps (design decision 5). Markers come only from github-actions[bot] comments that start with the triage marker.
 const BOT = 'github-actions[bot]';
-const RUN_RE = /<!-- cryoshield-triage-run: (\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z) author=([A-Za-z0-9-]{1,39}(?:\[bot\])?) -->/g;
+const RUN_RE = /<!-- cryoshield-triage-run: (\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z) author=([A-Za-z0-9-]{1,39}(?:\[bot\])?)(?: issue=(\d+))? -->/g;
+const FOOTER_SEP = '\n---\n<sub>';
+// Only the marker block after the footer counts (security review M1): text above it came from the agent.
+const markerBlock = (body) => {
+  const i = String(body).lastIndexOf(FOOTER_SEP);
+  return i < 0 ? '' : String(body).slice(i);
+};
 export function parseMarkers(comments) {
   const out = [];
   for (const c of comments ?? []) {
     if (c?.author !== BOT || !String(c.body ?? '').startsWith(MARKERS.triage)) continue;
-    for (const m of String(c.body).matchAll(RUN_RE)) {
+    for (const m of markerBlock(c.body).matchAll(RUN_RE)) {
       const time = new Date(m[1]);
-      if (!Number.isNaN(time.getTime())) out.push({ time, author: m[2] });
+      if (!Number.isNaN(time.getTime())) out.push({ time, author: m[2], issue: m[3] === undefined ? undefined : Number(m[3]) });
     }
   }
   return out;
 }
 
-export function evaluateCaps({ now, markers, issueAuthor, issueAuthorIsOwner = false, ownerRerun = false, dailyCap = 20 }) {
+// With `self` (our own reservation), only markers strictly earlier than it count (time, then issue number), so
+// simultaneous runs resolve deterministically (security review H2).
+export function evaluateCaps({ now, markers, issueAuthor, issueAuthorIsOwner = false, ownerRerun = false, dailyCap = 20, self = null }) {
   if (ownerRerun) return { allowed: true, reason: null };
+  if (self) {
+    const t = self.time.getTime();
+    markers = markers.filter((m) => m.time.getTime() < t || (m.time.getTime() === t && (m.issue ?? Infinity) < (self.issue ?? Infinity)));
+  }
   const day = now.toISOString().slice(0, 10);
   if (markers.filter((m) => m.time.toISOString().slice(0, 10) === day).length >= dailyCap) return { allowed: false, reason: 'daily' };
   if (!issueAuthorIsOwner) {
@@ -153,29 +197,40 @@ export function evaluateCaps({ now, markers, issueAuthor, issueAuthorIsOwner = f
 // ---------------------------------------------------------------------------------------------------------------
 const FOOTER = '<sub>Automated first look by the CryoShield triage agent: model output, it may be wrong. A maintainer will follow up. ' +
   'Never post seed phrases, recovery codes, PINs or keys.</sub>';
-export function composeComment({ diagnosis, previous, now, author }) {
+export function composeComment({ diagnosis, previous, now, author, issue, appendRun = true }) {
   if (!/^[A-Za-z0-9-]{1,39}(\[bot\])?$/.test(String(author))) throw new Error('invalid author login');
-  // The agent cannot forge markers: every HTML comment in its text is removed.
-  const text = String(diagnosis ?? '').replace(/<!--[\s\S]*?(-->|$)/g, '').trim();
-  const prior = previous ? [...String(previous).matchAll(RUN_RE)].map((m) => m[0]) : [];
-  const run = `<!-- cryoshield-triage-run: ${now.toISOString()} author=${author} -->`;
-  return `${MARKERS.triage}\n${text}\n\n---\n${FOOTER}\n${[...prior, run].join('\n')}\n`;
+  if (!Number.isInteger(Number(issue)) || Number(issue) <= 0) throw new Error('invalid issue number');
+  // The agent cannot forge markers: HTML comments are removed until none is left, then any leftover comment
+  // delimiters are dropped (security review M1); @mentions become code spans (M4).
+  let text = String(diagnosis ?? '');
+  for (let prev = null; prev !== text;) {
+    prev = text;
+    text = text.replace(/<!--[\s\S]*?(-->|$)/g, '');
+  }
+  text = neutralizeMentions(text.replace(/<!-*|-*->/g, '').trim());
+  const prior = previous ? [...markerBlock(previous).matchAll(RUN_RE)].map((m) => m[0]) : [];
+  const run = `<!-- cryoshield-triage-run: ${now.toISOString()} author=${author} issue=${Number(issue)} -->`;
+  // appendRun=false: the run was already reserved (marker written before diagnose), so keep markers as they are.
+  const markers = appendRun ? [...prior, run] : prior;
+  return `${MARKERS.triage}\n${text}\n\n---\n${FOOTER}\n${markers.join('\n')}\n`;
 }
 
 // ---------------------------------------------------------------------------------------------------------------
 // Diagnose-job input: the issue is screened AGAIN (it may have been edited since the screen job); comments are
 // screened one by one and withheld if sensitive or vulnerability-like; our own bot comments are dropped.
-export function prepare(issue, comments) {
+export const splitName = (i) => `comment-${String(i).padStart(3, '0')}.txt`;
+export function prepare(issue, comments, { leakFiles = new Set() } = {}) {
   const title = String(issue?.title ?? '');
   const body = String(issue?.body ?? '');
+  if (leakFiles.has('issue.txt')) return { ok: false, verdict: 'sensitive' };
   const v = screen(`${title}\n\n${body}`);
   if (v.verdict !== 'ok') return { ok: false, verdict: v.verdict };
   const labels = (issue?.labels ?? []).map(String).join(', ') || '(none)';
   const issueMd = `# ${title}\n\nLabels: ${labels}\nAuthor association: ${String(issue?.authorAssociation ?? 'NONE')}\n\n${body}\n`;
   const parts = [];
-  for (const c of comments ?? []) {
+  for (const [i, c] of (comments ?? []).entries()) {
     if (c?.author === BOT) continue;
-    const s = screen(String(c?.body ?? ''));
+    const s = leakFiles.has(splitName(i)) ? { verdict: 'sensitive' } : screen(String(c?.body ?? ''));
     const text = s.verdict === 'sensitive' ? '[comment withheld by the pre-screen: it may contain secret material]'
       : s.verdict === 'security' ? '[comment withheld by the pre-screen: possible vulnerability details]'
         : String(c?.body ?? '');
@@ -203,17 +258,28 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
       const l = filterLabels(existsSync(rest[0]) ? read(rest[0]) : '');
       if (l.length) process.stdout.write(`${l.join('\n')}\n`);
     } else if (cmd === 'caps') {
-      const { values } = parseArgs({ args: rest, options: { 'markers-file': { type: 'string' }, now: { type: 'string' }, author: { type: 'string' }, 'author-is-owner': { type: 'string', default: 'false' }, 'owner-rerun': { type: 'string', default: 'false' }, 'daily-cap': { type: 'string', default: '20' } } });
+      const { values } = parseArgs({ args: rest, options: { 'markers-file': { type: 'string' }, now: { type: 'string' }, author: { type: 'string' }, 'author-is-owner': { type: 'string', default: 'false' }, 'owner-rerun': { type: 'string', default: 'false' }, 'daily-cap': { type: 'string', default: '20' }, 'self-issue': { type: 'string' } } });
       const markers = parseMarkers(JSON.parse(read(values['markers-file'])));
-      const r = evaluateCaps({ now: new Date(values.now), markers, issueAuthor: values.author, issueAuthorIsOwner: values['author-is-owner'] === 'true', ownerRerun: values['owner-rerun'] === 'true', dailyCap: Number(values['daily-cap']) });
+      const now = new Date(values.now);
+      const self = values['self-issue'] ? { time: now, issue: Number(values['self-issue']), author: values.author } : null;
+      const r = evaluateCaps({ now, markers, issueAuthor: values.author, issueAuthorIsOwner: values['author-is-owner'] === 'true', ownerRerun: values['owner-rerun'] === 'true', dailyCap: Number(values['daily-cap']), self });
       process.stdout.write(`${JSON.stringify(r)}\n`);
     } else if (cmd === 'compose') {
-      const { values } = parseArgs({ args: rest, options: { diagnosis: { type: 'string' }, previous: { type: 'string' }, now: { type: 'string' }, author: { type: 'string' } } });
+      const { values } = parseArgs({ args: rest, options: { diagnosis: { type: 'string' }, previous: { type: 'string' }, now: { type: 'string' }, author: { type: 'string' }, issue: { type: 'string' }, 'no-run-marker': { type: 'boolean', default: false } } });
       const previous = values.previous && existsSync(values.previous) ? read(values.previous) : null;
-      process.stdout.write(composeComment({ diagnosis: read(values.diagnosis), previous, now: new Date(values.now), author: values.author }));
-    } else if (cmd === 'prepare') {
+      process.stdout.write(composeComment({ diagnosis: read(values.diagnosis), previous, now: new Date(values.now), author: values.author, issue: values.issue, appendRun: !values['no-run-marker'] }));
+    } else if (cmd === 'split') {
+      // Raw texts, one file each, for the gitleaks pass in the diagnose job (security review M2).
       const { values } = parseArgs({ args: rest, options: { issue: { type: 'string' }, comments: { type: 'string' }, out: { type: 'string' } } });
-      const r = prepare(JSON.parse(read(values.issue)), JSON.parse(read(values.comments)));
+      const issue = JSON.parse(read(values.issue));
+      mkdirSync(values.out, { recursive: true });
+      writeFileSync(join(values.out, 'issue.txt'), `${String(issue?.title ?? '')}\n\n${String(issue?.body ?? '')}\n`);
+      JSON.parse(read(values.comments)).forEach((c, i) => writeFileSync(join(values.out, splitName(i)), `${String(c?.body ?? '')}\n`));
+    } else if (cmd === 'prepare') {
+      const { values } = parseArgs({ args: rest, options: { issue: { type: 'string' }, comments: { type: 'string' }, out: { type: 'string' }, 'gitleaks-report': { type: 'string' } } });
+      const report = values['gitleaks-report'] && existsSync(values['gitleaks-report']) ? JSON.parse(read(values['gitleaks-report']) || '[]') : [];
+      const leakFiles = new Set((Array.isArray(report) ? report : []).map((f) => basename(String(f?.File ?? ''))));
+      const r = prepare(JSON.parse(read(values.issue)), JSON.parse(read(values.comments)), { leakFiles });
       if (!r.ok) {
         console.error(`::error title=triage::the issue no longer passes the pre-screen (${r.verdict}); not sending it to the model`);
         process.exit(3);

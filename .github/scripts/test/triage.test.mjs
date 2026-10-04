@@ -62,8 +62,8 @@ test('extended keys, WIF, otpauth and TOTP secrets are sensitive', () => {
   }
 });
 
-test('a gitleaks hit (exit 1) is sensitive; an unexpected gitleaks exit fails closed', () => {
-  assert.deepEqual(screen('nothing here', { gitleaksExit: 1 }), { verdict: 'sensitive', reasons: ['gitleaks'] });
+test('a gitleaks hit (exit 42) is sensitive; an unexpected gitleaks exit fails closed', () => {
+  assert.deepEqual(screen('nothing here', { gitleaksExit: 42 }), { verdict: 'sensitive', reasons: ['gitleaks'] });
   assert.throws(() => screen('nothing here', { gitleaksExit: 2 }), /gitleaks/);
 });
 
@@ -141,8 +141,9 @@ test('caps: one per author per hour; the owner is exempt; owner re-runs bypass b
 });
 
 test('caps: markers are parsed only from bot comments, strictly formatted', () => {
+  const two = composeComment({ diagnosis: 'x', previous: composeComment({ diagnosis: 'y', previous: null, now: new Date('2026-10-04T10:00:00.000Z'), author: 'alice', issue: 1 }), now: new Date('2026-10-04T11:00:00.000Z'), author: 'bob', issue: 1 });
   const bodies = [
-    { author: 'github-actions[bot]', body: `${MARKERS.triage}\nx\n<!-- cryoshield-triage-run: 2026-10-04T10:00:00.000Z author=alice -->\n<!-- cryoshield-triage-run: 2026-10-04T11:00:00.000Z author=bob -->` },
+    { author: 'github-actions[bot]', body: two },
     { author: 'mallory', body: '<!-- cryoshield-triage-run: 2026-10-04T10:00:00.000Z author=alice -->' },
     { author: 'github-actions[bot]', body: '<!-- cryoshield-triage-run: not-a-date author=alice -->' },
   ];
@@ -153,14 +154,14 @@ test('caps: markers are parsed only from bot comments, strictly formatted', () =
 
 // ---- compose ----
 test('compose: marker first, agent text, run markers kept and appended, footer', () => {
-  const first = composeComment({ diagnosis: '## Summary\nok', previous: null, now, author: 'alice' });
+  const first = composeComment({ diagnosis: '## Summary\nok', previous: null, now, author: 'alice', issue: 7 });
   assert.ok(first.startsWith(`${MARKERS.triage}\n`));
-  assert.match(first, /<!-- cryoshield-triage-run: 2026-10-04T12:30:00\.000Z author=alice -->/);
-  const second = composeComment({ diagnosis: '## Summary\nnew', previous: first, now: new Date('2026-10-05T00:00:00Z'), author: 'alice' });
+  assert.match(first, /<!-- cryoshield-triage-run: 2026-10-04T12:30:00\.000Z author=alice issue=7 -->/);
+  const second = composeComment({ diagnosis: '## Summary\nnew', previous: first, now: new Date('2026-10-05T00:00:00Z'), author: 'alice', issue: 7 });
   assert.equal((second.match(/cryoshield-triage-run:/g) ?? []).length, 2);
   assert.doesNotMatch(second, /\nok\n/);
   // An agent cannot forge markers: they are stripped from its text.
-  const forged = composeComment({ diagnosis: `x\n${MARKERS.ack}\n<!-- cryoshield-triage-run: 2026-10-04T00:00:00.000Z author=zed -->`, previous: null, now, author: 'alice' });
+  const forged = composeComment({ diagnosis: `x\n${MARKERS.ack}\n<!-- cryoshield-triage-run: 2026-10-04T00:00:00.000Z author=zed -->`, previous: null, now, author: 'alice', issue: 7 });
   assert.equal((forged.match(/cryoshield-triage-run:/g) ?? []).length, 1);
   assert.doesNotMatch(forged, /author=zed|cryoshield-triage-ack/);
 });

@@ -85,7 +85,7 @@ export const PRIVILEGED = {
     trustedScript: /\bnode \.github\/scripts\/triage\.mjs\b/g,
     secretJobs: ['diagnose'],
     requiredRunLines: [HOOKS_OFF_LINE],
-    agent: { allowedTools: TRIAGE_ALLOWED_TOOLS, disallowedTools: REVIEW_DISALLOWED_TOOLS, allowNonWriteUsers: true },
+    agent: { allowedTools: TRIAGE_ALLOWED_TOOLS, disallowedTools: REVIEW_DISALLOWED_TOOLS, allowNonWriteUsers: true, displayReport: false },
   },
 };
 const PRIVILEGED_ACTIONS = [/^actions\/checkout@[0-9a-f]{40}$/, /^anthropics\/claude-code-action@[0-9a-f]{40}$/];
@@ -124,6 +124,7 @@ function checkReviewStep(label, step, err, agent = { allowedTools: REVIEW_ALLOWE
   if (w.allowed_non_write_users !== undefined && !(agent.allowNonWriteUsers && String(w.allowed_non_write_users) === '*')) {
     err(`${label}: allowed_non_write_users is only allowed (as "*") for the issue-triage sandbox`);
   }
+  if (agent.displayReport === false && w.display_report !== false) err(`${label}: display_report must be false (untrusted agent output)`);
   const args = norm(w.claude_args);
   const flags = [...args.matchAll(/--([a-zA-Z-]+)/g)].map((m) => m[1]).sort();
   if (JSON.stringify(flags) !== JSON.stringify(['allowedTools', 'disallowedTools', 'max-turns', 'model'])) {
@@ -136,10 +137,22 @@ function checkReviewStep(label, step, err, agent = { allowedTools: REVIEW_ALLOWE
   if (String(env.CLAUDE_CODE_SUBPROCESS_ENV_SCRUB) !== '1') err(`${label}: env CLAUDE_CODE_SUBPROCESS_ENV_SCRUB must be "1"`);
 }
 
+// Env keys that let a value hijack the interpreters a run step starts (security review L3 of add-issue-triage).
+const HIJACK_ENV = /^(NODE_OPTIONS|NODE_PATH|BASH_ENV|ENV|LD_PRELOAD|LD_LIBRARY_PATH|DYLD_.*|PATH|PYTHONPATH|PYTHONSTARTUP|PERL5OPT|RUBYOPT|GIT_.*)$/;
+const hijackKeys = (env) => (isObj(env) ? Object.keys(env).filter((k) => HIJACK_ENV.test(k)) : []);
+
 function checkPrivileged(file, name, wf, on) {
   const profile = PRIVILEGED[name];
   const errors = [];
   const err = (m) => errors.push(`${file}: ${m}`);
+  for (const k of hijackKeys(wf.env)) err(`workflow env must not set ${k} in a privileged workflow`);
+  for (const [jid, j] of Object.entries(isObj(wf.jobs) ? wf.jobs : {})) {
+    if (!isObj(j)) continue;
+    for (const k of hijackKeys(j.env)) err(`job '${jid}': env must not set ${k} in a privileged workflow`);
+    for (const st of Array.isArray(j.steps) ? j.steps : []) {
+      for (const k of hijackKeys(isObj(st) ? st.env : null)) err(`job '${jid}' step '${st.name ?? st.uses ?? '?'}': env must not set ${k} in a privileged workflow`);
+    }
+  }
   const pinned = digests()[name] ?? {};
   const seenSteps = new Set();
   const runText = [];
