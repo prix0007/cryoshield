@@ -118,6 +118,11 @@ The release job's run steps stay digest-pinned.
   - **no** Administration, and **no** Workflows.
 
   The trade-off: without Workflows the agent cannot push changes under `.github/workflows/`. Those edits are then made by the owner or come from a reviewed PR branch the owner pushes. That is deliberate, since workflow edits are the highest-risk change.
+- **Found while writing the doc:** a fine-grained PAT cannot reach a repository where its user is only a collaborator on another *personal* account. `prix0007/cryoshield` is personal-owned, so the doc offers two options:
+  - **A (recommended):** move the repo to an organization the owner controls, which allows an org-owned, repo-only fine-grained PAT with org approval;
+  - **B:** a classic PAT with the `repo` scope only (no `workflow` or `admin:*`).
+
+  In both, the boundary is the account's Write role: rulesets, environments, secrets and settings need Admin whatever scopes the token has.
 - `gh` and git configuration: `GH_TOKEN` in the agent's environment, a separate SSH key, and an `includeIf` gitconfig.
 - Verification: a rulesets or environments write must fail with 403 or 404.
 

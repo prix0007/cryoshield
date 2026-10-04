@@ -35,7 +35,7 @@
 
 ## 4. Docs
 
-- [ ] 4.1 Write `docs/agent-account.md` and update:
+- [x] 4.1 Write `docs/agent-account.md` and update:
   - CLAUDE.md "Change flow" (the machine account; releases wait for owner approval);
   - `docs/deploy.md` (approve in the UI and with `gh api`; the `production-build` setup; superseding);
   - the README;

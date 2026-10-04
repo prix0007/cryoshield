@@ -94,7 +94,7 @@ The gate scripts live in `.github/scripts` and are tested with `npm ci --ignore-
 
 ## Contributing / PR workflow
 
-`main` is protected by the ruleset in `.github/rulesets/main.json`. Every change, including the maintainer's, goes through a pull request. The step-by-step flow for agents and humans is in [`CLAUDE.md`](CLAUDE.md) → "Change flow (one PR per change)".
+`main` is protected by the ruleset in `.github/rulesets/main.json`. Every change, including the maintainer's, goes through a pull request. The step-by-step flow for agents and humans is in [`CLAUDE.md`](CLAUDE.md) → "Change flow (one PR per change)". AI agents work through a non-admin machine account ([`docs/agent-account.md`](docs/agent-account.md)), so they cannot change protection or approve releases.
 
 1. **OpenSpec first.** Propose a change under `openspec/changes/<name>/` before writing code (see above).
    - A PR that touches code or CI configuration (`apps/`, `packages/`, `contracts/src/`, `tools/recover/src/`, `.github/`, `scripts/`, `.gitleaks.toml`, the root workspace manifests or `contracts/foundry.toml`) must also add or modify something under `openspec/changes/`, archiving included.
@@ -139,8 +139,10 @@ The script syncs:
 - the `main` ruleset;
 - the repository merge settings in `.github/rulesets/repo-settings.json` (squash only, PR title as the commit title, delete the branch on merge);
 - the Actions workflow permissions in `.github/rulesets/actions-permissions.json` (read-only default token; Actions may not approve PRs);
-- the `no-spec` and `hold` labels;
-- auto-merge, enabled in the repository settings.
+- the managed labels in `.github/rulesets/labels.json`;
+- auto-merge, enabled in the repository settings;
+- with `--environments`: the deploy environments in `.github/rulesets/environments.json` (`production`: the owner as required reviewer, no admin bypass, `main` only; `production-build`: `main` only);
+- with `--founder-hardening` (off by default): Dependabot security updates and "actions must be pinned to a full commit SHA" (`.github/rulesets/actions-hardening.json`).
 
 `ecc-review` is **not** a required check by default, and auto-merge stays off until it is.
 
@@ -161,15 +163,15 @@ To change protection, edit those files in a PR and re-run the script after it me
 
 ## Deployment
 
-Every new commit on `main` is deployed to https://cryoshield.app automatically by `.github/workflows/deploy.yml`, usually within 15 minutes of the merge:
+Every new commit on `main` is built and tested automatically by `.github/workflows/deploy.yml`, and goes live at https://cryoshield.app once the owner approves the release:
 
 1. **detect:** compare `https://cryoshield.app/release.json` with the `main` HEAD, and skip if they are equal.
 2. **test:** run the **full** `ci.yml` on that exact commit.
-3. **build** (no deploy token): run the guarded `apps/web/deploy/deploy.sh --build-only` in the GitHub Environment `production`.
-4. **deploy:** a token-holding job that runs only pinned flyctl on the verified build artifact.
-5. **smoke:** check the routes, headers, registry address and `/release.json`. On failure, roll back to the previous image automatically.
+3. **build** (no deploy token): run the guarded `apps/web/deploy/deploy.sh --build-only` in the GitHub Environment `production-build`.
+4. **supersede:** cancel older releases that are still waiting for approval.
+5. **release** (GitHub Environment `production`, **owner approval required**, one click): run pinned flyctl on the verified build artifact, then check the routes, headers, registry address and `/release.json`. On failure, roll back to the previous image automatically in the same job.
 
-The pipeline never runs on pull requests. To redeploy by hand, run `gh workflow run deploy.yml -f force=true`. To roll back, see [`docs/deploy.md`](docs/deploy.md), which also covers first-time setup and token rotation.
+The pipeline never runs on pull requests. To redeploy by hand, run `gh workflow run deploy.yml -f force=true`. To approve or roll back, see [`docs/deploy.md`](docs/deploy.md), which also covers first-time setup and token rotation.
 
 ## Security
 
