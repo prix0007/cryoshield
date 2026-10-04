@@ -179,23 +179,27 @@ async function openCore(blob: Uint8Array, keys: readonly UnlockKey[], vaultId: U
 }
 
 /**
- * Creates a vault. Mode 0x01 (default): any single key unlocks. Mode 0x02
- * (experimental): Shamir M-of-N. Wipes every credential's PRF buffer.
- */
-/**
  * Two credentials with identical PRF outputs are one key enrolled twice (their locators are equal):
  * a vault created that way would only *appear* to have a backup key. Refused with INVALID_ARGUMENT
- * (security audit 2026-10, REC-L2).
+ * (security audit 2026-10, REC-L2). Compares the raw bytes pairwise in constant time per pair, without
+ * building (non-wipeable) string copies of the secret PRF outputs. N <= 8, so this is at most 28 pairs.
  */
 function assertDistinctPrfs(prfs: readonly Uint8Array[]): void {
-  const seen = new Set<string>();
-  for (const p of prfs) {
-    const key = Array.from(p, (b) => b.toString(16).padStart(2, '0')).join('');
-    if (seen.has(key)) throw new VaultError('INVALID_ARGUMENT', { hint: 'two credentials have the same PRF output' });
-    seen.add(key);
+  for (let i = 0; i < prfs.length; i++) {
+    for (let j = i + 1; j < prfs.length; j++) {
+      const a = prfs[i]!;
+      const b = prfs[j]!;
+      let diff = a.length ^ b.length;
+      for (let k = 0; k < a.length && k < b.length; k++) diff |= a[k]! ^ b[k]!;
+      if (diff === 0) throw new VaultError('INVALID_ARGUMENT', { hint: 'two credentials have the same PRF output' });
+    }
   }
 }
 
+/**
+ * Creates a vault. Mode 0x01 (default): any single key unlocks. Mode 0x02
+ * (experimental): Shamir M-of-N. Wipes every credential's PRF buffer.
+ */
 export async function createVault(params: CreateVaultParams, options: RngOptions = {}): Promise<CreateVaultResult> {
   const prfs = prfsOf(params?.credentials);
   let dataKey: Uint8Array | null = null;
