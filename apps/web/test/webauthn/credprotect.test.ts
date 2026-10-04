@@ -97,7 +97,7 @@ describe('enrollment cancel wording', () => {
     const err = await enrollKey({ ...rp, label: 'k', exclude: [] }, f.credentials).catch((e) => e);
     expect(err.code).toBe('CANCELLED');
     expect(messageFor(err)).toBe(S.enrollCancelled);
-    expect(noticeTitle(S.enrollCancelled)).toBe('Key not supported');
+    expect(noticeTitle(S.enrollCancelled)).toBe('Request cancelled'); // neutral title; the text covers both causes
   });
   it('a cancelled unlock keeps the plain cancel message', async () => {
     const { messageFor } = await import('../../src/ui/operations');

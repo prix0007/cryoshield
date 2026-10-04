@@ -31,6 +31,9 @@ class Reader {
     let v = 0;
     for (let i = 0; i < n; i++) v = v * 256 + this.byte();
     if (!Number.isSafeInteger(v)) throw new Bad();
+    // Canonical CBOR: the shortest encoding only (e.g. 3 must be 0x03, never 0x18 0x03).
+    const min = n === 1 ? 24 : n === 2 ? 0x100 : n === 4 ? 0x10000 : 0x100000000;
+    if (v < min) throw new Bad();
     return v;
   }
   private take(n: number): Uint8Array {

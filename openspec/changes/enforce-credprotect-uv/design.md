@@ -24,10 +24,10 @@ satisfy the policy, instead of creating a weaker credential.
 WebAuthn defines no client output for credProtect, and Chrome returns none. The authenticator's output is the
 `credProtect` integer in the CBOR extensions map of the registration `authenticatorData` (ED flag 0x80, after the
 attested credential data).
-- **Parser:** `credProtectLevel()` uses a small, bounded, definite-length CBOR reader.
+- **Parser:** `credProtectLevel()` uses a small, bounded, canonical (shortest-form, definite-length) CBOR reader.
   - It skips the COSE key and requires the extensions map to end the buffer exactly.
-  - It treats any anomaly as "not confirmed": truncation, indefinite lengths, tags, duplicate keys, trailing bytes or
-    a non-integer value.
+  - It treats any anomaly as "not confirmed": truncation, indefinite lengths, non-minimal integers, tags, duplicate
+    keys, trailing bytes or a non-integer value.
 - **Check:** `assertCredProtectUvRequired()` requires exactly 3.
 - **Placement:** the web `enrollKey` runs it right after `assertUserVerified`, before the PRF output or the key is
   used. A failure wipes the PRF copy.
@@ -39,7 +39,7 @@ This also catches a browser that ignores the extension and a key that downgrades
   "Key not supported" with a plain-language explanation.
 - **Enrollment cancels:** `NotAllowedError` during enrollment becomes `KeyError('CANCELLED', 'enroll')`. Its message
   mentions both "cancelled" and "this key can't always ask for its PIN", because an enforcing browser uses that error
-  for both.
+  for both. Its title stays the neutral "Request cancelled".
 
 ### D4. Signing assertions
 `prfCapturingGetFn` already runs `assertUserVerified` on every signing assertion before returning it to viem, so an
@@ -68,6 +68,12 @@ no ED flag, and an enforced request always fails with `NotAllowedError`.
   - A **contract-level fix** is planned before mainnet: a validator that requires the UV flag and checks `rpIdHash` and
     origin.
   - Until then, a faulty or malicious key could still sign without UV.
+- **U2F/CTAP1 (open until the validator ships).** The wallet ignores `rpIdHash` and does not require UV, so a U2F
+  `AUTHENTICATE` signature over `appParam | 0x01 | counter | challengeParam`, where the attacker chooses
+  `challengeParam`, has the same shape as a valid WebAuthn assertion. A key that accepts a CTAP2 credential ID over
+  U2F, and ignores credProtect there, could still sign without its PIN. We could not confirm this per vendor. The
+  UV-requiring contract validator closes it, because the flags byte is signed and U2F never sets UV. **That validator
+  is a hard gate for mainnet.**
 - **Browsers that drop the extension** (or don't enforce it) produce credentials we refuse at enrollment. This is fail
   closed: users must enrol in a browser that passes credProtect through, such as current Chrome or Edge.
 - **Recovery tool:** unaffected. CTAP2 `getAssertion` with `hmac-secret` and PIN/UV works for level 3, and the tool

@@ -18,4 +18,4 @@
 
 ## 4. Review
 
-- [ ] 4.1 Security review of the change (the CBOR parser, the enrollment path, the error mapping, the E2E shim confined to tests); record it in `docs/reviews/enforce-credprotect-uv.md`.
+- [x] 4.1 Security review of the change (the CBOR parser, the enrollment path, the error mapping, the E2E shim confined to tests); record it in `docs/reviews/enforce-credprotect-uv.md`.

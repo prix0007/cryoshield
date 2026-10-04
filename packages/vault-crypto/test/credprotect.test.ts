@@ -61,6 +61,11 @@ describe('credProtect level read from registration authenticatorData', () => {
     expect(code(() => assertCredProtectUvRequired(junk))).toBe('CRED_PROTECT_UNSUPPORTED');
     expect(code(() => assertCredProtectUvRequired(new Uint8Array(20)))).toBe('INVALID_ARGUMENT');
   });
+  it('a non-minimal integer encoding of 3 is refused (canonical CBOR only)', () => {
+    const good = regAuthData({ extensions: credProtect(3) });
+    const nonMinimal = Uint8Array.from([...good.slice(0, -1), 0x18, 0x03]); // 3 as a 1-byte-argument integer
+    expect(code(() => assertCredProtectUvRequired(nonMinimal))).toBe('CRED_PROTECT_UNSUPPORTED');
+  });
   it('a credProtect key hidden inside the COSE key is not mistaken for the extension output', () => {
     const tricky = regAuthData();
     tricky[32] = tricky[32]! | 0x80; // ED set but no extension map follows

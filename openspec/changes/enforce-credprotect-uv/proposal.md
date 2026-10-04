@@ -26,6 +26,8 @@ options don't help, because the attacker runs their own client.
   before it reaches the wallet; this change adds tests that prove it.
 - **Docs:** vault-format §3.1a, the error table, the system design and the web-app spec now say "UV is mandatory,
   enforced by the authenticator via credProtect level 3", and record the residual risk.
+- **Residual risk:** the U2F/CTAP1 path and the trust placed in the authenticator remain open until the UV/rpId-checking
+  contract validator ships. That validator is a hard mainnet gate (design, Threat / residual risk).
 - **Recovery tool:** no change. CTAP2 `getAssertion` with `hmac-secret` and UV (PIN) works for credProtect-3
   credentials, and the tool always does UV.
 

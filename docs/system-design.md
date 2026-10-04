@@ -78,7 +78,7 @@ flowchart LR
 - **UV is mandatory, and the key enforces it via credProtect level 3.** hmac-secret returns different outputs with and without user verification. Without UV, browser and desktop could derive different keys.
   - Every key is enrolled with credProtect level 3 (`userVerificationRequired`, requested with enforcement and confirmed from the authenticator data). A stolen key will not produce *any* assertion without its PIN, even though credential IDs are public and the smart wallet does not itself require UV or check rpId and origin (audit AA-H1).
   - Keys enrolled before this rule must be re-created; that is only the founder's test vault.
-  - A contract-level validator that checks UV, rpId and origin is planned before mainnet.
+  - A contract-level validator that checks UV, rpId and origin is planned, and it is a hard gate for mainnet. It also closes the U2F/CTAP1 path, where a key that accepts a CTAP2 credential ID over U2F could sign without its PIN.
 - **Desktop salt mapping.** CTAP salt = `SHA-256("WebAuthn PRF" || 0x00 || input)`. This lets the browser and the desktop tool derive identical outputs.
 
 ## 3. Create a vault

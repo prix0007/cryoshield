@@ -20,8 +20,7 @@ test('a key without credProtect level 3 is refused at enrollment; nothing is enr
   await page.getByRole('button', { name: 'Get started' }).click();
   await page.getByRole('button', { name: 'Set up key 1' }).click();
   const alert = page.getByRole('alert');
-  await expect(alert).toContainText('Key not supported', { timeout: 15_000 });
-  await expect(alert).toContainText('always ask for its PIN');
+  await expect(alert).toContainText('always ask for its PIN', { timeout: 15_000 });
   await expect(page.getByText('Key 1 is ready.')).toHaveCount(0);
   expect(await keys.credentials(0)).toHaveLength(0); // the browser refused: no credential was created on the key
   expect(await requests(page)).toEqual([{ policy: 'userVerificationRequired', enforce: true }]);

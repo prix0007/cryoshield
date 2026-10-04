@@ -97,6 +97,10 @@ its credential ID. In short: **UV is mandatory, and it is enforced by the authen
     test vault.
   - A contract-level fix (a validator that requires UV and checks `rpIdHash` and origin) is planned before mainnet, so
     the protection does not rest on the authenticator alone.
+  - U2F/CTAP1 is not covered by credProtect on every key. Because the wallet ignores `rpIdHash` and UV, a U2F
+    `AUTHENTICATE` signature (attacker-chosen challenge parameter) has the shape of a valid assertion. A key that
+    accepts a CTAP2 credential ID over U2F could sign without its PIN. The UV-requiring validator closes this (U2F
+    never sets UV), and that validator is a hard gate for mainnet.
 
 ## 4. Key derivation (single tap)
 
