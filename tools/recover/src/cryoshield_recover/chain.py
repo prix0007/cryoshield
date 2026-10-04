@@ -37,6 +37,8 @@ _RANGE_WORDS = ("range", "too many", "limit", "exceed", "too large", "block")
 HISTORY_DEADLINE = 60.0
 # An RPC whose head differs from the median of usable RPCs by more than this is refused for history.
 HEAD_TOLERANCE = 5_000
+# resolveLocator/getVault reads share one deadline per Registry run, with clamped request timeouts.
+STATE_DEADLINE = 60.0
 
 
 _DEFAULT_PORTS = {"https": 443, "http": 80}
@@ -74,6 +76,8 @@ def is_range_error(e: RpcError) -> bool:
     if e.code == -32005:  # "limit exceeded" (EIP-1474)
         return True
     text = str(e).lower()
+    if "beyond" in text and "head" in text:
+        return False  # "block range extends beyond current head block": not a size limit (live, op-geth)
     return e.code in (-32600, -32602, -32000, -32001) and any(w in text for w in _RANGE_WORDS)
 
 
@@ -106,6 +110,7 @@ class Registry:
         # One history budget per Registry run (all vault ids, heads and pages), and cached heads.
         self._deadline: float | None = None
         self._heads: list[tuple[JsonRpcClient, int]] | None = None
+        self._state_deadline: float | None = None
 
     @property
     def quorum(self) -> int:
@@ -152,7 +157,12 @@ class Registry:
             return list(ex.map(safe, items))
 
     def _eth_call(self, c: JsonRpcClient, data: bytes) -> bytes:
-        res = c.call("eth_call", [{"to": self.address, "data": _hex(data)}, "latest"])
+        if self._state_deadline is None:
+            self._state_deadline = time.monotonic() + STATE_DEADLINE
+        remaining = self._state_deadline - time.monotonic()
+        if remaining <= 0:
+            raise RpcError("state lookup deadline exceeded")
+        res = c.call("eth_call", [{"to": self.address, "data": _hex(data)}, "latest"], timeout=remaining)
         return hex_to_bytes(res, max_len=c.max_bytes)
 
     # ------------------------------------------------------------------ lookups
@@ -317,9 +327,11 @@ class Registry:
     ) -> list[tuple[JsonRpcClient, int]]:
         """Read every RPC's head once per run; refuse heads far from the median (REC-L1).
 
-        The median is ONLY a plausibility filter. Every accepted RPC pages to the HIGHEST accepted head
-        (ECC review, PR #22): a lagging or lying low-head RPC then misses later events and its history
-        DISAGREES (-> unverifiable), instead of truncating an agreed history so an old copy looks current.
+        The median is ONLY a plausibility filter. Each accepted RPC pages to its OWN head: a lagging or
+        lying low-head RPC then only shortens its own history, which DISAGREES with the others
+        (-> unverifiable); it can never shorten an *agreed* history (ECC review, PR #22). Paging everyone
+        to a common higher head is impossible anyway: op-geth/publicnode reject toBlock beyond their own
+        head (security review M1, verified live 2026-10-04).
         """
         if self._heads is not None:
             return self._heads
@@ -348,8 +360,7 @@ class Registry:
                 )
             else:
                 plausible.append((c, h))
-        to_block = max(h for _, h in plausible)
-        self._heads = [(c, to_block) for c, _ in plausible]
+        self._heads = plausible
         return self._heads
 
     def _logs(

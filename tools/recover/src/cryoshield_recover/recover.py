@@ -238,18 +238,43 @@ class Recovery:
                     ignored += 1
                 continue
             log.debug("selected candidate from %s (%s), ignored %d", cand.source, cand.origin, ignored)
-            try:
-                picked = self._resolve_ties(cand, cands)
-                if picked is not cand:
-                    wipe(secret)
-                    assert picked.vault_id is not None
-                    secret = open_decoded(decode_blob(picked.blob), self._keys(), picked.vault_id)
-                    cand = picked
-            except BaseException:
-                wipe(secret)  # tie prompt cancelled / non-interactive (exit 12) / re-open failed
-                raise
+            cand, secret = self._settle(cand, secret, cands)
             return Result(secret, cand, ignored), pending
         return None, pending
+
+    def _settle(
+        self, cand: Candidate, secret: bytearray, cands: list[Candidate]
+    ) -> tuple[Candidate, bytearray]:
+        """Final checks for ANY selected copy (any-of-N and Shamir alike; security review H1):
+        resolve ties explicitly, and never present an unverified copy as unambiguous when an Arweave
+        search was cut short by a budget (security review H2). The secret is wiped on any abort."""
+        try:
+            picked = self._resolve_ties(cand, cands)
+            if picked is not cand:
+                wipe(secret)
+                assert picked.vault_id is not None
+                secret = open_decoded(decode_blob(picked.blob), self._keys(), picked.vault_id)
+                cand = picked
+            self._confirm_if_incomplete(cand)
+        except BaseException:
+            wipe(secret)  # prompt cancelled / non-interactive (exit 12) / re-open failed
+            raise
+        return cand, secret
+
+    def _confirm_if_incomplete(self, cand: Candidate) -> None:
+        ar = self._arweave
+        if ar is None or not ar.truncated or cand.freshness in (Freshness.CURRENT, Freshness.VERIFIED):
+            return
+        self.ui.warn(
+            "SECURITY: the Arweave search was cut short by its time/download budget and the blockchain "
+            "could not confirm this copy, so a newer version of your vault may exist that was not checked."
+        )
+        label = (
+            f"Open this copy anyway: from {cand.source} ({cand.origin}); search cut short, not all copies "
+            f"were checked; status: {cand.freshness.value}"
+        )
+        if self.ui.choose("Open this possibly outdated copy?", [label]) != 0:
+            raise RecoveryError(ExitCode.CANCELLED, "Cancelled.")
 
     def _decrypting_rivals(self, chosen: Candidate, cands: list[Candidate]) -> list[Candidate]:
         """Other DIFFERENT blobs for the same vault that also decrypt with the keys held."""
@@ -350,6 +375,8 @@ class Recovery:
         result, pending = self._select(cands)
         if result is None and pending:
             result = self._shamir(*pending[0])
+            # Threshold vaults get the same tie / incomplete-search checks (security review H1).
+            result.candidate, result.secret = self._settle(result.candidate, result.secret, cands)
         return result
 
     def _rp_id_order(self, pairs: list[tuple[Candidate, DecodedVault]]) -> list[str]:

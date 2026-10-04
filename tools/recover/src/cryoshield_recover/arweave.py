@@ -89,6 +89,8 @@ class Arweave:
         self.timeout = timeout
         self.warnings: list[str] = []
         self._data: dict[str, bytes | None] = {}
+        # True when any page/time/download budget cut a search short: results may be incomplete.
+        self.truncated = False
 
     def _query(self, tags: list[dict[str, Any]]) -> list[ArweaveTx]:
         """All servers' records, NOT merged across servers (REC-M2). Servers run in parallel, each
@@ -97,18 +99,23 @@ class Arweave:
 
         def server(url: str) -> list[ArweaveTx]:
             deadline = time.monotonic() + ARWEAVE_SERVER_DEADLINE
+            oldest = self._pages(url, tags, "HEIGHT_ASC", 1, deadline)
+            newest = self._pages(url, tags, "HEIGHT_DESC", ARWEAVE_MAX_PAGES, deadline)
+            # Alternate oldest/newest so a download budget reaches both ends first: the original mirror
+            # (oldest, cannot be pre-spammed) and the latest update (newest). Security review H2.
             per_server: dict[str, ArweaveTx] = {}
-            for sort, pages in (("HEIGHT_ASC", 1), ("HEIGHT_DESC", ARWEAVE_MAX_PAGES)):
-                for tx in self._pages(url, tags, sort, pages, deadline):
-                    per_server.setdefault(tx.id, tx)  # one record per (server, tx id)
+            for i in range(max(len(oldest), len(newest))):
+                for lst in (oldest, newest):
+                    if i < len(lst):
+                        per_server.setdefault(lst[i].id, lst[i])  # one record per (server, tx id)
             return list(per_server.values())
 
         if not self.graphql:
             return []
         with ThreadPoolExecutor(max_workers=min(8, len(self.graphql))) as ex:
             results = list(ex.map(server, self.graphql))
-        records = [tx for txs in results for tx in txs]
-        return sorted(records, key=lambda t: -(t.height or 0))
+        # Keep each server's order; fetch_all interleaves servers. No global sort by CLAIMED height.
+        return [tx for txs in results for tx in txs]
 
     def _pages(
         self, url: str, tags: list[dict[str, Any]], sort: str, max_pages: int, deadline: float
@@ -121,6 +128,7 @@ class Arweave:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 self.warnings.append(f"Arweave search {host}: time budget exhausted")
+                self.truncated = True
                 return out
             variables: dict[str, Any] = {"tags": tags, "first": PAGE_SIZE, "sort": sort}
             if after is not None:
@@ -146,6 +154,7 @@ class Arweave:
                 return out
             after = cursor
         if has_next and sort == "HEIGHT_DESC":
+            self.truncated = True
             self.warnings.append(
                 f"Arweave search {host}: page budget reached with more results pending; newer copies "
                 "may not have been seen"
@@ -220,15 +229,22 @@ class Arweave:
         )
         return [t for t in txs if t.vault_id == vault_id]
 
-    def fetch(self, tx: ArweaveTx, timeout: float | None = None) -> bytes | None:
+    def fetch(self, tx: ArweaveTx, deadline: float | None = None) -> bytes | None:
         """Download a transaction's data once per tx id, whatever any server CLAIMED about its size
-        (REC-M2). The 1024-byte read cap is the only size rule; on a too-large or empty answer the next
-        gateway is tried (one gateway cannot suppress the data)."""
+        (REC-M2). The 1024-byte read cap is the only size rule; on a too-large, empty or failed answer the
+        next gateway is tried (one gateway cannot suppress the data). Each gateway's timeout is clamped to
+        the time left before ``deadline``."""
         if tx.id in self._data:
             return self._data[tx.id]
-        per_request = self.timeout if timeout is None else max(0.001, min(self.timeout, timeout))
         data: bytes | None = None
         for gw in self.gateways:
+            per_request = self.timeout
+            if deadline is not None:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    self.truncated = True
+                    break
+                per_request = max(0.001, min(self.timeout, remaining))
             try:
                 got = get_capped(f"{gw}/{tx.id}", timeout=per_request, max_bytes=MAX_BLOB)
             except TooLarge:
@@ -247,7 +263,8 @@ class Arweave:
 
     def fetch_all(self, records: Iterable[ArweaveTx]) -> list[tuple[ArweaveTx, bytes]]:
         """Fetch records interleaved across servers (not by claimed height), within MAX_FETCHES distinct
-        tx ids and FETCH_DEADLINE seconds (ECC review, PR #22)."""
+        tx ids and FETCH_DEADLINE seconds. Records of tx ids already downloaded are always kept (they
+        cost nothing and count toward support)."""
         by_server: dict[str, list[ArweaveTx]] = {}
         for r in records:
             by_server.setdefault(r.server, []).append(r)
@@ -259,17 +276,21 @@ class Arweave:
                     order.append(q.pop(0))
         deadline = time.monotonic() + FETCH_DEADLINE
         out: list[tuple[ArweaveTx, bytes]] = []
-        fetched: set[str] = set()
+        fetched = 0
+        warned = False
         for tx in order:
-            if tx.id not in fetched and tx.id not in self._data:
-                if len(fetched) >= MAX_FETCHES or time.monotonic() > deadline:
-                    self.warnings.append(
-                        f"Arweave download budget reached ({len(fetched)} transactions); some listed copies "
-                        "were not downloaded"
-                    )
-                    break
-                fetched.add(tx.id)
-            data = self.fetch(tx, timeout=deadline - time.monotonic())
+            if tx.id not in self._data:
+                if fetched >= MAX_FETCHES or time.monotonic() > deadline:
+                    self.truncated = True
+                    if not warned:
+                        self.warnings.append(
+                            f"Arweave download budget reached ({fetched} transactions); some listed copies "
+                            "were not downloaded"
+                        )
+                        warned = True
+                    continue
+                fetched += 1
+            data = self.fetch(tx, deadline=deadline)
             if data is not None:
                 out.append((tx, data))
         return out

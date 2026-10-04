@@ -158,6 +158,13 @@ Versions reported by a server are never trusted for ranking. If servers disagree
 
 Every Arweave search server's answer is kept separately, so one bad server cannot hide the genuine mirror. Searches are paged and time-bounded, and claimed sizes are ignored; downloads are capped at 1 KB anyway.
 
+**Expected when the blockchain is unreachable:** Arweave mirrors can't be ordered reliably, because heights and tags come from the search servers. So:
+- if two or more different mirrored versions of your vault decrypt, the tool asks you to choose;
+- if a search was cut short by its budget, it asks you to confirm the copy;
+- in a non-interactive run, it stops with exit code 12.
+
+This is normal, not an attack. Retry when the chain is reachable to get a verified answer.
+
 ## Memory-wiping limits
 
 The tool overwrites the buffers it controls as soon as they are no longer needed: PRF outputs, wrapping keys, data keys, Shamir shares, and the decrypted secret. This is best effort, and these copies are known to escape it:
