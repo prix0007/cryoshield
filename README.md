@@ -119,7 +119,7 @@ The gate scripts live in `.github/scripts` and are tested with `npm ci --ignore-
    - it is active only while `ecc-review` is a required check;
    - the `hold` label is the owner's veto.
 7. **Merge rules:**
-   - `ci-ok` must be green and up to date with `main`;
+   - `ci-ok` and `ecc-review` must be green (the branch need not be up to date; `main` is re-tested before deploy);
    - all conversations must be resolved;
    - squash merge only, so history stays linear;
    - force-pushes to `main` and deleting it are blocked;

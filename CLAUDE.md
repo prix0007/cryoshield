@@ -57,7 +57,7 @@ The source of truth is `openspec/config.yaml`; the product requirements are in `
 8. **Auto-merge.** `.github/workflows/auto-merge.yml` turns on GitHub auto-merge (squash, delete branch) for every same-repo, non-draft, non-Dependabot PR into `main`.
    - It does so only while `ecc-review` is a required check (`apply.sh --with-ecc-review --apply`). Until then, the maintainer merges by hand after the review.
    - Once on, it merges the moment all required checks are green.
-   - Strict mode requires the branch to be up to date with `main`. Update the branch if `main` moved.
+   - Branches do not need to be up to date with `main` (strict mode is off, change `relax-strict-up-to-date`), so a PR keeps auto-merging after another PR lands. Each resulting `main` commit is re-tested by the deploy pipeline before it goes live.
    - **Owner veto:** the `hold` label switches auto-merge off for that PR; remove it to switch it back on. `gh pr merge <n> --disable-auto` also works.
 9. **Deploy.** After the merge, `.github/workflows/deploy.yml` deploys `main` automatically within about 15 minutes (on push for human merges, on its 15-minute schedule for auto-merges). It runs:
    - the full CI on the merge commit;
@@ -68,4 +68,4 @@ The source of truth is `openspec/config.yaml`; the product requirements are in `
    Check what is live with `curl -s https://cryoshield.app/release.json`. If the deploy or smoke test fails, it rolls back by itself, the run fails, and that commit is not retried. Fix forward with a new PR, or roll back by hand (`docs/deploy.md` → Rollback).
 10. **After the merge,** archive the OpenSpec change (`/opsx:archive`) in a follow-up PR.
 
-   Merges made by the workflow token do not trigger `push` workflows on `main`. The PR's checks, run against an up-to-date `main`, are the verification.
+   Merges made by the workflow token do not trigger `push` workflows on `main`. The deploy pipeline's full CI on the merge commit is the verification of the merged result.
