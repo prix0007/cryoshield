@@ -2,7 +2,7 @@
 
 ## 1. Supersede logic (tests first)
 
-- [ ] 1.1 Write `test/supersede.test.mjs` first, using a stub `gh` with runs fixtures. It must show that the script:
+- [x] 1.1 Write `test/supersede.test.mjs` first, using a stub `gh` with runs fixtures. It must show that the script:
   - cancels an older waiting run for another commit with a pending `production` deployment;
   - never cancels a run that is deploying (`in_progress`), its own run, a run for the same commit, a newer run, or a run with no pending deployment (re-checked at cancel time);
   - fails on API errors.
@@ -11,7 +11,7 @@
 
 ## 2. Workflow and policy (tests first)
 
-- [ ] 2.1 Rewrite the tests in `test/deploy-workflow.test.mjs` first, covering:
+- [x] 2.1 Rewrite the tests in `test/deploy-workflow.test.mjs` (and add `test/gate-deploy.test.mjs`) first, covering:
   - exactly one `production` job, the token only there;
   - `production-build` without the token;
   - job-level `deploy-production` concurrency that is never cancelled;
@@ -23,7 +23,7 @@
 
 ## 3. apply.sh (tests first)
 
-- [ ] 3.1 Extend the `apply-sh` tests and the stub first:
+- [x] 3.1 Extend the stub and add `test/apply-sh-environments.test.mjs` first:
   - `--environments` dry run shows drift;
   - `--apply` PUTs `production` with the owner id, `can_admins_bypass: false` and `prevent_self_review: false`;
   - the branch policies are reconciled to `main`;
