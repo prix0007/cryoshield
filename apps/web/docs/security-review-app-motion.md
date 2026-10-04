@@ -49,4 +49,4 @@ The CryoShield security reviewer looked at commits `ad9a16b` and later on `feat/
 - **NIT: indentation, test coverage and the baseline figure.**
   - The indentation in `writes.ts` is fixed.
   - There is now a throwing-listener test for create.
-  - The baseline figure is aligned to 194,690 B.
+  - The baseline figure is aligned to 194,689 B.

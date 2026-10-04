@@ -228,7 +228,7 @@ const gz = (f) => gzipSync(readFileSync(join(dist, f)), { level: 9 }).length;
  * /app initial JS budget (app-motion-ux, guardrail c): Motion for React may add at most 20 KB gzip to the vault app's
  * initial JS. Baseline measured on origin/main 32ae235 (pre-motion) in both e2e and production modes.
  */
-const APP_BASELINE = 194_690;
+const APP_BASELINE = 194_689;
 const APP_ALLOWANCE = 20 * KB;
 function appBudget(label) {
   const { initial, lazy } = splitGraph(join('app', 'index.html'));

@@ -7,7 +7,7 @@
   `m` (docs: motion.dev/docs/react, react-reduce-bundle-size, react-accessibility).
 - **Bundle sizes per the docs:** `m` ≈ 4.6 KB; `domAnimation` +15 KB (animations, variants, exit, tap/hover/focus);
   `domMax` +25 KB (adds layout and drag).
-- **Baseline:** the `/app` initial JS is 194,690 B gzip (origin/main `32ae235`, e2e build).
+- **Baseline:** the `/app` initial JS is 194,689 B gzip (origin/main `32ae235`, e2e build).
 - **Real write events:** in viem's ERC-4337 flow, the paymaster data comes before the WebAuthn signature, then the
   bundler accepts the user operation, then the receipt arrives, then our read-back confirms.
 

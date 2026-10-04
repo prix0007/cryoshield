@@ -18,7 +18,7 @@
 
 ## 4. Verification
 
-- [x] 4.1 verify-build: the `/app` initial gzip ≤ 194,690 + 20,480 B, printed; the landing checks are unchanged.
+- [x] 4.1 verify-build: the `/app` initial gzip ≤ 194,689 + 20,480 B, printed; the landing checks are unchanged.
 - [x] 4.2 E2E `12-motion.spec.ts`: each transition's end state (focused heading, opacity 1, no transform), the save checklist reaching all stages in a real create, reduced motion (no transforms, text present), and no CSP/TT console violations or page errors across create/unlock/edit/add-key/copy; axe with reduced motion. The existing E2E stays green.
 - [x] 4.3 Screenshots of the key states in `apps/web/docs/screenshots/`.
 
