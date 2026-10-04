@@ -49,7 +49,7 @@
 
 ## 6. Security review
 
-- [ ] 6.1 The security reviewer reviews this change, covering:
+- [x] 6.1 The security reviewer reviews this change, covering:
   - whether the approval gate can be bypassed (other jobs, environments or workflows);
   - the one-click property;
   - the supersede safety (it never cancels mid-deploy, and abuse);

@@ -155,3 +155,25 @@ The release job's run steps stay digest-pinned.
 5. The founder sets up the machine account (`docs/agent-account.md`).
 
 Until steps 1 and 2 are done, `build` fails on missing variables and nothing is deployed (fail closed).
+
+## Security review (task 6.1)
+
+**Reviewer:** the security-reviewer agent, read-only, 2026-10-05. **First pass: CHANGES REQUESTED. Re-review of 98989d4: APPROVE.**
+
+The reviewer confirmed:
+- only `release` uses `production`, and the policy enforces token ⇔ `production`;
+- smoke and rollback run inside the single approved job;
+- `supersede.sh` can't cancel itself, the same commit, a newer run or a deploying run, and API data is never evaluated;
+- `apply.sh` handles `false` correctly, tells 404 from other errors, validates the owner id and removes extra branch policies.
+
+| # | Finding | Resolution |
+|---|---|---|
+| H1 | Auto-merged PRs can change the scripts the release job runs with the token (`previous-image.sh`, `rollback.sh`, `fly.toml`, the Docker context), and nothing showed a diff at approval time. | `release-diff.sh` runs in `supersede` (no secrets) before the approval. It writes the compare link from the live commit to the summary, and raises `TOKEN-PATH CHANGED` warnings, `NOT NEWER THAN LIVE` for behind or diverged releases, and `REVIEW THE WHOLE COMMIT` when the diff can't be established. File names are sanitised. Tests: `test/release-diff.test.mjs`. **Follow-up:** code-owner review on the token paths (a ruleset change). |
+| M1 | An older commit whose run was slower than a newer one could still be approved and roll the site back. | The `head-check` step, first in `release` and run after the approval, fails unless the commit is still `main`'s HEAD. It is digest-pinned. This also closes the approve-then-cancel race. |
+| M2 | The agent-account "must fail" probes changed settings if they wrongly succeeded. | The role check comes first, the write probes are no-ops (they send back the committed values), and there are no write probes on environments or rulesets. |
+| L1 | A cancel during `fly deploy` can leave a machine lease, so the rollback fails. | M1 removes the race. The lease recovery is documented in `docs/deploy.md`. |
+| L2 | A repo- or org-level copy of a secret would bypass the environments. | The setup check now runs `gh secret list --repo`. |
+| L3 | `actions: write` also allows `workflow_dispatch`, re-runs and artifact deletion. | Recorded in the threat table. |
+| L4 | The Write role can cancel a running release, which triggers a rollback. | Documented in `docs/agent-account.md` ("What Write still allows"). |
+
+The reviewer also saw one flaky test run. The cause was an intermittent segfault in a forked bash subshell: a shell function in a pipeline, on the macOS test machine. `release-diff.sh` now uses plain commands in that pipeline, and it passed 120 of 120 runs in a loop and 5 of 5 full suites.

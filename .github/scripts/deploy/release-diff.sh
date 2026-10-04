@@ -22,9 +22,6 @@ SUMMARY="${SUMMARY:-${GITHUB_STEP_SUMMARY:-/dev/stdout}}"
 TOKEN_PATHS='^(\.github/workflows/|\.github/scripts/deploy/|\.github/scripts/workflow-policy\.mjs$|\.github/scripts/privileged-run-steps\.json$|apps/web/fly\.toml$|apps/web/\.dockerignore$|apps/web/deploy/|contracts/deployments/)'
 commit_url="https://github.com/${REPO}/commit/${TARGET_SHA}"
 
-# Only these characters reach the summary and the workflow commands.
-clean() { LC_ALL=C sed 's#[^A-Za-z0-9._/@+-]#?#g'; }
-
 whole_commit() {
   echo "::warning title=REVIEW THE WHOLE COMMIT::$1"
   {
@@ -42,9 +39,8 @@ out="$(mktemp)"
 trap 'rm -f "$out"' EXIT
 "$GH" api "repos/${REPO}/compare/${live}...${TARGET_SHA}" --jq '.status, (.files | length), (.files[].filename)' > "$out" 2>/dev/null \
   || whole_commit "Could not compare the live commit ${live} with ${TARGET_SHA}."
-status="$(sed -n 1p "$out" | clean)"
-count="$(sed -n 2p "$out")"
-[[ "$count" =~ ^[0-9]+$ ]] || whole_commit "Unexpected compare answer."
+{ IFS= read -r status || true; IFS= read -r count || true; } < "$out"
+[[ "$status" =~ ^[a-z]+$ ]] && [[ "$count" =~ ^[0-9]+$ ]] || whole_commit "Unexpected compare answer."
 
 compare_url="https://github.com/${REPO}/compare/${live}...${TARGET_SHA}"
 {
@@ -58,8 +54,14 @@ if [ "$status" = "behind" ] || [ "$status" = "diverged" ]; then
 fi
 [ "$count" -lt 300 ] || echo "::warning title=REVIEW THE WHOLE COMMIT::The compare API lists at most 300 files; this list may be incomplete."
 
-flagged="$(sed -n '3,$p' "$out" | clean | grep -E "$TOKEN_PATHS" || true)"
-if [ -z "$flagged" ]; then
+flagged="${out}.flagged"
+names="${out}.names"
+trap 'rm -f "$out" "$flagged" "$names"' EXIT
+# Only these characters reach the summary and the workflow commands. Plain commands, no shell functions or groups
+# in the pipeline: forked bash subshells there segfaulted intermittently on the macOS test machine.
+sed -n '3,$p' "$out" | LC_ALL=C tr -c 'A-Za-z0-9._/@+\n-' '?' > "$names"
+grep -E "$TOKEN_PATHS" "$names" > "$flagged" || true
+if ! [ -s "$flagged" ]; then
   echo "No token-path file changed (deploy scripts, workflows, policy, fly.toml, Docker context)." >> "$SUMMARY"
   exit 0
 fi
@@ -68,6 +70,6 @@ fi
   echo
   echo "These files can change what runs with the Fly token:"
   echo
-  while IFS= read -r f; do echo "- \`$f\`"; done <<< "$flagged"
+  while IFS= read -r f; do echo "- \`$f\`"; done < "$flagged"
 } >> "$SUMMARY"
-while IFS= read -r f; do echo "::warning title=TOKEN-PATH CHANGED::$f"; done <<< "$flagged"
+while IFS= read -r f; do echo "::warning title=TOKEN-PATH CHANGED::$f"; done < "$flagged"
