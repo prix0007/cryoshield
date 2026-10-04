@@ -165,6 +165,35 @@ test('compose: marker first, agent text, run markers kept and appended, footer',
   assert.doesNotMatch(forged, /author=zed|cryoshield-triage-ack/);
 });
 
+// ---- prepare (diagnose job input) ----
+test('prepare: re-screens the issue, withholds sensitive or vulnerability comments, drops our own comments', () => {
+  const script = fileURLToPath(new URL('../triage.mjs', import.meta.url));
+  const dir = mkdtempSync(join(tmpdir(), 'prep-'));
+  const issueFile = join(dir, 'raw-issue.json');
+  const commentsFile = join(dir, 'raw-comments.json');
+  writeFileSync(issueFile, JSON.stringify({ title: 'Unlock fails', body: 'Second key not detected', labels: ['bug'], authorAssociation: 'NONE' }));
+  writeFileSync(commentsFile, JSON.stringify([
+    { author: 'github-actions[bot]', association: 'NONE', body: TEXTS.ack },
+    { author: 'alice', association: 'NONE', body: `here is my phrase ${V12}` },
+    { author: 'bob', association: 'NONE', body: 'I can exploit this to steal funds' },
+    { author: 'carol', association: 'NONE', body: 'Same on Firefox 140' },
+  ]));
+  execFileSync(process.execPath, [script, 'prepare', '--issue', issueFile, '--comments', commentsFile, '--out', dir]);
+  const issue = readFileSync(join(dir, 'issue.md'), 'utf8');
+  const comments = readFileSync(join(dir, 'comments.md'), 'utf8');
+  assert.match(issue, /Unlock fails/);
+  assert.match(issue, /Labels: bug/);
+  assert.doesNotMatch(comments, /legal|winner|cryoshield-triage-ack|steal funds/);
+  assert.equal((comments.match(/withheld/g) ?? []).length, 2);
+  assert.match(comments, /Same on Firefox 140/);
+  // An issue edited after the screen to contain a secret aborts (exit 3) without writing anything.
+  writeFileSync(issueFile, JSON.stringify({ title: 'x', body: V12, labels: [], authorAssociation: 'NONE' }));
+  const out2 = mkdtempSync(join(tmpdir(), 'prep2-'));
+  const r = spawnSync(process.execPath, [script, 'prepare', '--issue', issueFile, '--comments', commentsFile, '--out', out2], { encoding: 'utf8' });
+  assert.equal(r.status, 3);
+  assert.doesNotMatch(r.stdout + r.stderr, /legal|winner/);
+});
+
 // ---- fixed texts ----
 test('fixed texts: markers lead, wording covers deletion, compromise and private reporting', () => {
   assert.ok(TEXTS.ack.startsWith(MARKERS.ack));

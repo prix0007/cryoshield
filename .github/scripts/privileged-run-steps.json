@@ -25,5 +25,20 @@
     "smoke/Install flyctl for the rollback (pinned, checksum-verified)": "46ee8cd831c944f4d768ef059945846649c130395a0a08167327c5941bf680cc",
     "smoke/Roll back to the previous release": "99353c10d5d7ce0e22f85051509d133857926a5c63beb0d19d397522f6ee47de",
     "smoke/Fail loudly": "d7af9dfec2b9dc971cdfaf8cddfd37f829cd79e215701b5ee63b1068fd1c64e7"
+  },
+  "issue-triage.yml": {
+    "ack/Acknowledge the issue (once)": "29a3a848fa999461994f83b2b7e8716ed04ff552d067f7a6320994f5906718e5",
+    "screen/Save the issue text to a file (never echoed)": "0839665b3d5c8d62141f81fd3fbbbf8e511ba937023696d19621991b5e2422a8",
+    "screen/Install gitleaks (pinned, checksum-verified)": "2b3c26bc85cfc885e1e5378183a6dc9baa801af75ce1595fcb030f75ceb36f91",
+    "screen/gitleaks over the issue text (exit code only, all output discarded)": "f9b82f891db3b95dc169d4cba5a421c5a39e708f828a43b918a068cced2c398f",
+    "screen/Pre-screen (no model; prints only the verdict)": "0793bdda6a335523bcf85ace93d3dcd32e0acce57d5b9676ef9dbb6205fdb393",
+    "screen/Cost caps (20 per UTC day, 1 per author per hour)": "f969c853d9d45818ec55d7f314888523b71ecead98e2716bd5ad7886afc3f30c",
+    "screen/Post the fixed notice and label (sensitive, security, privacy, capped)": "8cc2808fd8e13b0f1ba6b8d0ece3fd9ce582057de957efdd2420624fe6ed9cd0",
+    "diagnose/Assert no git credentials remain in .git/config": "07a1dfe55767bce1957d42c7dc5c7ad57c1935cedd664ae3a925f32d18f5233d",
+    "diagnose/Remove any stray copy of the plugin directory": "18674c450dd10c977107cab59fe527de67d06e8939e672e9eeafaaf7b73f82ce",
+    "diagnose/Verify the plugin and move it out of the workspace": "f23e15e41be063195802e523d1f2e4a580b4ff029040a908ba5e9d237daec542",
+    "diagnose/Collect the issue for the agent (screened again; the agent gets no GitHub access)": "fc45388d32836890e092bdb41c376f45802b86a1db23b761fcf8d3f8714bd528",
+    "diagnose/Install bubblewrap for credential isolation": "c521dcbdf185557935e139faeab293abfa7cd5b1fbe7ff3828adb4279665c0c9",
+    "diagnose/Guard and post the diagnosis (update in place), apply allow-listed labels": "eb218083efe6a78f1990e8ff4188d9e27afa7efbb89f4f8f7d0634053d74e2f8"
   }
 }

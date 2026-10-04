@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Workflow security policy (OpenSpec change adopt-pr-workflow, decision 9; spec: ci-pipeline
 // "CI supply-chain security"). Complements zizmor instead of duplicating it:
-//   here:   no workflow_run; pull_request_target/issue_comment only in the PRIVILEGED files below, which must keep
+//   here:   no workflow_run; pull_request_target/issue_comment/issues only in the PRIVILEGED files below, which must keep
 //           their guards (fork refusal, owner-only comments, no PR code executed, head checkout read-only and only in
 //           ecc-review, allow-listed actions and per-job write scopes); everywhere else top-level permissions exactly
 //           `contents: read` (or {}), read-only job permissions, timeout-minutes, no secrets context in PR-triggered
@@ -23,7 +23,8 @@ import { parse } from 'yaml';
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const FORBIDDEN_TRIGGERS = ['workflow_run'];
 // Triggers that run with secrets and a write-capable token on PR/comment events, whoever authored them.
-const PRIVILEGED_TRIGGERS = ['pull_request_target', 'issue_comment'];
+// `issues` too: any account can open an issue, and the run has secrets (add-issue-triage D7).
+const PRIVILEGED_TRIGGERS = ['pull_request_target', 'issue_comment', 'issues'];
 
 // The only workflows allowed to use privileged triggers (OpenSpec change adopt-ecc-review-and-auto-merge,
 // design decision 3, hardened after its security review). Per file: allowed triggers, per-job write scopes,
@@ -40,6 +41,14 @@ export const REVIEW_ALLOWED_TOOLS = `Agent,Read,Grep,Glob,Edit(${REVIEW_DIR}/bod
 export const REVIEW_DISALLOWED_TOOLS =
   'Bash,WebFetch,WebSearch,Read(//proc/**),Grep(//proc/**),Glob(//proc/**),Read(./.git/**),Grep(./.git/**),Glob(./.git/**)';
 const HOOKS_OFF_LINE = `printf '{"hooks":{}}\\n' > "$RUNNER_TEMP/ecc-plugin/hooks/hooks.json"`;
+// Issue triage (add-issue-triage D1/D7).
+const TRIAGE_DIR = '//home/runner/work/_temp/triage';
+export const TRIAGE_ALLOWED_TOOLS = `Agent,Read,Grep,Glob,Edit(${TRIAGE_DIR}/diagnosis.md),Edit(${TRIAGE_DIR}/labels.txt)`;
+const TRIAGE_TRIGGER =
+  "(github.event_name == 'issues' || (github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '/triage') && github.event.comment.author_association == 'OWNER'))";
+const NOT_PR_ISSUE = '!github.event.issue.pull_request';
+const NOT_BOT_SENDER = "github.event.sender.type != 'Bot'";
+const NOT_ACTIONS_ISSUE = "github.event.issue.user.login != 'github-actions[bot]'";
 
 export const PRIVILEGED = {
   'ecc-review.yml': {
@@ -51,6 +60,7 @@ export const PRIVILEGED = {
     },
     headCheckout: true,
     requiredRunLines: [HOOKS_OFF_LINE],
+    agent: { allowedTools: REVIEW_ALLOWED_TOOLS, disallowedTools: REVIEW_DISALLOWED_TOOLS, allowNonWriteUsers: false },
   },
   'auto-merge.yml': {
     triggers: ['pull_request_target'],
@@ -58,6 +68,24 @@ export const PRIVILEGED = {
     conditions: { 'auto-merge': [NOT_DRAFT, SAME_REPO, DEFAULT_BASE, NOT_DEPENDABOT] },
     headCheckout: false,
     requiredRunLines: [],
+  },
+  // Issue events carry no PR code, so the PR fork guard does not apply; instead every job must exclude PRs and bots,
+  // checkouts are of the default branch only (no ref), and only `node .github/scripts/triage.mjs` may run from it.
+  'issue-triage.yml': {
+    triggers: ['issues', 'issue_comment'],
+    writeScopes: { ack: ['issues'], screen: ['issues'], diagnose: ['issues'] },
+    conditions: {
+      ack: ["github.event_name == 'issues'", NOT_PR_ISSUE, NOT_BOT_SENDER, NOT_ACTIONS_ISSUE],
+      screen: [TRIAGE_TRIGGER, NOT_PR_ISSUE, NOT_BOT_SENDER, NOT_ACTIONS_ISSUE],
+      diagnose: [TRIAGE_TRIGGER, NOT_PR_ISSUE, NOT_BOT_SENDER, NOT_ACTIONS_ISSUE, "needs.screen.outputs.verdict == 'ok'"],
+    },
+    headCheckout: false,
+    defaultBranchCheckout: true,
+    forkGuard: false,
+    trustedScript: /\bnode \.github\/scripts\/triage\.mjs\b/g,
+    secretJobs: ['diagnose'],
+    requiredRunLines: [HOOKS_OFF_LINE],
+    agent: { allowedTools: TRIAGE_ALLOWED_TOOLS, disallowedTools: REVIEW_DISALLOWED_TOOLS, allowNonWriteUsers: true },
   },
 };
 const PRIVILEGED_ACTIONS = [/^actions\/checkout@[0-9a-f]{40}$/, /^anthropics\/claude-code-action@[0-9a-f]{40}$/];
@@ -91,15 +119,18 @@ const argValue = (args, flag) => {
   return m ? m[1] : null;
 };
 
-function checkReviewStep(label, step, err) {
+function checkReviewStep(label, step, err, agent = { allowedTools: REVIEW_ALLOWED_TOOLS, disallowedTools: REVIEW_DISALLOWED_TOOLS, allowNonWriteUsers: false }) {
   const w = isObj(step.with) ? step.with : {};
+  if (w.allowed_non_write_users !== undefined && !(agent.allowNonWriteUsers && String(w.allowed_non_write_users) === '*')) {
+    err(`${label}: allowed_non_write_users is only allowed (as "*") for the issue-triage sandbox`);
+  }
   const args = norm(w.claude_args);
   const flags = [...args.matchAll(/--([a-zA-Z-]+)/g)].map((m) => m[1]).sort();
   if (JSON.stringify(flags) !== JSON.stringify(['allowedTools', 'disallowedTools', 'max-turns', 'model'])) {
     err(`${label}: claude_args may only set --model, --max-turns, --allowedTools and --disallowedTools (found ${flags.join(', ')})`);
   }
-  if (argValue(args, 'allowedTools') !== REVIEW_ALLOWED_TOOLS) err(`${label}: --allowedTools must be exactly "${REVIEW_ALLOWED_TOOLS}"`);
-  if (argValue(args, 'disallowedTools') !== REVIEW_DISALLOWED_TOOLS) err(`${label}: --disallowedTools must be exactly "${REVIEW_DISALLOWED_TOOLS}"`);
+  if (argValue(args, 'allowedTools') !== agent.allowedTools) err(`${label}: --allowedTools must be exactly "${agent.allowedTools}"`);
+  if (argValue(args, 'disallowedTools') !== agent.disallowedTools) err(`${label}: --disallowedTools must be exactly "${agent.disallowedTools}"`);
   const env = isObj(step.env) ? step.env : {};
   if (String(env.ECC_HOOKS_ENABLED) !== 'false') err(`${label}: env ECC_HOOKS_ENABLED must be "false"`);
   if (String(env.CLAUDE_CODE_SUBPROCESS_ENV_SCRUB) !== '1') err(`${label}: env CLAUDE_CODE_SUBPROCESS_ENV_SCRUB must be "1"`);
@@ -123,13 +154,12 @@ function checkPrivileged(file, name, wf, on) {
 
   for (const [id, job] of Object.entries(isObj(wf.jobs) ? wf.jobs : {})) {
     if (!isObj(job)) continue;
-    const rawIf = String(job.if ?? '');
-    const conjuncts = rawIf.split('&&').map(norm).filter(Boolean);
+    const { conjuncts, topLevelOr } = splitCondition(job.if);
     const steps = Array.isArray(job.steps) ? job.steps : [];
     const required = profile.conditions[id];
     const commentOnly = conjuncts.includes("github.event_name == 'issue_comment'");
 
-    if (/\|\||\bor\b/.test(rawIf)) err(`job '${id}': no || in a privileged job condition (every guard must hold)`);
+    if (topLevelOr) err(`job '${id}': no top-level || in a privileged job condition (every guard must hold)`);
     if (!required) err(`job '${id}' is not declared in the privileged profile for ${name}`);
     else for (const c of required) if (!conjuncts.includes(c)) err(`job '${id}' condition must include "${c}"`);
     if (job['continue-on-error'] !== undefined) err(`job '${id}': continue-on-error is not allowed in a privileged workflow`);
@@ -145,7 +175,7 @@ function checkPrivileged(file, name, wf, on) {
     if (commentOnly) {
       if (!conjuncts.includes(OWNER_ONLY)) err(`job '${id}' runs on comments and must be restricted to ${OWNER_ONLY}`);
       if (steps.some((s) => isObj(s) && s.uses)) err(`job '${id}' runs on comments and must not use actions (no checkout)`);
-    } else {
+    } else if (profile.forkGuard !== false) {
       // pull_request_target: same-repo only, via the job condition or a fork-refusing FIRST step.
       const first = steps[0];
       const firstRefuses =
@@ -156,6 +186,9 @@ function checkPrivileged(file, name, wf, on) {
       }
     }
 
+    if (profile.secretJobs && !profile.secretJobs.includes(id) && !onlyGithubToken(job)) {
+      err(`job '${id}': secrets other than GITHUB_TOKEN may only be used in the ${profile.secretJobs.join(', ')} job`);
+    }
     const hasCheckout = steps.some((s) => isObj(s) && /^actions\/checkout@/.test(String(s.uses ?? '')));
     if (hasSecret(job.env) && !(onlyGithubToken(job.env) && !hasCheckout)) {
       err(`job '${id}': secrets in job-level env are only allowed for GITHUB_TOKEN in jobs without a checkout; pass them per step`);
@@ -177,8 +210,10 @@ function checkPrivileged(file, name, wf, on) {
         if (!PRIVILEGED_ACTIONS.some((re) => re.test(uses))) err(`${label}: action '${uses}' is not allow-listed for privileged workflows`);
         if (/^actions\/checkout@/.test(uses)) {
           const w = isObj(step.with) ? step.with : {};
-          if (!profile.headCheckout) err(`${label}: ${name} must not check out code`);
-          else if (w.repository === undefined) {
+          if (!profile.headCheckout && !profile.defaultBranchCheckout) err(`${label}: ${name} must not check out code`);
+          else if (w.repository === undefined && profile.defaultBranchCheckout) {
+            if (w.ref !== undefined) err(`${label}: ${name} may only check out the default branch (no ref), never PR code`);
+          } else if (w.repository === undefined) {
             if (norm(w.ref) !== HEAD_SHA_REF) err(`${label}: the repository checkout must pin ref to the PR head SHA (${HEAD_SHA_REF})`);
           } else {
             // External checkout (the ECC plugin): repository and ref must come from literal workflow-level env pins.
@@ -189,12 +224,13 @@ function checkPrivileged(file, name, wf, on) {
           }
           if (w['persist-credentials'] !== false) err(`${label}: checkout must set persist-credentials: false`);
         }
-        if (/^anthropics\/claude-code-action@/.test(uses)) checkReviewStep(label, step, err);
+        if (/^anthropics\/claude-code-action@/.test(uses)) checkReviewStep(label, step, err, profile.agent);
       }
       if (step.run !== undefined) {
         const run = String(step.run);
         runText.push(run);
-        if (EXECUTES_CHECKOUT.test(withoutComments(run))) err(`${label}: run step executes code from the checkout (privileged workflows may only read PR code)`);
+        const scan = profile.trustedScript ? withoutComments(run).replace(profile.trustedScript, ' ') : withoutComments(run);
+        if (EXECUTES_CHECKOUT.test(scan)) err(`${label}: run step executes code from the checkout (privileged workflows may only read PR code)`);
         const key = `${id}/${stepName}`;
         seenSteps.add(key);
         if (pinned[key] !== runDigest(run)) {

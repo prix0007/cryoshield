@@ -8,9 +8,11 @@
 //   triage.mjs labels <file>           -> allow-listed labels, one per line
 //   triage.mjs caps --markers-file <json> --now <iso> --author <login> [--author-is-owner true] [--owner-rerun true] [--daily-cap 20]
 //   triage.mjs compose --diagnosis <file> [--previous <file>] --now <iso> --author <login>   -> comment body
+//   triage.mjs prepare --issue <json> --comments <json> --out <dir>  -> issue.md, comments.md (exit 3: no longer passes)
 //   triage.mjs text <ack|sensitive|security|queued|privacy>  -> fixed comment text
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { parseArgs } from 'node:util';
 import { pathToFileURL } from 'node:url';
 
@@ -161,6 +163,28 @@ export function composeComment({ diagnosis, previous, now, author }) {
 }
 
 // ---------------------------------------------------------------------------------------------------------------
+// Diagnose-job input: the issue is screened AGAIN (it may have been edited since the screen job); comments are
+// screened one by one and withheld if sensitive or vulnerability-like; our own bot comments are dropped.
+export function prepare(issue, comments) {
+  const title = String(issue?.title ?? '');
+  const body = String(issue?.body ?? '');
+  const v = screen(`${title}\n\n${body}`);
+  if (v.verdict !== 'ok') return { ok: false, verdict: v.verdict };
+  const labels = (issue?.labels ?? []).map(String).join(', ') || '(none)';
+  const issueMd = `# ${title}\n\nLabels: ${labels}\nAuthor association: ${String(issue?.authorAssociation ?? 'NONE')}\n\n${body}\n`;
+  const parts = [];
+  for (const c of comments ?? []) {
+    if (c?.author === BOT) continue;
+    const s = screen(String(c?.body ?? ''));
+    const text = s.verdict === 'sensitive' ? '[comment withheld by the pre-screen: it may contain secret material]'
+      : s.verdict === 'security' ? '[comment withheld by the pre-screen: possible vulnerability details]'
+        : String(c?.body ?? '');
+    parts.push(`---\n**@${String(c?.author ?? '?')}** (${String(c?.association ?? 'NONE')}):\n\n${text}\n`);
+  }
+  return { ok: true, issue: issueMd, comments: parts.join('\n') || '(no comments)\n' };
+}
+
+// ---------------------------------------------------------------------------------------------------------------
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   const [cmd, ...rest] = process.argv.slice(2);
   const read = (p) => readFileSync(p, 'utf8');
@@ -187,6 +211,15 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
       const { values } = parseArgs({ args: rest, options: { diagnosis: { type: 'string' }, previous: { type: 'string' }, now: { type: 'string' }, author: { type: 'string' } } });
       const previous = values.previous && existsSync(values.previous) ? read(values.previous) : null;
       process.stdout.write(composeComment({ diagnosis: read(values.diagnosis), previous, now: new Date(values.now), author: values.author }));
+    } else if (cmd === 'prepare') {
+      const { values } = parseArgs({ args: rest, options: { issue: { type: 'string' }, comments: { type: 'string' }, out: { type: 'string' } } });
+      const r = prepare(JSON.parse(read(values.issue)), JSON.parse(read(values.comments)));
+      if (!r.ok) {
+        console.error(`::error title=triage::the issue no longer passes the pre-screen (${r.verdict}); not sending it to the model`);
+        process.exit(3);
+      }
+      writeFileSync(join(values.out, 'issue.md'), r.issue);
+      writeFileSync(join(values.out, 'comments.md'), r.comments);
     } else if (cmd === 'text') {
       if (!Object.hasOwn(TEXTS, rest[0] ?? '')) throw new Error(`unknown text ${rest[0]}`);
       process.stdout.write(`${TEXTS[rest[0]]}\n`);
