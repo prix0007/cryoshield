@@ -48,7 +48,7 @@ fly tokens create deploy -a cryoshield-web --expiry 8760h --name github-actions-
   | gh secret set FLY_API_TOKEN --env production
 ```
 
-**3. Bundler URL** (it contains the Pimlico key), stored as an environment secret so it is masked in logs.
+**3. Bundler URL** (it contains the Pimlico key). It is stored as an environment secret only to keep it out of logs and the repo. It is **not** confidential: Vite inlines it into the public JS bundle, so anyone can read it from the site. The real control is Pimlico's dashboard, which must restrict the key to the origin `https://cryoshield.app` and to bundler/paymaster methods, with a sponsorship policy capping spend (`apps/web/docs/paymaster-policy.md`). The build artifact containing the bundle is kept for 7 days only.
 
 ```sh
 grep '^VITE_BUNDLER_URL=' apps/web/.env | cut -d= -f2- | gh secret set VITE_BUNDLER_URL --env production

@@ -12,7 +12,7 @@ A merge done by GitHub auto-merge (enabled with the workflow token) does not sta
   1. **`detect`:** reads the commit currently served at `https://cryoshield.app/release.json` and compares it with the `main` HEAD. If they are equal, everything else is skipped.
   2. **`test`:** runs the full `ci.yml` on that exact SHA. `ci.yml` becomes callable (`workflow_call`, `full: true` forces every area job on), so PR CI and deploy CI cannot drift.
   3. **`deploy`:** in the GitHub Environment `production`, it:
-     - writes `apps/web/.env` from environment variables, with the bundler URL as a masked environment secret;
+     - writes `apps/web/.env` from environment variables, with the bundler URL as an environment secret (masked in logs; the key itself is public in the bundle and protected by Pimlico's origin restriction);
      - installs flyctl, pinned by version and SHA-256;
      - records the live image for rollback;
      - runs the existing guarded `deploy.sh`;

@@ -66,7 +66,7 @@ It runs in environment `production`, with `permissions: contents: read`, after `
 1. Check out at `needs.detect.outputs.sha` with `persist-credentials: false`. Set up pnpm and Node (pinned as in `ci.yml`), then `pnpm install --frozen-lockfile`.
 2. Install flyctl 0.4.111 from the GitHub release, verified with `sha256sum -c` (`1878d7fb…9aa9e`). Put it on `PATH` as `fly`.
 3. **`web-env`:** write `apps/web/.env` from the `vars.VITE_*` values in this step's env.
-   - The bundler URL comes from the environment secret `VITE_BUNDLER_URL`, masked.
+   - The bundler URL comes from the environment secret `VITE_BUNDLER_URL`, masked in logs. The key is public anyway (inlined into the bundle); the control is Pimlico's origin restriction and spend policy.
    - `VITE_CF_BEACON_TOKEN` is optional.
    - Values are validated (no newlines). The keys are listed in `docs/deploy.md`.
    - The deploy step's env has no `VITE_*`, because `deploy.sh` refuses exported `VITE_*` variables.
@@ -115,7 +115,7 @@ The existing rules still apply: read-only job permissions, timeouts, top-level `
 | A PR deploys or steals the Fly token | No PR triggers (enforced by the policy). The environment is restricted to the `main` branch by its deployment-branch policy. The token appears only in two steps, in one workflow. |
 | An unreviewed commit is deployed | Only `main` is deployed, and `main` is ruleset-protected: PR, `ci-ok` and, later, `ecc-review`. The full CI runs again on the exact SHA before deploy. |
 | Token blast radius | A Fly *deploy* token, scoped to the one app, with a 1-year expiry and a rotation procedure in `docs/deploy.md`. |
-| Build config leaks | Variables are public config already visible in the bundle. The bundler URL (containing the Pimlico key) is a masked secret, and the key is origin-restricted at Pimlico. The release manifest records origins only. |
+| Build config leaks | Variables are public config already visible in the bundle. The bundler URL (containing the Pimlico key) is public in the bundle by design; it is kept out of logs and the repo, and the key is origin-restricted and spend-capped at Pimlico. The bundle artifact is kept 7 days. The release manifest records origins only. |
 | A forged `/release.json` makes `detect` skip a deploy | The worst case is a delayed deploy, which `workflow_dispatch` with `force` fixes. Serving content on our domain already implies full compromise. |
 | A broken release stays live | The smoke test triggers automatic rollback to the recorded image, and the run fails. |
 | A malicious flyctl download | Pinned version plus SHA-256 check before use. |
@@ -143,7 +143,7 @@ Rollback of the pipeline: disable the workflow (`gh workflow disable deploy.yml`
   - Required keys must be present, values may not contain line breaks, and an existing file is never overwritten.
   - The file is written `0600`, and the bundler URL is masked in the log.
   - The optional keys are `VITE_ARWEAVE_FAST_INDEX_URL` and `VITE_CF_BEACON_TOKEN`.
-- **zizmor pedantic suggests `uses: $/.github/workflows/ci.yml`.** The CI-pinned actionlint 1.7.12 rejects it (rhysd/actionlint#711 and #732 are open), so the call stays `./…`. The one zizmor ignore is `self-repository` at `deploy.yml:74`, and the policy allows only that.
+- **zizmor pedantic suggests `uses: $/.github/workflows/ci.yml`.** The CI-pinned actionlint 1.7.12 rejects it (rhysd/actionlint#711 and #732 are open), so the call stays `./…`. The one zizmor ignore is `self-repository` on deploy.yml's reusable-CI call line (now 84), and the policy requires exactly that line.
 - **The `/architecture` page in `apps/web` is not changed.** It is the frontend's, and the pipeline section lives in `docs/system-design.md`.
 - **Local results:**
   - `.github/scripts` tests: 129/129;
@@ -204,4 +204,26 @@ The reviewer saw 2 failures in `apps/web/deploy/test/verify-real-env.test.ts` ("
 
 ### zizmor ignore
 
-The `self-repository` ignore moved to `deploy.yml:87`.
+The `self-repository` ignore moved to `deploy.yml:87` (84 after the ECC review fixes).
+
+## ECC review of eb33fe5 (PR #17): 0 blocking, 11 advisory, all addressed
+
+Each fix was test-first (red, then green).
+
+1. **Any failed earlier Deploy run of the SHA counts as previously failed** (`test`, `build`, `deploy` or `smoke`), unless `force` is set.
+2. **Cancelled deploys are rolled back too.** `smoke` runs `if: always() … (needs.deploy.result == 'success' || needs.deploy.outputs.fly_started == 'true')`, so a deploy that was cancelled after `fly deploy` started is also smoke-tested or rolled back. Rollback runs on `failure() || needs.deploy.result != 'success'` once `fly_started` is set.
+3. **No top-level `||` in conditions.** `splitCondition()` splits a condition into its top-level `&&` conjuncts (parentheses and quotes respected). The policy rejects a top-level `||`/`or` in any `deploy.yml` job condition; `(a || b)` inside parentheses stays allowed.
+4. **Every job with `needs` is gated.** Each one must carry `needs.detect.outputs.deploy == 'true'` as a top-level conjunct.
+5. **The Caddyfile is hashed.** `release-manifest.mjs --caddyfile` records `caddyfile: sha256:…` (in the manifest and in `/release.json`), and the deploy job checks it.
+
+   **Residual risk, stated plainly:** the artifact re-verification is an integrity check (artifact transport, mixed-up runs). It cannot detect a compromised build that forges a consistent manifest; a reproducible token-less rebuild comparison would. H1 still removes the main threat, theft of the long-lived token.
+6. **`write-env.sh` rejects values dotenv would reinterpret:** a leading `"`, `'` or backtick, or `<whitespace>#`.
+7. **Token jobs are digest-pinned.** Every `run:` step of the token-holding jobs (`deploy`, `smoke`) is pinned by SHA-256 in `privileged-run-steps.json` under `deploy.yml`, with stale pins rejected and `--digests` covering them. Custom `shell:` is forbidden there.
+8. **The `self-repository` ignore is line-exact.** It must be exactly the line of `uses: ./.github/workflows/ci.yml` in `deploy.yml`, which `checkGithubDir` computes.
+9. **The bundler key is documented as public.** The docs now say the key is public in the bundle and that Pimlico's origin restriction and spend policy are the control. Artifact retention is 7 days instead of 90.
+10. **Manifest sort and input checks.** Paths are sorted with `Buffer.compare`, byte-wise like `LC_ALL=C sort` (non-ASCII test). `VITE_CHAIN_ID` must be decimal and one of the presets, and `VITE_RP_ID` must be a hostname.
+11. **The test harness rejects scripts that did not exit normally.** A killed or unspawnable script fails the test, a numeric exit code is required, and there is a 30-second timeout per script.
+
+Minor notes:
+- `&& sleep` loop endings became `if … then sleep; fi`.
+- The flyctl 0.4.111 hash was verified on 2026-10-04 against `flyctl_0.4.111_checksums.txt` from the release; the review date is the same day.
