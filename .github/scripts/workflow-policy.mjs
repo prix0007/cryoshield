@@ -6,7 +6,11 @@
 //           ecc-review, allow-listed actions and per-job write scopes); everywhere else top-level permissions exactly
 //           `contents: read` (or {}), read-only job permissions, timeout-minutes, no secrets context in PR-triggered
 //           workflows; no inline `zizmor: ignore`; zizmor.yml keeps hash-pin for "*" and ignores only
-//           dangerous-triggers on the privileged files' trigger lines.
+//           dangerous-triggers on the privileged files' trigger lines and self-repository on deploy.yml.
+//   deploy: (add-continuous-deploy D7) deploy.yml only on push(main)/schedule/workflow_dispatch, first job gated on
+//           refs/heads/main, concurrency deploy-production never cancelled, secrets only in environment production
+//           jobs, FLY_API_TOKEN only in the step env of steps `deploy`/`rollback`; no other workflow may use
+//           FLY_API_TOKEN or environment production. zizmor ignores: only self-repository on deploy.yml:<line>.
 //   zizmor: SHA pinning (via that hash-pin policy), persist-credentials (artipacked), template injection, etc.
 //
 // CLI: node workflow-policy.mjs [<.github dir>]   (default: .github)  exit 0 ok, 1 violations.
@@ -209,12 +213,14 @@ function checkPrivileged(file, name, wf, on) {
 // Current digests of every privileged run step, for a reviewed update of privileged-run-steps.json.
 export function currentDigests(dir) {
   const out = {};
-  for (const name of Object.keys(PRIVILEGED)) {
+  for (const name of [...Object.keys(PRIVILEGED), 'deploy.yml']) {
     const path = join(dir, 'workflows', name);
     if (!existsSync(path)) continue;
     const wf = parse(readFileSync(path, 'utf8'));
     out[name] = {};
     for (const [id, job] of Object.entries(isObj(wf?.jobs) ? wf.jobs : {})) {
+      // deploy.yml: only the jobs that hold the Fly token are pinned (ECC review #7).
+      if (name === 'deploy.yml' && !strings(job).some((s) => /FLY_API_TOKEN/i.test(s))) continue;
       for (const step of Array.isArray(job?.steps) ? job.steps : []) {
         if (isObj(step) && step.run !== undefined) out[name][`${id}/${String(step.name ?? step.uses ?? '?')}`] = runDigest(step.run);
       }
@@ -222,6 +228,15 @@ export function currentDigests(dir) {
   }
   return out;
 }
+
+// Accepted zizmor ignores, each as file:line, at most once per file (a moved line or another file is reported again):
+// dangerous-triggers on the privileged workflows' trigger lines (adopt-ecc-review-and-auto-merge D1); self-repository
+// on deploy.yml's reusable-CI call, because actionlint 1.7.12 rejects the `$/` syntax zizmor suggests
+// (add-continuous-deploy D4).
+const ZIZMOR_IGNORES = {
+  'dangerous-triggers': new RegExp(`^(${Object.keys(PRIVILEGED).map((f) => f.replace('.', '\\.')).join('|')}):\\d+$`),
+  'self-repository': /^deploy\.yml:\d+$/,
+};
 
 function triggers(on) {
   if (typeof on === 'string') return [on];
@@ -271,6 +286,11 @@ export function checkWorkflow(file, text) {
       if (!isObj(job.permissions)) errors.push(`${file}: job '${id}' must declare its own permissions as a mapping (least privilege)`);
       if (job['timeout-minutes'] === undefined) errors.push(`${file}: job '${id}' must set timeout-minutes`);
     }
+    // Deploy credentials stay in deploy.yml (add-continuous-deploy D7), privileged workflows included.
+    if (strings(wf).some((s) => /FLY_API_TOKEN/i.test(s))) errors.push(`${file}: FLY_API_TOKEN may only be referenced by deploy.yml`);
+    for (const [id, j] of Object.entries(isObj(wf.jobs) ? wf.jobs : {})) {
+      if (isObj(j) && j.environment !== undefined) errors.push(`${file}: job '${id}': privileged workflows may not use an environment (production belongs to deploy.yml)`);
+    }
     return errors;
   }
 
@@ -301,10 +321,142 @@ export function checkWorkflow(file, text) {
     const hits = [...exprs.filter((e) => /\bsecrets\b/i.test(e)), ...strings(wf).filter((s) => s === 'inherit')];
     if (hits.length) errors.push(`${file}: secrets must not be referenced in a PR-triggered workflow (${hits.length} reference(s))`);
   }
+
+  // Production deployment (OpenSpec change add-continuous-deploy, design D7).
+  const mentionsToken = strings(wf).some((s) => /FLY_API_TOKEN/i.test(s));
+  const jobsList = Object.entries(isObj(wf.jobs) ? wf.jobs : {}).filter(([, j]) => isObj(j));
+  // Environment names are case-insensitive on GitHub and must never be computed (review M3).
+  for (const [id, j] of jobsList) {
+    if (j.environment !== undefined && /\$\{\{/.test(String(envName(j.environment)))) {
+      errors.push(`${file}: job '${id}': environment must be a literal name, not an expression`);
+    }
+  }
+  const usesProduction = jobsList.some(([, j]) => envName(j.environment) === 'production');
+  if (name === DEPLOY_WORKFLOW) errors.push(...checkDeploy(file, wf, on));
+  else {
+    if (mentionsToken) errors.push(`${file}: FLY_API_TOKEN may only be referenced by ${DEPLOY_WORKFLOW} (only deploy.yml deploys)`);
+    if (usesProduction) errors.push(`${file}: environment production may only be used by ${DEPLOY_WORKFLOW} (only deploy.yml deploys)`);
+  }
   return errors;
 }
 
-export function checkZizmorConfig(text) {
+const DEPLOY_WORKFLOW = 'deploy.yml';
+const DEPLOY_TRIGGERS = ['push', 'schedule', 'workflow_dispatch'];
+const DEPLOY_TOKEN_STEPS = ['deploy', 'rollback'];
+const envName = (e) => String(isObj(e) ? e.name ?? '' : e ?? '').trim().toLowerCase();
+// The only secret expressions deploy.yml may contain, each only in the step env of the named steps (review M3).
+const DEPLOY_SECRETS = { deploy: ['FLY_API_TOKEN'], rollback: ['FLY_API_TOKEN'], 'web-env': ['VITE_BUNDLER_URL'] };
+// Jobs holding the Fly token run no build tooling or third-party code (review H1).
+const TOKEN_JOB_ACTIONS = [/^actions\/checkout@[0-9a-f]{40}$/, /^actions\/download-artifact@[0-9a-f]{40}$/];
+const BUILD_TOOLING = /(^|[\s;&|(`!/])(node|npm|npx|pnpm|yarn|bunx?|deno|vite|tsx|python3?|pip3?|uvx?|make|docker)\b/m;
+const exprsOf = (node) => strings(node).flatMap((s) => [...s.matchAll(/\$\{\{([\s\S]*?)\}\}/g)].map((m) => m[1]));
+const usesSecret = (node, re = /\bsecrets\b/i) => exprsOf(node).some((e) => re.test(e) && !/^\s*secrets\.GITHUB_TOKEN\s*$/i.test(e));
+
+// Split a job condition into its top-level `&&` conjuncts (parentheses respected) and report any top-level `||`/`or`,
+// so `a && (b || c)` is fine but `a || true` or `a && b || true` is not (ECC review #3).
+export function splitCondition(cond) {
+  const text = String(cond ?? '');
+  const conjuncts = [];
+  let depth = 0;
+  let quote = null;
+  let start = 0;
+  let topLevelOr = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (quote) {
+      if (c === quote) quote = null;
+      continue;
+    }
+    if (c === "'" || c === '"') quote = c;
+    else if (c === '(') depth++;
+    else if (c === ')') depth--;
+    else if (depth === 0 && text.startsWith('&&', i)) {
+      conjuncts.push(norm(text.slice(start, i)));
+      start = i + 2;
+      i++;
+    } else if (depth === 0 && (text.startsWith('||', i) || /^\bor\b/.test(text.slice(i)) && /\W/.test(text[i - 1] ?? ' '))) {
+      topLevelOr = true;
+    }
+  }
+  conjuncts.push(norm(text.slice(start)));
+  return { conjuncts: conjuncts.filter(Boolean), topLevelOr };
+}
+
+function checkDeploy(file, wf, on) {
+  const errors = [];
+  const err = (m) => errors.push(`${file}: ${m}`);
+  const pinnedDeploy = digests()['deploy.yml'] ?? {};
+  const seenPinned = new Set();
+  for (const t of on) if (!DEPLOY_TRIGGERS.includes(t)) err(`trigger '${t}' is not allowed (deploy.yml runs only on ${DEPLOY_TRIGGERS.join(', ')}; never on pull requests)`);
+  const branches = isObj(wf.on) && isObj(wf.on.push) ? wf.on.push.branches : undefined;
+  if (on.includes('push') && JSON.stringify(branches) !== JSON.stringify(['main'])) err('push must be limited to branches: [main]');
+  const c = wf.concurrency;
+  if (!isObj(c) || c.group !== 'deploy-production' || c['cancel-in-progress'] !== false) {
+    err('concurrency must be { group: deploy-production, cancel-in-progress: false } (one deploy at a time, never cancelled)');
+  }
+  if (strings(wf).includes('inherit')) err('secrets: inherit is not allowed');
+  if (strings(wf.env).some((s) => /FLY_API_TOKEN/i.test(s)) || usesSecret(wf.env)) err('no secrets (FLY_API_TOKEN or any other) in the workflow-level env');
+
+  for (const [id, job] of Object.entries(isObj(wf.jobs) ? wf.jobs : {})) {
+    if (!isObj(job)) continue;
+    const needs = [].concat(job.needs ?? []);
+    const { conjuncts, topLevelOr } = splitCondition(job.if);
+    if (topLevelOr) err(`job '${id}': no top-level || / or in a deploy.yml job condition (ECC review #3; group alternatives in parentheses)`);
+    if (needs.length > 0 && !conjuncts.includes("needs.detect.outputs.deploy == 'true'")) {
+      err(`job '${id}' has needs, so its condition must include "needs.detect.outputs.deploy == 'true'" as a top-level conjunct (ECC review #4)`);
+    }
+    if (needs.length === 0 && !conjuncts.includes("github.ref == 'refs/heads/main'")) {
+      err(`job '${id}' has no needs, so its condition must include "github.ref == 'refs/heads/main'"`);
+    }
+    const prod = envName(job.environment) === 'production';
+    if (job.environment !== undefined && !prod) err(`job '${id}': the only allowed environment is production`);
+    if (usesSecret(job) && !prod) err(`job '${id}' uses secrets, so it must run in environment production`);
+    if (strings(job.env).some((s) => /FLY_API_TOKEN/i.test(s)) || usesSecret(job.env)) err(`job '${id}': FLY_API_TOKEN or any secret must not be in a job-level env`);
+    const steps = Array.isArray(job.steps) ? job.steps.filter(isObj) : [];
+    const holdsToken = strings(job).some((s) => /FLY_API_TOKEN/i.test(s));
+    for (const step of steps) {
+      const label = `job '${id}' step '${step.name ?? step.id}'`;
+      const { env, ...rest } = step;
+      if (strings(rest).some((s) => /FLY_API_TOKEN/i.test(s))) err(`${label}: FLY_API_TOKEN may only be passed through the step env`);
+      if (strings(env).some((s) => /FLY_API_TOKEN/i.test(s)) && !(prod && DEPLOY_TOKEN_STEPS.includes(step.id))) {
+        err(`${label}: FLY_API_TOKEN is only allowed in steps with id ${DEPLOY_TOKEN_STEPS.join(' or ')} in a production job`);
+      }
+      // Exact secret expressions only, in the step env of their step.
+      for (const e of exprsOf(rest)) if (/\bsecrets\b/i.test(e)) err(`${label}: secret expression \${{${e}}} is only allowed in a step env`);
+      for (const e of exprsOf(env)) {
+        if (!/\bsecrets\b/i.test(e)) continue;
+        const m = /^\s*secrets\.([A-Z_]+)\s*$/.exec(e);
+        if (!m || !(DEPLOY_SECRETS[step.id] ?? []).includes(m[1]) || !prod) {
+          err(`${label}: secret expression \${{${e}}} is not allowed here (allowed: ${Object.entries(DEPLOY_SECRETS).map(([k, v]) => `${v.join(',')} in step '${k}'`).join('; ')})`);
+        }
+      }
+      // H1: the token's job runs nothing but checkout/download-artifact and shell around flyctl.
+      if (holdsToken) {
+        if (step.shell !== undefined) err(`job '${id}' holds FLY_API_TOKEN, so step '${step.name ?? step.id}' may not set a custom shell`);
+        if (step.run !== undefined) {
+          const key = `${id}/${String(step.name ?? step.uses ?? '?')}`;
+          seenPinned.add(key);
+          if (pinnedDeploy[key] !== runDigest(step.run)) {
+            err(`job '${id}' holds FLY_API_TOKEN: step '${step.name ?? step.id}' run digest ${runDigest(step.run)} does not match the reviewed digest in .github/scripts/privileged-run-steps.json (${pinnedDeploy[key] ?? 'none'}); update it only with a security review (workflow-policy.mjs --digests)`);
+          }
+        }
+        if (step.uses !== undefined && !TOKEN_JOB_ACTIONS.some((re) => re.test(String(step.uses)))) {
+          err(`job '${id}' holds FLY_API_TOKEN, so step '${step.name ?? step.id}' may not use ${String(step.uses).split('@')[0]} (only actions/checkout and actions/download-artifact)`);
+        }
+        if (step.run !== undefined && BUILD_TOOLING.test(String(step.run))) {
+          err(`job '${id}' holds FLY_API_TOKEN, so it may run no node, npm, pnpm or other build tooling (step '${step.name ?? step.id}'); build in a separate job`);
+        }
+      }
+    }
+  }
+  for (const key of Object.keys(pinnedDeploy)) if (!seenPinned.has(key)) err(`privileged-run-steps.json pins deploy.yml '${key}', which no longer exists (remove stale digests)`);
+  return errors;
+}
+
+
+// opts.selfRepositoryLine: the line of deploy.yml's `uses: ./.github/workflows/ci.yml`; when given, the
+// self-repository ignore must be exactly that line (ECC review #8).
+export function checkZizmorConfig(text, opts = {}) {
   const errors = [];
   let cfg;
   try {
@@ -323,13 +475,15 @@ export function checkZizmorConfig(text) {
     if (!isObj(rule)) continue;
     if (rule.disable) errors.push(`zizmor.yml: rule '${name}' must not be disabled`);
     if (rule.ignore === undefined) continue;
-    // The single accepted exception: dangerous-triggers on the trigger line of the privileged workflows,
-    // pinned to file:line so a moved trigger or any other file is reported again.
+    const allowed = ZIZMOR_IGNORES[name];
     const entries = Array.isArray(rule.ignore) ? rule.ignore.map(String) : [];
-    const narrow = new RegExp(`^(${Object.keys(PRIVILEGED).map((f) => f.replace('.', '\\.')).join('|')}):\\d+$`);
     const files = entries.map((e) => e.split(':')[0]);
-    if (name !== 'dangerous-triggers' || entries.length === 0 || !entries.every((e) => narrow.test(e)) || new Set(files).size !== files.length) {
-      errors.push(`zizmor.yml: rule '${name}' must not ignore findings (only dangerous-triggers may, as <privileged workflow>:<line>, once per file)`);
+    if (!allowed || entries.length === 0 || !entries.every((e) => allowed.test(e)) || new Set(files).size !== files.length) {
+      errors.push(`zizmor.yml: rule '${name}' must not ignore findings (accepted, as <file>:<line> once per file: ${Object.entries(ZIZMOR_IGNORES).map(([r, re]) => `${r} ${re}`).join('; ')})`);
+    }
+    if (name === 'self-repository' && opts.selfRepositoryLine !== undefined) {
+      const want = `deploy.yml:${opts.selfRepositoryLine}`;
+      if (JSON.stringify(entries) !== JSON.stringify([want])) errors.push(`zizmor.yml: self-repository may only ignore ${want} (deploy.yml's reusable-CI call)`);
     }
   }
   return errors;
@@ -339,7 +493,13 @@ export function checkGithubDir(dir) {
   const errors = [];
   const zizmor = join(dir, 'zizmor.yml');
   if (!existsSync(zizmor)) errors.push(`${zizmor}: missing (zizmor's hash-pin policy is part of this policy)`);
-  else errors.push(...checkZizmorConfig(readFileSync(zizmor, 'utf8')));
+  else {
+    const deployPath = join(dir, 'workflows', 'deploy.yml');
+    const idx = existsSync(deployPath)
+      ? readFileSync(deployPath, 'utf8').split('\n').findIndex((l) => /^\s*uses: \.\/\.github\/workflows\/ci\.yml\b/.test(l))
+      : -1;
+    errors.push(...checkZizmorConfig(readFileSync(zizmor, 'utf8'), idx >= 0 ? { selfRepositoryLine: idx + 1 } : {}));
+  }
 
   const wfDir = join(dir, 'workflows');
   const files = existsSync(wfDir) ? readdirSync(wfDir).filter((f) => /\.ya?ml$/.test(f)).sort() : [];

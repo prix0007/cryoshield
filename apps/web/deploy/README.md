@@ -29,7 +29,11 @@ fly apps create cryoshield-web --org cryoshield
 Already done: a shared IPv4 `66.241.124.125` and a dedicated IPv6 `2a09:8280:1::1a4:b64:0` are allocated
 (`fly ips list --app cryoshield-web`), and certificates are requested for `cryoshield.app` and `www.cryoshield.app`.
 
-## 2. Deploy [overwatcher]
+## 2. Deploy
+
+Normally you don't deploy by hand. `.github/workflows/deploy.yml` deploys every new `main` commit after the full CI passes on it; see `docs/deploy.md`. The manual path below still works, for example while the pipeline is disabled.
+
+**Manual deploy [overwatcher]:**
 
 ```sh
 apps/web/deploy/deploy.sh          # DEPLOY_HOST defaults to cryoshield.app
@@ -44,8 +48,10 @@ apps/web/deploy/deploy.sh          # DEPLOY_HOST defaults to cryoshield.app
    pass (no source maps, console, dev build, local paths, or E2E code; strict CSP), and the bundle's RP ID equals the
    host.
 
-Only then does it generate `deploy/.build/` and the release manifest, and run
-`fly deploy --config fly.toml --remote-only --app cryoshield-web`.
+Only then does it:
+1. generate `deploy/.build/`;
+2. write the release manifest, plus `site/release.json`, which is served as `/release.json` and names the deployed commit;
+3. run `fly deploy --config fly.toml --remote-only --app cryoshield-web`.
 
 ### Publish the release manifest (every deploy)
 

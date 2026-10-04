@@ -159,6 +159,18 @@ Keep passing `--with-ecc-review` from then on: without it, `--apply` refuses to 
 
 To change protection, edit those files in a PR and re-run the script after it merges.
 
+## Deployment
+
+Every new commit on `main` is deployed to https://cryoshield.app automatically by `.github/workflows/deploy.yml`, usually within 15 minutes of the merge:
+
+1. **detect:** compare `https://cryoshield.app/release.json` with the `main` HEAD, and skip if they are equal.
+2. **test:** run the **full** `ci.yml` on that exact commit.
+3. **build** (no deploy token): run the guarded `apps/web/deploy/deploy.sh --build-only` in the GitHub Environment `production`.
+4. **deploy:** a token-holding job that runs only pinned flyctl on the verified build artifact.
+5. **smoke:** check the routes, headers, registry address and `/release.json`. On failure, roll back to the previous image automatically.
+
+The pipeline never runs on pull requests. To redeploy by hand, run `gh workflow run deploy.yml -f force=true`. To roll back, see [`docs/deploy.md`](docs/deploy.md), which also covers first-time setup and token rotation.
+
 ## Security
 
 There is no external audit for the MVP. Mitigations: an open specification, deterministic cross-implementation test vectors, symmetric-only cryptography, and an internal adversarial review of every security-relevant change (`docs/reviews/`, `apps/web/docs/security-review.md`). Please report vulnerabilities privately, never in public issues: see [`SECURITY.md`](SECURITY.md) (scope, safe harbour, timelines) and [`/.well-known/security.txt`](https://cryoshield.app/.well-known/security.txt), or use [GitHub private vulnerability reporting](https://github.com/prix0007/cryoshield/security/advisories/new).

@@ -20,12 +20,21 @@ on:
     # edited/labeled/unlabeled re-run the title and OpenSpec gates. Every job runs on every event, so a
     # later run can never report a partially skipped ci-ok for the same commit.
     types: [opened, synchronize, reopened, edited, labeled, unlabeled]
+  # Reused by deploy.yml to run the FULL CI on the exact main commit it deploys (add-continuous-deploy D4), so PR
+  # CI and deploy CI can never drift. `full: true` forces every area job on, regardless of path filters.
+  workflow_call:
+    inputs:
+      full:
+        description: Run every area job regardless of changed paths
+        type: boolean
+        default: false
 
 permissions:
   contents: read # least privilege; no job needs to write
 
 concurrency:
-  group: ci-${{ github.event.pull_request.number || github.ref }}
+  # github.workflow is the CALLER's name in a called run, so deploy CI never queues behind or cancels push CI.
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   # Cancel superseded PR runs; every push to main is verified to completion.
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
@@ -182,7 +191,7 @@ jobs:
   workflow-lint:
     name: workflow-lint
     needs: changes
-    if: always() && (github.event_name == 'push' || needs.changes.outputs.workflows == 'true')
+    if: always() && (inputs.full || github.event_name == 'push' || needs.changes.outputs.workflows == 'true')
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -219,7 +228,7 @@ jobs:
   contracts:
     name: contracts
     needs: changes
-    if: always() && (github.event_name == 'push' || needs.changes.outputs.contracts == 'true')
+    if: always() && (inputs.full || github.event_name == 'push' || needs.changes.outputs.contracts == 'true')
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
@@ -261,7 +270,7 @@ jobs:
   vault-crypto:
     name: vault-crypto
     needs: changes
-    if: always() && (github.event_name == 'push' || needs.changes.outputs.vault-crypto == 'true')
+    if: always() && (inputs.full || github.event_name == 'push' || needs.changes.outputs.vault-crypto == 'true')
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
@@ -290,7 +299,7 @@ jobs:
   recover:
     name: recover
     needs: changes
-    if: always() && (github.event_name == 'push' || needs.changes.outputs.recover == 'true')
+    if: always() && (inputs.full || github.event_name == 'push' || needs.changes.outputs.recover == 'true')
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
@@ -335,7 +344,7 @@ jobs:
   web:
     name: web
     needs: changes
-    if: always() && (github.event_name == 'push' || needs.changes.outputs.web == 'true')
+    if: always() && (inputs.full || github.event_name == 'push' || needs.changes.outputs.web == 'true')
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
@@ -379,7 +388,7 @@ jobs:
   web-e2e:
     name: web-e2e
     needs: changes
-    if: always() && (github.event_name == 'push' || needs.changes.outputs.web == 'true')
+    if: always() && (inputs.full || github.event_name == 'push' || needs.changes.outputs.web == 'true')
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
@@ -414,7 +423,7 @@ jobs:
   openspec:
     name: openspec
     needs: changes
-    if: always() && (github.event_name == 'push' || needs.changes.outputs.openspec == 'true')
+    if: always() && (inputs.full || github.event_name == 'push' || needs.changes.outputs.openspec == 'true')
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:

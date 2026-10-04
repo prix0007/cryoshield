@@ -1,5 +1,5 @@
 {
-  "_comment": "Reviewed SHA-256 of every run step in the privileged workflows (OpenSpec change adopt-ecc-review-and-auto-merge, security review M1). Update ONLY after a security review of each changed run step: node .github/scripts/workflow-policy.mjs --digests .github",
+  "_comment": "Reviewed SHA-256 of every run step in the privileged workflows (adopt-ecc-review-and-auto-merge, security review M1) and in the Fly-token jobs of deploy.yml (add-continuous-deploy, ECC review #7). Update ONLY after a security review of each changed run step: node .github/scripts/workflow-policy.mjs --digests .github",
   "ecc-review.yml": {
     "review/Refuse fork PRs (they get no secrets and are not reviewed automatically)": "b30ea158e7b09359aafeaaa1a09ae546a964ccc83a07ea9fcd38fafca09d451c",
     "review/Require a Claude credential": "5215a09d9401d503cf53cbcd3418f7996a6770a404271a2956c709faff08f698",
@@ -15,5 +15,15 @@
   },
   "auto-merge.yml": {
     "auto-merge/Enable auto-merge, or switch it off while the PR is on hold or ecc-review is not required": "0d3926835e1e7131714fd576b5b568bdaa2f8b932523e4b6879a46a4ec05675c"
+  },
+  "deploy.yml": {
+    "deploy/Verify the context against its release manifest": "e1d4b618a1f45d7556750da20a76ca940c5e0fa9978394484c3e57238bad8b6d",
+    "deploy/Install flyctl (pinned, checksum-verified)": "46ee8cd831c944f4d768ef059945846649c130395a0a08167327c5941bf680cc",
+    "deploy/Deploy the built context (flyctl only)": "5bd0685d25638eed0a9e773deebdf9bd662649ca829e883ec8fd7b0be68b9f56",
+    "deploy/Record the release in the job summary": "4f3067d6505947169e32d16cfec01d04d365d7777e32362bca8135fac660495e",
+    "smoke/Smoke test the live site": "edb360921e8d4d27ffcb7ef63efcd67e0a39cf699ac3d91ffdb2402df1f493f9",
+    "smoke/Install flyctl for the rollback (pinned, checksum-verified)": "46ee8cd831c944f4d768ef059945846649c130395a0a08167327c5941bf680cc",
+    "smoke/Roll back to the previous release": "99353c10d5d7ce0e22f85051509d133857926a5c63beb0d19d397522f6ee47de",
+    "smoke/Fail loudly": "d7af9dfec2b9dc971cdfaf8cddfd37f829cd79e215701b5ee63b1068fd1c64e7"
   }
 }
