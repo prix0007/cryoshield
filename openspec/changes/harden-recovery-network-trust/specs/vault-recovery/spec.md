@@ -21,7 +21,15 @@ The tool SHALL NOT rank candidates by a version reported by an RPC or an Arweave
 - **THEN** the current blob is selected and a warning about disagreeing servers is shown
 
 ### Requirement: Explicit choice on unresolvable ties
-When the selected copy is not chain-verified and a different blob for the same vault ID also decrypts with equal rank, or with the same freshness when either copy comes from Arweave (where support and height are server-controlled), the tool SHALL warn and ask the user to choose explicitly. Before the choice it SHALL show only public metadata (sources, support count, and the claimed version marked unverified), never plaintext. A non-interactive run SHALL exit with code 12 (`AMBIGUOUS`) and show no plaintext.
+For any vault, including threshold (Shamir) vaults: when the selected copy is not chain-verified and a different blob for the same vault ID also decrypts with equal rank, or with the same freshness when either copy comes from Arweave (where support and height are server-controlled), the tool SHALL warn and ask the user to choose explicitly. When an Arweave search was cut short by a budget and the selected copy is not chain-verified, the tool SHALL warn and ask for explicit confirmation. Before the choice it SHALL show only public metadata (sources, support count, and the claimed version marked unverified), never plaintext. A non-interactive run SHALL exit with code 12 (`AMBIGUOUS`) and show no plaintext.
+
+#### Scenario: Shamir vault tie
+- **WHEN** a 2-of-3 vault's two configured RPCs return different decrypting copies and no agreed history exists
+- **THEN** after the keys are collected, the user is asked to choose; a non-interactive run exits with code 12
+
+#### Scenario: Download budget cut short
+- **WHEN** the chain is unreachable and more tagged Arweave transactions exist than the download budget allows
+- **THEN** the original mirror is still downloaded, and the user must explicitly confirm the unverified copy
 
 #### Scenario: Two RPCs disagree equally
 - **WHEN** two configured RPCs return different decrypting copies and no agreed history exists
@@ -43,7 +51,7 @@ Each GraphQL server's record for a transaction SHALL be a separate candidate; me
 - **THEN** the honest server's record still yields the genuine candidate under the genuine vault ID
 
 ### Requirement: Arweave search is paged and bounded
-The tool SHALL query GraphQL servers in parallel, each within its own time budget, with every request's timeout clamped to that budget. Per server it SHALL fetch the oldest page first, then follow cursors newest-first within a page budget, and warn when that budget ends with results still pending. Downloads SHALL be bounded by a count and time budget, interleaved across servers.
+The tool SHALL query GraphQL servers in parallel, each within its own time budget, with every request's timeout clamped to that budget. Per server it SHALL fetch the oldest page first, then follow cursors newest-first within a page budget, and warn when that budget ends with results still pending. Downloads SHALL be bounded by a count and time budget, interleaved across servers, alternating each server's oldest and newest records.
 
 #### Scenario: Slow first server
 - **WHEN** the first GraphQL server answers every page slowly and never lists the genuine mirror
@@ -54,7 +62,7 @@ The tool SHALL query GraphQL servers in parallel, each within its own time budge
 - **THEN** the genuine mirror is still found within the budget
 
 ### Requirement: Event history lookup is bounded
-History lookups SHALL share one deadline per run, with every request's timeout clamped to it. Each RPC's `latest` block SHALL be cross-checked against the median (plausibility only), and implausible heads refused. Every accepted RPC SHALL page to the HIGHEST accepted head, so a low head yields disagreement, never a shortened agreed history. The lookup SHALL fail at once when the range cannot fit the page budget.
+History lookups SHALL share one deadline per run, with every request's timeout clamped to it. Each RPC's `latest` block SHALL be cross-checked against the median (plausibility only), and implausible heads refused. Each accepted RPC SHALL page to its own head, so a low head shortens only its own history, which then disagrees; it can never produce a shortened agreed history. The lookup SHALL fail at once when the range cannot fit the page budget.
 
 #### Scenario: Hostile block number
 - **WHEN** an RPC reports a head of 10^9 while the others report about 5×10^7

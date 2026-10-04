@@ -23,6 +23,9 @@ See proposal.md and the audit's proof scripts, which are now regression tests in
 - **Variant B (the liar is the sole answer):** support 1 < quorum 2, and the history needs 2 answers but only the liar answers, so the copy is `unverifiable` with a warning, never `current`.
 - *Alternative rejected:* trusting the history majority instead of exact agreement. One liar can make the history unverifiable (a denial of service), but cannot make an old copy verified. The fallback below handles that case.
 
+### D2a. One settle step for every selected copy
+Any-of-N and threshold (Shamir) vaults go through the same `_settle` step: tie resolution, then the confirmation for a cut-short search, with the secret wiped on any abort (security review H1).
+
 ### D2. Ranking without self-reported versions
 - `Candidate.rank = (freshness class, −support, −arweave height)`. The version (from `getVault` or the Arweave tag) is display-only.
 - **Variant A:** the history disagrees (the liar truncates it), so both copies are `unverifiable`. The honest copy has support 2 against the liar's 1, so the majority copy wins, with a warning.
@@ -38,13 +41,23 @@ See proposal.md and the audit's proof scripts, which are now regression tests in
   - Per server, the oldest page (`HEIGHT_ASC`) comes first, then up to `ARWEAVE_MAX_PAGES` newest-first pages following the cursors.
   - A warning is shown when the page budget ends with `hasNextPage` still true.
   - A locator becomes public only when the vault is registered, so spam always post-dates the original mirror, and the oldest page reaches it.
-- **Downloads:** at most `MAX_FETCHES` (40) distinct tx ids within `FETCH_DEADLINE` (60 s), interleaved across servers (not by claimed height). A gateway answering too-large or empty falls through to the next gateway.
+- **Downloads:**
+  - At most `MAX_FETCHES` (40) distinct tx ids within `FETCH_DEADLINE` (60 s).
+  - Ordered per server by alternating the oldest and newest records, then interleaved across servers. There is no global sort by claimed height. This way the budget always reaches the original mirror (which can't be pre-spammed) and the latest update (security review H2).
+  - Records of tx ids already downloaded are always kept.
+  - Each gateway's timeout is clamped to the time remaining, and a too-large or empty answer falls through to the next gateway.
+  - If any page, time or download budget cut the search short and the selected copy is not chain-verified, the user must confirm explicitly. A non-interactive run exits 12.
 - **Ranking:** a merged Arweave candidate's height is the **minimum** any supporting server claimed. Any unverified, decrypting Arweave rival of the same freshness forces an explicit choice, because support and height are server-controlled.
 
 ### D4. Bounded event history
 - One deadline (`HISTORY_DEADLINE`, 60 s) applies across all of a history lookup's paging.
 - `latest` is read once per run from every usable RPC. The median is only a plausibility filter: an RPC more than `HEAD_TOLERANCE` (5,000) blocks from it is refused ("implausible head").
-- Every accepted RPC pages to the **highest** accepted head (ECC review, PR #22). Paging to the median let a low-head RPC shorten an agreed history, so an old copy matched the "latest" hash. A low-head RPC now misses later events and disagrees, so the result is unverifiable.
+- Each accepted RPC pages to **its own** head.
+  - Paging every RPC to the median (the first version) let a low-head RPC shorten the *agreed* history (ECC review, PR #22).
+  - Paging every RPC to the highest head fails in practice: op-geth and publicnode reject a `toBlock` beyond their own head (`-32602`, verified live 2026-10-04; security review M1).
+  - With own-head paging, a low head shortens only its own history, which then disagrees, so the result is unverifiable.
+  - "Beyond head" errors are not treated as range limits.
+- `resolveLocator`/`getVault` reads share a separate per-run `STATE_DEADLINE`, with clamped timeouts (security review L3).
 - One deadline covers the whole Registry run (heads, all vault ids, all pages), and each request's timeout is clamped to the time remaining.
 - If the remaining blocks divided by the page size exceed the page budget, the lookup fails at once, before any `eth_getLogs`.
 - Once an RPC has forced the page size down (a range-limit error), at most `MAX_ADAPTED_PAGES` (200) remaining pages are allowed. Live finding (2026-10-04): drpc's ~100-block limit meant more than 1,000 pages after two days of history, so every lookup hit the 60 s deadline. drpc now drops out in about 7 s, and the other two RPCs still provide the agreed history.
