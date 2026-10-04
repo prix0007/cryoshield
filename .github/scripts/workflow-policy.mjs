@@ -213,12 +213,14 @@ function checkPrivileged(file, name, wf, on) {
 // Current digests of every privileged run step, for a reviewed update of privileged-run-steps.json.
 export function currentDigests(dir) {
   const out = {};
-  for (const name of Object.keys(PRIVILEGED)) {
+  for (const name of [...Object.keys(PRIVILEGED), 'deploy.yml']) {
     const path = join(dir, 'workflows', name);
     if (!existsSync(path)) continue;
     const wf = parse(readFileSync(path, 'utf8'));
     out[name] = {};
     for (const [id, job] of Object.entries(isObj(wf?.jobs) ? wf.jobs : {})) {
+      // deploy.yml: only the jobs that hold the Fly token are pinned (ECC review #7).
+      if (name === 'deploy.yml' && !strings(job).some((s) => /FLY_API_TOKEN/i.test(s))) continue;
       for (const step of Array.isArray(job?.steps) ? job.steps : []) {
         if (isObj(step) && step.run !== undefined) out[name][`${id}/${String(step.name ?? step.uses ?? '?')}`] = runDigest(step.run);
       }
@@ -350,9 +352,41 @@ const BUILD_TOOLING = /(^|[\s;&|(`!/])(node|npm|npx|pnpm|yarn|bunx?|deno|vite|ts
 const exprsOf = (node) => strings(node).flatMap((s) => [...s.matchAll(/\$\{\{([\s\S]*?)\}\}/g)].map((m) => m[1]));
 const usesSecret = (node, re = /\bsecrets\b/i) => exprsOf(node).some((e) => re.test(e) && !/^\s*secrets\.GITHUB_TOKEN\s*$/i.test(e));
 
+// Split a job condition into its top-level `&&` conjuncts (parentheses respected) and report any top-level `||`/`or`,
+// so `a && (b || c)` is fine but `a || true` or `a && b || true` is not (ECC review #3).
+export function splitCondition(cond) {
+  const text = String(cond ?? '');
+  const conjuncts = [];
+  let depth = 0;
+  let quote = null;
+  let start = 0;
+  let topLevelOr = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (quote) {
+      if (c === quote) quote = null;
+      continue;
+    }
+    if (c === "'" || c === '"') quote = c;
+    else if (c === '(') depth++;
+    else if (c === ')') depth--;
+    else if (depth === 0 && text.startsWith('&&', i)) {
+      conjuncts.push(norm(text.slice(start, i)));
+      start = i + 2;
+      i++;
+    } else if (depth === 0 && (text.startsWith('||', i) || /^\bor\b/.test(text.slice(i)) && /\W/.test(text[i - 1] ?? ' '))) {
+      topLevelOr = true;
+    }
+  }
+  conjuncts.push(norm(text.slice(start)));
+  return { conjuncts: conjuncts.filter(Boolean), topLevelOr };
+}
+
 function checkDeploy(file, wf, on) {
   const errors = [];
   const err = (m) => errors.push(`${file}: ${m}`);
+  const pinnedDeploy = digests()['deploy.yml'] ?? {};
+  const seenPinned = new Set();
   for (const t of on) if (!DEPLOY_TRIGGERS.includes(t)) err(`trigger '${t}' is not allowed (deploy.yml runs only on ${DEPLOY_TRIGGERS.join(', ')}; never on pull requests)`);
   const branches = isObj(wf.on) && isObj(wf.on.push) ? wf.on.push.branches : undefined;
   if (on.includes('push') && JSON.stringify(branches) !== JSON.stringify(['main'])) err('push must be limited to branches: [main]');
@@ -366,7 +400,12 @@ function checkDeploy(file, wf, on) {
   for (const [id, job] of Object.entries(isObj(wf.jobs) ? wf.jobs : {})) {
     if (!isObj(job)) continue;
     const needs = [].concat(job.needs ?? []);
-    if (needs.length === 0 && !norm(job.if).split('&&').map(norm).includes("github.ref == 'refs/heads/main'")) {
+    const { conjuncts, topLevelOr } = splitCondition(job.if);
+    if (topLevelOr) err(`job '${id}': no top-level || / or in a deploy.yml job condition (ECC review #3; group alternatives in parentheses)`);
+    if (needs.length > 0 && !conjuncts.includes("needs.detect.outputs.deploy == 'true'")) {
+      err(`job '${id}' has needs, so its condition must include "needs.detect.outputs.deploy == 'true'" as a top-level conjunct (ECC review #4)`);
+    }
+    if (needs.length === 0 && !conjuncts.includes("github.ref == 'refs/heads/main'")) {
       err(`job '${id}' has no needs, so its condition must include "github.ref == 'refs/heads/main'"`);
     }
     const prod = envName(job.environment) === 'production';
@@ -393,6 +432,14 @@ function checkDeploy(file, wf, on) {
       }
       // H1: the token's job runs nothing but checkout/download-artifact and shell around flyctl.
       if (holdsToken) {
+        if (step.shell !== undefined) err(`job '${id}' holds FLY_API_TOKEN, so step '${step.name ?? step.id}' may not set a custom shell`);
+        if (step.run !== undefined) {
+          const key = `${id}/${String(step.name ?? step.uses ?? '?')}`;
+          seenPinned.add(key);
+          if (pinnedDeploy[key] !== runDigest(step.run)) {
+            err(`job '${id}' holds FLY_API_TOKEN: step '${step.name ?? step.id}' run digest ${runDigest(step.run)} does not match the reviewed digest in .github/scripts/privileged-run-steps.json (${pinnedDeploy[key] ?? 'none'}); update it only with a security review (workflow-policy.mjs --digests)`);
+          }
+        }
         if (step.uses !== undefined && !TOKEN_JOB_ACTIONS.some((re) => re.test(String(step.uses)))) {
           err(`job '${id}' holds FLY_API_TOKEN, so step '${step.name ?? step.id}' may not use ${String(step.uses).split('@')[0]} (only actions/checkout and actions/download-artifact)`);
         }
@@ -402,11 +449,14 @@ function checkDeploy(file, wf, on) {
       }
     }
   }
+  for (const key of Object.keys(pinnedDeploy)) if (!seenPinned.has(key)) err(`privileged-run-steps.json pins deploy.yml '${key}', which no longer exists (remove stale digests)`);
   return errors;
 }
 
 
-export function checkZizmorConfig(text) {
+// opts.selfRepositoryLine: the line of deploy.yml's `uses: ./.github/workflows/ci.yml`; when given, the
+// self-repository ignore must be exactly that line (ECC review #8).
+export function checkZizmorConfig(text, opts = {}) {
   const errors = [];
   let cfg;
   try {
@@ -431,6 +481,10 @@ export function checkZizmorConfig(text) {
     if (!allowed || entries.length === 0 || !entries.every((e) => allowed.test(e)) || new Set(files).size !== files.length) {
       errors.push(`zizmor.yml: rule '${name}' must not ignore findings (accepted, as <file>:<line> once per file: ${Object.entries(ZIZMOR_IGNORES).map(([r, re]) => `${r} ${re}`).join('; ')})`);
     }
+    if (name === 'self-repository' && opts.selfRepositoryLine !== undefined) {
+      const want = `deploy.yml:${opts.selfRepositoryLine}`;
+      if (JSON.stringify(entries) !== JSON.stringify([want])) errors.push(`zizmor.yml: self-repository may only ignore ${want} (deploy.yml's reusable-CI call)`);
+    }
   }
   return errors;
 }
@@ -439,7 +493,13 @@ export function checkGithubDir(dir) {
   const errors = [];
   const zizmor = join(dir, 'zizmor.yml');
   if (!existsSync(zizmor)) errors.push(`${zizmor}: missing (zizmor's hash-pin policy is part of this policy)`);
-  else errors.push(...checkZizmorConfig(readFileSync(zizmor, 'utf8')));
+  else {
+    const deployPath = join(dir, 'workflows', 'deploy.yml');
+    const idx = existsSync(deployPath)
+      ? readFileSync(deployPath, 'utf8').split('\n').findIndex((l) => /^\s*uses: \.\/\.github\/workflows\/ci\.yml\b/.test(l))
+      : -1;
+    errors.push(...checkZizmorConfig(readFileSync(zizmor, 'utf8'), idx >= 0 ? { selfRepositoryLine: idx + 1 } : {}));
+  }
 
   const wfDir = join(dir, 'workflows');
   const files = existsSync(wfDir) ? readdirSync(wfDir).filter((f) => /\.ya?ml$/.test(f)).sort() : [];

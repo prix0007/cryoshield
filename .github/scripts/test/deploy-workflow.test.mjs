@@ -98,13 +98,36 @@ test('M3: deploy.yml allows only exact secret expressions, each in its own step'
   expectError('deploy.yml', bundlerElsewhere, /VITE_BUNDLER_URL/);
 });
 
-test('M1/L3: smoke and rollback also run when the deploy job failed after fly deploy started', () => {
+test('M1/L3/ECC #2: smoke and rollback also run when deploy failed OR was cancelled after fly deploy started', () => {
   const wf = parse(deploy);
-  assert.match(String(wf.jobs.smoke.if), /always\(\)/);
-  assert.match(String(wf.jobs.smoke.if), /needs\.deploy\.result/);
+  const smokeIf = String(wf.jobs.smoke.if).replace(/\s+/g, ' ');
+  assert.match(smokeIf, /always\(\)/);
+  assert.match(smokeIf, /needs\.deploy\.result == 'success' \|\| needs\.deploy\.outputs\.fly_started == 'true'/);
   const rollback = wf.jobs.smoke.steps.find((s) => s.id === 'rollback');
   assert.match(String(rollback.if), /failure\(\)/);
+  assert.match(String(rollback.if), /needs\.deploy\.result != 'success'/);
   assert.match(String(rollback.if), /fly_started/);
+});
+
+test('ECC #1: detect treats ANY failed earlier Deploy run of the commit as previously failed', () => {
+  const detectRun = String(parse(deploy).jobs.detect.steps.find((s) => s.id === 'detect').run);
+  assert.match(detectRun, /--status failure/);
+  assert.doesNotMatch(detectRun, /\.name == "deploy"/);
+});
+
+test('ECC #3: no || or `or` in any deploy.yml job condition', () => {
+  expectError('deploy.yml', replaceOnce(deploy, "    if: github.ref == 'refs/heads/main'\n", "    if: github.ref == 'refs/heads/main' || true\n"), /job 'detect'.*\|\|/);
+  expectError('deploy.yml', replaceOnce(deploy, "    if: needs.detect.outputs.deploy == 'true'\n    uses:", "    if: needs.detect.outputs.deploy == 'true' || true\n    uses:"), /job 'test'.*\|\|/);
+});
+
+test('ECC #4: every job with needs must be gated on needs.detect.outputs.deploy', () => {
+  const ungated = replaceOnce(deploy, "      && needs.detect.outputs.deploy == 'true'\n      && (needs.deploy.result", "      && (needs.deploy.result");
+  expectError('deploy.yml', ungated, /job 'smoke'.*needs\.detect\.outputs\.deploy == 'true'/);
+});
+
+test('ECC #7: token-holding jobs: every run step pinned by digest, no custom shell', () => {
+  expectError('deploy.yml', replaceOnce(deploy, '          fly deploy --config fly.toml --remote-only --app cryoshield-web\n', '          fly deploy --config fly.toml --remote-only --app cryoshield-web\n          true\n'), /digest/);
+  expectError('deploy.yml', replaceOnce(deploy, '        id: rollback\n', '        id: rollback\n        shell: bash -e {0}\n'), /shell/);
 });
 
 test('the privileged workflows may not use the Fly token or environment production either', () => {
@@ -122,9 +145,13 @@ test('ci.yml: `full` (workflow_call) forces every area job and workflow-lint on'
   assert.match(String(wf.concurrency.group), /github\.workflow/);
 });
 
-test('zizmor: the only other accepted ignore is self-repository on deploy.yml, pinned to a line', () => {
+test('zizmor: the only other accepted ignore is self-repository on deploy.yml, pinned to THE reusable-CI line (ECC #8)', () => {
   const base = 'rules:\n  unpinned-uses:\n    config:\n      policies:\n        "*": hash-pin\n';
   assert.deepEqual(checkZizmorConfig(`${base}  self-repository:\n    ignore:\n      - deploy.yml:74\n`), []);
+  assert.deepEqual(checkZizmorConfig(`${base}  self-repository:\n    ignore:\n      - deploy.yml:74\n`, { selfRepositoryLine: 74 }), []);
+  assert.match(checkZizmorConfig(`${base}  self-repository:\n    ignore:\n      - deploy.yml:12\n`, { selfRepositoryLine: 74 }).join(), /deploy\.yml:74/);
+  const line = deploy.split('\n').findIndex((l) => /^\s*uses: \.\/\.github\/workflows\/ci\.yml\b/.test(l)) + 1;
+  assert.deepEqual(checkZizmorConfig(readFileSync(new URL('../../zizmor.yml', import.meta.url), 'utf8'), { selfRepositoryLine: line }), []);
   assert.match(checkZizmorConfig(`${base}  self-repository:\n    ignore:\n      - ci.yml:74\n`).join(), /self-repository/);
   assert.match(checkZizmorConfig(`${base}  self-repository:\n    ignore:\n      - deploy.yml\n`).join(), /self-repository/);
   assert.deepEqual(checkZizmorConfig(readFileSync(new URL('../../zizmor.yml', import.meta.url), 'utf8')), []);

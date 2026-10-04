@@ -16,7 +16,8 @@ rules:
       - auto-merge.yml:19
   # Accepted finding 2: deploy.yml's reusable-CI call uses `./.github/workflows/ci.yml` because the CI-pinned
   # actionlint 1.7.12 rejects GitHub's newer `$/` self-repository syntax (rhysd/actionlint#711). Pinned to
-  # file:line (add-continuous-deploy D4). Drop it once actionlint supports `$/`.
+  # file:line (add-continuous-deploy D4); workflow-policy.mjs requires it to be exactly that call line (ECC #8).
+  # Drop it once actionlint supports `$/`.
   self-repository:
     ignore:
-      - deploy.yml:87
+      - deploy.yml:84

@@ -48,7 +48,7 @@ jobs:
     timeout-minutes: 5
     permissions:
       contents: read # read main's HEAD and the detect script
-      actions: read # earlier Deploy runs of this commit (do not retry a failed deploy every 15 minutes)
+      actions: read # earlier Deploy runs of this commit (do not retry a failed run every 15 minutes)
     outputs:
       deploy: ${{ steps.detect.outputs.deploy }}
       sha: ${{ github.sha }}
@@ -68,15 +68,12 @@ jobs:
         run: |
           set -euo pipefail
           MAIN_SHA="$(gh api "repos/${GITHUB_REPOSITORY}/commits/main" --jq .sha)"
+          # ANY failed earlier Deploy run of this commit (test, build, deploy or smoke) stops automatic retries; a
+          # newer commit or workflow_dispatch force=true deploys again (ECC review #1).
+          failed="$(gh run list -R "${GITHUB_REPOSITORY}" --workflow deploy.yml --commit "${TARGET_SHA}" --status failure \
+                      --limit 1 --json databaseId --jq 'length')"
           PREVIOUSLY_FAILED=false
-          for id in $(gh run list -R "${GITHUB_REPOSITORY}" --workflow deploy.yml --commit "${TARGET_SHA}" --status failure \
-                        --limit 50 --json databaseId --jq '.[].databaseId'); do
-            if [ "$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${id}/jobs" \
-                      --jq '[.jobs[] | select((.name == "deploy" or .name == "smoke") and .conclusion == "failure")] | length')" != "0" ]; then
-              PREVIOUSLY_FAILED=true
-              break
-            fi
-          done
+          if [ "$failed" != "0" ]; then PREVIOUSLY_FAILED=true; fi
           export MAIN_SHA PREVIOUSLY_FAILED
           .github/scripts/deploy/detect.sh
 
@@ -150,7 +147,7 @@ jobs:
           path: apps/web/deploy/.build
           include-hidden-files: true # site/.well-known/security.txt
           if-no-files-found: error
-          retention-days: 90
+          retention-days: 7 # the bundle (and its public bundler key) only needs to outlive the deploy
 
   # Holds the Fly token. Runs only flyctl, curl, jq and coreutils on the verified build artifact: no node, no pnpm,
   # no third-party build code (enforced by workflow-policy.mjs).
@@ -196,7 +193,9 @@ jobs:
             | while IFS= read -r f; do sha256sum "$f"; done | sha256sum | cut -d' ' -f1)"
           [ "$tree" = "$(jq -r .treeHash "$m")" ] || { echo "::error::site tree hash $tree differs from the manifest"; exit 1; }
           [ "$(jq -r .commit apps/web/deploy/.build/site/release.json)" = "$SHA" ] || { echo "::error::release.json names another commit"; exit 1; }
-          [ -f apps/web/deploy/.build/Caddyfile ] || { echo "::error::Caddyfile missing"; exit 1; }
+          caddy="sha256:$(sha256sum apps/web/deploy/.build/Caddyfile | cut -d' ' -f1)"
+          [ "$caddy" = "$(jq -r .caddyfile "$m")" ] || { echo "::error::Caddyfile hash $caddy differs from the manifest"; exit 1; }
+          # Integrity only: a compromised build could forge a consistent manifest. Residual risk, design.md (ECC #5).
       - name: Install flyctl (pinned, checksum-verified)
         run: |
           set -euo pipefail
@@ -235,14 +234,15 @@ jobs:
             echo "Release manifest: artifact \`deploy-context-$(jq -r .commit "$m")\`."
           } >> "${GITHUB_STEP_SUMMARY}"
 
-  # Also runs when `deploy` failed after `fly deploy` started (review M1), so a half-finished rollout is rolled back.
+  # Also runs when `deploy` failed or was cancelled after `fly deploy` started (review M1, ECC review #2), so a
+  # half-finished rollout is rolled back.
   smoke:
     name: smoke
     needs: [detect, deploy]
     if: >-
       always()
       && needs.detect.outputs.deploy == 'true'
-      && (needs.deploy.result == 'success' || (needs.deploy.result == 'failure' && needs.deploy.outputs.fly_started == 'true'))
+      && (needs.deploy.result == 'success' || needs.deploy.outputs.fly_started == 'true')
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     environment:
@@ -275,7 +275,7 @@ jobs:
           export REGISTRY_ADDRESS
           .github/scripts/deploy/smoke.sh
       - name: Install flyctl for the rollback (pinned, checksum-verified)
-        if: (failure() || needs.deploy.result == 'failure') && needs.deploy.outputs.fly_started == 'true'
+        if: (failure() || needs.deploy.result != 'success') && needs.deploy.outputs.fly_started == 'true'
         run: |
           set -euo pipefail
           curl -fsSL --retry 3 -o "${RUNNER_TEMP}/flyctl.tar.gz" \
@@ -288,14 +288,14 @@ jobs:
       # Uses the NEW commit's fly.toml with the previous image (docs/deploy.md -> Rollback, review L1).
       - name: Roll back to the previous release
         id: rollback
-        if: (failure() || needs.deploy.result == 'failure') && needs.deploy.outputs.fly_started == 'true'
+        if: (failure() || needs.deploy.result != 'success') && needs.deploy.outputs.fly_started == 'true'
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
           PREVIOUS_IMAGE: ${{ needs.deploy.outputs.previous_image }}
           BASE_URL: ${{ env.SITE_URL }}
         run: .github/scripts/deploy/rollback.sh
       - name: Fail loudly
-        if: failure() || needs.deploy.result == 'failure'
+        if: failure() || needs.deploy.result != 'success'
         env:
           SHA: ${{ needs.detect.outputs.sha }}
           DEPLOY_RESULT: ${{ needs.deploy.result }}
