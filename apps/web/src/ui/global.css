@@ -50,10 +50,12 @@ h2.step-heading {
   margin: 0 0 var(--space-md);
 }
 h2.step-heading:focus,
-#home-title:focus {
+#home-title:focus,
+#vault-title:focus {
   outline: none;
 }
 #home-title:focus-visible,
+#vault-title:focus-visible,
 h2.step-heading:focus-visible {
   outline: 2px solid var(--app-focus);
   outline-offset: 4px;
@@ -254,7 +256,7 @@ button:focus-visible {
   border: 2px solid var(--app-link);
   opacity: 0;
 }
-/* The pulse is a Motion loop (app-motion-ux D4); MotionConfig reducedMotion="user" keeps it opacity-only. */
+/* The pulse is a Motion loop (app-motion-ux D4); under reduced motion it is a static ring. */
 .key-prompt-body > :last-child {
   margin-bottom: 0;
 }

@@ -62,6 +62,22 @@ describe('save checklist reflects real write events only (D5)', () => {
     await waitFor(() => expect(doneStages()).toEqual(['Encrypted on this device', 'Network fee sponsored']));
   });
 
+  it('the "touch your key" card goes once the bundler accepted the signed operation (sent), not before', async () => {
+    const u = userEvent.setup();
+    let progress!: OnProgress;
+    vi.spyOn(ops, 'saveNewVault').mockImplementation((_s, _k, _i, onSign, _r, onProgress?: OnProgress) => {
+      progress = onProgress!;
+      onSign();
+      return new Promise(() => undefined);
+    });
+    await toSave(u);
+    expect(await screen.findByText('Touch key 1 to save your vault.')).toBeInTheDocument();
+    await act(async () => progress('sponsored'));
+    expect(screen.getByText('Touch key 1 to save your vault.')).toBeInTheDocument();
+    await act(async () => progress('sent'));
+    await waitFor(() => expect(screen.queryByText('Touch key 1 to save your vault.')).toBeNull());
+  });
+
   it('with no events, nothing is checked (no timers advance it)', async () => {
     const u = userEvent.setup();
     vi.spyOn(ops, 'saveNewVault').mockImplementation(() => new Promise(() => undefined));
@@ -122,6 +138,16 @@ describe('security behaviour is never held back by an exit animation', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Unlock with my key' }));
     await screen.findByRole('heading', { name: 'Seed' });
   }
+
+  it('returning to the vault list (Close, Cancel) focuses the vault heading after the transition', async () => {
+    await unlocked();
+    fireEvent.click(screen.getByRole('button', { name: 'Vault details' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Close' }));
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Your vault', level: 1 })).toHaveFocus());
+    fireEvent.click(screen.getByRole('button', { name: 'Edit secrets' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Your vault', level: 1 })).toHaveFocus());
+  });
 
   it('Lock removes revealed secrets from the DOM in the same commit (no exit animation)', async () => {
     await unlocked();

@@ -48,10 +48,17 @@ export function VaultView(props: {
   const unblur = reveal(reduced);
   // Save checklist for edit / add key: only stages the write path really reported (app-motion-ux D5).
   const [progress, setProgress] = useState<ReadonlySet<SaveStage> | null>(null);
-  const onProgress = (stage: SaveStage) => setProgress((prev) => new Set(prev ?? []).add(stage));
+  const onProgress = (stage: SaveStage) => {
+    setProgress((prev) => new Set(prev ?? []).add(stage));
+    if (stage === 'sent') setPrompt(null); // signed and accepted: no more touches
+  };
   // Copy confirmation: `n` is a counter (the animation key), `i` the row; never the copied value.
   const [copied, setCopied] = useState<{ i: number; n: number } | null>(null);
   const copies = useRef(0);
+  // Back in view mode after edit / add key / details: focus the vault heading once the transition has finished.
+  const title = useRef<HTMLHeadingElement>(null);
+  const leftView = useRef(false);
+  if (mode !== 'view') leftView.current = true;
 
   // Self-heal the Arweave mirror once per unlock (no key tap needed: the blob is public ciphertext).
   useEffect(() => {
@@ -133,7 +140,9 @@ export function VaultView(props: {
 
   return (
     <section aria-labelledby="vault-title" className="step">
-      <h1 id="vault-title">{S.vault.title}</h1>
+      <h1 id="vault-title" ref={title} tabIndex={-1}>
+        {S.vault.title}
+      </h1>
       {error && (
         <Notice kind="error" reference={errorRef}>
           {error}
@@ -150,6 +159,7 @@ export function VaultView(props: {
       <StepTransition id={mode} dir={dir}>
         {mode === 'view' && (
           <div>
+            <OnArrival run={() => (leftView.current ? title.current?.focus() : undefined)} />
             {s.items.length === 0 && <EmptyState>{S.vault.empty}</EmptyState>}
             <ul className="secrets" aria-label={S.vault.title} hidden={s.items.length === 0}>
               <AnimatePresence initial={false}>
@@ -259,4 +269,11 @@ export function VaultView(props: {
       </StepTransition>
     </section>
   );
+}
+
+/** Runs `run` when it mounts, i.e. when its step has finished transitioning in. */
+function OnArrival({ run }: { run: () => void }) {
+  const once = useRef(run);
+  useEffect(() => once.current(), []);
+  return null;
 }

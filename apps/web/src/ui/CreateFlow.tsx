@@ -87,7 +87,10 @@ export function CreateFlow(props: { onDone: (s: VaultSession) => void; onCancel:
           setReached(new Set());
           setError(S.create.retrying);
         },
-        (stage) => setReached((prev) => new Set(prev).add(stage)),
+        (stage) => {
+          setReached((prev) => new Set(prev).add(stage));
+          if (stage === 'sent') setPrompt(null); // signed and accepted: no more touches for this attempt
+        },
       );
       setError(null);
       keys.forEach((k) => wipe(k.prf));

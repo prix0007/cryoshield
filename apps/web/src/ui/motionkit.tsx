@@ -3,7 +3,7 @@
  * PRF output, key or address is ever passed in as an animated value or used as an animation key.
  */
 import { useId, useRef, useState, type ReactNode } from 'react';
-import { AnimatePresence, LazyMotion, MotionConfig, useReducedMotion, type HTMLMotionProps } from 'motion/react';
+import { AnimatePresence, LazyMotion, MotionConfig, PresenceContext, useIsPresent, useReducedMotion, type HTMLMotionProps } from 'motion/react';
 import * as m from 'motion/react-m';
 import { collapse, countdown, directionOf, HOVER, keyCheck, pop, pulse, shake, slideIn, slotFill, stepVariants, TAP } from './motion';
 import { CLIPBOARD_CLEAR_MS } from './clipboard';
@@ -24,6 +24,15 @@ export function MotionRoot({ children }: { children: ReactNode }) {
 }
 
 export const useReduced = (): boolean => useReducedMotion() ?? false;
+
+/**
+ * Presence boundary. `AnimatePresence initial={false}` reaches every descendant through PresenceContext, so content
+ * mounted LATER inside an initially-present step or row (a reveal, the copy bar) would start at its end state. The
+ * contents of steps and rows get a fresh context so their own entrances run when they really appear.
+ */
+function Fresh({ children }: { children: ReactNode }) {
+  return <PresenceContext.Provider value={null}>{children}</PresenceContext.Provider>;
+}
 
 const finePointer = () => typeof matchMedia === 'function' && matchMedia('(hover: hover) and (pointer: fine)').matches;
 
@@ -51,13 +60,23 @@ export function useDirection<T>(order: readonly T[], current: T): 1 | -1 {
  * at once with no exit (used by the idle wipe, so nothing lingers on screen).
  */
 export function StepTransition({ id, dir, epoch = 0, children }: { id: string; dir: 1 | -1; epoch?: number; children: ReactNode }) {
-  const reduced = useReduced();
   return (
     <AnimatePresence key={epoch} mode="wait" initial={false} custom={dir}>
-      <m.div key={id} className="step-motion" custom={dir} variants={stepVariants(reduced)} initial="enter" animate="center" exit="exit">
+      <Step key={id} dir={dir}>
         {children}
-      </m.div>
+      </Step>
     </AnimatePresence>
+  );
+}
+
+/** A leaving step is `inert`: no click or key press can land on it while it animates out. */
+function Step({ dir, children }: { dir: 1 | -1; children: ReactNode }) {
+  const reduced = useReduced();
+  const present = useIsPresent();
+  return (
+    <m.div className="step-motion" inert={!present} custom={dir} variants={stepVariants(reduced)} initial="enter" animate="center" exit="exit">
+      <Fresh>{children}</Fresh>
+    </m.div>
   );
 }
 
@@ -131,7 +150,7 @@ export function Collapse({ children, as = 'div', ...rest }: { children: ReactNod
   const C = as === 'li' ? m.li : m.div;
   return (
     <C initial={{ ...collapse.initial, overflow: 'hidden' }} animate={{ ...collapse.animate, transitionEnd: { overflow: 'visible' } }} exit={{ ...collapse.exit, overflow: 'hidden' }} transition={collapse.transition} {...rest}>
-      {children}
+      <Fresh>{children}</Fresh>
     </C>
   );
 }

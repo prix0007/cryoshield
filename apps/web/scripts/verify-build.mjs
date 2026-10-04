@@ -239,6 +239,12 @@ function appBudget(label) {
     `info [${label}] /app initial JS gzip: ${bytes} B (baseline ${APP_BASELINE} B, ${delta >= 0 ? '+' : ''}${delta} B; allowance +${APP_ALLOWANCE} B); lazy ${lazyBytes} B`,
   );
   if (bytes > APP_BASELINE + APP_ALLOWANCE) fail(`[${label}] /app initial JS ${bytes} B exceeds baseline + 20 KB (${APP_BASELINE + APP_ALLOWANCE} B)`);
+  // The landing bundle stays unchanged: /app's Motion for React never shares a chunk with the landing page
+  // (vite-plugins/app-motion-isolation.ts). Only Vite's tiny preload helper is common to both.
+  const land = splitGraph('index.html');
+  const landing = new Set([...land.initial, ...land.lazy]);
+  const shared = [...initial, ...lazy].filter((f) => landing.has(f) && !/\/preload-helper-[\w-]+\.js$/.test(f));
+  if (shared.length) fail(`[${label}] /app shares chunks with the landing page: ${shared.join(', ')}`);
   console.log(`ok   [${label}] /app initial JS within budget`);
 }
 
