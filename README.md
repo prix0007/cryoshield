@@ -175,6 +175,8 @@ The pipeline never runs on pull requests. To redeploy by hand, run `gh workflow 
 
 There is no external audit for the MVP. Mitigations: an open specification, deterministic cross-implementation test vectors, symmetric-only cryptography, and an internal adversarial review of every security-relevant change (`docs/reviews/`, `apps/web/docs/security-review.md`). Please report vulnerabilities privately, never in public issues: see [`SECURITY.md`](SECURITY.md) (scope, safe harbour, timelines) and [`/.well-known/security.txt`](https://cryoshield.app/.well-known/security.txt), or use [GitHub private vulnerability reporting](https://github.com/prix0007/cryoshield/security/advisories/new).
 
+**Issues** get an automatic acknowledgement and, if they pass a no-model screen for secrets and vulnerability reports, a capped, sandboxed first diagnosis. See [`CLAUDE.md`](CLAUDE.md) → "Issue triage". **Never post seed phrases, recovery codes, PINs or keys in an issue.**
+
 ## License
 
 [MIT](LICENSE). Every first-party package declares MIT, and `scripts/check-licenses.sh` enforces this in CI.

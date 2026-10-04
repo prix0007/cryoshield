@@ -12,7 +12,7 @@
 #
 # Covers: ruleset main.json (by name), repo merge settings (repo-settings.json, incl. auto-merge), Actions
 # workflow permissions (actions-permissions.json: read-only token, Actions may not approve PRs), and the
-# `no-spec` and `hold` labels.
+# managed labels (labels.json).
 # Idempotent: when the live state matches, no write call is made. Requires an admin `gh auth login`.
 # Diff legend: "-" = live on GitHub, "+" = committed here.
 set -euo pipefail
@@ -45,15 +45,8 @@ SETTINGS="$HERE/repo-settings.json"
 ACTIONS="$HERE/actions-permissions.json"
 NORMALIZE="$HERE/../scripts/ruleset-normalize.mjs"
 NAME="$(jq -r .name "$RULESET_FILE")"
-# Managed labels (portable to bash 3.2: no associative arrays).
-LABELS="no-spec hold"
-label_color() { case "$1" in no-spec) echo d4c5f9 ;; hold) echo b60205 ;; esac; }
-label_desc() {
-  case "$1" in
-    no-spec) echo "Code change without an OpenSpec change; PR body must hold a No-spec justification line" ;;
-    hold) echo "Owner veto: auto-merge stays off while this label is set" ;;
-  esac
-}
+# Managed labels: name, color, description (labels.json; names may contain spaces and '?').
+LABELS_FILE="$HERE/labels.json"
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
@@ -139,19 +132,25 @@ sync_actions() {
   return 0
 }
 
-sync_label() {
-  local label="$1"
-  if "$GH" api "repos/$REPO/labels?per_page=100" --paginate --jq '.[].name' | grep -x "$label" > /dev/null; then
-    echo "label '$label': present"
-    return 0
-  fi
-  echo "label '$label': missing"
-  drift=1
-  if [ "$APPLY" -eq 1 ]; then
-    "$GH" api -X POST "repos/$REPO/labels" \
-      -f name="$label" -f color="$(label_color "$label")" -f description="$(label_desc "$label")" > /dev/null
-    echo "label '$label': created"
-  fi
+sync_labels() {
+  local existing name color desc
+  existing="$TMP/labels.txt"
+  "$GH" api "repos/$REPO/labels?per_page=100" --paginate --jq '.[].name' > "$existing"
+  # Fields joined by the ASCII unit separator (not tab: tab is IFS whitespace, so empty fields would collapse and
+  # @tsv would escape tabs in descriptions).
+  while IFS=$'\x1f' read -r name color desc; do
+    # Literal, whole-line match: label names may contain regex characters such as '?'.
+    if grep -Fx -- "$name" "$existing" > /dev/null; then
+      echo "label '$name': present"
+      continue
+    fi
+    echo "label '$name': missing"
+    drift=1
+    if [ "$APPLY" -eq 1 ]; then
+      "$GH" api -X POST "repos/$REPO/labels" -f name="$name" -f color="$color" -f description="$desc" > /dev/null
+      echo "label '$name': created"
+    fi
+  done < <(jq -r '.[] | [.name, .color, (.description // "")] | map(gsub("[\u001f\n]"; " ")) | join("\u001f")' "$LABELS_FILE")
   return 0
 }
 
@@ -159,10 +158,7 @@ sync_all() {
   sync_ruleset
   sync_settings
   sync_actions
-  local label
-  for label in $LABELS; do
-    sync_label "$label"
-  done
+  sync_labels
 }
 
 echo "repository: $REPO ($([ "$APPLY" -eq 1 ] && echo apply || echo dry run)$([ "$ECC" -eq 1 ] && echo ', with ecc-review'))"

@@ -63,3 +63,26 @@ if [ "$got" != "$want" ]; then
   exit 1
 fi
 echo "gitleaks allowlist self-test: OK (allowlists cover only hex vector keys in test-vector files and SHA-256 digests in the digest file)"
+
+# The exact invocation issue-triage.yml uses (add-issue-triage, security review H1): default rules, JSON report,
+# --exit-code 42. Clean text must exit 0 and a leak 42; any other code means the flags are wrong for this version.
+triage_scan() {
+  set +e
+  "$GITLEAKS" dir "$1" --no-banner --redact --log-level error \
+    --exit-code 42 --ignore-gitleaks-allow --report-format json --report-path "$T/triage-report.json" > /dev/null 2>&1
+  echo "$?"
+  set -e
+}
+mkdir -p "$T/triage-clean" "$T/triage-leak" "$T/triage-allow"
+printf 'Unlock fails on Firefox with my second security key.\n' > "$T/triage-clean/issue.md"
+printf 'token = "%s"\n' "$pat" > "$T/triage-leak/issue.md"
+clean_rc="$(triage_scan "$T/triage-clean")"
+leak_rc="$(triage_scan "$T/triage-leak")"
+# An inline gitleaks:allow must NOT hide a leak in issue text (re-review L-b).
+printf 'token = "%s" # gitleaks:allow\n' "$pat" > "$T/triage-allow/issue.md"
+allow_rc="$(triage_scan "$T/triage-allow")"
+if [ "$clean_rc" != "0" ] || [ "$leak_rc" != "42" ] || [ "$allow_rc" != "42" ]; then
+  echo "gitleaks triage invocation self-test FAILED (clean $clean_rc want 0; leak $leak_rc want 42; gitleaks:allow $allow_rc want 42)"
+  exit 1
+fi
+echo "gitleaks triage invocation self-test: OK (clean 0, leak 42, gitleaks:allow ignored)"

@@ -1,0 +1,29 @@
+name: Feature request
+description: Suggest an improvement or a new capability for CryoShield. Issues are PUBLIC.
+title: "Feature: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## ⚠️ This issue is public
+        **Never post seed phrases, recovery codes, PINs or keys** — not even as examples. Use obviously fake placeholders instead.
+
+        CryoShield is non-custodial with no backend: proposals that need a CryoShield-operated server or access to plaintext secrets are out of scope (see `openspec/config.yaml`).
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What are you trying to do, and what gets in the way?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered

@@ -1,0 +1,48 @@
+name: Bug report
+description: Something in CryoShield (web app, recovery tool, contracts) does not work as expected. Issues are PUBLIC.
+title: "Bug: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## ⚠️ This issue is public
+        **Never post seed phrases, recovery codes, PINs or keys** — not even partially, and not in screenshots. CryoShield's maintainers will never ask for them and cannot open or recover any vault.
+
+        Found a **security vulnerability**? Do not open an issue: [report it privately](https://github.com/prix0007/cryoshield/security/advisories/new).
+
+        An automated first look runs on new issues; issues that appear to contain secrets are flagged and deleted by a maintainer.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open https://cryoshield.app/app/
+        2. ...
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options: ["Web app (cryoshield.app)", "Desktop recovery tool", "Smart contract", "Docs", "Other"]
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: Environment
+      description: Browser and version, OS, security key model and firmware (e.g. YubiKey 5 NFC, 5.4.3). Never a serial number or PIN.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Error messages or console output
+      description: Remove anything secret first. Transactions as block-explorer links, not bare hashes.
+      render: text
