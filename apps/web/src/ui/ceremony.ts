@@ -7,7 +7,7 @@ import { S } from './strings';
 const TITLES: [string, readonly (string | undefined)[]][] = [
   ['Wrong key', [S.keyErrors.WRONG_KEY, S.keyErrors.DUPLICATE_KEY, S.edit.notInVault]],
   ['PIN needed', [S.keyErrors.USER_NOT_VERIFIED]],
-  ['Key not supported', [S.keyErrors.PRF_UNSUPPORTED_KEY, S.keyErrors.WRONG_ALGORITHM, S.keyErrors.PRF_UNSUPPORTED_BROWSER, S.browserUnsupported]],
+  ['Key not supported', [S.keyErrors.CRED_PROTECT_UNSUPPORTED, S.enrollCancelled, S.keyErrors.PRF_UNSUPPORTED_KEY, S.keyErrors.WRONG_ALGORITHM, S.keyErrors.PRF_UNSUPPORTED_BROWSER, S.browserUnsupported]],
   ['Request cancelled', [S.keyErrors.CANCELLED]],
   ['Saving is paused', [S.save.paused, S.save.pausedCreate]],
   ['Can’t reach the network', [S.unlock.networkError]],

@@ -31,7 +31,12 @@ export const S = {
     WRONG_ALGORITHM: 'This key type isn’t supported. Please use a FIDO2 security key such as a YubiKey 5.',
     WRONG_KEY: 'That’s a different key from the one we asked for. Please touch the key named on screen.',
     MISCONFIGURED: 'This site is set up incorrectly, so security keys can’t be used here.',
+    CRED_PROTECT_UNSUPPORTED:
+      'This key can’t be set to always ask for its PIN, so anyone who found it could use it without the PIN. CryoShield won’t use it. Please use a newer key (for example a YubiKey 5 with firmware 5.2 or newer) in a recent Chrome or Edge.',
   } as Record<string, string>,
+  /** Enrollment only: an enforcing browser reports "key can’t always require its PIN" the same way as a cancel. */
+  enrollCancelled:
+    'The key request was cancelled or timed out, or this key can’t be set to always ask for its PIN (CryoShield needs that). Try again, or use a newer key such as a YubiKey 5 with firmware 5.2 or newer.',
 
   create: {
     title: 'Create your vault',

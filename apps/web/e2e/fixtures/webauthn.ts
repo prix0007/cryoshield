@@ -9,7 +9,23 @@ export class VirtualKeys {
   private ids: string[] = [];
   constructor(private cdp: CDPSession) {}
 
-  static async attach(page: Page): Promise<VirtualKeys> {
+  /**
+   * enforce-credprotect-uv fallback: Chrome's CDP virtual authenticator does not implement CTAP 2.1 credProtect
+   * (no extension output, and enforceCredentialProtectionPolicy always fails with NotAllowedError; probed on the
+   * pinned Playwright Chromium). So, by default, a test-only init script makes the virtual keys behave like
+   * credProtect-capable keys:
+   * - every create() request's extensions are recorded on window.__credProtectRequests (so tests assert the app asked
+   *   for level 3 with enforcement);
+   * - the request is forwarded without the credProtect fields;
+   * - the returned authenticatorData gets the ED flag and the extension output {"credProtect": 3}, exactly as a
+   *   CTAP 2.1 key reports it.
+   * Pass { credProtect: false } to see the real browser behaviour (the app must refuse the key).
+   * This never ships: it exists only in Playwright.
+   */
+  static async attach(page: Page, opts: { credProtect?: boolean } = {}): Promise<VirtualKeys> {
+    const script = opts.credProtect ?? true ? CRED_PROTECT_SHIM : RECORD_ONLY;
+    await page.addInitScript(script); // future navigations
+    await page.evaluate(script); // and the page that is already open
     const cdp = await page.context().newCDPSession(page);
     await cdp.send('WebAuthn.enable', { enableUI: false });
     return new VirtualKeys(cdp);
@@ -48,3 +64,36 @@ export class VirtualKeys {
     return (await this.credentials(i)).reduce((n, c) => n + c.signCount, 0);
   }
 }
+
+const RECORD = `
+  if (window.__credProtectShim) return;
+  window.__credProtectShim = true;
+  window.__credProtectRequests = [];
+  const create = navigator.credentials.create.bind(navigator.credentials);
+`;
+const RECORD_ONLY = `(() => {${RECORD}
+  navigator.credentials.create = (o) => {
+    const x = (o && o.publicKey && o.publicKey.extensions) || {};
+    window.__credProtectRequests.push({ policy: x.credentialProtectionPolicy, enforce: x.enforceCredentialProtectionPolicy });
+    return create(o);
+  };
+})();`;
+const CRED_PROTECT_SHIM = `(() => {${RECORD}
+  navigator.credentials.create = async (o) => {
+    const pk = o && o.publicKey;
+    const x = (pk && pk.extensions) || {};
+    window.__credProtectRequests.push({ policy: x.credentialProtectionPolicy, enforce: x.enforceCredentialProtectionPolicy });
+    const { credentialProtectionPolicy, enforceCredentialProtectionPolicy, ...rest } = x;
+    const cred = await create({ ...o, publicKey: { ...pk, extensions: rest } });
+    if (credentialProtectionPolicy !== 'userVerificationRequired') return cred;
+    const ad = new Uint8Array(cred.response.getAuthenticatorData());
+    // CBOR {"credProtect": 3}: a1 6b "credProtect" 03
+    const ext = new Uint8Array([0xa1, 0x6b, ...new TextEncoder().encode('credProtect'), 0x03]);
+    const out = new Uint8Array(ad.length + ext.length);
+    out.set(ad);
+    out.set(ext, ad.length);
+    out[32] |= 0x80;
+    Object.defineProperty(cred.response, 'getAuthenticatorData', { value: () => out.slice().buffer });
+    return cred;
+  };
+})();`;

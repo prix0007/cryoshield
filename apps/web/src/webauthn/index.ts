@@ -5,6 +5,7 @@
  * - PRF outputs are returned to the caller, who owns (and must wipe) them. Nothing is stored.
  */
 import {
+  assertCredProtectUvRequired,
   assertUserVerified,
   deriveLocator,
   VaultError,
@@ -22,7 +23,9 @@ export type KeyErrorCode =
   | 'USER_NOT_VERIFIED'
   | 'WRONG_ALGORITHM'
   | 'WRONG_KEY'
-  | 'MISCONFIGURED';
+  | 'MISCONFIGURED'
+  /** The key did not confirm credProtect level 3: it could sign without its PIN (audit AA-H1). Never enrolled. */
+  | 'CRED_PROTECT_UNSUPPORTED';
 
 export class KeyError extends Error {
   override name = 'KeyError';
@@ -55,6 +58,8 @@ export interface EnrolledKey {
 }
 
 const TIMEOUT_MS = 120_000;
+/** KeyError message marking a CANCELLED that happened during enrollment (may also mean "no credProtect"). */
+export const ENROLL = 'enroll';
 const ES256 = -7;
 
 function defaultCredentials(): CredentialsApi {
@@ -65,6 +70,7 @@ function defaultCredentials(): CredentialsApi {
 function mapDomError(e: unknown): never {
   if (e instanceof KeyError) throw e;
   if (e instanceof VaultError && e.code === 'USER_NOT_VERIFIED') throw new KeyError('USER_NOT_VERIFIED');
+  if (e instanceof VaultError && e.code === 'CRED_PROTECT_UNSUPPORTED') throw new KeyError('CRED_PROTECT_UNSUPPORTED');
   const name = (e as { name?: string } | null)?.name;
   if (name === 'NotAllowedError' || name === 'AbortError') throw new KeyError('CANCELLED');
   if (name === 'InvalidStateError') throw new KeyError('DUPLICATE_KEY');
@@ -151,16 +157,24 @@ export async function enrollKey(
         excludeCredentials: params.exclude.map((id) => ({ type: 'public-key' as const, id: new Uint8Array(id) })),
         attestation: 'none',
         timeout: TIMEOUT_MS,
+        // PRF input + credProtect level 3 (userVerificationRequired) with enforcement (enforce-credprotect-uv).
         extensions: frag.extensions as AuthenticationExtensionsClientInputs,
       },
     })) as typeof cred;
   } catch (e) {
+    // An enforcing browser rejects a key without credProtect support exactly like a user cancel (NotAllowedError).
+    const name = (e as { name?: string } | null)?.name;
+    if (name === 'NotAllowedError' || name === 'AbortError') throw new KeyError('CANCELLED', ENROLL);
     mapDomError(e);
   }
-  if (!cred) throw new KeyError('CANCELLED');
+  if (!cred) throw new KeyError('CANCELLED', ENROLL);
   let prf: Uint8Array | undefined;
   try {
-    assertUserVerified(toBytes(cred.response.getAuthenticatorData()));
+    const authData = toBytes(cred.response.getAuthenticatorData());
+    assertUserVerified(authData);
+    // The key itself must refuse any assertion without its PIN; browsers do not report this in the client extension
+    // results, so it is read from the authenticator's extension output in authenticatorData.
+    assertCredProtectUvRequired(authData);
     const ext = cred.getClientExtensionResults();
     prf = prfFirst(ext);
     if (ext.prf?.enabled !== true && !prf) throw new KeyError('PRF_UNSUPPORTED_KEY');

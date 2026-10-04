@@ -88,8 +88,8 @@ describe('evaluatePrf (3.3)', () => {
     expect(new Uint8Array(f.calls[1]!.options.publicKey.allowCredentials[0].id)).toEqual(k.credId);
   });
 
-  it('rejects an assertion without the UV flag', async () => {
-    const i = f.addKey();
+  it('rejects an assertion without the UV flag (defence in depth, even from a key that ignores credProtect)', async () => {
+    const i = f.addKey({ enforcesCredProtect: false });
     await enrollKey({ ...rp, label: 'a', exclude: [] }, f.credentials);
     f.keys[i]!.opts.uv = false;
     await expect(evaluatePrf({ rpId: 'localhost' }, f.credentials)).rejects.toMatchObject({ code: 'USER_NOT_VERIFIED' });
