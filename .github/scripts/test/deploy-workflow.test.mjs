@@ -36,14 +36,14 @@ test('deploy.yml: the first job only runs on refs/heads/main', () => {
 
 test('deploy.yml: FLY_API_TOKEN only in the step-level env of steps `deploy` and `rollback`', () => {
   expectError('deploy.yml', replaceOnce(deploy, '          VITE_RP_NAME: ${{ vars.VITE_RP_NAME }}\n', '          VITE_RP_NAME: ${{ vars.VITE_RP_NAME }}\n          T: ${{ secrets.FLY_API_TOKEN }}\n'), /FLY_API_TOKEN/);
-  expectError('deploy.yml', replaceOnce(deploy, '    outputs:\n      previous_image:', '    env:\n      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}\n    outputs:\n      previous_image:'), /FLY_API_TOKEN/);
+  expectError('deploy.yml', replaceOnce(deploy, '    permissions:\n      contents: read # checkout only\n    steps:\n      - name: Checkout (fly.toml', '    env:\n      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}\n    permissions:\n      contents: read # checkout only\n    steps:\n      - name: Checkout (fly.toml'), /FLY_API_TOKEN/);
   expectError('deploy.yml', replaceOnce(deploy, 'env:\n  NODE_VERSION:', 'env:\n  FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}\n  NODE_VERSION:'), /FLY_API_TOKEN/);
   expectError('deploy.yml', replaceOnce(deploy, '        run: .github/scripts/deploy/rollback.sh\n', '        run: .github/scripts/deploy/rollback.sh "${{ secrets.FLY_API_TOKEN }}"\n'), /FLY_API_TOKEN/);
 });
 
-test('deploy.yml: jobs using secrets must run in environment production', () => {
-  const noEnv = replaceOnce(deploy, '    environment:\n      name: production\n      url: https://cryoshield.app\n    permissions:\n      contents: read # checkout only\n    outputs:', '    permissions:\n      contents: read # checkout only\n    outputs:');
-  expectError('deploy.yml', noEnv, /job 'deploy'.*environment production/);
+test('deploy.yml: jobs using secrets must run in environment production (or production-build for build config)', () => {
+  const noEnv = replaceOnce(deploy, '    environment:\n      name: production\n      url: https://cryoshield.app\n', '');
+  expectError('deploy.yml', noEnv, /job 'release'.*environment production/);
   expectError('deploy.yml', deploy.replaceAll('      name: production\n', '      name: staging\n'), /environment.*production/);
 });
 
@@ -68,19 +68,19 @@ test('no other workflow may use FLY_API_TOKEN or environment production', () => 
 // ---- Security review (add-continuous-deploy) ----
 
 test('H1: jobs holding FLY_API_TOKEN run no build tooling and no third-party code', () => {
-  const tokenJob = parse(deploy).jobs.deploy;
+  const tokenJob = parse(deploy).jobs.release;
   assert.ok(JSON.stringify(tokenJob).includes('FLY_API_TOKEN'));
   const withBuild = replaceOnce(deploy, '      - name: Deploy the built context (flyctl only)\n', '      - name: Sneaky install\n        run: pnpm install --frozen-lockfile\n      - name: Deploy the built context (flyctl only)\n');
-  expectError('deploy.yml', withBuild, /job 'deploy'.*no node, npm, pnpm/);
+  expectError('deploy.yml', withBuild, /job 'release'.*no node, npm, pnpm/);
   const withAction = replaceOnce(deploy, '      - name: Deploy the built context (flyctl only)\n', '      - name: Setup\n        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0\n      - name: Deploy the built context (flyctl only)\n');
-  expectError('deploy.yml', withAction, /job 'deploy'.*actions\/setup-node/);
+  expectError('deploy.yml', withAction, /job 'release'.*actions\/setup-node/);
 });
 
 test('H1: the build job never sees the Fly token and the deploy job only ships the build artifact', () => {
   const wf = parse(deploy);
   assert.doesNotMatch(JSON.stringify(wf.jobs.build), /FLY_API_TOKEN/);
   assert.match(String(wf.jobs.build.steps.find((s) => s.id === 'build')?.run), /deploy\.sh --build-only/);
-  assert.ok(wf.jobs.deploy.steps.some((s) => String(s.uses).startsWith('actions/download-artifact@')));
+  assert.ok(wf.jobs.release.steps.some((s) => String(s.uses).startsWith('actions/download-artifact@')));
 });
 
 test('M3: environment names are case-insensitive and may not be expressions', () => {
@@ -94,19 +94,15 @@ test('M3: deploy.yml allows only exact secret expressions, each in its own step'
   expectError('deploy.yml', inject("secrets[format('FLY_{0}','API_TOKEN')]"), /secret/);
   expectError('deploy.yml', inject('toJSON(secrets)'), /secret/);
   expectError('deploy.yml', inject('secrets.FLY_API_TOKEN'), /FLY_API_TOKEN/);
-  const bundlerElsewhere = replaceOnce(deploy, '          PREVIOUS_IMAGE: ${{ needs.deploy.outputs.previous_image }}\n', '          PREVIOUS_IMAGE: ${{ needs.deploy.outputs.previous_image }}\n          B: ${{ secrets.VITE_BUNDLER_URL }}\n');
+  const bundlerElsewhere = replaceOnce(deploy, '          PREVIOUS_IMAGE: ${{ steps.deploy.outputs.previous_image }}\n', '          PREVIOUS_IMAGE: ${{ steps.deploy.outputs.previous_image }}\n          B: ${{ secrets.VITE_BUNDLER_URL }}\n');
   expectError('deploy.yml', bundlerElsewhere, /VITE_BUNDLER_URL/);
 });
 
-test('M1/L3/ECC #2: smoke and rollback also run when deploy failed OR was cancelled after fly deploy started', () => {
+test('M1/L3/ECC #2: rollback also runs when the release failed OR was cancelled after fly deploy started (same job)', () => {
   const wf = parse(deploy);
-  const smokeIf = String(wf.jobs.smoke.if).replace(/\s+/g, ' ');
-  assert.match(smokeIf, /always\(\)/);
-  assert.match(smokeIf, /needs\.deploy\.result == 'success' \|\| needs\.deploy\.outputs\.fly_started == 'true'/);
-  const rollback = wf.jobs.smoke.steps.find((s) => s.id === 'rollback');
-  assert.match(String(rollback.if), /failure\(\)/);
-  assert.match(String(rollback.if), /needs\.deploy\.result != 'success'/);
-  assert.match(String(rollback.if), /fly_started/);
+  const rollback = wf.jobs.release.steps.find((s) => s.id === 'rollback');
+  assert.match(String(rollback.if), /failure\(\) \|\| cancelled\(\)/);
+  assert.match(String(rollback.if), /steps\.deploy\.outputs\.fly_started == 'true'/);
 });
 
 test('ECC #1: detect treats ANY failed earlier Deploy run of the commit as previously failed', () => {
@@ -121,8 +117,8 @@ test('ECC #3: no || or `or` in any deploy.yml job condition', () => {
 });
 
 test('ECC #4: every job with needs must be gated on needs.detect.outputs.deploy', () => {
-  const ungated = replaceOnce(deploy, "      && needs.detect.outputs.deploy == 'true'\n      && (needs.deploy.result", "      && (needs.deploy.result");
-  expectError('deploy.yml', ungated, /job 'smoke'.*needs\.detect\.outputs\.deploy == 'true'/);
+  const ungated = replaceOnce(deploy, "    needs: [detect, build, supersede]\n    if: needs.detect.outputs.deploy == 'true'\n", "    needs: [detect, build, supersede]\n    if: always()\n");
+  expectError('deploy.yml', ungated, /job 'release'.*needs\.detect\.outputs\.deploy == 'true'/);
 });
 
 test('ECC #7: token-holding jobs: every run step pinned by digest, no custom shell', () => {
