@@ -121,20 +121,37 @@ function allowedUrl(raw) {
   if (u.hostname === 'cryoshield.app' || u.hostname === 'www.cryoshield.app' || u.hostname === 'docs.github.com') return true;
   return u.hostname === 'github.com' && /^\/prix0007\/cryoshield(\/|$)/.test(u.pathname);
 }
-const SECRET_REQUEST =
-  /\b(enter|type|paste|post|share|send|provide|give|upload|submit|reply with|tell us)\b[^.!?\n]{0,60}\b(seed|recovery|mnemonic|private key|secret key|phrase|words|pin|passphrase|2fa|backup codes?)\b/i;
-const NEGATION = /\b(never|not|don't|do not|no)\b/i;
+const REQUEST_VERB = /\b(enter|type|paste|post|share|send|provide|give|upload|submit|reply with|tell us)\b/gi;
+const SECRET_NOUN =
+  /\b(seed|mnemonic|private keys?|secret keys?|(recovery|seed|secret|backup|vault) (phrase|words|codes?)|\d{1,2}[- ](seed |recovery |backup )?words|pins?|passphrase|2fa (codes?|secrets?)|backup codes?)\b/i;
+// A sentence asks for a secret when a request verb is followed (within 60 chars) by a secret noun, unless THAT verb
+// is directly negated ("never share", "do not post", "don't paste") (re-review M-a, L-a).
+function asksForSecret(sentence) {
+  for (const m of sentence.matchAll(REQUEST_VERB)) {
+    const before = sentence.slice(0, m.index);
+    const after = sentence.slice(m.index, m.index + m[0].length + 60);
+    if (!SECRET_NOUN.test(after)) continue;
+    if (/\b(never|not|don't|do not|dont)\s+$/i.test(before)) continue;
+    return true;
+  }
+  return false;
+}
 
 export function guard(text, { token } = {}) {
   const raw = String(text ?? '');
   const t = normalize(raw);
-  const urls = t.match(/https?:\/\/[^\s)<>\]"'`]+/gi) ?? [];
+  // Links with a scheme, www. hosts (GitHub autolinks them), protocol-relative //host (markdown, href, src) (re-review M-b).
+  const urls = [
+    ...(t.match(/https?:\/\/[^\s)<>\]"'`]+/gi) ?? []),
+    ...(t.match(/(?<![\w./-])www\.[^\s)<>\]"'`]+/gi) ?? []).map((u) => `https://${u}`),
+    ...[...t.matchAll(/(?:\]\(|\b(?:href|src)\s*=\s*["']?)\s*(\/\/[^\s)<>\]"'`]+)/gi)].map((m) => `https:${m[1]}`),
+  ];
   const reasons = [
     ...CREDENTIAL_SHAPES.filter(([, re]) => re.test(t)).map(([c]) => c),
     ...(token && token.length >= 8 && raw.includes(token) ? ['exact-token'] : []),
     ...DETECTORS.filter(([, f]) => f(t)).map(([c]) => c),
     ...(urls.some((u) => !allowedUrl(u)) ? ['foreign-link'] : []),
-    ...(t.split(/[.!?\n]+/).some((sentence) => SECRET_REQUEST.test(sentence) && !NEGATION.test(sentence)) ? ['secret-request'] : []),
+    ...(t.split(/[.!?\n]+/).some(asksForSecret) ? ['secret-request'] : []),
   ];
   return { ok: reasons.length === 0, reasons };
 }
@@ -276,12 +293,16 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
       writeFileSync(join(values.out, 'issue.txt'), `${String(issue?.title ?? '')}\n\n${String(issue?.body ?? '')}\n`);
       JSON.parse(read(values.comments)).forEach((c, i) => writeFileSync(join(values.out, splitName(i)), `${String(c?.body ?? '')}\n`));
     } else if (cmd === 'prepare') {
-      const { values } = parseArgs({ args: rest, options: { issue: { type: 'string' }, comments: { type: 'string' }, out: { type: 'string' }, 'gitleaks-report': { type: 'string' } } });
+      const { values } = parseArgs({ args: rest, options: { issue: { type: 'string' }, comments: { type: 'string' }, out: { type: 'string' }, 'gitleaks-report': { type: 'string' }, 'gitleaks-exit': { type: 'string', default: '0' } } });
       const report = values['gitleaks-report'] && existsSync(values['gitleaks-report']) ? JSON.parse(read(values['gitleaks-report']) || '[]') : [];
-      const leakFiles = new Set((Array.isArray(report) ? report : []).map((f) => basename(String(f?.File ?? ''))));
+      const leakFiles = new Set((Array.isArray(report) ? report : []).map((f) => basename(String(f?.File ?? ''))).filter(Boolean));
+      if (Number(values['gitleaks-exit']) === GITLEAKS_LEAK_EXIT && leakFiles.size === 0) {
+        throw new Error('gitleaks reported a leak but no flagged file could be placed; refusing to continue (fail closed)');
+      }
       const r = prepare(JSON.parse(read(values.issue)), JSON.parse(read(values.comments)), { leakFiles });
       if (!r.ok) {
         console.error(`::error title=triage::the issue no longer passes the pre-screen (${r.verdict}); not sending it to the model`);
+        process.stdout.write(`${JSON.stringify({ verdict: r.verdict })}\n`);
         process.exit(3);
       }
       writeFileSync(join(values.out, 'issue.md'), r.issue);

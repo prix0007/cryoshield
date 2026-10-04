@@ -30,7 +30,7 @@
     "ack/Acknowledge the issue (once)": "29a3a848fa999461994f83b2b7e8716ed04ff552d067f7a6320994f5906718e5",
     "screen/Save the issue text to a file (never echoed)": "0839665b3d5c8d62141f81fd3fbbbf8e511ba937023696d19621991b5e2422a8",
     "screen/Install gitleaks (pinned, checksum-verified)": "2b3c26bc85cfc885e1e5378183a6dc9baa801af75ce1595fcb030f75ceb36f91",
-    "screen/gitleaks over the issue text (exit code only, all output discarded)": "65d02b324c188bc88456a56f53446aac9a49ab86b8bbd07451d183ec03c81e67",
+    "screen/gitleaks over the issue text (exit code only, all output discarded)": "de8e3c1e50d687849a8b714afe1f7d3db26e0af7d9f36526393e38d1a173d166",
     "screen/Pre-screen (no model; prints only the verdict)": "0793bdda6a335523bcf85ace93d3dcd32e0acce57d5b9676ef9dbb6205fdb393",
     "screen/Cost caps (20 per UTC day, 1 per author per hour)": "f4fd0ade64f2294ed3c7bdc2df279f9105bc35de2d0d72560ab8c1905d710af5",
     "screen/Post the fixed notice and label (sensitive, security, privacy, capped)": "8cc2808fd8e13b0f1ba6b8d0ece3fd9ce582057de957efdd2420624fe6ed9cd0",
@@ -38,7 +38,7 @@
     "diagnose/Remove any stray copy of the plugin directory": "18674c450dd10c977107cab59fe527de67d06e8939e672e9eeafaaf7b73f82ce",
     "diagnose/Verify the plugin and move it out of the workspace": "f23e15e41be063195802e523d1f2e4a580b4ff029040a908ba5e9d237daec542",
     "diagnose/Install gitleaks (pinned, checksum-verified)": "2b3c26bc85cfc885e1e5378183a6dc9baa801af75ce1595fcb030f75ceb36f91",
-    "diagnose/Collect the issue for the agent (screened again; the agent gets no GitHub access)": "254156c74475de214aa786c185a02d9b30aee750d9a586d30e92982fe28895ff",
+    "diagnose/Collect the issue for the agent (screened again; the agent gets no GitHub access)": "bcbcbe297c616821ecda6f0cc0386723fb0ab827d218e723e8d4517f183d8652",
     "diagnose/Install bubblewrap for credential isolation": "c521dcbdf185557935e139faeab293abfa7cd5b1fbe7ff3828adb4279665c0c9",
     "diagnose/Guard and post the diagnosis (update in place), apply allow-listed labels": "02ed331fdf2d2e89472c64c44d77453f888c9b1985c36b28e2d662a94f0e0351"
   }

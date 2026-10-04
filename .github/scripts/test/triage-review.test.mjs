@@ -96,6 +96,41 @@ test('M4: the guard refuses foreign links and requests for secrets; mentions are
   assert.match(composeComment({ diagnosis: 'cc @someone', previous: null, now, author: 'alice', issue: 1 }), /`@someone`/);
 });
 
+test('re-review M-a/L-a: negation only exempts when it directly precedes the verb; "recovery tool" is not a secret', () => {
+  for (const bad of ['Do not hesitate to paste your 24 seed words below.', 'Not sure why, but please send your PIN.', 'Kindly share the recovery phrase so we can test.']) {
+    assert.equal(guard(bad).ok, false, bad);
+  }
+  for (const good of ['Could you share which browser you used and whether the recovery tool printed an error?',
+    'Never share your seed phrase or PIN.', 'Do not post your recovery words here.', "Please don't paste any recovery codes."]) {
+    assert.deepEqual(guard(good), { ok: true, reasons: [] }, good);
+  }
+});
+
+test('re-review M-b: www and protocol-relative links and href/src attributes are checked against the allowlist', () => {
+  for (const bad of ['Restore at www.cryoshie1d-recovery.app', '[docs](//evil.example/x)', '<a href="//evil.example">x</a>', '<img src="https://evil.example/p.png">']) {
+    assert.equal(guard(bad).ok, false, bad);
+  }
+  for (const good of ['See www.cryoshield.app/architecture', '[spec](https://github.com/prix0007/cryoshield/tree/main/openspec)']) {
+    assert.deepEqual(guard(good), { ok: true, reasons: [] }, good);
+  }
+});
+
+test('re-review L-c: prepare reports the verdict on abort, and fails closed when gitleaks found a leak it cannot place', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'lc-'));
+  const issueFile = join(dir, 'i.json');
+  const commentsFile = join(dir, 'c.json');
+  writeFileSync(commentsFile, '[]');
+  writeFileSync(issueFile, JSON.stringify({ title: 'x', body: V12, labels: [], authorAssociation: 'NONE' }));
+  const r = spawnSync(process.execPath, [script, 'prepare', '--issue', issueFile, '--comments', commentsFile, '--out', dir], { encoding: 'utf8' });
+  assert.equal(r.status, 3);
+  assert.deepEqual(JSON.parse(r.stdout), { verdict: 'sensitive' });
+  writeFileSync(issueFile, JSON.stringify({ title: 'x', body: 'fine', labels: [], authorAssociation: 'NONE' }));
+  const report = join(dir, 'gl.json');
+  writeFileSync(report, '[]');
+  const r2 = spawnSync(process.execPath, [script, 'prepare', '--issue', issueFile, '--comments', commentsFile, '--out', dir, '--gitleaks-report', report, '--gitleaks-exit', '42'], { encoding: 'utf8' });
+  assert.equal(r2.status, 2);
+});
+
 test('L1: zero-width and soft-hyphen tricks, fullwidth letters, grouped hex and hex in query strings are caught', () => {
   const zw = V12.split(' ').map((w) => w.slice(0, 2) + '​' + w.slice(2)).join(' ');
   assert.equal(screen(zw).verdict, 'sensitive');

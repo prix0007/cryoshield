@@ -65,7 +65,7 @@
 
 ## 5. Security review
 
-- [ ] 5.1 The security reviewer reviews this change, covering:
+- [x] 5.1 The security reviewer reviews this change, covering:
   - the trigger and actor gating;
   - the secret-leak paths (logs, comments, model input, labels, artifacts);
   - pre-screen completeness and its false-negative modes;

@@ -207,3 +207,14 @@ Every fix below was test-first. The regression tests are in `test/triage-review.
 2. **Comments were not paginated.** Fixed: they are fetched with `--paginate`, and the last 20 kept.
 3. **Run-step `env` was not pinned.** Fixed: privileged workflows may not set interpreter-hijacking env keys (`NODE_OPTIONS`, `BASH_ENV`, `ENV`, `LD_*`, `DYLD_*`, `PATH`, `PYTHONPATH`, `GIT_*` and similar) at workflow, job or step level.
 4. **`apply.sh` parsed `labels.json` with tab separators.** Fixed: it uses the ASCII unit separator, so empty fields are kept and tabs in descriptions are not mangled.
+
+## Re-review (4dac9fb): APPROVE WITH FIXES, all fixed
+
+Every fix was test-first, and the gitleaks behaviour was checked with the real 8.30.1 binary.
+
+- **M-a:** a negation exempts a request for secrets only when it directly precedes the request verb ("never share", "do not post", "don't paste"). "Do not hesitate to paste your seed words" is refused.
+- **M-b:** the link allowlist also covers `www.` hosts (GitHub autolinks them), protocol-relative `](//…)` links, and `href`/`src` attributes.
+- **L-a:** the secret-noun list is narrower: "recovery/seed/backup phrase|words|codes", "N words", seed, mnemonic, PIN, keys, passphrase, 2FA codes. "Recovery tool" no longer triggers. The prompt tells the agent exactly which links are allowed.
+- **L-b:** both triage scans use `--ignore-gitleaks-allow`. The self-test proves an inline `gitleaks:allow` still exits 42.
+- **L-c:** if the issue changes after the screen and no longer passes it, `diagnose` posts the fixed sensitive or security notice and label, deletes the in-progress placeholder, and fails loudly. `prepare` fails closed when gitleaks reports a leak (42) that it cannot match to a file.
+- **Accepted:** a run that reads the clock earlier but reserves later can slip past the cap by a few seconds.

@@ -106,7 +106,7 @@ jobs:
         run: |
           set +e
           "${RUNNER_TEMP}/gitleaks" dir "${RUNNER_TEMP}/triage-in" --no-banner --redact --log-level error \
-            --exit-code 42 --report-format json --report-path "${RUNNER_TEMP}/gitleaks-screen.json" > /dev/null 2>&1
+            --exit-code 42 --ignore-gitleaks-allow --report-format json --report-path "${RUNNER_TEMP}/gitleaks-screen.json" > /dev/null 2>&1
           echo "rc=$?" >> "${GITHUB_OUTPUT}"
           rm -f "${RUNNER_TEMP}/gitleaks-screen.json"
       - name: Pre-screen (no model; prints only the verdict)
@@ -268,12 +268,33 @@ jobs:
           node .github/scripts/triage.mjs split --issue "$d/raw-issue.json" --comments "$d/raw-comments.json" --out "$d/split"
           set +e
           "${RUNNER_TEMP}/gitleaks" dir "$d/split" --no-banner --redact --log-level error \
-            --exit-code 42 --report-format json --report-path "$d/gitleaks.json" > /dev/null 2>&1
+            --exit-code 42 --ignore-gitleaks-allow --report-format json --report-path "$d/gitleaks.json" > /dev/null 2>&1
           rc=$?
           set -e
           if [ "$rc" != "0" ] && [ "$rc" != "42" ]; then echo "::error::gitleaks failed (exit $rc)"; exit 1; fi
-          node .github/scripts/triage.mjs prepare --issue "$d/raw-issue.json" --comments "$d/raw-comments.json" \
-            --out "$d" --gitleaks-report "$d/gitleaks.json"
+          set +e
+          verdict_json="$(node .github/scripts/triage.mjs prepare --issue "$d/raw-issue.json" --comments "$d/raw-comments.json" \
+            --out "$d" --gitleaks-report "$d/gitleaks.json" --gitleaks-exit "$rc")"
+          prc=$?
+          set -e
+          if [ "$prc" = "3" ]; then
+            # Edited after the screen into something we must not send to the model (re-review L-c): post the fixed
+            # notice and label, remove the in-progress placeholder, and stop loudly.
+            rm -rf "$d/split" "$d/gitleaks.json" "$d/raw-issue.json" "$d/raw-comments.json"
+            case "$(jq -r .verdict <<<"$verdict_json")" in
+              security) text=security; label=security ;;
+              *) text=sensitive; label=sensitive-content ;;
+            esac
+            node .github/scripts/triage.mjs text "$text" > "$d/notice.md"
+            gh issue comment "$ISSUE" -R "${GITHUB_REPOSITORY}" --body-file "$d/notice.md"
+            gh issue edit "$ISSUE" -R "${GITHUB_REPOSITORY}" --add-label "$label"
+            gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${ISSUE}/comments?per_page=100" \
+              --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | startswith("<!-- cryoshield-triage -->"))) | .id' |
+              while IFS= read -r cid; do gh api -X DELETE "repos/${GITHUB_REPOSITORY}/issues/comments/${cid}" > /dev/null; done
+            echo "::error::The issue changed after the screen and no longer passes it; notice posted, no diagnosis."
+            exit 1
+          fi
+          [ "$prc" = "0" ] || { echo "::error::prepare failed (exit $prc)"; exit 1; }
           rm -rf "$d/split" "$d/gitleaks.json" "$d/raw-issue.json" "$d/raw-comments.json" "$d/diagnosis.md" "$d/labels.txt"
       # Claude Code's subprocess credential scrub needs bubblewrap; Ubuntu 24.04 blocks the unprivileged user
       # namespaces it uses (AppArmor); lifting that on this throwaway VM is safe. The last line proves it works.
@@ -328,6 +349,8 @@ jobs:
             3. Write /home/runner/work/_temp/triage/labels.txt: comma-separated labels chosen ONLY from:
                bug, enhancement, question, docs, needs-repro, web, contracts, crypto, recovery-tool, ci,
                duplicate?, good first issue (anything else is dropped).
+            Links: only https://github.com/prix0007/cryoshield/..., https://cryoshield.app/... and https://docs.github.com/...
+            are allowed (anything else makes the whole diagnosis be discarded); refer to other sources by name.
             Never include secrets, tokens, keys or long hex strings. Never ask anyone for seed phrases, recovery
             codes, PINs, private keys or 2FA secrets; if the reporter seems to need to share sensitive details,
             point them to https://github.com/prix0007/cryoshield/security/advisories/new instead.
