@@ -136,18 +136,20 @@ class Recovery:
         if ar is None:
             return []
         self.ui.info("Searching the Arweave permanent archive…")
-        # One record per (GraphQL server, tx) (REC-M2). Identical (vaultId, blob) from several servers
-        # merge into one candidate whose support counts the distinct servers.
-        merged: dict[tuple[bytes | None, bytes], tuple[ArweaveTx, set[str]]] = {}
-        for tx in txs_fn(ar):
-            blob = ar.fetch(tx)
-            if blob is None:
-                continue
+        # One record per (GraphQL server, tx) (REC-M2), downloaded within a budget and interleaved across
+        # servers. Identical (vaultId, blob) from several servers merge into one candidate whose support
+        # counts the distinct servers and whose height is the MINIMUM any of them claimed, so one server
+        # cannot lift a copy by inflating its height (ECC review, PR #22).
+        merged: dict[tuple[bytes | None, bytes], tuple[ArweaveTx, set[str], int | None]] = {}
+        for tx, blob in ar.fetch_all(txs_fn(ar)):
             key = (tx.vault_id, blob)
             if key in merged:
-                merged[key][1].add(tx.server)
+                first, servers, height = merged[key]
+                servers.add(tx.server)
+                heights = [x for x in (height, tx.height) if x is not None]
+                merged[key] = (first, servers, min(heights) if heights else None)
             else:
-                merged[key] = (tx, {tx.server})
+                merged[key] = (tx, {tx.server}, tx.height)
         return [
             Candidate(
                 blob,
@@ -156,20 +158,20 @@ class Recovery:
                 vid,
                 tx.version,
                 classify(blob, self._hashes(vid)),
-                tx.height,
+                height,
                 support=len(servers),
             )
-            for (vid, blob), (tx, servers) in merged.items()
+            for (vid, blob), (tx, servers, height) in merged.items()
         ]
 
     def _arweave_by_locators(self, locators: Sequence[bytes]) -> list[Candidate]:
         def find(ar: Arweave) -> list[ArweaveTx]:
             txs: list[ArweaveTx] = []
-            seen: set[str] = set()
+            seen: set[tuple[str, str]] = set()
             for loc in locators:
                 for t in ar.find_by_locator(loc):
-                    if t.id not in seen:
-                        seen.add(t.id)
+                    if (t.server, t.id) not in seen:  # per-server records stay separate (REC-M2)
+                        seen.add((t.server, t.id))
                         txs.append(t)
             return txs
 
@@ -236,12 +238,16 @@ class Recovery:
                     ignored += 1
                 continue
             log.debug("selected candidate from %s (%s), ignored %d", cand.source, cand.origin, ignored)
-            picked = self._resolve_ties(cand, cands)
-            if picked is not cand:
-                wipe(secret)
-                assert picked.vault_id is not None
-                secret = open_decoded(decode_blob(picked.blob), self._keys(), picked.vault_id)
-                cand = picked
+            try:
+                picked = self._resolve_ties(cand, cands)
+                if picked is not cand:
+                    wipe(secret)
+                    assert picked.vault_id is not None
+                    secret = open_decoded(decode_blob(picked.blob), self._keys(), picked.vault_id)
+                    cand = picked
+            except BaseException:
+                wipe(secret)  # tie prompt cancelled / non-interactive (exit 12) / re-open failed
+                raise
             return Result(secret, cand, ignored), pending
         return None, pending
 
@@ -268,7 +274,14 @@ class Recovery:
         if not rivals:
             return chosen
         vid = (chosen.vault_id or b"").hex()
-        tied = [r for r in rivals if r.rank == chosen.rank]
+        # Exact rank ties need a choice. So does ANY unverified Arweave rival of the same freshness:
+        # GraphQL support and block height are server-controlled, so they must not decide alone.
+        tied = [
+            r
+            for r in rivals
+            if r.rank == chosen.rank
+            or (r.freshness == chosen.freshness and "arweave" in (r.source, chosen.source))
+        ]
         if not tied:
             self._notes.append(
                 f"Several different copies of vault 0x{vid} decrypt with this key and the blockchain could "

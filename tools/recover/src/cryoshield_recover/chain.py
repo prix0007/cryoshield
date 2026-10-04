@@ -39,11 +39,25 @@ HISTORY_DEADLINE = 60.0
 HEAD_TOLERANCE = 5_000
 
 
+_DEFAULT_PORTS = {"https": 443, "http": 80}
+
+
 def normalize_url(url: str) -> str:
-    """Canonical form used to count distinct RPCs: lower-case scheme and host, no trailing slash."""
+    """Canonical endpoint identity for counting distinct RPCs (quorum AND support use this):
+    lower-case scheme and host, no trailing dot, default port dropped, no trailing slash, query kept.
+    Two paths on one host are two endpoints."""
     p = urlparse(url.strip())
+    scheme = p.scheme.lower()
+    host = (p.hostname or "").rstrip(".").lower()
+    if ":" in host:
+        host = f"[{host}]"
+    try:
+        port = p.port
+    except ValueError:
+        port = None
+    netloc = host if port in (None, _DEFAULT_PORTS.get(scheme)) else f"{host}:{port}"
     path = p.path.rstrip("/")
-    return f"{p.scheme.lower()}://{p.netloc.lower()}{path}" + (f"?{p.query}" if p.query else "")
+    return f"{scheme}://{netloc}{path}" + (f"?{p.query}" if p.query else "")
 
 
 def distinct_urls(urls: Sequence[str]) -> list[str]:
@@ -89,6 +103,9 @@ class Registry:
         self._all = [client_factory(u) for u in distinct_urls(urls)]
         self._usable: list[JsonRpcClient] | None = None
         self._history: dict[bytes, list[tuple[int, bytes]] | None] = {}
+        # One history budget per Registry run (all vault ids, heads and pages), and cached heads.
+        self._deadline: float | None = None
+        self._heads: list[tuple[JsonRpcClient, int]] | None = None
 
     @property
     def quorum(self) -> int:
@@ -173,17 +190,19 @@ class Registry:
                     self.warnings.append(f"RPC {c.host}: discarded getVault answer ({e})")
                     continue
                 if blob:
-                    out.append((c.host, vid, blob, version))
+                    out.append((normalize_url(getattr(c, "url", c.host)), vid, blob, version))
             return out
 
-        hosts: dict[tuple[bytes, bytes], list[str]] = {}
+        # Support is counted by normalised endpoint, exactly like the quorum (ECC review, PR #22).
+        endpoints: dict[tuple[bytes, bytes], list[str]] = {}
         versions: dict[tuple[bytes, bytes], int] = {}
         for answers in self._map(one, self.usable(), []):
-            for host, vid, blob, version in answers:
+            for endpoint, vid, blob, version in answers:
                 key = (vid, blob)
-                if host not in hosts.setdefault(key, []):
-                    hosts[key].append(host)
+                if endpoint not in endpoints.setdefault(key, []):
+                    endpoints[key].append(endpoint)
                 versions.setdefault(key, version)  # display only, never used for ranking
+        hosts = {k: [urlparse(e).netloc or e for e in v] for k, v in endpoints.items()}
         result = [
             Candidate(
                 blob,
@@ -250,8 +269,17 @@ class Registry:
         """
         if vault_id in self._history:
             return self._history[vault_id]
-        deadline = time.monotonic() + HISTORY_DEADLINE
-        clients = self._plausible_heads(self.usable())
+        if self._deadline is None:
+            self._deadline = time.monotonic() + HISTORY_DEADLINE
+        deadline = self._deadline
+        if time.monotonic() > deadline:
+            self.warnings.append(
+                f"history of vault 0x{vault_id.hex()}: lookup deadline exceeded; cannot confirm which "
+                "version is current"
+            )
+            self._history[vault_id] = None
+            return None
+        clients = self._plausible_heads(self.usable(), deadline)
 
         def one(item: tuple[JsonRpcClient, int]) -> list[tuple[int, bytes]] | None:
             c, to_block = item
@@ -284,22 +312,34 @@ class Registry:
         self._history[vault_id] = result
         return result
 
-    def _plausible_heads(self, clients: list[JsonRpcClient]) -> list[tuple[JsonRpcClient, int]]:
-        """Read every RPC's head; refuse heads far from the median (REC-L1). All accepted RPCs page to
-        the same ``to`` block (the median), so their histories are comparable."""
+    def _plausible_heads(
+        self, clients: list[JsonRpcClient], deadline: float
+    ) -> list[tuple[JsonRpcClient, int]]:
+        """Read every RPC's head once per run; refuse heads far from the median (REC-L1).
+
+        The median is ONLY a plausibility filter. Every accepted RPC pages to the HIGHEST accepted head
+        (ECC review, PR #22): a lagging or lying low-head RPC then misses later events and its history
+        DISAGREES (-> unverifiable), instead of truncating an agreed history so an old copy looks current.
+        """
+        if self._heads is not None:
+            return self._heads
 
         def head(c: JsonRpcClient) -> tuple[JsonRpcClient, int] | None:
             try:
-                return c, hex_to_int(c.call("eth_blockNumber", []))
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise RpcError("history lookup deadline exceeded")
+                return c, hex_to_int(c.call("eth_blockNumber", [], timeout=remaining))
             except RpcError as e:
                 self.warnings.append(f"RPC {c.host}: event history unavailable ({e})")
                 return None
 
         heads = [h for h in self._map(head, clients) if h is not None]
         if not heads:
-            return []
+            self._heads = []
+            return self._heads
         ref = int(statistics.median_low(h for _, h in heads))
-        accepted: list[tuple[JsonRpcClient, int]] = []
+        plausible: list[tuple[JsonRpcClient, int]] = []
         for c, h in heads:
             if abs(h - ref) > HEAD_TOLERANCE:
                 self.warnings.append(
@@ -307,8 +347,10 @@ class Registry:
                     "ignored for event history"
                 )
             else:
-                accepted.append((c, ref))
-        return accepted
+                plausible.append((c, h))
+        to_block = max(h for _, h in plausible)
+        self._heads = [(c, to_block) for c, _ in plausible]
+        return self._heads
 
     def _logs(
         self, c: JsonRpcClient, vault_id: bytes, latest: int, deadline: float
@@ -339,6 +381,7 @@ class Registry:
                             "topics": topics,
                         }
                     ],
+                    timeout=max(0.001, deadline - time.monotonic()),
                 )
             except RpcError as e:
                 if is_range_error(e) and chunk > MIN_LOG_CHUNK:

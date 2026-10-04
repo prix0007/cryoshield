@@ -18,7 +18,8 @@ from __future__ import annotations
 
 import re
 import time
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -32,7 +33,12 @@ _HEX32 = re.compile(r"^0x[0-9a-f]{64}$")
 
 PAGE_SIZE = 50
 ARWEAVE_MAX_PAGES = 10  # newest-first pages per server per query (plus one oldest-first page)
-ARWEAVE_DEADLINE = 60.0  # seconds for one search across all servers
+# Each GraphQL server gets its OWN time budget and servers are queried in parallel, so a slow or hostile
+# server cannot starve the honest ones (ECC review, PR #22).
+ARWEAVE_SERVER_DEADLINE = 30.0
+# Downloads: at most this many distinct tx ids per search, within this many seconds (ECC review, PR #22).
+MAX_FETCHES = 40
+FETCH_DEADLINE = 60.0
 _MAX_CURSOR = 512
 
 QUERY = (
@@ -85,15 +91,23 @@ class Arweave:
         self._data: dict[str, bytes | None] = {}
 
     def _query(self, tags: list[dict[str, Any]]) -> list[ArweaveTx]:
-        """All servers' records, NOT merged across servers (REC-M2)."""
-        deadline = time.monotonic() + ARWEAVE_DEADLINE
-        records: list[ArweaveTx] = []
-        for url in self.graphql:
+        """All servers' records, NOT merged across servers (REC-M2). Servers run in parallel, each
+        within its own budget; per server the oldest page comes first (it cannot be buried by newer
+        spam), then newest-first pages."""
+
+        def server(url: str) -> list[ArweaveTx]:
+            deadline = time.monotonic() + ARWEAVE_SERVER_DEADLINE
             per_server: dict[str, ArweaveTx] = {}
-            for sort, pages in (("HEIGHT_DESC", ARWEAVE_MAX_PAGES), ("HEIGHT_ASC", 1)):
+            for sort, pages in (("HEIGHT_ASC", 1), ("HEIGHT_DESC", ARWEAVE_MAX_PAGES)):
                 for tx in self._pages(url, tags, sort, pages, deadline):
                     per_server.setdefault(tx.id, tx)  # one record per (server, tx id)
-            records.extend(per_server.values())
+            return list(per_server.values())
+
+        if not self.graphql:
+            return []
+        with ThreadPoolExecutor(max_workers=min(8, len(self.graphql))) as ex:
+            results = list(ex.map(server, self.graphql))
+        records = [tx for txs in results for tx in txs]
         return sorted(records, key=lambda t: -(t.height or 0))
 
     def _pages(
@@ -102,10 +116,12 @@ class Arweave:
         host = host_of(url)
         out: list[ArweaveTx] = []
         after: str | None = None
+        has_next = False
         for _ in range(max_pages):
-            if time.monotonic() > deadline:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
                 self.warnings.append(f"Arweave search {host}: time budget exhausted")
-                break
+                return out
             variables: dict[str, Any] = {"tags": tags, "first": PAGE_SIZE, "sort": sort}
             if after is not None:
                 variables["after"] = after
@@ -113,22 +129,27 @@ class Arweave:
                 resp = post_json(
                     url,
                     {"query": QUERY, "variables": variables},
-                    timeout=self.timeout,
+                    timeout=max(0.001, min(self.timeout, remaining)),
                     max_bytes=MAX_GRAPHQL_RESPONSE,
                 )
                 txs, has_next, cursor = self._parse(resp, host)
             except NetError as e:
                 self.warnings.append(f"Arweave search {host} failed ({e})")
-                break
+                return out
             except Exception as e:  # noqa: BLE001 - one hostile server must never stop recovery
                 self.warnings.append(
                     f"Arweave search {host} returned malformed data ({type(e).__name__}); ignored"
                 )
-                break
+                return out
             out.extend(txs)
             if not has_next or cursor is None or cursor == after:
-                break
+                return out
             after = cursor
+        if has_next and sort == "HEIGHT_DESC":
+            self.warnings.append(
+                f"Arweave search {host}: page budget reached with more results pending; newer copies "
+                "may not have been seen"
+            )
         return out
 
     @staticmethod
@@ -199,22 +220,56 @@ class Arweave:
         )
         return [t for t in txs if t.vault_id == vault_id]
 
-    def fetch(self, tx: ArweaveTx) -> bytes | None:
+    def fetch(self, tx: ArweaveTx, timeout: float | None = None) -> bytes | None:
         """Download a transaction's data once per tx id, whatever any server CLAIMED about its size
-        (REC-M2). The 1024-byte read cap is the only size rule."""
+        (REC-M2). The 1024-byte read cap is the only size rule; on a too-large or empty answer the next
+        gateway is tried (one gateway cannot suppress the data)."""
         if tx.id in self._data:
             return self._data[tx.id]
+        per_request = self.timeout if timeout is None else max(0.001, min(self.timeout, timeout))
         data: bytes | None = None
         for gw in self.gateways:
             try:
-                data = get_capped(f"{gw}/{tx.id}", timeout=self.timeout, max_bytes=MAX_BLOB)
-                break
+                got = get_capped(f"{gw}/{tx.id}", timeout=per_request, max_bytes=MAX_BLOB)
             except TooLarge:
-                self.warnings.append(f"Arweave tx {tx.id}: data larger than {MAX_BLOB} bytes; skipped")
-                break
+                self.warnings.append(
+                    f"Arweave gateway {host_of(gw)}: tx {tx.id} larger than {MAX_BLOB} bytes"
+                )
+                continue
             except NetError as e:
                 self.warnings.append(f"Arweave gateway {host_of(gw)} failed ({e})")
-        if data is not None and not data:
-            data = None
+                continue
+            if got:
+                data = got
+                break
         self._data[tx.id] = data
         return data
+
+    def fetch_all(self, records: Iterable[ArweaveTx]) -> list[tuple[ArweaveTx, bytes]]:
+        """Fetch records interleaved across servers (not by claimed height), within MAX_FETCHES distinct
+        tx ids and FETCH_DEADLINE seconds (ECC review, PR #22)."""
+        by_server: dict[str, list[ArweaveTx]] = {}
+        for r in records:
+            by_server.setdefault(r.server, []).append(r)
+        queues = list(by_server.values())
+        order: list[ArweaveTx] = []
+        while any(queues):
+            for q in queues:
+                if q:
+                    order.append(q.pop(0))
+        deadline = time.monotonic() + FETCH_DEADLINE
+        out: list[tuple[ArweaveTx, bytes]] = []
+        fetched: set[str] = set()
+        for tx in order:
+            if tx.id not in fetched and tx.id not in self._data:
+                if len(fetched) >= MAX_FETCHES or time.monotonic() > deadline:
+                    self.warnings.append(
+                        f"Arweave download budget reached ({len(fetched)} transactions); some listed copies "
+                        "were not downloaded"
+                    )
+                    break
+                fetched.add(tx.id)
+            data = self.fetch(tx, timeout=deadline - time.monotonic())
+            if data is not None:
+                out.append((tx, data))
+        return out
