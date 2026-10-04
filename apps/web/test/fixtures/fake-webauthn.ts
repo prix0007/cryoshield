@@ -12,6 +12,40 @@ export interface FakeKeyOptions {
   prf?: boolean; // authenticator supports hmac-secret / PRF
   prfAtCreate?: boolean; // returns PRF results during create (YubiKey 5.8+)
   uv?: boolean; // sets the UV flag
+  /**
+   * CTAP 2.1 credProtect support (enforce-credprotect-uv). true (default): honours credentialProtectionPolicy and
+   * reports the level in authenticatorData. false: ignores it (a CTAP 2.0 key) -> with enforcement the browser fails
+   * create() with NotAllowedError, as Chrome does. A number: reports that level whatever was asked (a key that
+   * downgrades the policy).
+   */
+  credProtect?: boolean | number;
+  /** false: a faulty key that answers assertions without UV even for credProtect-3 credentials (default true). */
+  enforcesCredProtect?: boolean;
+}
+
+const POLICY_LEVEL: Record<string, number> = {
+  userVerificationOptional: 1,
+  userVerificationOptionalWithCredentialIDList: 2,
+  userVerificationRequired: 3,
+};
+
+/** Minimal CBOR for authenticatorData (unsigned/negative ints, byte and text strings, maps). */
+function cbor(v: unknown): Uint8Array {
+  const head = (major: number, n: number) =>
+    n < 24 ? [(major << 5) | n] : n < 0x100 ? [(major << 5) | 24, n] : [(major << 5) | 25, n >> 8, n & 0xff];
+  if (typeof v === 'number') return Uint8Array.from(v >= 0 ? head(0, v) : head(1, -1 - v));
+  if (typeof v === 'boolean') return Uint8Array.of(v ? 0xf5 : 0xf4);
+  if (typeof v === 'string') {
+    const b = enc.encode(v);
+    return Uint8Array.from([...head(3, b.length), ...b]);
+  }
+  if (v instanceof Uint8Array) return Uint8Array.from([...head(2, v.length), ...v]);
+  if (v instanceof Map) {
+    const out: number[] = head(5, v.size);
+    for (const [k, x] of v) out.push(...cbor(k), ...cbor(x));
+    return Uint8Array.from(out);
+  }
+  throw new Error('cbor: unsupported');
 }
 
 interface Cred {
@@ -21,6 +55,7 @@ interface Cred {
   secretUv: Uint8Array;
   secretNoUv: Uint8Array;
   userId: Uint8Array;
+  credProtect: number; // 1 when none was applied
 }
 
 export interface FakeKey {
@@ -91,7 +126,7 @@ export class FakeAuthenticators {
   cancelNext = false;
 
   addKey(opts: FakeKeyOptions = {}): number {
-    this.keys.push({ opts: { prf: true, prfAtCreate: false, uv: true, ...opts }, creds: [] });
+    this.keys.push({ opts: { prf: true, prfAtCreate: false, uv: true, credProtect: true, enforcesCredProtect: true, ...opts }, creds: [] });
     return this.keys.length - 1;
   }
 
@@ -130,11 +165,23 @@ export class FakeAuthenticators {
       for (const ex of pk.excludeCredentials ?? []) {
         if (k.creds.some((c) => b64url(c.id) === b64url(u8(ex.id)))) throw new DOMExceptionLike('excluded', 'InvalidStateError');
       }
+      const exts = (pk.extensions ?? {}) as { credentialProtectionPolicy?: string; enforceCredentialProtectionPolicy?: boolean };
+      const asked = exts.credentialProtectionPolicy ? POLICY_LEVEL[exts.credentialProtectionPolicy] : undefined;
+      if (asked && exts.enforceCredentialProtectionPolicy && k.opts.credProtect === false) {
+        throw new DOMExceptionLike('credProtect not supported', 'NotAllowedError');
+      }
+      const level = typeof k.opts.credProtect === 'number' ? k.opts.credProtect : k.opts.credProtect && asked ? asked : undefined;
       const keyPair = (await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify'])) as CryptoKeyPair;
-      const cred: Cred = { id: rand(48), rpId, keyPair, secretUv: rand(32), secretNoUv: rand(32), userId: u8(pk.user.id) };
+      const cred: Cred = { id: rand(48), rpId, keyPair, secretUv: rand(32), secretNoUv: rand(32), userId: u8(pk.user.id), credProtect: level ?? 1 };
       k.creds.push(cred);
       const spki = new Uint8Array(await crypto.subtle.exportKey('spki', keyPair.publicKey));
-      const authData = await this.authData(rpId, 0x40, concat(new Uint8Array(16), Uint8Array.of(0, cred.id.length), cred.id));
+      const cose = cbor(new Map<number, unknown>([[1, 2], [3, -7], [-1, 1], [-2, spki.slice(27, 59)], [-3, spki.slice(59, 91)]]));
+      const extOut = level !== undefined ? cbor(new Map<string, unknown>([['credProtect', level]])) : new Uint8Array();
+      const authData = await this.authData(
+        rpId,
+        0x40 | (level !== undefined ? 0x80 : 0),
+        concat(new Uint8Array(16), Uint8Array.of(0, cred.id.length), cred.id, cose, extOut),
+      );
       const ext: any = {};
       const prfIn = (pk.extensions as any)?.prf;
       if (prfIn) {
@@ -171,6 +218,8 @@ export class FakeAuthenticators {
       const allow = (pk.allowCredentials ?? []).map((c) => b64url(u8(c.id)));
       const cred = k.creds.find((c) => c.rpId === pk.rpId && (allow.length === 0 || allow.includes(b64url(c.id))));
       if (!cred) throw new DOMExceptionLike('no credential', 'NotAllowedError');
+      // credProtect level 3: without UV the authenticator acts as if the credential does not exist (CTAP 2.1 §12.1).
+      if (cred.credProtect === 3 && !k.opts.uv && k.opts.enforcesCredProtect) throw new DOMExceptionLike('no credential', 'NotAllowedError');
       const authData = await this.authData(pk.rpId!, 0);
       const clientDataJSON = enc.encode(
         JSON.stringify({ type: 'webauthn.get', challenge: b64url(u8(pk.challenge)), origin: 'http://localhost', crossOrigin: false }),

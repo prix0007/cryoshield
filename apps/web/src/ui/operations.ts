@@ -4,7 +4,7 @@
  */
 import { decodeVault, deriveLocator, VaultError } from '@cryoshield/vault-crypto';
 import type { Hex } from 'viem';
-import { enrollKey, evaluatePrf, KeyError, type EnrolledKey } from '../webauthn';
+import { enrollKey, ENROLL, evaluatePrf, KeyError, type EnrolledKey } from '../webauthn';
 import { addKeyToBlob, createVaultBlob, editVaultBlob } from '../vault/adapter';
 import type { SecretItem } from '../vault/payload';
 import { existingVaultAccount, newVaultAccount } from '../account/account';
@@ -175,6 +175,7 @@ export function messageFor(e: unknown, context: 'create' | 'edit' = 'edit'): str
   if (e instanceof ChainMismatchError) return S.wrongNetwork;
   if (e instanceof KeyError) {
     if (e.code === 'WRONG_KEY' && e.message === 'not in vault') return S.edit.notInVault;
+    if (e.code === 'CANCELLED' && e.message === ENROLL) return S.enrollCancelled;
     return S.keyErrors[e.code] ?? S.save.nothingSaved;
   }
   if (e instanceof WriteError) {

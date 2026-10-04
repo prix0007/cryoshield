@@ -75,7 +75,10 @@ flowchart LR
 - **Symmetric only.** The ciphertext stays public forever, so it has no elliptic-curve layer that a future quantum computer could strip.
 - **One wrap per key.** Every enrolled key wraps its own copy of the data key. Losing one key loses nothing. Losing every key loses the vault, and nobody can reset it.
 - **Clone-proof.** The AAD binds the vault header and the 32-byte `vaultId`. A blob copied under any other vaultId fails to authenticate and is skipped.
-- **UV is mandatory.** hmac-secret returns different outputs with and without user verification. Without UV, browser and desktop could derive different keys.
+- **UV is mandatory, and the key enforces it via credProtect level 3.** hmac-secret returns different outputs with and without user verification. Without UV, browser and desktop could derive different keys.
+  - Every key is enrolled with credProtect level 3 (`userVerificationRequired`, requested with enforcement and confirmed from the authenticator data). A stolen key will not produce *any* assertion without its PIN, even though credential IDs are public and the smart wallet does not itself require UV or check rpId and origin (audit AA-H1).
+  - Keys enrolled before this rule must be re-created; that is only the founder's test vault.
+  - A contract-level validator that checks UV, rpId and origin is planned, and it is a hard gate for mainnet. It also closes the U2F/CTAP1 path, where a key that accepts a CTAP2 credential ID over U2F could sign without its PIN.
 - **Desktop salt mapping.** CTAP salt = `SHA-256("WebAuthn PRF" || 0x00 || input)`. This lets the browser and the desktop tool derive identical outputs.
 
 ## 3. Create a vault

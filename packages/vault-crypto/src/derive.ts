@@ -23,11 +23,21 @@ export interface PrfExtensionInput {
   prf: { eval: { first: Uint8Array } };
 }
 
+/**
+ * CTAP 2.1 credProtect, requested at registration (enforce-credprotect-uv): level 3 makes the authenticator refuse
+ * ANY assertion for this credential without user verification, even when the caller names the (public) credential
+ * ID. `enforce: true` makes the browser fail create() rather than silently create a weaker credential.
+ */
+export interface CredProtectExtensionInput {
+  credentialProtectionPolicy: 'userVerificationRequired';
+  enforceCredentialProtectionPolicy: true;
+}
+
 /** Fragment for `navigator.credentials.create({ publicKey: { ...this, rp, user, challenge, … } })`. */
 export interface WebAuthnPrfCreateOptions {
   /** create() reads UV only from authenticatorSelection; a top-level field is ignored. */
   authenticatorSelection: { userVerification: typeof USER_VERIFICATION; residentKey: 'required' };
-  extensions: PrfExtensionInput;
+  extensions: PrfExtensionInput & CredProtectExtensionInput;
 }
 
 /** Fragment for `navigator.credentials.get({ publicKey: { ...this, challenge, … } })`. */
@@ -40,13 +50,13 @@ const prfExtension = (): PrfExtensionInput => ({ prf: { eval: { first: locatorSa
 
 /**
  * Registration options fragment (spec §3.1): UV "required" inside
- * authenticatorSelection, a discoverable credential, and the locator salt as
- * the only PRF input.
+ * authenticatorSelection, a discoverable credential, the locator salt as the
+ * only PRF input, and credProtect level 3 with enforcement (§3.1a).
  */
 export function webauthnPrfCreateOptions(): WebAuthnPrfCreateOptions {
   return {
     authenticatorSelection: { userVerification: USER_VERIFICATION, residentKey: 'required' },
-    extensions: prfExtension(),
+    extensions: { ...prfExtension(), credentialProtectionPolicy: 'userVerificationRequired', enforceCredentialProtectionPolicy: true },
   };
 }
 

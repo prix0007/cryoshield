@@ -32,7 +32,11 @@ Enrollment SHALL create discoverable (resident) credentials, so that unlock work
 - **THEN** the ceremony succeeds without the app supplying any credential ID
 
 ### Requirement: Fixed user-verification policy
-Every ceremony that evaluates PRF SHALL request user verification as "required", and every create and get response SHALL pass the vault-crypto UV check (`assertUserVerified`) before its PRF output is used. This keeps the hmac-secret output identical across browsers and the desktop recovery tool, which MUST also use UV.
+Every ceremony that evaluates PRF SHALL request user verification as "required", and every create and get response SHALL pass the vault-crypto UV check (`assertUserVerified`) before its PRF output is used. This keeps the hmac-secret output identical across browsers and the desktop recovery tool, which MUST also use UV. UV is also enforced by the authenticator: every enrolled credential SHALL be created with credProtect level 3 (`userVerificationRequired`, requested with enforcement), and the registration SHALL pass `assertCredProtectUvRequired` before the key is enrolled (enforce-credprotect-uv).
+
+#### Scenario: Key without credProtect level 3
+- **WHEN** a new key does not confirm credProtect level 3 in its registration authenticator data, or the browser refuses the enforced request
+- **THEN** the key is not enrolled and the user is told, in plain language, that the key can't be set to always ask for its PIN
 
 #### Scenario: UV missing
 - **WHEN** an assertion returns without the UV flag set
