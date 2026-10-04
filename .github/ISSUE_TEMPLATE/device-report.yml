@@ -1,0 +1,68 @@
+name: Device report
+description: Tell us how a security key or browser worked with CryoShield, for the supported-devices page. Issues are PUBLIC.
+title: "Device report: "
+labels: ["device-report"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## ⚠️ This issue is public
+        **Never post seed phrases, recovery codes, PINs or keys** — not even partially, and not in screenshots. Don't post a key's serial number, a vault ID or a wallet address either. CryoShield's maintainers will never ask for them and cannot open or recover any vault.
+
+        Thank you for testing! Your report updates the [supported devices](https://cryoshield.app/devices) page. Found a **security vulnerability**? Do not open an issue: [report it privately](https://github.com/prix0007/cryoshield/security/advisories/new).
+  - type: input
+    id: model
+    attributes:
+      label: Key model
+      description: The exact model, for example "YubiKey 5C NFC" or "Nitrokey 3A Mini".
+    validations:
+      required: true
+  - type: input
+    id: firmware
+    attributes:
+      label: Firmware version
+      description: For a YubiKey, see Yubico Authenticator or run `ykman info` ("Firmware version"). Write "unknown" if you can't find it.
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system and version
+      placeholder: macOS 26.1, Windows 11 24H2, Ubuntu 24.04, Android 16, iOS 26.4…
+    validations:
+      required: true
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and version
+      description: Leave empty if you only used the recovery tool.
+      placeholder: Chrome 141, Firefox 149, Safari 26.4…
+  - type: dropdown
+    id: connection
+    attributes:
+      label: How was the key connected?
+      options: ["USB", "NFC", "Bluetooth"]
+    validations:
+      required: true
+  - type: checkboxes
+    id: worked
+    attributes:
+      label: What worked?
+      description: Tick only what you actually did and saw succeed.
+      options:
+        - label: Setting up the key (it showed "Key … is ready")
+        - label: Creating a vault
+        - label: Unlocking the vault in the browser
+        - label: Opening the vault with the desktop recovery tool
+  - type: textarea
+    id: details
+    attributes:
+      label: What happened?
+      description: Anything that failed, and the exact message the app showed (for example "Key not supported"). Remove anything secret first.
+  - type: checkboxes
+    id: no-secrets
+    attributes:
+      label: Confirmation
+      options:
+        - label: I have not posted any seed phrase, recovery code, PIN, private key, serial number or vault ID.
+          required: true

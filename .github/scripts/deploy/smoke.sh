@@ -14,7 +14,7 @@ REGISTRY_ADDRESS="${REGISTRY_ADDRESS:-}"
 [[ "$EXPECT_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "smoke: EXPECT_SHA must be a full 40-hex commit" >&2; exit 2; }
 [[ "$REGISTRY_ADDRESS" =~ ^0x[0-9a-fA-F]{40}$ ]] || { echo "smoke: REGISTRY_ADDRESS must be 0x + 40 hex" >&2; exit 2; }
 
-PAGES=(/ /app/ /architecture /privacy /healthz)
+PAGES=(/ /app/ /architecture /devices /privacy /healthz)
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 errors=()

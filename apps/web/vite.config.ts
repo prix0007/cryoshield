@@ -28,6 +28,7 @@ export default defineConfig(({ mode }) => {
           terms: `${root}/terms/index.html`,
           cookies: `${root}/cookies/index.html`,
           architecture: `${root}/architecture/index.html`,
+          devices: `${root}/devices/index.html`,
         },
         output: { minify: { compress: { dropConsole: true } } },
       },

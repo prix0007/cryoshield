@@ -116,6 +116,9 @@ export function AppFooter() {
           <a href="/architecture">System design</a>
         </li>
         <li>
+          <a href="/devices">Supported devices</a>
+        </li>
+        <li>
           <a href={`${REPO}/blob/main/SECURITY.md`} rel="noopener noreferrer">
             Security
           </a>
