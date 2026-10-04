@@ -33,11 +33,19 @@ See proposal.md and the audit's proof scripts, which are now regression tests in
 - `_query` returns one `ArweaveTx` per (GraphQL server, tx id). Nothing is merged, and the record carries its `server`.
 - A download is per tx id (cached), from the gateways, and never depends on a GraphQL claim. The claimed size is informational, and the 1024-byte read cap stays.
 - Each record becomes its own candidate, with the vaultId from *that server's* tag. A hostile relabel produces a separate candidate that fails authentication, so it cannot replace the honest one. Candidates are deduplicated by (vaultId, blob).
-- **Paging:** each server is queried newest-first, following `pageInfo.hasNextPage` and the edge cursors, up to `ARWEAVE_MAX_PAGES` (10 pages of 50) and an overall `ARWEAVE_DEADLINE`. The oldest page (`HEIGHT_ASC`, 1 page) is also fetched. A locator becomes public only when the vault is registered, so spam always post-dates the original mirror, and the oldest page reaches it.
+- **Paging:**
+  - Servers are queried **in parallel**, each with its own `ARWEAVE_SERVER_DEADLINE` (30 s), and each request's timeout is clamped to that budget (ECC review, PR #22). A slow first server cannot starve the others.
+  - Per server, the oldest page (`HEIGHT_ASC`) comes first, then up to `ARWEAVE_MAX_PAGES` newest-first pages following the cursors.
+  - A warning is shown when the page budget ends with `hasNextPage` still true.
+  - A locator becomes public only when the vault is registered, so spam always post-dates the original mirror, and the oldest page reaches it.
+- **Downloads:** at most `MAX_FETCHES` (40) distinct tx ids within `FETCH_DEADLINE` (60 s), interleaved across servers (not by claimed height). A gateway answering too-large or empty falls through to the next gateway.
+- **Ranking:** a merged Arweave candidate's height is the **minimum** any supporting server claimed. Any unverified, decrypting Arweave rival of the same freshness forces an explicit choice, because support and height are server-controlled.
 
 ### D4. Bounded event history
 - One deadline (`HISTORY_DEADLINE`, 60 s) applies across all of a history lookup's paging.
-- `latest` is read from every usable RPC first. The reference head is the median. An RPC more than `HEAD_TOLERANCE` (5,000) blocks ahead of it is refused for history ("implausible head"), and every RPC pages to the same `to` block, the reference, so the histories are comparable.
+- `latest` is read once per run from every usable RPC. The median is only a plausibility filter: an RPC more than `HEAD_TOLERANCE` (5,000) blocks from it is refused ("implausible head").
+- Every accepted RPC pages to the **highest** accepted head (ECC review, PR #22). Paging to the median let a low-head RPC shorten an agreed history, so an old copy matched the "latest" hash. A low-head RPC now misses later events and disagrees, so the result is unverifiable.
+- One deadline covers the whole Registry run (heads, all vault ids, all pages), and each request's timeout is clamped to the time remaining.
 - If the remaining blocks divided by the page size exceed the page budget, the lookup fails at once, before any `eth_getLogs`.
 - Once an RPC has forced the page size down (a range-limit error), at most `MAX_ADAPTED_PAGES` (200) remaining pages are allowed. Live finding (2026-10-04): drpc's ~100-block limit meant more than 1,000 pages after two days of history, so every lookup hit the 60 s deadline. drpc now drops out in about 7 s, and the other two RPCs still provide the agreed history.
 

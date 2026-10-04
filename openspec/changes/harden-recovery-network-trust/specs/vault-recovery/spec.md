@@ -21,7 +21,7 @@ The tool SHALL NOT rank candidates by a version reported by an RPC or an Arweave
 - **THEN** the current blob is selected and a warning about disagreeing servers is shown
 
 ### Requirement: Explicit choice on unresolvable ties
-When the selected copy is not chain-verified and a different blob for the same vault ID also decrypts with equal rank, the tool SHALL warn and ask the user to choose explicitly. Before the choice it SHALL show only public metadata (sources, support count, and the claimed version marked unverified), never plaintext. A non-interactive run SHALL exit with code 12 (`AMBIGUOUS`) and show no plaintext.
+When the selected copy is not chain-verified and a different blob for the same vault ID also decrypts with equal rank, or with the same freshness when either copy comes from Arweave (where support and height are server-controlled), the tool SHALL warn and ask the user to choose explicitly. Before the choice it SHALL show only public metadata (sources, support count, and the claimed version marked unverified), never plaintext. A non-interactive run SHALL exit with code 12 (`AMBIGUOUS`) and show no plaintext.
 
 #### Scenario: Two RPCs disagree equally
 - **WHEN** two configured RPCs return different decrypting copies and no agreed history exists
@@ -43,18 +43,26 @@ Each GraphQL server's record for a transaction SHALL be a separate candidate; me
 - **THEN** the honest server's record still yields the genuine candidate under the genuine vault ID
 
 ### Requirement: Arweave search is paged and bounded
-The tool SHALL follow GraphQL cursors newest-first, up to a page and time budget per server, and SHALL also fetch the oldest page, so the original mirror cannot be buried by newer transactions.
+The tool SHALL query GraphQL servers in parallel, each within its own time budget, with every request's timeout clamped to that budget. Per server it SHALL fetch the oldest page first, then follow cursors newest-first within a page budget, and warn when that budget ends with results still pending. Downloads SHALL be bounded by a count and time budget, interleaved across servers.
+
+#### Scenario: Slow first server
+- **WHEN** the first GraphQL server answers every page slowly and never lists the genuine mirror
+- **THEN** the second server's record of the genuine mirror is still found, within the per-server budget
 
 #### Scenario: Original buried by newer spam
 - **WHEN** more than 50 newer transactions tagged with the victim's locator precede the genuine mirror
 - **THEN** the genuine mirror is still found within the budget
 
 ### Requirement: Event history lookup is bounded
-A history lookup SHALL have an overall deadline, and SHALL cross-check each RPC's `latest` block against the median of the usable RPCs. It SHALL refuse an RPC whose head is implausibly far ahead, and SHALL fail at once when the remaining range cannot fit the page budget.
+History lookups SHALL share one deadline per run, with every request's timeout clamped to it. Each RPC's `latest` block SHALL be cross-checked against the median (plausibility only), and implausible heads refused. Every accepted RPC SHALL page to the HIGHEST accepted head, so a low head yields disagreement, never a shortened agreed history. The lookup SHALL fail at once when the range cannot fit the page budget.
 
 #### Scenario: Hostile block number
 - **WHEN** an RPC reports a head of 10^9 while the others report about 5×10^7
 - **THEN** that RPC is refused for history with a warning, without paging `eth_getLogs`
+
+#### Scenario: Low head cannot shorten the history
+- **WHEN** two RPCs are configured, one serves the older blob and reports a head between the creation and the latest update
+- **THEN** the older copy is never labelled current (the histories disagree, so the result is unverifiable or an explicit choice)
 
 #### Scenario: Sole RPC with hostile head
 - **WHEN** the only RPC reports a head of 10^9
