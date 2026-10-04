@@ -1,16 +1,22 @@
-# Continuous deployment of https://cryoshield.app from main (OpenSpec change add-continuous-deploy).
+# Continuous deployment of https://cryoshield.app from main (OpenSpec changes add-continuous-deploy,
+# gate-production-deploys).
 #
-#   detect -> test (FULL ci.yml on this exact commit) -> build (deploy.sh --build-only, no Fly token)
-#          -> deploy (flyctl only, Fly token) -> smoke (+ automatic rollback)
+#   detect -> test (FULL ci.yml on this exact commit) -> build (env production-build: deploy.sh --build-only, no Fly
+#   token) -> supersede (cancel OLDER runs still waiting for approval) -> release (env production: OWNER APPROVAL,
+#   then deploy + smoke test + automatic rollback, all in one job so one click covers the release)
 #
 # Triggers: push to main (human merges); every 15 minutes (merges by GitHub auto-merge do not start push
 # workflows); workflow_dispatch (with `force` to redeploy). Never on pull requests (enforced by
-# .github/scripts/workflow-policy.mjs). One deploy at a time, never cancelled mid-flight.
+# .github/scripts/workflow-policy.mjs).
 #
-# Credentials: FLY_API_TOKEN (Fly deploy token scoped to cryoshield-web) and VITE_BUNDLER_URL live only in the
-# GitHub Environment `production`, restricted to main. The token is only in the steps `deploy` and `rollback`, in
-# jobs that run no node/pnpm or third-party build code: the build happens in a separate job without it (security
-# review H1). Build config comes from that environment's variables. Runbook: docs/deploy.md.
+# Concurrency: per commit at the workflow level (the schedule never stacks runs for the same commit while one waits
+# for approval); `deploy-production` on the release job only, never cancelled (one release at a time, never cut
+# mid-deploy). Superseding of stale waiting releases is done by the `supersede` job (design decision 3).
+#
+# Credentials: FLY_API_TOKEN (Fly deploy token scoped to cryoshield-web) lives only in the GitHub Environment
+# `production` (required reviewer: the owner, admins cannot bypass; main only) and is used only by the `deploy` and
+# `rollback` steps of the release job, which runs no node/pnpm or third-party build code. Build config (VITE_* and
+# VITE_BUNDLER_URL) lives in `production-build` (main only, no reviewers). Runbook: docs/deploy.md.
 
 name: Deploy
 
@@ -30,7 +36,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: deploy-production
+  group: deploy-${{ github.sha }}
   cancel-in-progress: false
 
 env:
@@ -98,8 +104,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     environment:
-      name: production
-      url: https://cryoshield.app
+      name: production-build # build config only; never the Fly token; no approval needed
     permissions:
       contents: read # checkout only
     steps:
@@ -117,7 +122,7 @@ jobs:
           package-manager-cache: false
       - name: Install (frozen lockfile)
         run: pnpm install --frozen-lockfile
-      - name: Write apps/web/.env from the production environment
+      - name: Write apps/web/.env from the production-build environment
         id: web-env
         env:
           VITE_CHAIN_ID: ${{ vars.VITE_CHAIN_ID }}
@@ -149,24 +154,74 @@ jobs:
           if-no-files-found: error
           retention-days: 7 # the bundle (and its public bundler key) only needs to outlive the deploy
 
-  # Holds the Fly token. Runs only flyctl, curl, jq and coreutils on the verified build artifact: no node, no pnpm,
-  # no third-party build code (enforced by workflow-policy.mjs).
-  deploy:
-    name: deploy
+  # Cancels OLDER deploy.yml runs that are still WAITING for the production approval, for another commit, now that
+  # this newer commit passed CI and built (gate-production-deploys D3). Never touches a run that is deploying.
+  supersede:
+    name: supersede
     needs: [detect, build]
     if: needs.detect.outputs.deploy == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 5
+    permissions:
+      contents: read # the supersede script
+      actions: write # cancel older runs still waiting for the production approval
+    steps:
+      - name: Checkout (deploy scripts only)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.detect.outputs.sha }}
+          persist-credentials: false
+          sparse-checkout: .github/scripts/deploy
+      # Shown on the run page before the approval: the diff against the live commit, with every file that can
+      # change what runs with the Fly token flagged (security review H1).
+      - name: Summarise what this release changes (read before approving)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TARGET_SHA: ${{ needs.detect.outputs.sha }}
+          BASE_URL: ${{ env.SITE_URL }}
+        run: .github/scripts/deploy/release-diff.sh
+      - name: Cancel older releases still waiting for approval
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          TARGET_SHA: ${{ needs.detect.outputs.sha }}
+        run: .github/scripts/deploy/supersede.sh
+
+  # The ONLY job in environment `production`: it waits for the owner's approval, then deploys, smoke-tests and, on
+  # failure or cancellation after `fly deploy` started, rolls back, all under that one approval. It holds the Fly
+  # token and runs only flyctl, curl, jq and coreutils on the verified build artifact (enforced by workflow-policy.mjs).
+  release:
+    name: release
+    needs: [detect, build, supersede]
+    if: needs.detect.outputs.deploy == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
     environment:
       name: production
       url: https://cryoshield.app
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
     permissions:
-      contents: read # checkout only
-    outputs:
-      previous_image: ${{ steps.deploy.outputs.previous_image }}
-      fly_started: ${{ steps.deploy.outputs.fly_started }}
+      contents: read # checkout, and main's HEAD for the head check
     steps:
-      - name: Checkout (fly.toml, Dockerfile, .dockerignore, deploy scripts)
+      # Runs after the approval: an older commit approved late (its run was slower than a newer one, so supersede
+      # never saw it waiting) must not roll the site back (security review M1).
+      - name: Refuse a release that is no longer main's HEAD
+        id: head-check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ needs.detect.outputs.sha }}
+        run: |
+          set -euo pipefail
+          head="$(gh api "repos/${GITHUB_REPOSITORY}/commits/main" --jq .sha)"
+          if [ "$head" != "$SHA" ]; then
+            echo "::error title=Superseded::main moved on to ${head}; this release (${SHA}) is stale. Approve the newer Deploy run instead."
+            exit 1
+          fi
+      - name: Checkout (fly.toml, Dockerfile, .dockerignore, deploy scripts, deployment records)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.detect.outputs.sha }}
@@ -176,6 +231,7 @@ jobs:
             apps/web/fly.toml
             apps/web/.dockerignore
             apps/web/deploy/Dockerfile
+            contracts/deployments
           sparse-checkout-cone-mode: false
       - name: Download the deploy context built without the token
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -206,7 +262,7 @@ jobs:
           tar -xzf "${RUNNER_TEMP}/flyctl.tar.gz" -C "${RUNNER_TEMP}/fly-bin" flyctl
           ln -sf flyctl "${RUNNER_TEMP}/fly-bin/fly"
           echo "${RUNNER_TEMP}/fly-bin" >> "${GITHUB_PATH}"
-      # The only step of this job that sees the Fly token: record the live image (rollback target), then deploy.
+      # Record the live image (rollback target), then deploy.
       - name: Deploy the built context (flyctl only)
         id: deploy
         env:
@@ -233,80 +289,46 @@ jobs:
             echo ""
             echo "Release manifest: artifact \`deploy-context-$(jq -r .commit "$m")\`."
           } >> "${GITHUB_STEP_SUMMARY}"
-
-  # Also runs when `deploy` failed or was cancelled after `fly deploy` started (review M1, ECC review #2), so a
-  # half-finished rollout is rolled back.
-  smoke:
-    name: smoke
-    needs: [detect, deploy]
-    if: >-
-      always()
-      && needs.detect.outputs.deploy == 'true'
-      && (needs.deploy.result == 'success' || needs.deploy.outputs.fly_started == 'true')
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    environment:
-      name: production
-      url: https://cryoshield.app
-    permissions:
-      contents: read # checkout only
-    steps:
-      - name: Checkout (scripts, deployment records, fly.toml)
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ needs.detect.outputs.sha }}
-          persist-credentials: false
-          sparse-checkout: |
-            .github/scripts/deploy
-            contracts/deployments
-            apps/web/fly.toml
-          sparse-checkout-cone-mode: false
+      # Chain and registry come from the verified manifest and the deployment record at the same commit, so this job
+      # needs no variables from production-build.
       - name: Smoke test the live site
         id: smoke
-        if: needs.deploy.result == 'success'
         env:
           EXPECT_SHA: ${{ needs.detect.outputs.sha }}
           BASE_URL: ${{ env.SITE_URL }}
-          CHAIN_ID: ${{ vars.VITE_CHAIN_ID }}
         run: |
           set -euo pipefail
-          [[ "$CHAIN_ID" =~ ^[0-9]+$ ]] || { echo "::error::vars.VITE_CHAIN_ID is not a chain id"; exit 1; }
-          REGISTRY_ADDRESS="$(jq -r .address "contracts/deployments/${CHAIN_ID}.json")"
+          m=apps/web/deploy/.build/release-manifest.json
+          chain="$(jq -r .config.chainId "$m")"
+          [[ "$chain" =~ ^[0-9]+$ ]] || { echo "::error::manifest chainId is not a chain id"; exit 1; }
+          REGISTRY_ADDRESS="$(jq -r .address "contracts/deployments/${chain}.json")"
+          [ "$(jq -r .config.registry.address "$m" | tr 'A-F' 'a-f')" = "$(tr 'A-F' 'a-f' <<<"$REGISTRY_ADDRESS")" ] \
+            || { echo "::error::manifest registry differs from contracts/deployments/${chain}.json"; exit 1; }
           export REGISTRY_ADDRESS
           .github/scripts/deploy/smoke.sh
-      - name: Install flyctl for the rollback (pinned, checksum-verified)
-        if: (failure() || needs.deploy.result != 'success') && needs.deploy.outputs.fly_started == 'true'
-        run: |
-          set -euo pipefail
-          curl -fsSL --retry 3 -o "${RUNNER_TEMP}/flyctl.tar.gz" \
-            "https://github.com/superfly/flyctl/releases/download/v${FLYCTL_VERSION}/flyctl_${FLYCTL_VERSION}_Linux_x86_64.tar.gz"
-          echo "${FLYCTL_SHA256}  ${RUNNER_TEMP}/flyctl.tar.gz" | sha256sum -c -
-          mkdir -p "${RUNNER_TEMP}/fly-bin"
-          tar -xzf "${RUNNER_TEMP}/flyctl.tar.gz" -C "${RUNNER_TEMP}/fly-bin" flyctl
-          ln -sf flyctl "${RUNNER_TEMP}/fly-bin/fly"
-          echo "${RUNNER_TEMP}/fly-bin" >> "${GITHUB_PATH}"
+      # Same approved job: no second approval. Also on cancellation after `fly deploy` started (e.g. a supersede race).
       # Uses the NEW commit's fly.toml with the previous image (docs/deploy.md -> Rollback, review L1).
       - name: Roll back to the previous release
         id: rollback
-        if: (failure() || needs.deploy.result != 'success') && needs.deploy.outputs.fly_started == 'true'
+        if: (failure() || cancelled()) && steps.deploy.outputs.fly_started == 'true'
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-          PREVIOUS_IMAGE: ${{ needs.deploy.outputs.previous_image }}
+          PREVIOUS_IMAGE: ${{ steps.deploy.outputs.previous_image }}
           BASE_URL: ${{ env.SITE_URL }}
         run: .github/scripts/deploy/rollback.sh
       - name: Fail loudly
-        if: failure() || needs.deploy.result != 'success'
+        if: failure() || cancelled()
         env:
           SHA: ${{ needs.detect.outputs.sha }}
-          DEPLOY_RESULT: ${{ needs.deploy.result }}
+          DEPLOY: ${{ steps.deploy.outcome }}
           SMOKE: ${{ steps.smoke.outcome }}
           ROLLBACK: ${{ steps.rollback.outcome }}
         run: |
           {
-            echo "### Deploy of \`$SHA\` FAILED"
+            echo "### Release of \`$SHA\` FAILED"
             echo ""
-            echo "deploy job: **$DEPLOY_RESULT**, smoke test: **${SMOKE:-not run}**, automatic rollback: **${ROLLBACK:-not attempted}**."
+            echo "deploy: **${DEPLOY:-not run}**, smoke test: **${SMOKE:-not run}**, automatic rollback: **${ROLLBACK:-not attempted}**."
             echo "This commit will not be retried automatically; fix forward, or see docs/deploy.md -> Rollback."
           } >> "${GITHUB_STEP_SUMMARY}"
-          echo "::error title=deploy::The deploy of $SHA failed (deploy: $DEPLOY_RESULT, smoke: ${SMOKE:-not run}, rollback: ${ROLLBACK:-not attempted})."
+          echo "::error title=deploy::The release of $SHA failed (deploy: ${DEPLOY:-not run}, smoke: ${SMOKE:-not run}, rollback: ${ROLLBACK:-not attempted})."
           exit 1

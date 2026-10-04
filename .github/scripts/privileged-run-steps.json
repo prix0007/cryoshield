@@ -17,14 +17,14 @@
     "auto-merge/Enable auto-merge, or switch it off while the PR is on hold or ecc-review is not required": "0d3926835e1e7131714fd576b5b568bdaa2f8b932523e4b6879a46a4ec05675c"
   },
   "deploy.yml": {
-    "deploy/Verify the context against its release manifest": "e1d4b618a1f45d7556750da20a76ca940c5e0fa9978394484c3e57238bad8b6d",
-    "deploy/Install flyctl (pinned, checksum-verified)": "46ee8cd831c944f4d768ef059945846649c130395a0a08167327c5941bf680cc",
-    "deploy/Deploy the built context (flyctl only)": "5bd0685d25638eed0a9e773deebdf9bd662649ca829e883ec8fd7b0be68b9f56",
-    "deploy/Record the release in the job summary": "4f3067d6505947169e32d16cfec01d04d365d7777e32362bca8135fac660495e",
-    "smoke/Smoke test the live site": "edb360921e8d4d27ffcb7ef63efcd67e0a39cf699ac3d91ffdb2402df1f493f9",
-    "smoke/Install flyctl for the rollback (pinned, checksum-verified)": "46ee8cd831c944f4d768ef059945846649c130395a0a08167327c5941bf680cc",
-    "smoke/Roll back to the previous release": "99353c10d5d7ce0e22f85051509d133857926a5c63beb0d19d397522f6ee47de",
-    "smoke/Fail loudly": "d7af9dfec2b9dc971cdfaf8cddfd37f829cd79e215701b5ee63b1068fd1c64e7"
+    "release/Refuse a release that is no longer main's HEAD": "19f6f22108f7af73ce2116b4fc47ef891205c3358e2c0565dd44d4474a4b4564",
+    "release/Verify the context against its release manifest": "e1d4b618a1f45d7556750da20a76ca940c5e0fa9978394484c3e57238bad8b6d",
+    "release/Install flyctl (pinned, checksum-verified)": "46ee8cd831c944f4d768ef059945846649c130395a0a08167327c5941bf680cc",
+    "release/Deploy the built context (flyctl only)": "5bd0685d25638eed0a9e773deebdf9bd662649ca829e883ec8fd7b0be68b9f56",
+    "release/Record the release in the job summary": "4f3067d6505947169e32d16cfec01d04d365d7777e32362bca8135fac660495e",
+    "release/Smoke test the live site": "117ac4dc0eaee1ae7f1b095fc94e701abe97e403765d7467bd2fb08170e141a9",
+    "release/Roll back to the previous release": "99353c10d5d7ce0e22f85051509d133857926a5c63beb0d19d397522f6ee47de",
+    "release/Fail loudly": "ef69d99f5e05a6d6e81e43e2ad194c07a1244a27026c6f41f0ae70a16311e6af"
   },
   "issue-triage.yml": {
     "ack/Acknowledge the issue (once)": "29a3a848fa999461994f83b2b7e8716ed04ff552d067f7a6320994f5906718e5",
