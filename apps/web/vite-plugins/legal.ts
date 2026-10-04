@@ -11,6 +11,9 @@ import { join } from 'node:path';
 export const LEGAL_NOTE =
   '<p class="legal-note">Written for an open-source project; not legal advice. Suggestions welcome via <a href="https://github.com/prix0007/cryoshield/issues" rel="noopener noreferrer">GitHub</a>.</p>';
 
+/** The only raw lines the renderer emits: build-time markers, replaced after rendering (legal note, inventory table). */
+export const LEGAL_MARKERS: ReadonlySet<string> = new Set(['<!--legal-note-->', '<!--storage-inventory-->']);
+
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 function inline(raw: string): string {
@@ -64,9 +67,13 @@ export function renderMarkdown(md: string): string {
       i++;
       continue;
     }
-    if (/^<!--.*-->$/.test(line.trim())) {
+    if (line.trim().startsWith('<!--')) {
+      // Build-time markers only, matched EXACTLY (harden-codeql-web-findings, CodeQL #4): any other comment-looking
+      // line could carry raw HTML past the escaping, so it fails the build instead of being copied into the page.
+      const marker = line.trim();
+      if (!LEGAL_MARKERS.has(marker)) throw new Error(`legal: refusing unknown marker line ${JSON.stringify(marker.slice(0, 60))}`);
       flush();
-      out.push(line.trim()); // build-time markers only (e.g. the storage inventory table)
+      out.push(marker);
       i++;
       continue;
     }
