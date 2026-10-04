@@ -12,6 +12,10 @@ staying in budget and CSP, and never touching secret values.
 Animations SHALL be concurrent decoration. A WebAuthn ceremony, a signature, a write, an idle wipe, a zeroization or
 a clipboard clear MUST NOT wait for any animation, transition or animation frame.
 
+#### Scenario: Lock is immediate
+- **WHEN** the user locks the vault while a secret is revealed, with animation frames and timers frozen
+- **THEN** the secret is no longer in the document after that same update
+
 #### Scenario: Ceremony starts in the gesture's task
 - **WHEN** the user activates "Set up key 1" while animation frames and timers are frozen
 - **THEN** `navigator.credentials.create` has been called once microtasks settle, before any animation frame runs
@@ -33,6 +37,10 @@ React code. Motion SHALL come from the single pinned `motion` dependency.
 #### Scenario: Budget enforced
 - **WHEN** `verify-build` runs
 - **THEN** it prints the `/app` initial gzip size and fails if it exceeds the baseline plus 20 KB, and the landing checks are unchanged
+
+#### Scenario: Landing untouched
+- **WHEN** `verify-build` compares the landing and `/app` JavaScript graphs
+- **THEN** they share no chunk other than the bundler's preload helper, so Motion for React never changes the landing bundle
 
 ### Requirement: Save progress reflects real events only
 The save checklist SHALL mark a stage done only when the write path reports that event: encrypted (blob built),

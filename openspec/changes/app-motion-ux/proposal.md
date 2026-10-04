@@ -57,8 +57,9 @@ progress events are additive notifications).
 
 ## Impact
 
-- `apps/web/src/main.tsx` and `src/ui/*` (App, CreateFlow, UnlockFlow, VaultView, components, chrome, the new
-  motion helpers);
+- `apps/web/src/ui/*` (App, CreateFlow, UnlockFlow, VaultView, components, clipboard, strings, and the new
+  `motion.ts`, `motionkit.tsx`, `motion-features.ts`);
 - `src/account/writes.ts` and `src/ui/operations.ts` (progress events);
-- `src/ui/global.css`, `eslint.config.js`, `scripts/verify-build.mjs`;
+- `src/ui/global.css`, `eslint.config.js`, `scripts/verify-build.mjs`, `vite.config.ts` and the build-only
+  `vite-plugins/app-motion-isolation.ts` (keeps the landing graph byte-identical);
 - tests: unit, E2E (transitions, reduced motion, console CSP), verify-build. Screenshots are added.

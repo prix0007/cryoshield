@@ -148,8 +148,12 @@ export function KeySlot({ children }: { children: ReactNode }) {
 /** Height + opacity enter/exit for list items and disclosures (`layout` needs domMax: design D2). */
 export function Collapse({ children, as = 'div', ...rest }: { children: ReactNode; as?: 'div' | 'li'; id?: string; className?: string }) {
   const C = as === 'li' ? m.li : m.div;
+  // A leaving row is inert, so nothing typed during its exit can land on it (or on the row that took its place).
+  const present = useIsPresent();
+  // Height is not a transform, so MotionConfig would still animate it: reduced motion opens and closes instantly.
+  const transition = useReduced() ? { duration: 0 } : collapse.transition;
   return (
-    <C initial={{ ...collapse.initial, overflow: 'hidden' }} animate={{ ...collapse.animate, transitionEnd: { overflow: 'visible' } }} exit={{ ...collapse.exit, overflow: 'hidden' }} transition={collapse.transition} {...rest}>
+    <C initial={{ ...collapse.initial, overflow: 'hidden' }} animate={{ ...collapse.animate, transitionEnd: { overflow: 'visible' } }} exit={{ ...collapse.exit, overflow: 'hidden' }} transition={transition} inert={!present} {...rest}>
       <Fresh>{children}</Fresh>
     </C>
   );
@@ -161,7 +165,7 @@ export function Disclosure({ label, children }: { label: string; children: React
   const id = useId();
   return (
     <div className="notice-details">
-      <Btn type="button" className="disclosure" aria-expanded={open} aria-controls={id} onClick={() => setOpen((o) => !o)}>
+      <Btn type="button" className="disclosure" aria-expanded={open} aria-controls={open ? id : undefined} onClick={() => setOpen((o) => !o)}>
         <span className="disclosure-chevron" aria-hidden="true" />
         {label}
       </Btn>

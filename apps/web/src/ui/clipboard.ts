@@ -5,11 +5,20 @@
 export const CLIPBOARD_CLEAR_MS = 30_000;
 let timer: ReturnType<typeof setTimeout> | undefined;
 
-/** `onClearTimer` (presentation only) runs when the auto-clear timer fires, after the clear was attempted. */
+let clearListener: ((cleared: boolean) => void) | undefined;
+/** Drops the presentation callback (e.g. on Lock), so nothing outlives the vault view. The clear timer still runs. */
+export function forgetClearListener(): void {
+  clearListener = undefined;
+}
+
+/**
+ * `onClearTimer` (presentation only) runs when the auto-clear timer fires, after the clear was attempted, with whether
+ * it was attempted (false when the page had lost focus, so the UI can say so honestly).
+ */
 export async function copySecret(
   text: string,
   clip: Pick<Clipboard, 'writeText'> | undefined = globalThis.navigator?.clipboard,
-  onClearTimer?: () => void,
+  onClearTimer?: (cleared: boolean) => void,
 ): Promise<boolean> {
   if (!clip) return false;
   try {
@@ -18,11 +27,15 @@ export async function copySecret(
     return false;
   }
   if (timer) clearTimeout(timer);
+  clearListener = onClearTimer;
   timer = setTimeout(() => {
     timer = undefined;
-    if (typeof document === 'undefined' || document.hasFocus()) void clip.writeText('').catch(() => undefined);
+    const cleared = typeof document === 'undefined' || document.hasFocus();
+    if (cleared) void clip.writeText('').catch(() => undefined);
+    const listener = clearListener;
+    clearListener = undefined;
     try {
-      onClearTimer?.();
+      listener?.(cleared);
     } catch {
       /* presentation only */
     }

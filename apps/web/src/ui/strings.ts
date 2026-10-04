@@ -115,6 +115,7 @@ export const S = {
     copy: 'Copy',
     copied: 'Copied. It will be cleared from your clipboard in 30 seconds.',
     copiedChip: 'Copied',
+    clearSkipped: 'This page wasn’t in focus after 30 seconds, so your clipboard was not cleared. Clear it yourself.',
     clearsIn: 'Clipboard clears in 30 s',
     lock: 'Lock',
     edit: 'Edit secrets',

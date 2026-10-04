@@ -90,7 +90,8 @@ export function pulse(reduced: boolean): { animate: Record<string, number[]>; tr
   // Reduced motion: a static ring (no looping animation at all), as before Motion.
   return reduced
     ? { animate: { opacity: [0.6] }, transition: { duration: 0 } }
-    : { animate: { scale: [0.85, 1.15, 0.85], opacity: [0.5, 0, 0.5] }, transition: { duration: 1.6, repeat: Infinity, ease: 'easeInOut' } };
+    : // WCAG 2.2.2: two pulses (about 4.8 s in total), then it rests on the static ring; the text stays.
+      { animate: { scale: [0.85, 1.15, 0.85], opacity: [0.5, 0, 0.5] }, transition: { duration: 1.6, repeat: 2, ease: 'easeInOut' } };
 }
 
 export const TAP = { scale: 0.95 } as const;

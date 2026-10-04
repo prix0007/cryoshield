@@ -49,6 +49,16 @@ describe('write progress events (D5)', () => {
     expect(r.version).toBe(2);
   });
 
+  it('a throwing listener never breaks create either (and onSign still runs)', async () => {
+    const onSign = vi.fn();
+    const r = await createVaultOnChain(
+      { account, build: async () => ({ blob, locators: [] }) },
+      { client: okClient, sponsor: sponsor(), reader: reader(blob), randomId: () => vaultId, onSign, onProgress: () => { throw new Error('ui bug'); } },
+    );
+    expect(r.version).toBe(2);
+    expect(onSign).toHaveBeenCalledTimes(1);
+  });
+
   it('confirmed is not reported when the read-back differs', async () => {
     const log: string[] = [];
     await expect(

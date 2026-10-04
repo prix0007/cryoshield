@@ -6,7 +6,7 @@ import { ensureMirror, errorReference, messageFor, mirrorWrite, saveAddKey, save
 import { useServices } from './services';
 import { S } from './strings';
 import { ActionBar, EmptyState } from './chrome';
-import { copySecret } from './clipboard';
+import { copySecret, forgetClearListener } from './clipboard';
 import type { SaveStage } from '../account/writes';
 import { AnimatePresence, Btn, CeremonyPresence, Collapse, CopyFeedback, m, SaveProgress, StepTransition, useDirection, useReduced } from './motionkit';
 import { reveal } from './motion';
@@ -55,6 +55,13 @@ export function VaultView(props: {
   // Copy confirmation: `n` is a counter (the animation key), `i` the row; never the copied value.
   const [copied, setCopied] = useState<{ i: number; n: number } | null>(null);
   const copies = useRef(0);
+  // Nothing from this view may outlive it (Lock): drop the clipboard presentation callback on unmount.
+  useEffect(() => () => forgetClearListener(), []);
+  /** When the real clear timer fires: the chip goes; if the clear was skipped, say so (never imply it was wiped). */
+  const clearedFor = (n: number) => (cleared: boolean) => {
+    setCopied((c) => (c?.n === n ? null : c));
+    if (!cleared) setStatus(S.vault.clearSkipped);
+  };
   // Back in view mode after edit / add key / details: focus the vault heading once the transition has finished.
   const title = useRef<HTMLHeadingElement>(null);
   const leftView = useRef(false);
@@ -195,7 +202,7 @@ export function VaultView(props: {
                         className="secondary"
                         onClick={async () => {
                           const n = ++copies.current;
-                          if (await copySecret(it.secret, undefined, () => setCopied((c) => (c?.n === n ? null : c)))) {
+                          if (await copySecret(it.secret, undefined, clearedFor(n))) {
                             setStatus(S.vault.copied);
                             setCopied({ i, n });
                           }

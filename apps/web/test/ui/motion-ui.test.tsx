@@ -159,6 +159,19 @@ describe('security behaviour is never held back by an exit animation', () => {
     expect(screen.queryByRole('heading', { name: 'Seed' })).toBeNull();
   });
 
+  it('copy with the page out of focus: the chip goes when the timer fires and the user is told the clipboard was NOT cleared', async () => {
+    let clip = '';
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText: vi.fn(async (t: string) => void (clip = t)) }, configurable: true });
+    await unlocked();
+    vi.useFakeTimers({ shouldAdvanceTime: false });
+    vi.spyOn(document, 'hasFocus').mockReturnValue(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Copy Seed' }));
+    await act(async () => vi.advanceTimersByTimeAsync(CLIPBOARD_CLEAR_MS));
+    expect(clip).toBe('abandon art');
+    expect(document.querySelector('.copy-feedback')).toBeNull();
+    expect(screen.getByText(/your clipboard was not cleared/)).toBeInTheDocument();
+  });
+
   it('copy: a pop chip and countdown bar keyed by a counter; the clipboard is cleared by its own timer, then the chip goes', async () => {
     let clip = '';
     Object.defineProperty(navigator, 'clipboard', { value: { writeText: vi.fn(async (t: string) => void (clip = t)) }, configurable: true });

@@ -26,7 +26,8 @@ export function appMotionIsolation(appSrc: string): Plugin {
       return { ...r, id: `${r.id}${r.id.includes('?') ? '&' : '?'}${TAG}` };
     },
     async load(id) {
-      if (!tagged(id)) return null;
+      // Defence in depth: only Motion package files are ever re-read under the tag.
+      if (!tagged(id) || !MOTION.test(clean(id))) return null;
       const { readFile } = await import('node:fs/promises');
       return readFile(clean(id), 'utf8');
     },

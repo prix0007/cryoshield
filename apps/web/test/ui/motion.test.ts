@@ -58,8 +58,10 @@ describe('feedback variants', () => {
     expect(collapse.animate).toMatchObject({ height: 'auto', opacity: 1 });
     expect(collapse.exit).toMatchObject({ height: 0, opacity: 0 });
   });
-  it('waiting pulse loops only with motion allowed; reduced is a static ring', () => {
-    expect(pulse(false).transition).toMatchObject({ repeat: Infinity });
+  it('waiting pulse is bounded (under 5 s, WCAG 2.2.2); reduced is a static ring', () => {
+    const t = pulse(false).transition as { duration: number; repeat: number };
+    expect(Number.isFinite(t.repeat)).toBe(true);
+    expect(t.duration * (t.repeat + 1)).toBeLessThanOrEqual(5);
     expect(pulse(true).transition).not.toHaveProperty('repeat');
     expect(keysOf(pulse(true).animate)).toEqual(['opacity']);
   });

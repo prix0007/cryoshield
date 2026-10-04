@@ -313,7 +313,7 @@ export async function updateVaultOnChain(
   const r = await deps.sponsor.send(p.account, calls, guarded(deps.onProgress));
   if (!r.success) throw revertOf(r.reason);
   const v = await confirm(deps.reader, p.vaultId, owner, p.blob);
-    notify(deps.onProgress, 'confirmed');
+  notify(deps.onProgress, 'confirmed');
   return { vaultId: p.vaultId, owner, version: v.version, blob: p.blob, userOpHash: r.userOpHash, ...(r.txHash ? { txHash: r.txHash } : {}) };
 }
 
@@ -339,6 +339,6 @@ export async function addKeyOnChain(
   const r = await deps.sponsor.send(p.account, calls, guarded(deps.onProgress));
   if (!r.success) throw revertOf(r.reason);
   const v = await confirm(deps.reader, p.vaultId, owner, p.blob);
-    notify(deps.onProgress, 'confirmed');
+  notify(deps.onProgress, 'confirmed');
   return { vaultId: p.vaultId, owner, version: v.version, blob: p.blob, userOpHash: r.userOpHash, ...(r.txHash ? { txHash: r.txHash } : {}) };
 }
