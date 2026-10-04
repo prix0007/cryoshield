@@ -43,7 +43,7 @@ Each audit proof (`proof_net.py`) becomes a failing regression test first. Comma
 
 ## 8. Security review
 
-- [ ] 8.1 Security review by `security-reviewer` of the whole diff. The checklist covers:
+- [x] 8.1 Security review by `security-reviewer` of the whole diff. The checklist covers:
   - quorum counting (URL normalisation, distinct sources);
   - that ranking cannot be influenced by any single source;
   - tie handling showing no plaintext before the choice;
@@ -52,3 +52,28 @@ Each audit proof (`proof_net.py`) becomes a failing regression test first. Comma
   - the `createVault` check and vector integrity.
   
   Verify all CRITICAL/HIGH findings are resolved and the result is recorded in `docs/reviews/harden-recovery-network-trust.md`.
+
+## 9. Review follow-ups (ECC review of PR #22, security review rounds 1-2)
+
+- [x] 9.1 ECC HIGH fixes: own-head history paging (not a shared common `to` block; a low head yields disagreement) and parallel GraphQL servers with per-server budgets (oldest page first, clamped timeouts). Verify `tests/test_review22.py` (low-head, slow-first-server, timeout-clamp, oldest-first).
+- [x] 9.2 ECC advisories:
+  - Arweave minimum height, with a forced choice for unverified Arweave rivals;
+  - a download count and time budget;
+  - one history deadline per run, with clamped timeouts;
+  - a page-budget warning;
+  - normalised-URL support keys;
+  - the secret wiped on prompt abort;
+  - byte-wise `assertDistinctPrfs`, with the JSDoc restored;
+  - gateway fallback;
+  - stronger tests.
+
+  Verify `tests/test_review22.py` and `packages/vault-crypto/test/distinct-prf.test.ts`.
+- [x] 9.3 Security review findings:
+  - H1: a `_settle` step for Shamir vaults;
+  - H2: oldest/newest download order, plus confirmation on a cut-short search;
+  - M1: each RPC pages to its own head (verified live), and "beyond head" errors are not range limits;
+  - L1–L3: per-gateway timeout clamp, cached records kept past the budget, state-read deadline;
+  - M2: no claimed versions in prompts;
+  - L4: a download failing on every gateway marks the search incomplete.
+
+  Verify `tests/test_review22.py` and the record in `docs/reviews/harden-recovery-network-trust.md`.

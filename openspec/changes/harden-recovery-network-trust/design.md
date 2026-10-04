@@ -29,7 +29,7 @@ Any-of-N and threshold (Shamir) vaults go through the same `_settle` step: tie r
 ### D2. Ranking without self-reported versions
 - `Candidate.rank = (freshness class, −support, −arweave height)`. The version (from `getVault` or the Arweave tag) is display-only.
 - **Variant A:** the history disagrees (the liar truncates it), so both copies are `unverifiable`. The honest copy has support 2 against the liar's 1, so the majority copy wins, with a warning.
-- **Tie:** if the chosen copy is not chain-verified and another *different* blob for the same vaultId also decrypts with **equal** rank, the tool asks the user to choose between them. It shows, for each copy: the sources, the support count, and the claimed version marked "unverified". It never shows a plaintext before the choice. A non-interactive run exits `AMBIGUOUS` (12).
+- **Tie:** if the chosen copy is not chain-verified and another *different* blob for the same vaultId also decrypts with **equal** rank, the tool asks the user to choose between them. It shows, for each copy: the sources, the support count, and the status. It never shows a plaintext before the choice, and never shows a claimed version: that is attacker-writable, and a "version 4294967295" label would nudge users toward the older copy (security review round 2, M2). A non-interactive run exits `AMBIGUOUS` (12).
 - *Alternative rejected:* "highest version wins", which is exactly the REC-M1 exploit.
 
 ### D3. Arweave records per server

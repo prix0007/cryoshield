@@ -57,6 +57,8 @@ Findings from `docs/reviews/security-audit-2026-10.md` (PR #20), fixed in the Op
 | REC-L2 | LOW | `createVault` accepted identical PRF outputs. | `INVALID_ARGUMENT` in TS, the Python generator, and the test writer; new vector `duplicate-prf` (additive). |
 | INFO | – | `--timeout inf`/`nan` was accepted. | Must be finite and in (0, 300]. |
 
+The ECC review of PR #22 and two security-review rounds added more hardening on top of this table: own-head history paging, per-server GraphQL budgets, download order and budgets, and confirmation for cut-short searches. See `docs/reviews/harden-recovery-network-trust.md` (APPROVE).
+
 ## Residual risk (accepted)
 
 - **Colluding majority:** if a majority of the configured RPCs (or every one) lies the same way about both state and event history, the user can be shown an older *genuine* version of their vault. It can't be a forgery or a clone: AES-GCM and vaultId binding prevent that.
