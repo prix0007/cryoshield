@@ -53,7 +53,7 @@ before(async () => {
       res.writeHead(site.release.status, { 'content-type': 'application/json', ...site.headers });
       return res.end(site.release.body);
     }
-    const known = ['/', '/app/', '/architecture', '/privacy', '/healthz'];
+    const known = ['/', '/app/', '/architecture', '/devices', '/privacy', '/healthz'];
     if (!known.includes(path)) {
       res.writeHead(404);
       return res.end();

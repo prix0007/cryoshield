@@ -149,6 +149,14 @@ export function renderLegalPage(root: string, name: string): string {
   return html;
 }
 
+/**
+ * add-supported-devices-page: renders docs/<name>.md from the repository root with the same escaped renderer and
+ * link allowlist as the legal pages. The same file is what GitHub shows in the repo.
+ */
+export function renderRepoDoc(root: string, name: 'supported-devices'): string {
+  return renderMarkdown(readFileSync(join(root, '..', '..', 'docs', `${name}.md`), 'utf8'));
+}
+
 /** Shared site header/footer partials (landing visual language) injected into legal shells. */
 export function partial(root: string, name: 'header' | 'footer'): string {
   return readFileSync(join(root, 'legal', 'partials', `${name}.html`), 'utf8');

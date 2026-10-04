@@ -194,6 +194,13 @@ button:focus-visible {
   margin: 0 0 var(--space-xxs);
   font-weight: 600;
 }
+.notice-link {
+  margin: var(--space-xs) 0 0;
+  font-size: var(--caption-size);
+}
+.notice-link a {
+  color: var(--app-link);
+}
 .notice-text {
   margin: 0;
 }

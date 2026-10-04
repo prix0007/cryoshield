@@ -29,6 +29,11 @@ export function Notice({ kind, title, reference, children }: { kind: 'error' | '
         {heading && <p className="notice-title">{heading}</p>}
         {/* Errors: the card shakes once and the message slides in under the title (all text: no motion-only info). */}
         {kind === 'error' ? <SlideIn>{text}</SlideIn> : text}
+        {kind === 'error' && pointsToDevices(heading, children) && (
+          <p className="notice-link">
+            <a href="/devices">See supported devices</a>
+          </p>
+        )}
         {reference && (
           <Disclosure label={S.save.details}>
             <code className="mono">{reference}</code>
@@ -46,6 +51,13 @@ export function Notice({ kind, title, reference, children }: { kind: 'error' | '
       {body}
     </div>
   );
+}
+
+/** add-supported-devices-page: errors about the key or browser itself link the supported-devices page. */
+const DEVICE_TITLES = new Set(['Key not supported', 'Browser not supported']);
+function pointsToDevices(heading: string | undefined, children: ReactNode): boolean {
+  // An enrollment "cancel" may also mean a key without credProtect level 3 (the browser reports both the same way).
+  return (heading !== undefined && DEVICE_TITLES.has(heading)) || children === S.enrollCancelled;
 }
 
 function NoticeIcon({ kind }: { kind: 'error' | 'info' | 'success' }) {

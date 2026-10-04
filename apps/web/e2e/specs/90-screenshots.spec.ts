@@ -234,3 +234,30 @@ test('app motion (app-motion-ux 4.3): mid-transition, key slots, real save check
   await page.waitForTimeout(90);
   await page.screenshot({ path: `${dir}/motion-reduced-mid-transition.png` });
 });
+
+test('supported devices page (add-supported-devices-page 4.x): light, dark, phone, and the app key error link', async ({ browser }) => {
+  for (const [name, colorScheme, viewport] of [
+    ['devices-light', 'light', { width: 1280, height: 900 }],
+    ['devices-dark', 'dark', { width: 1280, height: 900 }],
+    ['devices-phone', 'light', { width: 390, height: 844 }],
+  ] as const) {
+    const ctx = await browser.newContext({ colorScheme, viewport });
+    const p = await ctx.newPage();
+    await p.goto('/devices');
+    await p.screenshot({ path: `${dir}/${name}.png`, fullPage: true });
+    await ctx.close();
+  }
+  const ctx = await browser.newContext({ viewport: { width: 1024, height: 760 } });
+  const page = await ctx.newPage();
+  await page.goto(APP);
+  const keys = await VirtualKeys.attach(page);
+  await keys.add({ prf: false });
+  await keys.use(0);
+  await page.getByRole('button', { name: 'Create a new vault' }).click();
+  await page.getByRole('button', { name: 'Get started' }).click();
+  await page.getByRole('button', { name: 'Set up key 1' }).click();
+  await expect(page.getByRole('link', { name: 'See supported devices' })).toBeVisible({ timeout: 15_000 });
+  await page.waitForTimeout(600);
+  await page.screenshot({ path: `${dir}/app-key-error-devices-link.png` });
+  await ctx.close();
+});
