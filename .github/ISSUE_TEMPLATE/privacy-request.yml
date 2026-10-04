@@ -7,7 +7,7 @@
     {
       "type": "markdown",
       "attributes": {
-        "value": "## ⚠️ Never post secrets here\n\nThis issue is **public**. **Never post seed phrases, recovery codes, 2FA codes, passwords, private keys, security-key PINs, or the contents of your vault** — not even partially. CryoShield's maintainers will **never** ask for them, and cannot open, change or recover any vault.\n\n**For anything sensitive** (for example your vault's account address or other details that identify you), do **not** use this form: open a [private security advisory](https://github.com/prix0007/cryoshield/security/advisories/new) instead, which only the maintainers can see.\n\nSee the [privacy policy](https://cryoshield.app/privacy) for what data exists and who holds it. We acknowledge requests within 24 hours and resolve them within 15 days."
+        "value": "## ⚠️ Never post secrets here\n\n**Never post seed phrases, recovery codes, PINs or keys**.\n\nThis issue is **public**. **Never post seed phrases, recovery codes, 2FA codes, passwords, private keys, security-key PINs, or the contents of your vault** — not even partially. CryoShield's maintainers will **never** ask for them, and cannot open, change or recover any vault.\n\n**For anything sensitive** (for example your vault's account address or other details that identify you), do **not** use this form: open a [private security advisory](https://github.com/prix0007/cryoshield/security/advisories/new) instead, which only the maintainers can see.\n\nSee the [privacy policy](https://cryoshield.app/privacy) for what data exists and who holds it. We acknowledge requests within 24 hours and resolve them within 15 days."
       }
     },
     {

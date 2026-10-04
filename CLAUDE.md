@@ -69,3 +69,22 @@ The source of truth is `openspec/config.yaml`; the product requirements are in `
 10. **After the merge,** archive the OpenSpec change (`/opsx:archive`) in a follow-up PR.
 
    Merges made by the workflow token do not trigger `push` workflows on `main`. The deploy pipeline's full CI on the merge commit is the verification of the merged result.
+
+## Issue triage
+
+`.github/workflows/issue-triage.yml` (OpenSpec change `add-issue-triage`) runs on every new issue. It does not run on PRs or bot issues.
+
+1. **Acknowledge:** one comment, marked `<!-- cryoshield-triage-ack -->`. It is never posted twice.
+2. **Screen, without a model:**
+   - **Secrets:** a BIP39 phrase of 12 or more words, 64-hex outside URLs, xprv/xpub, WIF, TOTP or `otpauth://`, or any gitleaks rule. The issue gets a fixed warning and `sensitive-content`, then stops. **A maintainer must delete the issue**, because edit history stays public.
+   - **Vulnerability reports:** the issue gets a pointer to private reporting and `security`, then stops.
+   - **Privacy requests:** handled by a human.
+   - **Over the caps** (20 diagnoses per UTC day, 1 per author per hour, owner exempt): `needs-triage`, and a "queued for maintainer review" note.
+3. **Diagnose:** the `ecc-review.yml` sandbox (no Bash and no GitHub access; writes `diagnosis.md` and `labels.txt` only). The issue text and comments are re-screened before the model sees them. A step posts one comment, marked `<!-- cryoshield-triage -->`, after the credential and BIP39 guards. Labels are applied only from the allowlist: `bug`, `enhancement`, `question`, `docs`, `needs-repro`, `web`, `contracts`, `crypto`, `recovery-tool`, `ci`, `duplicate?`, `good first issue`.
+
+Agents working an issue should:
+- read the triage comment as a starting point, not a verdict, because it is model output;
+- never ask anyone for seed phrases, recovery codes, PINs or keys;
+- know that the owner comments `/triage` to re-run triage, which updates the comment in place.
+
+The screen and caps logic is `.github/scripts/triage.mjs`, tested in `.github/scripts/test/triage.test.mjs`. Labels are created by `.github/rulesets/apply.sh --apply`, from `labels.json`.
