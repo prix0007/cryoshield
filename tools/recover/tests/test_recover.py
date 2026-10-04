@@ -44,6 +44,17 @@ class RecUI:
     def ask_pin(self, retries: int | None) -> str:
         return "123456"
 
+    choices: list[list[str]] = field(default_factory=list)
+    pick: Any = None  # callable(options) -> index; None means "no choice possible" (non-interactive)
+
+    def choose(self, prompt: str, options: list[str]) -> int:
+        self.choices.append(options)
+        if self.pick is None:
+            from cryoshield_recover.errors import ExitCode, RecoveryError
+
+            raise RecoveryError(ExitCode.AMBIGUOUS, "ambiguous")
+        return int(self.pick(options))
+
 
 def cfg_for(chain: FakeChain | None = None, ar: FakeArweave | None = None, **kw: Any) -> Config:
     c = Config(

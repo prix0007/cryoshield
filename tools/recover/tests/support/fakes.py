@@ -196,7 +196,9 @@ class FakeChain(FakeServer):
                 for lg in self.logs
                 if lg["topics"][0] in t0s
                 and lg["topics"][1] == vid
-                and lo <= int(lg["blockNumber"], 16) <= hi
+                and lo
+                <= int(lg["blockNumber"], 16)
+                <= min(hi, self.block)  # a node knows only up to its head
             ]
         raise LookupError(f"method {method} not supported")
 
@@ -227,6 +229,7 @@ class FakeArweave(FakeServer):
     def __post_init__(self) -> None:
         FakeServer.__init__(self)
         self.down = False
+        self.graphql_pages = 0
 
     @property
     def graphql_url(self) -> str:
@@ -281,11 +284,26 @@ class FakeArweave(FakeServer):
                             }
                         }
                     )
-            return (
-                200,
-                {"Content-Type": "application/json"},
-                json.dumps({"data": {"transactions": {"edges": edges}}}).encode(),
-            )
+            # Real Arweave GraphQL semantics: sort by height, `first` page size (max 50 here), opaque
+            # `after` cursor, and pageInfo.hasNextPage.
+            variables = q["variables"]
+            desc = variables.get("sort", "HEIGHT_DESC") != "HEIGHT_ASC"
+            edges.sort(key=lambda e: e["node"]["block"]["height"], reverse=desc)
+            start = int(variables["after"]) if variables.get("after") else 0
+            first = min(int(variables.get("first") or 50), 50)
+            page = edges[start : start + first]
+            for i, e in enumerate(page):
+                e["cursor"] = str(start + i + 1)
+            self.graphql_pages += 1
+            body_out = {
+                "data": {
+                    "transactions": {
+                        "pageInfo": {"hasNextPage": start + first < len(edges)},
+                        "edges": page,
+                    }
+                }
+            }
+            return 200, {"Content-Type": "application/json"}, json.dumps(body_out).encode()
         if method == "GET":
             tx = self.txs.get(path.lstrip("/"))
             if tx is None:

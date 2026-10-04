@@ -45,9 +45,23 @@ A separate code-quality pass ("OK to ship") also led to these fixes:
 - a debug log when core dumps can't be disabled;
 - the Arweave fallback processes only new candidates.
 
+## Round 3: internal security audit (2026-10)
+
+Findings from `docs/reviews/security-audit-2026-10.md` (PR #20), fixed in the OpenSpec change `harden-recovery-network-trust`. Each audit proof is a regression test in `tools/recover/tests/test_network_trust.py`.
+
+| ID | Sev | Finding | Fix |
+|---|---|---|---|
+| REC-M1 | MEDIUM (proved) | One lying RPC of three showed an older blob: variant A (version 2^32−1 plus truncated logs) and variant B (sole answer labelled current). | A `getVault` quorum of min(2, distinct configured RPCs), with duplicate URLs counted once. Ranking uses (freshness, support, height) and never a self-reported version. An exact tie requires an explicit user choice, or exit 12 in a non-interactive run. |
+| REC-M2 | MEDIUM (proved) | A hostile GraphQL server hid the genuine mirror (size 0 or a relabelled vault ID); 50 newer transactions could bury it. | One record per (server, tx id); claimed sizes ignored (1 KB read cap); cursor paging (10 pages newest-first plus the oldest page) within a 60 s budget. |
+| REC-L1 | LOW | A hostile `eth_blockNumber` caused about 2,000 `eth_getLogs` calls. | A median-head cross-check (±5,000 blocks), a common `to` block, fail-fast on the page budget, and a 60 s history deadline. |
+| REC-L2 | LOW | `createVault` accepted identical PRF outputs. | `INVALID_ARGUMENT` in TS, the Python generator, and the test writer; new vector `duplicate-prf` (additive). |
+| INFO | – | `--timeout inf`/`nan` was accepted. | Must be finite and in (0, 300]. |
+
+The ECC review of PR #22 and two security-review rounds added more hardening on top of this table: own-head history paging, per-server GraphQL budgets, download order and budgets, and confirmation for cut-short searches. See `docs/reviews/harden-recovery-network-trust.md` (APPROVE).
+
 ## Residual risk (accepted)
 
-- **Consistently lying RPCs:** if every configured RPC lies the same way about both state and event history, the user can be shown an older *genuine* version of their vault. It can't be a forgery or a clone: AES-GCM and vaultId binding prevent that.
+- **Colluding majority:** if a majority of the configured RPCs (or every one) lies the same way about both state and event history, the user can be shown an older *genuine* version of their vault. It can't be a forgery or a clone: AES-GCM and vaultId binding prevent that.
 - **No chain at all (Arweave only):** freshness can't be verified. The tool says so, and warns when several different copies decrypt.
 - **Mitigations:** `--rpc` with a trusted node, and the planned L1 hash anchor.
 - **Unchanged:** memory wiping is best effort (see README), and binaries are not code-signed.

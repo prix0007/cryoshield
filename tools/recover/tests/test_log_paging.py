@@ -47,10 +47,13 @@ def test_range_limited_rpc_halves_page_and_succeeds(mode: str) -> None:
 
 def test_range_below_floor_is_a_failure() -> None:
     with _chain() as tiny:
+        tiny.block = 400  # short history: halving can reach the floor within MAX_ADAPTED_PAGES
         tiny.max_log_range = chain_mod.MIN_LOG_CHUNK - 1
         reg = Registry([tiny.url], tiny.address, TEST_CHAIN_ID)
         assert reg.event_hashes(VID) is None
-    assert min(tiny.log_ranges) == chain_mod.MIN_LOG_CHUNK  # halved down to the floor, then gave up
+    # Page widths are clamped to the 401-block history; the chunk halves 10000 -> ... -> 78 -> 64 (floor),
+    # every page is rejected, and the lookup gives up at the floor.
+    assert tiny.log_ranges == [401, 401, 401, 401, 401, 312, 156, 78, 64]
     assert any("event history unavailable" in w for w in reg.warnings)
 
 
@@ -95,3 +98,16 @@ def test_hopeless_paging_fails_fast() -> None:
         assert reg.event_hashes(VID) is None
     assert len(tiny.log_ranges) <= 10
     assert any("history unavailable" in w for w in reg.warnings)
+
+
+def test_shrunken_pages_give_up_early_instead_of_stalling() -> None:
+    """Live 2026-10-04: drpc's ~100-block limit meant >1000 pages after two days of history and hit the
+    60 s deadline on every lookup. Once a page had to shrink, a long remaining range must fail fast."""
+    with _chain() as drpc_like, _chain() as a, _chain() as b:
+        for c in (drpc_like, a, b):
+            c.block = 100_000
+        drpc_like.max_log_range = 100
+        reg = Registry([drpc_like.url, a.url, b.url], a.address, TEST_CHAIN_ID)
+        assert reg.event_hashes(VID) is not None  # the other two agree
+    assert len(drpc_like.log_ranges) <= 12
+    assert any("too small" in w for w in reg.warnings)

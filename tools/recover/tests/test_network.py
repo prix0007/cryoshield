@@ -240,12 +240,13 @@ def test_arweave_wrong_app_name_ignored(ar: FakeArweave) -> None:
     assert _arweave(ar).find_by_locator(LOC_A) == []
 
 
-def test_arweave_oversize_declared_is_not_downloaded(ar: FakeArweave) -> None:
+def test_arweave_oversize_data_is_capped_whatever_the_claim(ar: FakeArweave) -> None:
+    """Claimed sizes are ignored (REC-M2); the hard 1024-byte read cap is the only size rule."""
     ar.mirror(b"y" * 2000, vault_id=VID, locators=[LOC_A], declared_size=2000)
     client = _arweave(ar)
     tx = client.find_by_locator(LOC_A)[0]
     assert client.fetch(tx) is None
-    assert not any(r.method == "GET" for r in ar.requests)
+    assert any("larger" in w for w in client.warnings)
 
 
 def test_arweave_lying_size_is_capped(ar: FakeArweave) -> None:

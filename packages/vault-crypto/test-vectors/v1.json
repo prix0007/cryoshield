@@ -1038,6 +1038,26 @@
       "expectedError": "INVALID_ARGUMENT"
     },
     {
+      "name": "duplicate-prf",
+      "description": "Different credential IDs with identical PRF outputs (equal locators).",
+      "vaultId": "d69896546d6d0f19d24de3990f359dea1e666df8c41091c50958fa084b2a68f9",
+      "rpId": "cryoshield.app",
+      "mode": 1,
+      "threshold": 1,
+      "credentials": [
+        {
+          "id": "a847efefef0e5428cdd8ade8fb88fed66143e5ff70c92fb5fe4d578c7008866790bff107e574e76c7fde59c83d449ad57a5ce149a29f11831df297b0c2be59c5",
+          "prf": "b4a427e7ed5f551ac381630996917ccb70a2ea7a0b51630776d5f30ae57afcd3"
+        },
+        {
+          "id": "2a388c1dee7f7bd98056994f1dfd2b23f8963c9c0b53bbdb569ea39300a2014c225bde8145b00e6eeedd4035ad1153b1fe475408dca809fc4e9a191facd60679",
+          "prf": "b4a427e7ed5f551ac381630996917ccb70a2ea7a0b51630776d5f30ae57afcd3"
+        }
+      ],
+      "secret": "736563726574",
+      "expectedError": "INVALID_ARGUMENT"
+    },
+    {
       "name": "shamir-threshold-too-high",
       "description": "Mode 0x02 with M = 4 > N = 3.",
       "vaultId": "11f19bcc8e86ecd4797d99f9836b29a7748570be6f78959536c48640039d1b72",

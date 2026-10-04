@@ -179,6 +179,24 @@ async function openCore(blob: Uint8Array, keys: readonly UnlockKey[], vaultId: U
 }
 
 /**
+ * Two credentials with identical PRF outputs are one key enrolled twice (their locators are equal):
+ * a vault created that way would only *appear* to have a backup key. Refused with INVALID_ARGUMENT
+ * (security audit 2026-10, REC-L2). Compares the raw bytes pairwise in constant time per pair, without
+ * building (non-wipeable) string copies of the secret PRF outputs. N <= 8, so this is at most 28 pairs.
+ */
+function assertDistinctPrfs(prfs: readonly Uint8Array[]): void {
+  for (let i = 0; i < prfs.length; i++) {
+    for (let j = i + 1; j < prfs.length; j++) {
+      const a = prfs[i]!;
+      const b = prfs[j]!;
+      let diff = a.length ^ b.length;
+      for (let k = 0; k < a.length && k < b.length; k++) diff |= a[k]! ^ b[k]!;
+      if (diff === 0) throw new VaultError('INVALID_ARGUMENT', { hint: 'two credentials have the same PRF output' });
+    }
+  }
+}
+
+/**
  * Creates a vault. Mode 0x01 (default): any single key unlocks. Mode 0x02
  * (experimental): Shamir M-of-N. Wipes every credential's PRF buffer.
  */
@@ -203,6 +221,7 @@ export async function createVault(params: CreateVaultParams, options: RngOptions
     const ids = credentials.map((c) => c?.id);
     assertCredIds(ids);
     for (const c of credentials) assertPrf(c.prf);
+    assertDistinctPrfs(credentials.map((c) => c.prf));
     assertSecret(secret);
     const max = maxPayloadForBytes(rp, ids, mode);
     if (secret.length > max) throw new VaultError('VAULT_TOO_LARGE', { maxPayloadBytes: max });

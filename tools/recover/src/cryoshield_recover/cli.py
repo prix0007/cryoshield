@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import math
 import sys
 from collections.abc import Callable, Sequence
 from pathlib import Path
@@ -33,6 +34,20 @@ from .secure import disable_core_dumps, wipe
 from .ui import Console, write_new_file
 
 EXIT_CODES_HELP = "\n".join(f"  {c.value:>2}  {c.name.lower().replace('_', ' ')}" for c in ExitCode)
+
+
+MAX_TIMEOUT = 300.0
+
+
+def _timeout(text: str) -> float:
+    """--timeout: a finite number of seconds in (0, 300] (audit INFO: 'inf'/'nan' were accepted)."""
+    try:
+        value = float(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"not a number: {text!r}") from None
+    if not math.isfinite(value) or not 0 < value <= MAX_TIMEOUT:
+        raise argparse.ArgumentTypeError(f"must be a finite number of seconds in (0, {MAX_TIMEOUT:g}]")
+    return value
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -68,7 +83,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     g.add_argument("--no-arweave", action="store_true", help="do not use the Arweave fallback")
     g.add_argument("--no-chain", action="store_true", help="do not query blockchain servers")
-    g.add_argument("--timeout", type=float, default=10.0, help="network timeout in seconds (default 10)")
+    g.add_argument(
+        "--timeout", type=_timeout, default=10.0, help="network timeout in seconds (default 10, max 300)"
+    )
     k = p.add_argument_group("which vault / key")
     k.add_argument("--rp-id", help="site the key was registered with (default: built-in; a vault's own wins)")
     k.add_argument("--vault-id", metavar="HEX", help="vault ID (for keys without a discoverable credential)")

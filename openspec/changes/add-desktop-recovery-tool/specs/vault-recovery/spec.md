@@ -135,7 +135,7 @@ Before any text from a remote source is printed, the tool SHALL remove control c
 - **THEN** the terminal output contains no ESC or BEL bytes, and the message text is shown inertly
 
 ### Requirement: Disagreeing chain sources
-When RPCs return different blobs for the same vault ID, the tool SHALL compare each blob's keccak256 with the latest `VaultCreated`/`VaultUpdated` hash. It SHALL keep "current" only for a matching blob and demote the others. It SHALL warn visibly in every case. If the history cannot be confirmed, it SHALL mark the copies unverifiable and prefer the higher on-chain version.
+When RPCs return different blobs for the same vault ID, the tool SHALL compare each blob's keccak256 with the latest `VaultCreated`/`VaultUpdated` hash. It SHALL keep "current" only for a matching blob and demote the others. It SHALL warn visibly in every case. If the history cannot be confirmed, it SHALL mark the copies unverifiable and SHALL apply the support-based ranking and explicit-choice rules of `harden-recovery-network-trust`; it never prefers a self-reported version.
 
 #### Scenario: One RPC serves a stale genuine blob
 - **WHEN** the first RPC serves version 1 of a vault and another serves version 2, and the event history agrees that version 2 is latest
@@ -143,7 +143,7 @@ When RPCs return different blobs for the same vault ID, the tool SHALL compare e
 
 #### Scenario: Lagging node with stale history
 - **WHEN** RPCs disagree on both the blob and the event history
-- **THEN** the history is treated as unverifiable, the higher-version copy is preferred, and the user is warned that it may not be the latest
+- **THEN** the history is treated as unverifiable, the copy returned by more servers is preferred (on a tie the user must choose explicitly), and the user is warned that it may not be the latest
 
 ### Requirement: ABI decoding is bounded
 The tool SHALL decode RPC responses defensively: it MUST bounds-check every ABI offset and length, reject blobs over 1024 bytes and candidate lists over 16 entries, and treat malformed responses as an RPC failure rather than crashing.
