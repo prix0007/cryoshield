@@ -225,7 +225,7 @@ export function composeComment({ diagnosis, previous, now, author, issue, append
   // nothing) are escaped so they cannot hide text (harden-codeql-ci-findings review L4).
   const text = neutralizeMentions(String(diagnosis ?? '')
     .replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/`/g, '&#96;')
-    .replace(/^(\s*)\[(?=[^\]\n]*\]:)/gm, '$1&#91;')
+    .replace(/\]:/g, ']&#58;')
     .replace(/cryoshield-triage-/gi, 'cryoshield triage ')
     .trim());
   const prior = previous ? [...markerBlock(previous).matchAll(RUN_RE)].map((m) => m[0]) : [];

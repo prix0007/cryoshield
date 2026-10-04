@@ -75,11 +75,11 @@ test('CodeQL #3 (js/bad-tag-filter): delimiter fragments never re-form a comment
   }
   // Security review L4: an unbalanced backtick cannot close the mention's code span early; a link reference
   // definition cannot hide text.
-  for (const diagnosis of ['` @bob', 'x `` @bob ` y', '[//]: # (hidden text)\n  [a]: http://x "t"']) {
+  for (const diagnosis of ['` @bob', 'x `` @bob ` y', '[//]: # (hidden text)\n  [a]: http://x "t"', '- [hidden]: /x', '[a\\]b]: /x', '[a\nb]: /x']) {
     const body = composeComment({ diagnosis, previous: null, now, author: 'alice', issue: 3 });
     const agentText = body.split('\n---\n<sub>')[0].split('\n').slice(1).join('\n');
     assert.doesNotMatch(agentText.replace(/`@[A-Za-z0-9/_.-]+`/g, ''), /`/, diagnosis);
-    assert.doesNotMatch(agentText, /^\s*\[[^\]]*\]:/m, diagnosis);
+    assert.doesNotMatch(agentText, /\]:/, diagnosis);
   }
   // Escaped, not deleted: the reader still sees the characters (GitHub renders &lt; / &gt; as < / >).
   const shown = composeComment({ diagnosis: 'use a < b and x->y', previous: null, now, author: 'alice', issue: 3 });

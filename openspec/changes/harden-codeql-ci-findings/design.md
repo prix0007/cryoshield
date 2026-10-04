@@ -34,3 +34,21 @@ The marker name prefix is also broken up, so no marker text appears in the agent
 
 - **CodeQL may still flag #1.** The query looks for a head checkout in `pull_request_target` followed by a step that could execute it. The checkout stays (it is needed), but nothing at the root comes from the PR any more, and no step executes `pr/`. If the alert stays open after merge, dismiss it as "won't fix" and link this design.
 - Paths in the diff are relative to the repository root, while files are under `./pr/`. The prompt says so.
+
+## Security review (task 4.1)
+
+**Reviewer:** the security-reviewer agent, read-only, 2026-10-05. **First pass: CHANGES REQUESTED. Re-review of 9231820: APPROVE**, with one LOW, which has also been fixed.
+
+The reviewer confirmed:
+- the escaping gives no route to a comment, a tag or a counted marker;
+- nothing PR-controlled sits at the workspace root;
+- ref and path variants of the checkouts are refused;
+- the triage profile is unchanged.
+
+| # | Finding | Resolution |
+|---|---|---|
+| M1 | Restore step: a path containing a newline was split by the line-based pipeline, so a nested `CLAUDE.md` could escape the restore. | The `git ls-files -z` output is checked first. A PR with a newline in any path fails the step, so it is not reviewed automatically. Simulated on a throwaway repository. |
+| L1 | `|| true` also hid a failing `git ls-files`. | `ls-files` now runs on its own under `set -e`. Only grep's no-match exit (1) is tolerated. |
+| L2 | The credential check passed when a checkout was missing. | `git -C "$d" rev-parse --git-dir` runs first. |
+| L3 | The policy did not check the number or order of checkouts. | The policy now requires exactly one base checkout, then one head checkout into `pr/`, both before the restore step. Tests added. |
+| L4 | Pre-existing: an unbalanced backtick closed a mention's code span early, and link reference definitions hid text. | Backticks are escaped (`&#96;`) and `]:` is escaped (`]&#58;`). Tests cover list-item labels, escaped brackets and two-line labels. |

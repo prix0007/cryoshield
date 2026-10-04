@@ -8,7 +8,7 @@ The ECC review workflow (`pull_request_target`) SHALL:
 - check out the PR's head commit only into the subdirectory `pr/`, as data that is never executed;
 - replace every agent-configuration file in `pr/` with the base commit's version, or remove it. This covers top-level and nested `CLAUDE.md`, `CLAUDE.local.md`, `AGENTS.md`, `.claude/` and `.mcp.json`, plus the top-level startup files.
 
-The reviewing agent SHALL be denied `pr/.git` as well as `.git`. The workflow policy check SHALL refuse:
+A PR with a newline in any file path SHALL NOT be reviewed automatically. The reviewing agent SHALL be denied `pr/.git` as well as `.git`. The workflow policy check SHALL refuse:
 - a PR-head checkout without `path: pr`;
 - a base-commit checkout anywhere but the workspace root.
 
@@ -21,7 +21,7 @@ The reviewing agent SHALL be denied `pr/.git` as well as `.git`. The workflow po
 - **THEN** the reviewing agent sees the base commit's version of that file, or none
 
 ### Requirement: Triage comments escape agent text
-The issue-triage comment composer SHALL HTML-escape every `<` and `>` in the agent's text, and SHALL break up marker names, before composing the comment. It SHALL NOT rely on a regex strip of comment syntax. No HTML comment, tag or triage marker can then appear in or be re-formed from the agent's part of the comment.
+The issue-triage comment composer SHALL HTML-escape every `<`, `>` and backtick in the agent's text, SHALL escape link-reference-definition syntax (`]:`), and SHALL break up marker names, before composing the comment. It SHALL NOT rely on a regex strip of comment syntax. No HTML comment, tag or triage marker can then appear in or be re-formed from the agent's part of the comment.
 
 #### Scenario: Split delimiters
 - **WHEN** the agent writes `<<!!-- x --<!>` or `<!-- x --!>`

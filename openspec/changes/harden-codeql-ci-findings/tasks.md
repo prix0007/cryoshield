@@ -22,7 +22,7 @@
 
 ## 4. Security review
 
-- [ ] 4.1 The security reviewer reviews this change, covering:
+- [x] 4.1 The security reviewer reviews this change, covering:
   - escaping completeness (no comment or marker survives, mentions are still neutralised);
   - the ECC workspace: nothing PR-controlled is at the root, the restore is correct for the new layout, and the credential assertion covers both checkouts;
   - the policy enforcement.
