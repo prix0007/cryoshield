@@ -3,6 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { parse } from 'yaml';
 import { checkWorkflow, checkZizmorConfig } from '../workflow-policy.mjs';
 
 const real = (name) => readFileSync(new URL(`../../workflows/${name}`, import.meta.url), 'utf8');
@@ -47,7 +48,7 @@ test('ecc-review: removing the fork refusal fails', () => {
 test('ecc-review: moving the fork refusal after another step fails', () => {
   const steps = ecc.indexOf('      - name: Refuse fork PRs');
   const second = ecc.indexOf('      - name: Require a Claude credential');
-  const third = ecc.indexOf('      # pull_request_target checks out main by default');
+  const third = ecc.indexOf('      # Nothing in the workspace root comes from the PR');
   const moved = ecc.slice(0, steps) + ecc.slice(second, third) + ecc.slice(steps, second) + ecc.slice(third);
   expectError('ecc-review.yml', moved, /job 'review'.*refuse fork/);
 });
@@ -124,7 +125,7 @@ test('H2: auto-merge must exclude Dependabot and non-default base branches', () 
 test('M1: fork refusal cannot be defeated by continue-on-error, always(), a fake exit, or an OR', () => {
   const refusal = '        if: github.event.pull_request.head.repo.full_name != github.repository\n';
   expectError('ecc-review.yml', replaceOnce(ecc, refusal, `${refusal}        continue-on-error: true\n`), /continue-on-error/);
-  expectError('ecc-review.yml', replaceOnce(ecc, '      - name: Check out the PR head (read only)\n', '      - name: Check out the PR head (read only)\n        if: always()\n'), /always\(\)/);
+  expectError('ecc-review.yml', replaceOnce(ecc, '      - name: Check out the PR head into pr/ (read only)\n', '      - name: Check out the PR head into pr/ (read only)\n        if: always()\n'), /always\(\)/);
   expectError('ecc-review.yml', replaceOnce(ecc, '          exit 1\n\n      - name: Require a Claude credential', '          echo "exit 1"\n\n      - name: Require a Claude credential'), /refuse fork/);
   expectError('auto-merge.yml', replaceOnce(am, '      && github.event.pull_request.head.repo.full_name == github.repository\n', '      && github.event.pull_request.head.repo.full_name == github.repository || true\n'), /\|\|/);
   expectError('ecc-review.yml', replaceOnce(ecc, "      && github.event.comment.author_association == 'OWNER'\n", "      && github.event.comment.author_association == 'OWNER' || true\n"), /\|\|/);
@@ -162,4 +163,34 @@ test('zizmor ignores: only dangerous-triggers, only the two privileged files, pi
   assert.match(checkZizmorConfig(`${base}  dangerous-triggers:\n    ignore:\n      - ecc-review.yml\n`).join(), /dangerous-triggers/);
   assert.match(checkZizmorConfig(`${base}  template-injection:\n    ignore:\n      - ecc-review.yml:40\n`).join(), /template-injection/);
   assert.deepEqual(checkZizmorConfig(readFileSync(new URL('../../zizmor.yml', import.meta.url), 'utf8')), []);
+});
+
+// harden-codeql-ci-findings (CodeQL #1, actions/untrusted-checkout/high): nothing in the workspace root comes from
+// the PR. The root is the base commit; the PR head is only in pr/, read by the agent as data.
+test('CodeQL #1: the PR head is checked out only into pr/; the workspace root is the base commit', () => {
+  const steps = parse(ecc).jobs.review.steps;
+  const own = steps.filter((s) => String(s.uses ?? '').startsWith('actions/checkout@') && s.with?.repository === undefined);
+  assert.deepEqual(own.map((s) => [s.with.ref, s.with.path ?? '.']), [
+    ['${{ github.event.pull_request.base.sha }}', '.'],
+    ['${{ github.event.pull_request.head.sha }}', 'pr'],
+  ]);
+  // The head checkout at the root, or anywhere but pr/, is refused.
+  expectError('ecc-review.yml', replaceOnce(ecc, '          ref: ${{ github.event.pull_request.head.sha }}\n          path: pr\n', '          ref: ${{ github.event.pull_request.head.sha }}\n'), /path: pr/);
+  expectError('ecc-review.yml', replaceOnce(ecc, '          ref: ${{ github.event.pull_request.head.sha }}\n          path: pr\n', '          ref: ${{ github.event.pull_request.head.sha }}\n          path: src\n'), /path: pr/);
+  // The base checkout must stay at the root (and nothing else may be checked out there).
+  expectError('ecc-review.yml', replaceOnce(ecc, '          ref: ${{ github.event.pull_request.base.sha }}\n', '          ref: ${{ github.event.pull_request.base.sha }}\n          path: base\n'), /base commit.*root/);
+  // The agent cannot read either .git directory.
+  expectError('ecc-review.yml', replaceOnce(ecc, ',Read(./pr/.git/**)', ''), /disallowedTools/);
+});
+
+test('CodeQL #1: PR-provided agent configuration under pr/ is replaced by the base commit\'s, and the prompt points at pr/', () => {
+  const steps = parse(ecc).jobs.review.steps;
+  const restore = steps.find((s) => s.name === 'Restore agent configuration from the base commit');
+  assert.match(String(restore.run), /git -C pr /);
+  assert.match(String(restore.run), /CLAUDE\.md/);
+  const iRestore = steps.indexOf(restore);
+  const iHead = steps.findIndex((s) => s.with?.path === 'pr');
+  const iReview = steps.findIndex((s) => String(s.uses ?? '').startsWith('anthropics/claude-code-action@'));
+  assert.ok(iHead < iRestore && iRestore < iReview);
+  assert.match(String(steps[iReview].with.prompt), /\.\/pr\//);
 });

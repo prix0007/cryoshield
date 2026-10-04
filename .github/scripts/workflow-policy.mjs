@@ -40,6 +40,8 @@ const REVIEW_DIR = '//home/runner/work/_temp/ecc-review';
 export const REVIEW_ALLOWED_TOOLS = `Agent,Read,Grep,Glob,Edit(${REVIEW_DIR}/body.md),Edit(${REVIEW_DIR}/verdict.txt)`;
 export const REVIEW_DISALLOWED_TOOLS =
   'Bash,WebFetch,WebSearch,Read(//proc/**),Grep(//proc/**),Glob(//proc/**),Read(./.git/**),Grep(./.git/**),Glob(./.git/**)';
+// ecc-review reads the PR head from pr/ (harden-codeql-ci-findings): its .git is off limits too.
+export const ECC_DISALLOWED_TOOLS = `${REVIEW_DISALLOWED_TOOLS},Read(./pr/.git/**),Grep(./pr/.git/**),Glob(./pr/.git/**)`;
 const HOOKS_OFF_LINE = `printf '{"hooks":{}}\\n' > "$RUNNER_TEMP/ecc-plugin/hooks/hooks.json"`;
 // Issue triage (add-issue-triage D1/D7).
 const TRIAGE_DIR = '//home/runner/work/_temp/triage';
@@ -59,8 +61,10 @@ export const PRIVILEGED = {
       rerun: ["github.event_name == 'issue_comment'", 'github.event.issue.pull_request', "startsWith(github.event.comment.body, '/ecc-review')", OWNER_ONLY],
     },
     headCheckout: true,
+    // CodeQL #1: the PR head only in this subdirectory; the workspace root is the base commit.
+    headPath: 'pr',
     requiredRunLines: [HOOKS_OFF_LINE],
-    agent: { allowedTools: REVIEW_ALLOWED_TOOLS, disallowedTools: REVIEW_DISALLOWED_TOOLS, allowNonWriteUsers: false },
+    agent: { allowedTools: REVIEW_ALLOWED_TOOLS, disallowedTools: ECC_DISALLOWED_TOOLS, allowNonWriteUsers: false },
   },
   'auto-merge.yml': {
     triggers: ['pull_request_target'],
@@ -90,6 +94,7 @@ export const PRIVILEGED = {
 };
 const PRIVILEGED_ACTIONS = [/^actions\/checkout@[0-9a-f]{40}$/, /^anthropics\/claude-code-action@[0-9a-f]{40}$/];
 const HEAD_SHA_REF = '${{ github.event.pull_request.head.sha }}';
+const BASE_SHA_REF = '${{ github.event.pull_request.base.sha }}';
 // Commands that would execute files from the (PR-controlled) workspace. A backstop only: every run step is also
 // pinned by digest, so no run step changes without a reviewed digest update.
 const EXECUTES_CHECKOUT =
@@ -227,7 +232,14 @@ function checkPrivileged(file, name, wf, on) {
           else if (w.repository === undefined && profile.defaultBranchCheckout) {
             if (w.ref !== undefined) err(`${label}: ${name} may only check out the default branch (no ref), never PR code`);
           } else if (w.repository === undefined) {
-            if (norm(w.ref) !== HEAD_SHA_REF) err(`${label}: the repository checkout must pin ref to the PR head SHA (${HEAD_SHA_REF})`);
+            const ref = norm(w.ref);
+            if (profile.headPath && ref === BASE_SHA_REF) {
+              if (w.path !== undefined) err(`${label}: the base commit checkout must be the workspace root (no path)`);
+            } else if (ref !== HEAD_SHA_REF) {
+              err(`${label}: the repository checkout must pin ref to the PR head SHA (${HEAD_SHA_REF})${profile.headPath ? ` or be the base commit (${BASE_SHA_REF})` : ''}`);
+            } else if (profile.headPath && w.path !== profile.headPath) {
+              err(`${label}: the PR head must be checked out with path: ${profile.headPath} (nothing in the workspace root may come from the PR)`);
+            }
           } else {
             // External checkout (the ECC plugin): repository and ref must come from literal workflow-level env pins.
             const repoVar = ENV_REF.exec(norm(w.repository))?.[1];

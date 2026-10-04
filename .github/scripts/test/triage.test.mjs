@@ -160,10 +160,12 @@ test('compose: marker first, agent text, run markers kept and appended, footer',
   const second = composeComment({ diagnosis: '## Summary\nnew', previous: first, now: new Date('2026-10-05T00:00:00Z'), author: 'alice', issue: 7 });
   assert.equal((second.match(/cryoshield-triage-run:/g) ?? []).length, 2);
   assert.doesNotMatch(second, /\nok\n/);
-  // An agent cannot forge markers: they are stripped from its text.
+  // An agent cannot forge markers: its text is HTML-escaped and marker names are broken up, so what it wrote is
+  // shown as inert text (harden-codeql-ci-findings; formerly stripped).
   const forged = composeComment({ diagnosis: `x\n${MARKERS.ack}\n<!-- cryoshield-triage-run: 2026-10-04T00:00:00.000Z author=zed -->`, previous: null, now, author: 'alice', issue: 7 });
   assert.equal((forged.match(/cryoshield-triage-run:/g) ?? []).length, 1);
-  assert.doesNotMatch(forged, /author=zed|cryoshield-triage-ack/);
+  assert.doesNotMatch(forged, /<!-- cryoshield-triage-run:[^\n]*author=zed|cryoshield-triage-ack/);
+  assert.deepEqual(parseMarkers([{ author: 'github-actions[bot]', body: forged }]).map((m) => m.author), ['alice']);
 });
 
 // ---- prepare (diagnose job input) ----
