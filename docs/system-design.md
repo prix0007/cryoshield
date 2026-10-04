@@ -142,7 +142,7 @@ sequenceDiagram
 
 ## 5. How code reaches cryoshield.app
 
-Nothing reaches `main` or production without a spec, a pull request and a green `ci-ok`. The `main` ruleset has no bypass actors, so this applies to admins too. Every new commit on `main` is then deployed automatically by `.github/workflows/deploy.yml`, but only after the full CI passes again on that exact commit (runbook: `docs/deploy.md`).
+Nothing reaches `main` or production without a spec, a pull request and a green `ci-ok`. The `main` ruleset has no bypass actors, so this applies to admins too. Every new commit on `main` is then built by `.github/workflows/deploy.yml` after the full CI passes again on that exact commit, and it goes live only after the owner approves the release (runbook: `docs/deploy.md`). Agents work through a non-admin machine account (`docs/agent-account.md`), so an auto-merged PR can reach `main` but never production by itself.
 
 ```mermaid
 flowchart LR
@@ -154,14 +154,15 @@ flowchart LR
   main["main<br/>squash only, linear, no force-push"]
   detect["detect<br/>/release.json ≠ main HEAD<br/>(push · every 15 min · manual)"]
   full["full CI on that commit<br/>ci.yml, every job"]
-  deploy["build: deploy.sh --build-only (no token)<br/>clean tree · 2 identical builds · RP ID = host<br/>then deploy: flyctl only (Fly token)"]
+  deploy["build: deploy.sh --build-only<br/>env production-build (no Fly token)<br/>clean tree · 2 identical builds · RP ID = host"]
+  approve["owner approval<br/>env production · no admin bypass<br/>older waiting releases superseded"]
   fly["Fly.io<br/>cryoshield-web"]
-  smoke["smoke test<br/>routes · headers · registry · /release.json<br/>auto rollback on failure"]
+  smoke["release job: flyctl deploy + smoke test<br/>routes · headers · registry · /release.json<br/>auto rollback on failure"]
 
   spec --> pr
   pr --> checks --> ok
   pr --> jobs --> ok
-  ok --> main --> detect --> full --> deploy --> fly --> smoke
+  ok --> main --> detect --> full --> deploy --> approve --> fly --> smoke
 
   classDef ours fill:#e6f0fa,stroke:#0066cc,color:#0066cc;
   class fly ours;
@@ -170,10 +171,12 @@ flowchart LR
 - **Security review.** Every change touching crypto, contracts, the paymaster or secret handling ends with a security-review task. The records are in `docs/reviews/` and `apps/web/docs/`.
 - **Pinned toolchain.** All third-party GitHub Actions are pinned by commit SHA. The gitleaks and osv-scanner binaries are pinned by version and checksum. Installs fail on lockfile drift.
 - **Rebuildable deploys.** Every deploy writes `apps/web/deploy/.build/release-manifest.json` with the commit and a deterministic tree hash, so anyone can rebuild the site and compare it with what Fly serves. The site also serves the commit, tree hash and public config at `https://cryoshield.app/release.json` (not part of the tree hash), so anyone can see which commit is live.
-- **Continuous deployment.** `deploy.yml` runs on every push to `main`, every 15 minutes (merges made by auto-merge start no push workflow), and on demand. It skips when `/release.json` already shows the `main` HEAD. It then:
+- **Continuous deployment, owner-approved releases.** `deploy.yml` runs on every push to `main`, every 15 minutes (merges made by auto-merge start no push workflow), and on demand. It skips when `/release.json` already shows the `main` HEAD. It then:
   - runs the full `ci.yml` on that commit;
-  - builds with the guarded `deploy.sh --build-only` in a job without the Fly token, then deploys that verified artifact from a job that runs only flyctl (the GitHub Environment `production` is the only place the token lives);
-  - smoke-tests the live site, and on any failure redeploys the previous image automatically and fails loudly.
+  - builds with the guarded `deploy.sh --build-only` in the Environment `production-build` (build config, no Fly token);
+  - supersedes older releases still waiting for approval;
+  - runs one `release` job in the Environment `production`, the only place the Fly token lives. It waits for the owner's approval; admins cannot bypass it, and the agents' account cannot approve. One approval covers the flyctl-only deploy, the smoke test, and the automatic rollback to the previous image on any failure or cancellation.
+  - Waiting releases never pile up: concurrency is per commit at the workflow level, and `deploy-production` is held by the release job, which concurrency never cancels.
 
 ## 6. Hosting and headers
 

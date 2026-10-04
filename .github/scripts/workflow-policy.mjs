@@ -355,7 +355,9 @@ export function checkWorkflow(file, text) {
     } else {
       // Read-only allow-list (security review MEDIUM-5). A job that needs a write scope needs a spec change here.
       for (const [scope, level] of Object.entries(job.permissions)) {
-        if (level !== 'read' && level !== 'none') errors.push(`${file}: job '${id}' requests ${scope}: ${level}; only read/none is allowed (no write scopes)`);
+        // Single exception (gate-production-deploys D4): deploy.yml's `supersede` cancels older waiting runs.
+        const supersedeException = basename(file) === DEPLOY_WORKFLOW && id === 'supersede' && scope === 'actions' && level === 'write';
+        if (level !== 'read' && level !== 'none' && !supersedeException) errors.push(`${file}: job '${id}' requests ${scope}: ${level}; only read/none is allowed (no write scopes)`);
       }
     }
     if (job['timeout-minutes'] === undefined && job.uses === undefined) {
@@ -380,11 +382,11 @@ export function checkWorkflow(file, text) {
       errors.push(`${file}: job '${id}': environment must be a literal name, not an expression`);
     }
   }
-  const usesProduction = jobsList.some(([, j]) => envName(j.environment) === 'production');
+  const usesProduction = jobsList.some(([, j]) => DEPLOY_ENVIRONMENTS.includes(envName(j.environment)));
   if (name === DEPLOY_WORKFLOW) errors.push(...checkDeploy(file, wf, on));
   else {
     if (mentionsToken) errors.push(`${file}: FLY_API_TOKEN may only be referenced by ${DEPLOY_WORKFLOW} (only deploy.yml deploys)`);
-    if (usesProduction) errors.push(`${file}: environment production may only be used by ${DEPLOY_WORKFLOW} (only deploy.yml deploys)`);
+    if (usesProduction) errors.push(`${file}: environments production and production-build may only be used by ${DEPLOY_WORKFLOW} (only deploy.yml deploys)`);
   }
   return errors;
 }
@@ -395,6 +397,9 @@ const DEPLOY_TOKEN_STEPS = ['deploy', 'rollback'];
 const envName = (e) => String(isObj(e) ? e.name ?? '' : e ?? '').trim().toLowerCase();
 // The only secret expressions deploy.yml may contain, each only in the step env of the named steps (review M3).
 const DEPLOY_SECRETS = { deploy: ['FLY_API_TOKEN'], rollback: ['FLY_API_TOKEN'], 'web-env': ['VITE_BUNDLER_URL'] };
+// gate-production-deploys: the approved release job is the only `production` job; build config is in production-build.
+const DEPLOY_ENVIRONMENTS = ['production', 'production-build'];
+const SECRET_ENVIRONMENT = { FLY_API_TOKEN: 'production', VITE_BUNDLER_URL: 'production-build' };
 // Jobs holding the Fly token run no build tooling or third-party code (review H1).
 const TOKEN_JOB_ACTIONS = [/^actions\/checkout@[0-9a-f]{40}$/, /^actions\/download-artifact@[0-9a-f]{40}$/];
 const BUILD_TOOLING = /(^|[\s;&|(`!/])(node|npm|npx|pnpm|yarn|bunx?|deno|vite|tsx|python3?|pip3?|uvx?|make|docker)\b/m;
@@ -439,10 +444,13 @@ function checkDeploy(file, wf, on) {
   for (const t of on) if (!DEPLOY_TRIGGERS.includes(t)) err(`trigger '${t}' is not allowed (deploy.yml runs only on ${DEPLOY_TRIGGERS.join(', ')}; never on pull requests)`);
   const branches = isObj(wf.on) && isObj(wf.on.push) ? wf.on.push.branches : undefined;
   if (on.includes('push') && JSON.stringify(branches) !== JSON.stringify(['main'])) err('push must be limited to branches: [main]');
+  // Per-commit workflow concurrency: the schedule never stacks runs for one commit while it waits for approval.
   const c = wf.concurrency;
-  if (!isObj(c) || c.group !== 'deploy-production' || c['cancel-in-progress'] !== false) {
-    err('concurrency must be { group: deploy-production, cancel-in-progress: false } (one deploy at a time, never cancelled)');
+  if (!isObj(c) || norm(c.group) !== 'deploy-${{ github.sha }}' || c['cancel-in-progress'] !== false) {
+    err('workflow concurrency must be { group: deploy-${{ github.sha }}, cancel-in-progress: false } (per commit, never cancelled)');
   }
+  const prodJobs = Object.entries(isObj(wf.jobs) ? wf.jobs : {}).filter(([, j]) => isObj(j) && envName(j.environment) === 'production');
+  if (prodJobs.length > 1) err(`only one job may use environment production (one approval per release), found ${prodJobs.map(([i]) => i).join(', ')}`);
   if (strings(wf).includes('inherit')) err('secrets: inherit is not allowed');
   if (strings(wf.env).some((s) => /FLY_API_TOKEN/i.test(s)) || usesSecret(wf.env)) err('no secrets (FLY_API_TOKEN or any other) in the workflow-level env');
 
@@ -457,9 +465,19 @@ function checkDeploy(file, wf, on) {
     if (needs.length === 0 && !conjuncts.includes("github.ref == 'refs/heads/main'")) {
       err(`job '${id}' has no needs, so its condition must include "github.ref == 'refs/heads/main'"`);
     }
-    const prod = envName(job.environment) === 'production';
-    if (job.environment !== undefined && !prod) err(`job '${id}': the only allowed environment is production`);
-    if (usesSecret(job) && !prod) err(`job '${id}' uses secrets, so it must run in environment production`);
+    const envn = envName(job.environment);
+    const prod = envn === 'production';
+    if (job.environment !== undefined && !DEPLOY_ENVIRONMENTS.includes(envn)) err(`job '${id}': the only allowed environments are ${DEPLOY_ENVIRONMENTS.join(' and ')}`);
+    if (usesSecret(job) && !DEPLOY_ENVIRONMENTS.includes(envn)) err(`job '${id}' uses secrets, so it must run in environment production or production-build`);
+    const tokenJob = strings(job).some((s) => /FLY_API_TOKEN/i.test(s));
+    if (tokenJob && !prod) err(`job '${id}' references FLY_API_TOKEN but is not in environment production (the approved release job)`);
+    if (prod && !tokenJob) err(`job '${id}' uses environment production without the Fly token: production is only for the approved release job`);
+    if (prod) {
+      const jc = job.concurrency;
+      if (!isObj(jc) || jc.group !== 'deploy-production' || jc['cancel-in-progress'] !== false) {
+        err(`job '${id}' (production) must have concurrency { group: deploy-production, cancel-in-progress: false } (one release at a time, never cut mid-deploy)`);
+      }
+    }
     if (strings(job.env).some((s) => /FLY_API_TOKEN/i.test(s)) || usesSecret(job.env)) err(`job '${id}': FLY_API_TOKEN or any secret must not be in a job-level env`);
     const steps = Array.isArray(job.steps) ? job.steps.filter(isObj) : [];
     const holdsToken = strings(job).some((s) => /FLY_API_TOKEN/i.test(s));
@@ -475,7 +493,7 @@ function checkDeploy(file, wf, on) {
       for (const e of exprsOf(env)) {
         if (!/\bsecrets\b/i.test(e)) continue;
         const m = /^\s*secrets\.([A-Z_]+)\s*$/.exec(e);
-        if (!m || !(DEPLOY_SECRETS[step.id] ?? []).includes(m[1]) || !prod) {
+        if (!m || !(DEPLOY_SECRETS[step.id] ?? []).includes(m[1]) || envn !== SECRET_ENVIRONMENT[m[1]]) {
           err(`${label}: secret expression \${{${e}}} is not allowed here (allowed: ${Object.entries(DEPLOY_SECRETS).map(([k, v]) => `${v.join(',')} in step '${k}'`).join('; ')})`);
         }
       }
