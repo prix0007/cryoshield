@@ -308,14 +308,16 @@ def test_trickling_server_hits_deadline() -> None:
 
 # ------------------------------------------------------------------ round 2 LOWs
 def test_two_different_decrypting_copies_without_chain_warn() -> None:
-    """Ranking uses the attacker-writable version tag when the chain is down: keep it, but warn."""
+    """Chain down, two different decrypting Arweave copies: tags and heights are server-controlled, so
+    the user must choose explicitly (PR #22 review); no version or height decides silently."""
     with FakeChain() as chain, FakeArweave() as ar:
         chain.down = True
         ar.mirror(BLOB1, vault_id=VID, locators=[LOC_A, LOC_B], version=1, height=5)
         ar.mirror(BLOB2, vault_id=VID, locators=[LOC_A, LOC_B], version=2, height=6)
-        res, _ = _run(cfg_for(chain, ar), [PhysicalKey.named("B")])
+        ui = RecUI(pick=lambda opts: next(i for i, o in enumerate(opts) if "claims version 2" in o))
+        res, _ = _run(cfg_for(chain, ar), [PhysicalKey.named("B")], ui)
+    assert ui.choices and len(ui.choices[0]) == 2
     assert bytes(res.secret) == h(UPD["newSecret"])
-    assert any("older copy may be shown" in w for w in res.warnings)
 
 
 def test_single_decrypting_copy_without_chain_no_extra_warning() -> None:

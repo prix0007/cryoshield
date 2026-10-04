@@ -47,11 +47,13 @@ def test_range_limited_rpc_halves_page_and_succeeds(mode: str) -> None:
 
 def test_range_below_floor_is_a_failure() -> None:
     with _chain() as tiny:
+        tiny.block = 400  # short history: halving can reach the floor within MAX_ADAPTED_PAGES
         tiny.max_log_range = chain_mod.MIN_LOG_CHUNK - 1
         reg = Registry([tiny.url], tiny.address, TEST_CHAIN_ID)
         assert reg.event_hashes(VID) is None
-    # halved toward the floor, never below it, then gave up (possibly earlier: MAX_ADAPTED_PAGES)
-    assert min(tiny.log_ranges) >= chain_mod.MIN_LOG_CHUNK
+    # Page widths are clamped to the 401-block history; the chunk halves 10000 -> ... -> 78 -> 64 (floor),
+    # every page is rejected, and the lookup gives up at the floor.
+    assert tiny.log_ranges == [401, 401, 401, 401, 401, 312, 156, 78, 64]
     assert any("event history unavailable" in w for w in reg.warnings)
 
 

@@ -196,7 +196,9 @@ class FakeChain(FakeServer):
                 for lg in self.logs
                 if lg["topics"][0] in t0s
                 and lg["topics"][1] == vid
-                and lo <= int(lg["blockNumber"], 16) <= hi
+                and lo
+                <= int(lg["blockNumber"], 16)
+                <= min(hi, self.block)  # a node knows only up to its head
             ]
         raise LookupError(f"method {method} not supported")
 

@@ -67,7 +67,7 @@ class Client:
     n_getlogs: int = 0
     max_bytes: int = 65536
 
-    def call(self, method: str, params: list[Any]) -> Any:
+    def call(self, method: str, params: list[Any], timeout: float | None = None) -> Any:
         if self.fail and method != "eth_chainId":
             raise RpcError(f"{self.host} unreachable")
         if method == "eth_chainId":
@@ -245,12 +245,25 @@ def test_rec_l1_hostile_head_refused_against_median() -> None:
 def test_rec_l1_history_deadline(monkeypatch: pytest.MonkeyPatch) -> None:
     from cryoshield_recover import chain as chain_mod
 
-    clock = iter(range(0, 10_000, 30))
-    monkeypatch.setattr(chain_mod.time, "monotonic", lambda: float(next(clock)))
-    slow = Client("https://slow.example", NEW, 2, [], latest=200_000)
+    class Clock:
+        now = 0.0
+
+        def monotonic(self) -> float:
+            return self.now
+
+    clock = Clock()
+    monkeypatch.setattr(chain_mod, "time", clock)
+
+    class SlowClient(Client):
+        def call(self, method: str, params: list[Any], timeout: float | None = None) -> Any:
+            if method == "eth_getLogs":
+                clock.now += 25.0  # each page takes 25 s of (fake) time
+            return super().call(method, params, timeout)
+
+    slow = SlowClient("https://slow.example", NEW, 2, [], latest=200_000)
     reg = Registry(["https://slow.example"], REG, CHAIN, 0, client_factory=lambda u: slow)  # type: ignore[arg-type,return-value]
     assert reg.event_hashes(VID) is None
-    assert slow.n_getlogs < 5
+    assert slow.n_getlogs == 3  # pages at t=0, 25, 50; the deadline (60 s) stops the 4th
     assert any("deadline" in w for w in reg.warnings)
 
 
