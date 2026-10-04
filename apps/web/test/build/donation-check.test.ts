@@ -1,7 +1,7 @@
 // @vitest-environment node
 /** add-donation: verify-build's anti-swap check. */
 import { describe, expect, it } from 'vitest';
-import { donationViolations } from '../../scripts/donation-check.mjs';
+import { donationViolations, textOf } from '../../scripts/donation-check.mjs';
 
 const D = { address: '0xfb4172e26AC8735C06656f1df14151cFe8441481', chainId: 1 };
 const URI = `ethereum:${D.address}@1`;
@@ -42,5 +42,13 @@ describe('donationViolations', () => {
   });
   it('fails when the QR or the wallet link is missing', () => {
     expect(donationViolations({ 'support/index.html': `<code data-donation-address>${D.address}</code>` }, D).join()).toMatch(/QR code[\s\S]*Open in wallet|Open in wallet[\s\S]*QR/);
+  });
+
+  it('textOf drops all markup in one pass, including nested-looking tags, and decodes references once', () => {
+    expect(textOf('a<b>c</b>d')).toBe('acd');
+    expect(textOf('<scr<script>ipt>x</script>')).not.toContain('<');
+    expect(textOf('<<script>script>alert(1)<</script>/script>')).not.toMatch(/<script/i);
+    expect(textOf('&#x30;x&#49;&colon;')).toBe('0x1:');
+    expect(textOf('&amp;#x30;')).toBe('&amp;#x30;'); // no double decoding
   });
 });

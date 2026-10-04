@@ -11,13 +11,23 @@
 const HEX40 = /0x[0-9a-fA-F]{40}/g;
 const URI_RE = /ethereum(?::|&#0*58;|&#x0*3a;|&colon;)[^"'`\s<>)]*/gi;
 
-/** Text content of an HTML document: no tags, character references decoded (for the text-level address check). */
-function textOf(html) {
-  return html
-    .replace(/<[^>]*>/g, '')
-    .replace(/&#x([0-9a-f]+);/gi, (_m, h) => String.fromCodePoint(parseInt(h, 16)))
-    .replace(/&#(\d+);/g, (_m, d) => String.fromCodePoint(Number(d)))
-    .replace(/&colon;/gi, ':');
+/**
+ * Text content of an HTML document, for the text-level address check (never used as output, so this is not a
+ * sanitizer). A single-pass scanner drops everything from each '<' to the next '>', so no markup can survive or
+ * reassemble (unlike a regex replace). Numeric character references and &colon; are then decoded, once.
+ */
+export function textOf(html) {
+  let text = '';
+  let inTag = false;
+  for (const ch of html) {
+    if (inTag) {
+      if (ch === '>') inTag = false;
+    } else if (ch === '<') inTag = true;
+    else text += ch;
+  }
+  return text.replace(/&#(?:x([0-9a-f]+)|(\d+));|&colon;/gi, (_m, hex, dec) =>
+    hex !== undefined ? String.fromCodePoint(parseInt(hex, 16)) : dec !== undefined ? String.fromCodePoint(Number(dec)) : ':',
+  );
 }
 
 /** @param {Record<string, string>} files relative path -> content (built HTML and JS) */
