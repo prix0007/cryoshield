@@ -28,7 +28,9 @@ export {
   type WebAuthnPrfCreateOptions,
   type WebAuthnPrfGetOptions,
   type PrfExtensionInput,
+  type CredProtectExtensionInput,
 } from './derive.js';
+export { assertCredProtectUvRequired, credProtectLevel, CRED_PROTECT_UV_REQUIRED } from './credprotect.js';
 export { decodeVault, encodeVault, maxPayloadBytes, type DecodedVault, type VaultEntry, type VaultFields } from './format.js';
 export { VaultError, type VaultErrorCode } from './errors.js';
 // The deterministic replay RNG lives in '@cryoshield/vault-crypto/testing' only.

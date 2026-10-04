@@ -13,7 +13,8 @@ export type VaultErrorCode =
   | 'INSUFFICIENT_SHARES'
   | 'AUTH_FAILED'
   | 'NO_MATCHING_VAULT'
-  | 'USER_NOT_VERIFIED';
+  | 'USER_NOT_VERIFIED'
+  | 'CRED_PROTECT_UNSUPPORTED';
 
 const MESSAGES: Record<VaultErrorCode, string> = {
   BAD_MAGIC: 'not a CryoShield vault',
@@ -30,6 +31,7 @@ const MESSAGES: Record<VaultErrorCode, string> = {
   AUTH_FAILED: 'authentication failed',
   NO_MATCHING_VAULT: 'no matching vault',
   USER_NOT_VERIFIED: 'user verification was not performed',
+  CRED_PROTECT_UNSUPPORTED: 'the key did not confirm credProtect level 3 (user verification required)',
 };
 
 /**
