@@ -273,6 +273,8 @@ jobs:
           [[ "$CHAIN_ID" =~ ^[0-9]+$ ]] || { echo "::error::vars.VITE_CHAIN_ID is not a chain id"; exit 1; }
           REGISTRY_ADDRESS="$(jq -r .address "contracts/deployments/${CHAIN_ID}.json")"
           export REGISTRY_ADDRESS
+          DONATION_ADDRESS="$(jq -r .address config/donation.json)"
+          export DONATION_ADDRESS
           .github/scripts/deploy/smoke.sh
       - name: Install flyctl for the rollback (pinned, checksum-verified)
         if: (failure() || needs.deploy.result != 'success') && needs.deploy.outputs.fly_started == 'true'

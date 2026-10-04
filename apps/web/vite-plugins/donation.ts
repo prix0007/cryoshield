@@ -73,11 +73,12 @@ const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replac
 /** Fills the /support page markers from the validated config. */
 export function renderSupport(html: string, d: Donation): string {
   const uri = donationUri(d);
+  // Replacer functions, so `$` sequences in a value can never be interpreted as replacement patterns.
   return html
-    .replaceAll('<!--donation:address-->', esc(d.address))
-    .replaceAll('__DONATION_URI__', esc(uri))
-    .replaceAll('<!--donation:network-->', esc(d.network))
-    .replace('<!--donation:qr-->', qrSvg(uri));
+    .replaceAll('<!--donation:address-->', () => esc(d.address))
+    .replaceAll('__DONATION_URI__', () => esc(uri))
+    .replaceAll('<!--donation:network-->', () => esc(d.network))
+    .replace('<!--donation:qr-->', () => qrSvg(uri));
 }
 
 /** Vite plugin: fills the donation markers (only /support has them) from the validated config at build time. */

@@ -29,6 +29,17 @@ describe('donationViolations', () => {
   it('fails when a data-donation-address element elsewhere shows another address', () => {
     expect(donationViolations({ 'support/index.html': page(), 'index.html': `<span data-donation-address>${OTHER}</span>` }, D).join()).toMatch(/data-donation-address/);
   });
+  it('catches an address split by tags or written as entities on /support (text-level check)', () => {
+    const split = OTHER.slice(0, 20) + '<wbr>' + OTHER.slice(20);
+    expect(donationViolations({ 'support/index.html': page() + `<p>${split}</p>` }, D).join()).toMatch(/another address/);
+    const entities = '&#x30;' + OTHER.slice(1);
+    expect(donationViolations({ 'support/index.html': page() + `<p>${entities}</p>` }, D).join()).toMatch(/another address/);
+  });
+  it('catches upper-case and entity-encoded payment URIs, and CSS/SVG files', () => {
+    expect(donationViolations({ 'support/index.html': page(), 'index.html': `<a href="ETHEREUM:${OTHER}@1">` }, D).join()).toMatch(/unexpected payment URI/);
+    expect(donationViolations({ 'support/index.html': page(), 'index.html': `<a href="ethereum&#58;${OTHER}@1">` }, D).join()).toMatch(/unexpected payment URI/);
+    expect(donationViolations({ 'support/index.html': page(), 'assets/x.css': `.a::after{content:"ethereum:${OTHER}"}` }, D).join()).toMatch(/unexpected payment URI/);
+  });
   it('fails when the QR or the wallet link is missing', () => {
     expect(donationViolations({ 'support/index.html': `<code data-donation-address>${D.address}</code>` }, D).join()).toMatch(/QR code[\s\S]*Open in wallet|Open in wallet[\s\S]*QR/);
   });

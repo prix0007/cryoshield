@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import jsQR from 'jsqr';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { qrMatrixFromSvg } from '../../vite-plugins/donation';
+import { qrMatrixFromSvg, qrSvg } from '../../vite-plugins/donation';
 
 const web = join(__dirname, '..', '..');
 const ADDRESS = '0xfb4172e26AC8735C06656f1df14151cFe8441481';
@@ -32,8 +32,12 @@ describe('/support (built)', () => {
     expect(new Set([...html('support/index.html').matchAll(/0x[0-9a-fA-F]{40}/g)].map((m) => m[0]))).toEqual(new Set([ADDRESS]));
   });
 
-  it('the QR code in the built page decodes to exactly the EIP-681 URI', () => {
-    const svg = html('support/index.html').match(/<svg [^>]*class="qr"[\s\S]*?<\/svg>/)![0];
+  it('the QR code in the built page is exactly the generator output for the URI (one QR, nothing added), and decodes to it', () => {
+    const qrs = [...html('support/index.html').matchAll(/<svg [^>]*class="qr"[\s\S]*?<\/svg>/g)].map((m) => m[0]);
+    expect(qrs).toHaveLength(1);
+    const svg = qrs[0]!;
+    expect(svg).toBe(qrSvg(URI)); // byte for byte: no extra shapes a scanner would see but the decoder would ignore
+    expect(doc('support/index.html').querySelectorAll('.support-qr svg, .support-qr img, .support-qr canvas')).toHaveLength(1);
     const m = qrMatrixFromSvg(svg);
     const scale = 6;
     const size = m.length * scale;

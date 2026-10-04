@@ -21,4 +21,4 @@
 
 ## 4. Review
 
-- [ ] 4.1 Security review of the address-swap threat model (design, "Threat model: address swap"): the single source, the anti-swap check, no wallet code, CSP unchanged. Record it in `docs/reviews/add-donation.md`.
+- [x] 4.1 Security review of the address-swap threat model (design, "Threat model: address swap"): the single source, the anti-swap check, no wallet code, CSP unchanged. Record it in `docs/reviews/add-donation.md`.

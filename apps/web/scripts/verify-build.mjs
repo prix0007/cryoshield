@@ -159,7 +159,7 @@ for (const p of ['privacy', 'terms', 'cookies', 'architecture', 'devices', 'supp
 // add-donation: anti-swap. The donation address comes only from config/donation.json, and no other address or payment
 // URI appears in a donation context.
 const donation = JSON.parse(readFileSync(join(root, '..', '..', 'config', 'donation.json'), 'utf8'));
-const shipped = Object.fromEntries(all.filter((f) => /\.(html|js)$/.test(f)).map((f) => [relative(dist, f), readFileSync(f, 'utf8')]));
+const shipped = Object.fromEntries(all.filter((f) => /\.(html|js|css|svg)$/.test(f)).map((f) => [relative(dist, f), readFileSync(f, 'utf8')]));
 const swaps = donationViolations(shipped, donation);
 if (swaps.length) fail(`[${label}] donation address check: ${swaps.join('; ')}`);
 if (/window\.ethereum|ethereum\.request\(/.test(js)) fail(`[${label}] the bundle calls an injected wallet (window.ethereum); donations must not`);
