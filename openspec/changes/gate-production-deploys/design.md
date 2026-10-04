@@ -136,7 +136,9 @@ The release job's run steps stay digest-pinned.
 | Runs pile up while waiting | Per-commit workflow concurrency plus job-level `deploy-production`. |
 | The Fly token leaks through the build | The token exists only in `production`, used by one job that runs no build code (policy). The build environment has no token. |
 | An admin bypasses the gate | `can_admins_bypass: false`. The owner can still edit the environment (audit-logged), and `apply.sh` reports the drift. |
-| The `supersede` job is abused | `GITHUB_TOKEN` only, `actions: write`. It cancels only older waiting `deploy.yml` runs in this repo and runs only after a successful build of a newer `main` commit. |
+| The `supersede` job is abused | `GITHUB_TOKEN` only, `actions: write`. It cancels only older waiting `deploy.yml` runs in this repo and runs only after a successful build of a newer `main` commit. `actions: write` would also allow `workflow_dispatch`, re-runs and artifact/log deletion, but the job runs only repo scripts at the tested commit, and any deploy still needs the approval. |
+| An auto-merged PR changes a script that runs with the token (`previous-image.sh`, `rollback.sh`, `fly.toml`, the Docker context) | `release-diff.sh` writes the diff against the live commit to the run summary before the approval and flags every token-path file (TOKEN-PATH CHANGED). The owner reads those before clicking. Follow-up once agents use the machine account: code-owner review on these paths. |
+| An older commit is approved after a newer one | The release re-checks `main`'s HEAD after the approval and refuses a stale commit. |
 
 ## Risks / Trade-offs
 

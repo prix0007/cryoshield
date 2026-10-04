@@ -32,7 +32,7 @@ You get a GitHub notification ("Deployment review required") when a release is w
 
 **In the browser:**
 1. Go to Actions → Deploy, and open the run that shows *Waiting*.
-2. Before approving, check the commit and the build summary (commit and tree hash).
+2. Before approving, read the **Release review** in the summary: the diff link from the live commit, and any **TOKEN-PATH CHANGED** files. Those are deploy scripts, workflows, the policy, `fly.toml` or the Docker context, which can change what runs with the Fly token, so read them in full. A **NOT NEWER THAN LIVE** or **REVIEW THE WHOLE COMMIT** warning means the diff could not be trusted or the release would go backwards.
 3. Click **Review deployments**, tick `production`, then click **Approve and deploy**. *Reject* ends the run. A rejected commit is not retried automatically; fix forward, or force a redeploy.
 
 **From the CLI:**
@@ -46,6 +46,8 @@ gh api -X POST repos/prix0007/cryoshield/actions/runs/<run-id>/pending_deploymen
 ```
 
 Use `state=rejected` to reject. Only the owner can approve: admins cannot bypass the reviewer rule (`can_admins_bypass: false`), and the agents' machine account has Write only (`docs/agent-account.md`).
+
+After approval, the release re-checks that its commit is still `main`'s HEAD. If `main` moved on, it fails without deploying ("Superseded"); approve the newer run instead.
 
 A release left waiting is harmless. Nothing is deployed, the next commit's run supersedes it, and GitHub expires it after 30 days.
 
@@ -100,6 +102,7 @@ gh secret list --env production            # FLY_API_TOKEN only
 gh secret list --env production-build      # VITE_BUNDLER_URL only
 gh variable list --env production-build    # the VITE_* names above
 gh variable list --env production          # nothing
+gh secret list --repo prix0007/cryoshield  # must NOT list FLY_API_TOKEN or VITE_BUNDLER_URL (repo-level copies bypass the environments)
 ```
 
 **Moving from the old layout** (before `gate-production-deploys`, the build config was in `production`): run steps 1, 3 and 4 (they write `production-build`), run the check, then delete the old copies from `production`:
@@ -130,6 +133,7 @@ There are two ways:
   curl -s https://cryoshield.app/release.json         # confirms which commit is live again
   ```
 - **Pause deploys** while you fix `main`: `gh workflow disable deploy.yml`, then later `gh workflow enable deploy.yml`. Reverting the bad commit on `main` through a PR also works: the pipeline deploys the revert.
+- **Stuck machine lease:** if a deploy was cut off mid-update (cancelled while `fly deploy` ran), Fly may keep a machine lease and a rollback can fail with a lease error. Run `fly machine list --app cryoshield-web`, then `fly machine leases clear <machine-id> --app cryoshield-web`, then roll back by hand as above.
 - **Take the site offline:** `fly scale count 0 --app cryoshield-web`. Vaults are on-chain, and the desktop recovery tool keeps working.
 
 A rollback restores the previous *image* only.

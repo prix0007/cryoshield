@@ -32,7 +32,7 @@ test('structure: exactly one production job (release), holding the token; build 
 
 test('structure: release deploys, smoke-tests and rolls back (on failure or cancellation) in one approved job', () => {
   const ids = wf.jobs.release.steps.map((s) => s.id).filter(Boolean);
-  assert.deepEqual(ids, ['deploy', 'smoke', 'rollback']);
+  assert.deepEqual(ids, ['head-check', 'deploy', 'smoke', 'rollback']);
   const rollback = wf.jobs.release.steps.find((s) => s.id === 'rollback');
   assert.match(String(rollback.if), /failure\(\) \|\| cancelled\(\)/);
   assert.match(String(rollback.if), /steps\.deploy\.outputs\.fly_started == 'true'/);
@@ -74,6 +74,25 @@ test('policy: only supersede may have actions: write; it holds no secrets', () =
   expectError('deploy.yml', replaceOnce(deploy, '      actions: read # earlier Deploy runs', '      actions: write # earlier Deploy runs'), /job 'detect'.*actions: write/);
   expectError('deploy.yml', replaceOnce(deploy, '          GH_TOKEN: ${{ github.token }}\n          REPO:', '          GH_TOKEN: ${{ secrets.FLY_API_TOKEN }}\n          REPO:'), /FLY_API_TOKEN|secret/);
   assert.equal(wf.jobs.supersede.permissions.actions, 'write');
+});
+
+test('security review M1: the release refuses to deploy a commit that is no longer main HEAD (checked after approval)', () => {
+  const steps = wf.jobs.release.steps;
+  const idx = (id) => steps.findIndex((s) => s.id === id);
+  assert.ok(idx('head-check') >= 0, 'head-check step missing');
+  assert.ok(idx('head-check') < idx('deploy'));
+  const head = steps[idx('head-check')];
+  assert.match(String(head.run), /commits\/main/);
+  assert.equal(head.env.GH_TOKEN, '${{ github.token }}');
+  assert.doesNotMatch(JSON.stringify(head), /secrets\./);
+});
+
+test('security review H1: before the approval, a no-secret job summarises the diff against the live commit', () => {
+  const steps = wf.jobs.supersede.steps;
+  const diff = steps.findIndex((s) => /release-diff\.sh/.test(String(s.run)));
+  const sup = steps.findIndex((s) => /supersede\.sh/.test(String(s.run)));
+  assert.ok(diff >= 0 && diff < sup, 'release-diff.sh must run before supersede.sh');
+  assert.doesNotMatch(JSON.stringify(wf.jobs.supersede), /secrets\./);
 });
 
 test('policy: no other workflow may use production-build either', () => {

@@ -172,6 +172,15 @@ jobs:
           ref: ${{ needs.detect.outputs.sha }}
           persist-credentials: false
           sparse-checkout: .github/scripts/deploy
+      # Shown on the run page before the approval: the diff against the live commit, with every file that can
+      # change what runs with the Fly token flagged (security review H1).
+      - name: Summarise what this release changes (read before approving)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TARGET_SHA: ${{ needs.detect.outputs.sha }}
+          BASE_URL: ${{ env.SITE_URL }}
+        run: .github/scripts/deploy/release-diff.sh
       - name: Cancel older releases still waiting for approval
         env:
           GH_TOKEN: ${{ github.token }}
@@ -196,8 +205,22 @@ jobs:
       group: deploy-production
       cancel-in-progress: false
     permissions:
-      contents: read # checkout only
+      contents: read # checkout, and main's HEAD for the head check
     steps:
+      # Runs after the approval: an older commit approved late (its run was slower than a newer one, so supersede
+      # never saw it waiting) must not roll the site back (security review M1).
+      - name: Refuse a release that is no longer main's HEAD
+        id: head-check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ needs.detect.outputs.sha }}
+        run: |
+          set -euo pipefail
+          head="$(gh api "repos/${GITHUB_REPOSITORY}/commits/main" --jq .sha)"
+          if [ "$head" != "$SHA" ]; then
+            echo "::error title=Superseded::main moved on to ${head}; this release (${SHA}) is stale. Approve the newer Deploy run instead."
+            exit 1
+          fi
       - name: Checkout (fly.toml, Dockerfile, .dockerignore, deploy scripts, deployment records)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

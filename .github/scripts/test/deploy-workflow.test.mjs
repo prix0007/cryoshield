@@ -36,7 +36,7 @@ test('deploy.yml: the first job only runs on refs/heads/main', () => {
 
 test('deploy.yml: FLY_API_TOKEN only in the step-level env of steps `deploy` and `rollback`', () => {
   expectError('deploy.yml', replaceOnce(deploy, '          VITE_RP_NAME: ${{ vars.VITE_RP_NAME }}\n', '          VITE_RP_NAME: ${{ vars.VITE_RP_NAME }}\n          T: ${{ secrets.FLY_API_TOKEN }}\n'), /FLY_API_TOKEN/);
-  expectError('deploy.yml', replaceOnce(deploy, '    permissions:\n      contents: read # checkout only\n    steps:\n      - name: Checkout (fly.toml', '    env:\n      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}\n    permissions:\n      contents: read # checkout only\n    steps:\n      - name: Checkout (fly.toml'), /FLY_API_TOKEN/);
+  expectError('deploy.yml', replaceOnce(deploy, '    permissions:\n      contents: read # checkout, and main', '    env:\n      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}\n    permissions:\n      contents: read # checkout, and main'), /FLY_API_TOKEN/);
   expectError('deploy.yml', replaceOnce(deploy, 'env:\n  NODE_VERSION:', 'env:\n  FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}\n  NODE_VERSION:'), /FLY_API_TOKEN/);
   expectError('deploy.yml', replaceOnce(deploy, '        run: .github/scripts/deploy/rollback.sh\n', '        run: .github/scripts/deploy/rollback.sh "${{ secrets.FLY_API_TOKEN }}"\n'), /FLY_API_TOKEN/);
 });

@@ -45,7 +45,7 @@
 
 ## 5. Integration
 
-- [ ] 5.1 Run the full suite and verify that all are green: `npm test`, actionlint, zizmor, the policy, shellcheck, `openspec validate --all --strict`, the licence check, and gitleaks on the range.
+- [x] 5.1 Run the full suite and verify that all are green: `npm test`, actionlint, zizmor, the policy, shellcheck, `openspec validate --all --strict`, the licence check, and gitleaks on the range.
 
 ## 6. Security review
 
