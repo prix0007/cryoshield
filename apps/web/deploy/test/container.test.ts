@@ -274,6 +274,21 @@ describe('served by the container', () => {
     expect((await get('/devices/x')).status).toBe(404);
   });
 
+  it('/support serves the donation page with the app CSP (no new connect-src), all headers, no-cache, no analytics (add-donation)', async () => {
+    const app = await get('/app/');
+    const r = await get('/support');
+    expect(r.status).toBe(200);
+    expect(r.body).toContain('0xfb4172e26AC8735C06656f1df14151cFe8441481');
+    expect(r.body).toContain('href="ethereum:0xfb4172e26AC8735C06656f1df14151cFe8441481@1"');
+    expect(r.body).not.toMatch(/cloudflareinsights|cf-beacon/);
+    expect(r.headers['content-security-policy']).toBe(`${metaCsp(r.body)}; frame-ancestors 'none'`);
+    expect(r.headers['content-security-policy']).toBe(app.headers['content-security-policy']);
+    for (const k of ['X-Frame-Options', 'Strict-Transport-Security', 'X-Content-Type-Options', 'Referrer-Policy', 'Permissions-Policy']) expect(r.headers[k.toLowerCase()], k).toBe(SECURITY_HEADERS[k]);
+    expect(r.headers['cache-control']).toBe('no-cache');
+    expect((await get('/support/')).status).toBe(200);
+    expect((await get('/support/x')).status).toBe(404);
+  });
+
   it('/healthz is 200', async () => {
     const r = await get('/healthz');
     expect(r.status).toBe(200);

@@ -321,3 +321,120 @@ dd a {
     transform: none;
   }
 }
+
+/* ---- "Buy me a coffee" (add-donation D3) ----
+   A secondary pill with a cup whose steam rises on hover or focus (CSS, every page). On the landing page Motion also
+   sweeps a sheen across it (src/landing/coffee.ts). Under reduced motion both are off: a static cup and pill.
+   Tokens only; the sheen is a translucent bar, not a gradient. */
+.coffee {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  gap: 10px;
+  /* The pill lives in the site footer, which stays parchment in both themes: Action Blue on parchment (AA). */
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+}
+.coffee-cup {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+}
+.coffee-cup svg {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.coffee-steam {
+  position: absolute;
+  left: 3px;
+  bottom: 15px;
+  width: 12px;
+  height: 10px;
+  pointer-events: none;
+}
+.coffee-steam i {
+  position: absolute;
+  bottom: 0;
+  width: 2px;
+  height: 7px;
+  border-radius: 2px;
+  background: currentColor;
+  opacity: 0;
+}
+.coffee-steam i:nth-child(1) {
+  left: 1px;
+}
+.coffee-steam i:nth-child(2) {
+  left: 5px;
+}
+.coffee-steam i:nth-child(3) {
+  left: 9px;
+}
+.coffee-sheen {
+  position: absolute;
+  top: -10%;
+  bottom: -10%;
+  left: 0;
+  width: 28%;
+  background: currentColor;
+  opacity: 0;
+  transform: translateX(-140%) skewX(-20deg);
+  pointer-events: none;
+  z-index: -1;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .coffee:hover .coffee-steam i,
+  .coffee:focus-visible .coffee-steam i {
+    animation: coffee-steam 1.6s ease-out infinite;
+  }
+  .coffee:hover .coffee-steam i:nth-child(2),
+  .coffee:focus-visible .coffee-steam i:nth-child(2) {
+    animation-delay: 0.3s;
+  }
+  .coffee:hover .coffee-steam i:nth-child(3),
+  .coffee:focus-visible .coffee-steam i:nth-child(3) {
+    animation-delay: 0.6s;
+  }
+}
+@keyframes coffee-steam {
+  0% {
+    opacity: 0;
+    transform: translateY(2px) scaleY(0.6);
+  }
+  35% {
+    opacity: 0.6;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-9px) scaleY(1.15);
+  }
+}
+/* Compact footer link: plain text with the cup, like the other footer links. */
+.coffee-link-cup {
+  margin-right: 0.3em;
+}
+
+/* Landing footer band holding the coffee pill. */
+.footer-support {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  padding-bottom: var(--space-lg);
+  margin-bottom: var(--space-lg);
+  border-bottom: 1px solid var(--hairline);
+}
+.footer-support p {
+  margin: 0;
+  max-width: 46ch;
+  color: var(--ink-muted-80);
+  font-size: var(--caption-size);
+}

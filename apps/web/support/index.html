@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="referrer" content="no-referrer" />
+    <meta name="description" content="Support CryoShield, a free and open-source project, with a voluntary ETH donation on Ethereum mainnet." />
+    <link rel="icon" href="/favicon.ico" sizes="48x48" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)" />
+    <title>Buy me a coffee · CryoShield</title>
+    <link rel="stylesheet" href="/src/legal/legal.css" />
+    <script type="module" src="/src/support/main.ts"></script>
+  </head>
+  <body class="landing legal-page support-page">
+    <!--partial:header:Support-->
+    <main id="main" tabindex="-1">
+      <article class="legal-doc support-doc">
+        <h1>Buy me a coffee</h1>
+        <p class="support-lede">CryoShield is free, open-source software, built and run by one maintainer. If it helps you, a voluntary donation goes toward gas sponsorship (so saving a vault stays free), hosting, and a future independent security audit.</p>
+
+        <section class="support-card" aria-labelledby="send-title">
+          <h2 id="send-title">Send ETH on <!--donation:network--></h2>
+          <div class="support-grid">
+            <figure class="support-qr">
+              <!--donation:qr-->
+              <figcaption>Scan with a wallet app. It opens a payment to the address below on <!--donation:network--> (chain ID 1).</figcaption>
+            </figure>
+            <div class="support-address">
+              <p class="support-label" id="address-label">Donation address (Ethereum mainnet)</p>
+              <code id="donation-address" class="mono" aria-labelledby="address-label" data-donation-address><!--donation:address--></code>
+              <div class="support-actions">
+                <button type="button" id="copy-address" class="pill pill-primary" hidden>Copy address</button>
+                <a class="pill pill-secondary" href="__DONATION_URI__" data-donation-uri>Open in wallet</a>
+              </div>
+              <p id="copy-status" class="support-status" role="status" aria-live="polite"></p>
+            </div>
+          </div>
+        </section>
+
+        <div class="summary-box support-warning" role="note">
+          <p><strong>Send only ETH on Ethereum mainnet.</strong> Tokens or other networks sent here may be lost.</p>
+          <p>This address is also published in our <a href="https://github.com/prix0007/cryoshield#support-the-project" rel="noopener noreferrer">GitHub README</a>. Check it matches, character for character, before sending.</p>
+        </div>
+
+        <h2 id="about-donations">About donations</h2>
+        <ul>
+          <li><strong>Voluntary.</strong> CryoShield is free to use whether or not you donate.</li>
+          <li><strong>No perks.</strong> A donation buys no goods, services, features or priority support.</li>
+          <li><strong>Non-refundable.</strong> Blockchain transfers can’t be reversed, and we can’t return or recover funds, including anything sent on the wrong network.</li>
+          <li><strong>What it funds:</strong> the network fees CryoShield sponsors, hosting, and an independent audit.</li>
+          <li><strong>Who receives it:</strong> the open-source maintainer, personally. There is no company or charity, so there are no tax receipts.</li>
+          <li><strong>Privacy:</strong> this page has no analytics, and we don’t track donations or link them to vaults. The blockchain itself is public: your sending address, the amount and the time are visible to anyone, permanently. See the <a href="/privacy#donations">privacy policy</a> and <a href="/terms#donations">terms</a>.</li>
+        </ul>
+        <p>Not using a wallet? Starring the <a href="https://github.com/prix0007/cryoshield" rel="noopener noreferrer">repository</a>, <a href="/devices#report-your-device">reporting your security key</a>, or reviewing the code helps too.</p>
+      </article>
+    </main>
+    <!--partial:footer-->
+  </body>
+</html>

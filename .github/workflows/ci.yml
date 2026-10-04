@@ -101,6 +101,8 @@ jobs:
               - *pnpm
               - apps/web/**
               - docs/supported-devices.md # rendered into /devices (add-supported-devices-page)
+              - config/donation.json # the donation address, built into /support (add-donation)
+              - README.md # must publish the same donation address (add-donation)
               - packages/vault-crypto/**
               - contracts/src/**
               - contracts/foundry.toml

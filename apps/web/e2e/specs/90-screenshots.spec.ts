@@ -261,3 +261,27 @@ test('supported devices page (add-supported-devices-page 4.x): light, dark, phon
   await page.screenshot({ path: `${dir}/app-key-error-devices-link.png` });
   await ctx.close();
 });
+
+test('donation (add-donation): coffee pill at rest and on hover, /support desktop and phone, app footer link', async ({ browser }) => {
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const page = await ctx.newPage();
+  await page.goto('/');
+  const band = page.locator('.footer-support');
+  await band.scrollIntoViewIfNeeded();
+  await page.waitForTimeout(300);
+  await band.screenshot({ path: `${dir}/coffee-pill.png` });
+  await page.locator('a.coffee').hover();
+  await page.waitForTimeout(450); // steam mid-rise, sheen mid-sweep
+  await band.screenshot({ path: `${dir}/coffee-pill-hover.png` });
+  await page.goto('/support');
+  await page.screenshot({ path: `${dir}/support.png`, fullPage: true });
+  await ctx.close();
+  const phone = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const p = await phone.newPage();
+  await p.goto('/support');
+  await p.screenshot({ path: `${dir}/support-phone.png`, fullPage: true });
+  await p.goto('/app/');
+  await p.getByRole('contentinfo').scrollIntoViewIfNeeded();
+  await p.getByRole('contentinfo').screenshot({ path: `${dir}/app-footer-coffee.png` });
+  await phone.close();
+});

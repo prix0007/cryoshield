@@ -1,6 +1,6 @@
 # Privacy policy
 
-**Effective date:** 2026-10-04
+**Effective date:** 2026-10-05
 
 <!--legal-note-->
 
@@ -104,6 +104,15 @@ the vault app at `/app/`, and not these legal pages.
 - **Integrity:** the beacon script is pinned to a version we reviewed; a changed script is refused by your browser.
 
 More detail is in the [cookie policy](/cookies).
+
+## Donations
+
+We don't track donations. The [/support](/support) page has no analytics, sets no cookies and stores nothing on your
+device, and we don't link donations to vaults or to visits.
+
+Ethereum is a public blockchain. If you donate, your sending address, the amount and the time are visible to anyone,
+permanently, and can't be deleted by us or by anyone else. Like anyone, we can see incoming transactions to the
+donation address on public block explorers. We never ask who you are.
 
 ## Retention
 

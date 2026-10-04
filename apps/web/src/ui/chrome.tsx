@@ -119,6 +119,14 @@ export function AppFooter() {
           <a href="/devices">Supported devices</a>
         </li>
         <li>
+          <a href="/support">
+            <span className="coffee-link-cup" aria-hidden="true">
+              ☕
+            </span>
+            Buy me a coffee
+          </a>
+        </li>
+        <li>
           <a href={`${REPO}/blob/main/SECURITY.md`} rel="noopener noreferrer">
             Security
           </a>

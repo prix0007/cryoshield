@@ -14,7 +14,7 @@ function fixture(html: string, appHtml: string | null = html) {
   mkdirSync(join(d, 'dist', 'assets'), { recursive: true });
   writeFileSync(join(d, 'dist', 'index.html'), html);
   if (appHtml !== null) {
-    for (const p of ['app', 'privacy', 'terms', 'cookies', 'architecture', 'devices']) {
+    for (const p of ['app', 'privacy', 'terms', 'cookies', 'architecture', 'devices', 'support']) {
       mkdirSync(join(d, 'dist', p));
       writeFileSync(join(d, 'dist', p, 'index.html'), appHtml);
     }
