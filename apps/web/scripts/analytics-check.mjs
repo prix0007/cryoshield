@@ -4,17 +4,11 @@
  *  - analyticsLeaks: no file of a non-landing page (HTML or any JS reachable from it) mentions the analytics;
  *  - policyDrift: when the build ships analytics, /privacy and /cookies must name it.
  */
+import { directives } from './csp-check.mjs';
 export const ALLOWED_LANDING_EXTRAS = {
   'script-src': ['https://static.cloudflareinsights.com/beacon.min.js'],
   'connect-src': ['https://cloudflareinsights.com'],
 };
-const directives = (c) =>
-  new Map(
-    c.split(';').map((d) => d.trim()).filter(Boolean).map((d) => {
-      const [k, ...v] = d.split(/\s+/);
-      return [k, v];
-    }),
-  );
 
 export function landingCspDiff(appCsp, landingCsp) {
   const a = directives(appCsp);

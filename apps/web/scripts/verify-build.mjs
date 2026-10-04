@@ -24,6 +24,7 @@ import { checkNoPlaceholders, unlistedStorageApis } from './legal-check.mjs';
 import { checkSecurityTxt } from './securitytxt-check.mjs';
 import { analyticsLeaks, landingCspDiff, policyDrift } from './analytics-check.mjs';
 import { donationViolations, validateDonation } from './donation-check.mjs';
+import { connectSrcViolations } from './csp-check.mjs';
 
 const root = new URL('..', import.meta.url).pathname;
 const storageInventory = JSON.parse(readFileSync(join(root, 'legal', 'storage-inventory.json'), 'utf8'));
@@ -303,12 +304,21 @@ const prod = checkBundle('production');
 for (const loop of ['127.0.0.1', 'localhost:', 'sp_e2e_local']) {
   if (prod.js.includes(loop) || prod.html.includes(loop)) fail(`production build contains "${loop}"`);
 }
-if (!realEnv && (!prod.html.includes('https://rpc.verify.invalid') || !prod.html.includes('https://bundler.verify.invalid'))) fail('production CSP lacks configured origins');
+// harden-codeql-web-findings (CodeQL #8/#9): the app CSP's connect-src, parsed, must be EXACTLY 'self' + the configured
+// origins + the app-only fast index (src/config/schema.ts), never a substring match on the HTML.
+if (!realEnv) {
+  const appMetaCsp = readFileSync(join(dist, 'app', 'index.html'), 'utf8').match(/<meta http-equiv="Content-Security-Policy" content="([^"]+)">/)?.[1];
+  if (!appMetaCsp) fail('production app page has no CSP meta tag');
+  const origins = ['VITE_RPC_URL', 'VITE_BUNDLER_URL', 'VITE_TURBO_UPLOAD_URL', 'VITE_ARWEAVE_GATEWAY_URL'].map((k) => new URL(PROD_ENV[k]).origin);
+  const expected = ["'self'", ...new Set([...origins, 'https://turbo-gateway.com'])];
+  const bad = connectSrcViolations(appMetaCsp, expected);
+  if (bad.length) fail(`production app CSP: ${bad.join('; ')}`);
+}
 if (expectHost) {
   const m = prod.js.match(/rpId:[`"']([^`"']+)[`"']/);
   if (!m) fail('could not find the RP ID in the bundle');
   if (m[1] !== expectHost) fail(`bundle RP ID ${m[1]} != deploy host ${expectHost}`);
   console.log(`ok   [production] bundle RP ID == ${expectHost}`);
 }
-console.log('ok   [production] no loopback/E2E endpoints; CSP lists the configured origins');
+console.log("ok   [production] no loopback/E2E endpoints; app CSP connect-src is exactly 'self' + the configured origins (token match)");
 console.log('PASS verify-build');

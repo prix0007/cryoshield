@@ -3,8 +3,8 @@
   "ecc-review.yml": {
     "review/Refuse fork PRs (they get no secrets and are not reviewed automatically)": "b30ea158e7b09359aafeaaa1a09ae546a964ccc83a07ea9fcd38fafca09d451c",
     "review/Require a Claude credential": "5215a09d9401d503cf53cbcd3418f7996a6770a404271a2956c709faff08f698",
-    "review/Assert no git credentials remain in .git/config": "07a1dfe55767bce1957d42c7dc5c7ad57c1935cedd664ae3a925f32d18f5233d",
-    "review/Restore agent configuration from the base commit": "a637c446587de926fb2aa7475649388cddeb70797f1b98b2a05b99be10dd2e9b",
+    "review/Assert no git credentials remain in .git/config": "9041701e2d975ad1046fc6c1e1a812f3b8d6e6aa884604275661abc61c0a4805",
+    "review/Restore agent configuration from the base commit": "00ab5633df211313611422cebc633ceb51c41ffd132cf4632c1efb8a9f1a6ac1",
     "review/Remove any PR-provided copy of the plugin directory": "18674c450dd10c977107cab59fe527de67d06e8939e672e9eeafaaf7b73f82ce",
     "review/Verify the plugin and move it out of the workspace": "af93a2fe223119f7c712c65872946bbf0ebe407ff581aa910f28c2e930b7a787",
     "review/Collect the PR for the reviewer (the agent gets no GitHub access)": "ce82371b46327a5141db2c1d7592d953afa4a67d3d6a93828065d58077a674de",
