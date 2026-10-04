@@ -10,6 +10,8 @@ export default mergeConfig(
     // `shamir-secret-sharing/csprng` module with the vectors' replay stream.
     optimizeDeps: { exclude: ['shamir-secret-sharing'] },
     test: {
+      // Node-only tests (they read source files with node:fs) run in the Node suite only.
+      exclude: ['test/**/*.node.test.ts', 'node_modules/**'],
       browser: {
         enabled: true,
         headless: true,

@@ -1,5 +1,4 @@
 /** REC-L2 (security audit 2026-10) and the ECC review of PR #22: duplicate PRF outputs at creation. */
-import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { createVault, MODE_SHAMIR, VaultError } from '../src/index.js';
 
@@ -43,18 +42,5 @@ describe('createVault rejects duplicate PRF outputs', () => {
       createVault({ vaultId: vaultId(), rpId: 'cryoshield.app', credentials: [{ id: rand(16), prf: a }, { id: rand(16), prf: b }], secret: rand(8) }),
     );
     expect(c).toBe('OK');
-  });
-
-  it('compares raw bytes without building string copies of secret PRF outputs', () => {
-    const src = readFileSync(new URL('../src/vault.ts', import.meta.url), 'utf8');
-    const fn = src.slice(src.indexOf('function assertDistinctPrfs'), src.indexOf('function assertDistinctPrfs') + 900);
-    expect(fn).not.toMatch(/toString\(16\)|new Set<string>|join\(''\)/);
-  });
-
-  it('keeps the createVault JSDoc attached to createVault', () => {
-    const src = readFileSync(new URL('../src/vault.ts', import.meta.url), 'utf8');
-    expect(src).toMatch(/\*\/\nexport async function createVault\(/);
-    const before = src.slice(0, src.indexOf('export async function createVault('));
-    expect(before.slice(before.lastIndexOf('/**'))).toMatch(/Creates a vault/);
   });
 });
