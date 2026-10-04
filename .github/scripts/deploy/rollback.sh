@@ -33,7 +33,7 @@ for ((i = 1; i <= ATTEMPTS; i++)); do
     echo "rollback: rolled back to $IMAGE; $BASE_URL/healthz is 200"
     exit 0
   fi
-  [ "$i" -lt "$ATTEMPTS" ] && sleep "$SLEEP"
+  if [ "$i" -lt "$ATTEMPTS" ]; then sleep "$SLEEP"; fi
 done
 echo "::error title=rollback::Redeployed $IMAGE but $BASE_URL/healthz is still failing. Manual action needed (docs/deploy.md)."
 exit 1

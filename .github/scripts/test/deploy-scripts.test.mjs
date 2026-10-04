@@ -66,16 +66,22 @@ before(async () => {
 });
 after(() => server.close());
 
-function run(name, env = {}) {
+function run(name, env = {}, { path = script(name), timeout = 30_000 } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'deploy-scripts-'));
   const output = join(dir, 'github_output');
   const flyLog = join(dir, 'fly.log');
   writeFileSync(output, '');
-  return new Promise((resolve) => {
-    execFile('bash', [script(name)], {
+  return new Promise((resolve, reject) => {
+    execFile('bash', [path], {
       env: { PATH: process.env.PATH, BASE_URL: base, GITHUB_OUTPUT: output, FLY: flyStub, FLY_LOG: flyLog, SMOKE_SLEEP: '0', ROLLBACK_SLEEP: '0', ...env },
       encoding: 'utf8',
+      timeout,
     }, (err, stdout, stderr) => {
+      // A script that never ran (spawn error) or was killed (timeout/signal) must fail the test, not count as
+      // "exited non-zero" (ECC review #11).
+      if (err && (typeof err.code !== 'number' || err.signal)) {
+        return reject(new Error(`${name} did not exit normally (code ${err.code}, signal ${err.signal})\n${stderr}`));
+      }
       resolve({
         status: err ? err.code : 0,
         stdout,
@@ -128,6 +134,19 @@ test('write-env: refuses newlines (key injection) and an existing file', async (
   assert.equal(existsSync(out), false);
   writeFileSync(out, 'x');
   assert.notEqual((await run('write-env.sh', { ...FULL_ENV, OUT: out })).status, 0);
+});
+
+test('write-env: refuses values dotenv would reinterpret: leading quote/backtick, " #" comments (ECC #6)', async () => {
+  for (const bad of ['"CryoShield"', "'CryoShield'", '`CryoShield`', 'CryoShield #1', 'Cryo\tShield #x']) {
+    const out = join(mkdtempSync(join(tmpdir(), 'env-')), '.env');
+    const r = await run('write-env.sh', { ...FULL_ENV, VITE_RP_NAME: bad, OUT: out });
+    assert.notEqual(r.status, 0, JSON.stringify(bad));
+    assert.match(r.stdout + r.stderr, /VITE_RP_NAME/);
+    assert.equal(existsSync(out), false);
+  }
+  // A '#' that dotenv keeps (no preceding whitespace) is fine, as in URL fragments.
+  const ok = join(mkdtempSync(join(tmpdir(), 'env-')), '.env');
+  assert.equal((await run('write-env.sh', { ...FULL_ENV, VITE_RP_NAME: 'Cryo#Shield', OUT: ok })).status, 0);
 });
 
 test('write-env: refuses $ (Vite dotenv expansion would rewrite the value) (review L2)', async () => {
@@ -286,4 +305,10 @@ test('rollback: refuses an unexpected image ref, and fails if fly or /healthz fa
   assert.notEqual((await run('rollback.sh', { PREVIOUS_IMAGE: IMAGE, STUB_FLY_FAIL: '1' })).status, 0);
   site = { ...healthySite(), status: { '/healthz': 503 } };
   assert.notEqual((await run('rollback.sh', { PREVIOUS_IMAGE: IMAGE, ROLLBACK_ATTEMPTS: '2' })).status, 0);
+});
+
+test('harness: a hung (killed) script fails the test instead of counting as a non-zero exit (ECC #11)', async () => {
+  const hang = join(mkdtempSync(join(tmpdir(), 'hang-')), 'hang.sh');
+  writeFileSync(hang, 'sleep 5\n');
+  await assert.rejects(run('hang.sh', {}, { path: hang, timeout: 300 }), /did not exit normally/);
 });

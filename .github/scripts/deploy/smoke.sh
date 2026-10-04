@@ -60,7 +60,7 @@ for ((i = 1; i <= ATTEMPTS; i++)); do
     exit 0
   fi
   echo "smoke: attempt $i/$ATTEMPTS failed: ${errors[*]}"
-  [ "$i" -lt "$ATTEMPTS" ] && sleep "$SLEEP"
+  if [ "$i" -lt "$ATTEMPTS" ]; then sleep "$SLEEP"; fi
 done
 for e in "${errors[@]}"; do echo "::error title=smoke test::$e"; done
 exit 1
