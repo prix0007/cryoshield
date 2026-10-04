@@ -4,6 +4,7 @@ import { MAX_LABEL_CHARS, type SecretItem } from '../vault/payload';
 import { S } from './strings';
 import { ActionBar } from './chrome';
 import { CEREMONY_WAITING, noticeTitle } from './ceremony';
+import { AnimatePresence, Btn, Collapse, Disclosure, Pulse, Shake, SlideIn } from './motionkit';
 
 /** Step heading that receives focus when the step appears (WCAG 2.4.3 focus order). */
 export function StepHeading({ children }: { children: ReactNode }) {
@@ -20,19 +21,29 @@ export function StepHeading({ children }: { children: ReactNode }) {
 
 export function Notice({ kind, title, reference, children }: { kind: 'error' | 'info' | 'success'; title?: string; reference?: string | undefined; children: ReactNode }) {
   const heading = title ?? (kind === 'error' && typeof children === 'string' ? noticeTitle(children) : undefined);
-  return (
-    <div className={`notice notice-${kind}`} role={kind === 'error' ? 'alert' : 'status'}>
+  const text = typeof children === 'string' ? <p className="notice-text">{children}</p> : children;
+  const body = (
+    <>
       <NoticeIcon kind={kind} />
       <div className="notice-body">
         {heading && <p className="notice-title">{heading}</p>}
-        {typeof children === 'string' ? <p className="notice-text">{children}</p> : children}
+        {/* Errors: the card shakes once and the message slides in under the title (all text: no motion-only info). */}
+        {kind === 'error' ? <SlideIn>{text}</SlideIn> : text}
         {reference && (
-          <details className="notice-details">
-            <summary>{S.save.details}</summary>
+          <Disclosure label={S.save.details}>
             <code className="mono">{reference}</code>
-          </details>
+          </Disclosure>
         )}
       </div>
+    </>
+  );
+  return kind === 'error' ? (
+    <Shake className="notice notice-error" role="alert">
+      {body}
+    </Shake>
+  ) : (
+    <div className={`notice notice-${kind}`} role="status">
+      {body}
     </div>
   );
 }
@@ -53,7 +64,7 @@ export function KeyPrompt({ text, onContinue }: { text: string; onContinue?: () 
   return (
     <div className="key-prompt card" role="status" aria-live="assertive">
       <span className="key-visual" aria-hidden="true">
-        <span className="key-pulse" />
+        <Pulse />
         <svg className="key-glyph" viewBox="0 0 48 24" aria-hidden="true" focusable="false">
           <rect x="1" y="3" width="34" height="18" rx="6" />
           <rect className="key-plug" x="35" y="7" width="10" height="10" rx="2" />
@@ -73,9 +84,9 @@ function AutoFocusButton({ onClick, children }: { onClick: () => void; children:
   const ref = useRef<HTMLButtonElement>(null);
   useEffect(() => ref.current?.focus(), []);
   return (
-    <button ref={ref} onClick={onClick}>
+    <Btn ref={ref} onClick={onClick}>
       {children}
-    </button>
+    </Btn>
   );
 }
 
@@ -96,6 +107,15 @@ export function SecretsEditor(props: {
   const meterId = useId();
   const over = !cap.fits && nonEmpty;
   const update = (i: number, patch: Partial<SecretItem>) => onChange(items.map((it, j) => (j === i ? { ...it, ...patch } : it)));
+  // Row keys for the enter/exit animation: a local counter, never derived from a label or secret (guardrail d).
+  const rowKeys = useRef<number[]>([]);
+  const nextKey = useRef(0);
+  while (rowKeys.current.length < items.length) rowKeys.current.push(nextKey.current++);
+  rowKeys.current.length = items.length;
+  const remove = (i: number) => {
+    rowKeys.current.splice(i, 1);
+    onChange(items.filter((_, j) => j !== i));
+  };
   return (
     <form
       className="editor"
@@ -105,64 +125,73 @@ export function SecretsEditor(props: {
       }}
       aria-describedby={meterId}
     >
-      {items.map((it, i) => (
-        <fieldset key={i} className="item card">
-          <legend>{it.label || `${S.editor.secret} ${i + 1}`}</legend>
-          <label htmlFor={`label-${i}`}>{S.editor.label}</label>
-          <input
-            id={`label-${i}`}
-            value={it.label}
-            maxLength={MAX_LABEL_CHARS}
-            autoComplete="off"
-            spellCheck={false}
-            aria-describedby={`label-hint-${i}`}
-            onChange={(e) => update(i, { label: e.target.value })}
-          />
-          <p id={`label-hint-${i}`} className="hint">
-            {S.editor.labelHint}
-          </p>
-          <label htmlFor={`secret-${i}`}>{S.editor.secret}</label>
-          <textarea
-            id={`secret-${i}`}
-            value={it.secret}
-            rows={3}
-            autoComplete="off"
-            autoCorrect="off"
-            autoCapitalize="off"
-            spellCheck={false}
-            data-1p-ignore=""
-            data-lpignore="true"
-            aria-invalid={over ? true : undefined}
-            aria-describedby={over ? meterId : undefined}
-            onChange={(e) => update(i, { secret: e.target.value })}
-          />
-          {items.length > 1 && (
-            <button type="button" className="secondary" onClick={() => onChange(items.filter((_, j) => j !== i))}>
-              {S.editor.removeItem(it.label)}
-            </button>
-          )}
-        </fieldset>
-      ))}
-      <button type="button" className="secondary" onClick={() => onChange([...items, { label: '', secret: '' }])}>
+      <AnimatePresence initial={false}>
+        {items.map((it, i) => {
+          // Input ids follow the row key (equal to the index until a row is removed), so an exiting row never
+          // shares an id with the row that took its place.
+          const k = rowKeys.current[i]!;
+          return (
+          <Collapse key={k}>
+            <fieldset className="item card">
+              <legend>{it.label || `${S.editor.secret} ${i + 1}`}</legend>
+              <label htmlFor={`label-${k}`}>{S.editor.label}</label>
+              <input
+                id={`label-${k}`}
+                value={it.label}
+                maxLength={MAX_LABEL_CHARS}
+                autoComplete="off"
+                spellCheck={false}
+                aria-describedby={`label-hint-${k}`}
+                onChange={(e) => update(i, { label: e.target.value })}
+              />
+              <p id={`label-hint-${k}`} className="hint">
+                {S.editor.labelHint}
+              </p>
+              <label htmlFor={`secret-${k}`}>{S.editor.secret}</label>
+              <textarea
+                id={`secret-${k}`}
+                value={it.secret}
+                rows={3}
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="off"
+                spellCheck={false}
+                data-1p-ignore=""
+                data-lpignore="true"
+                aria-invalid={over ? true : undefined}
+                aria-describedby={over ? meterId : undefined}
+                onChange={(e) => update(i, { secret: e.target.value })}
+              />
+              {items.length > 1 && (
+                <Btn type="button" className="secondary" onClick={() => remove(i)}>
+                  {S.editor.removeItem(it.label)}
+                </Btn>
+              )}
+            </fieldset>
+          </Collapse>
+          );
+        })}
+      </AnimatePresence>
+      <Btn type="button" className="secondary" onClick={() => onChange([...items, { label: '', secret: '' }])}>
         {S.editor.addItem}
-      </button>
+      </Btn>
       <p id={meterId} className={cap.fits || !nonEmpty ? 'meter' : 'meter meter-over'} aria-live="polite">
         {cap.remaining >= 0 ? S.editor.space(cap.remaining, cap.max) : S.editor.tooBig(-cap.remaining)}
       </p>
       {!nonEmpty && <p className="hint">{S.editor.needOne}</p>}
       {props.gate?.content}
       <ActionBar>
-        <button
+        <Btn
           type="submit"
           disabled={!cap.fits || !nonEmpty || props.busy || (props.gate ? !props.gate.ok : false)}
           {...(props.gate && !props.gate.ok ? { 'aria-describedby': props.gate.hintId } : {})}
         >
           {S.editor.save}
-        </button>
+        </Btn>
         {props.onCancel && (
-          <button type="button" className="secondary" onClick={props.onCancel} disabled={props.busy}>
+          <Btn type="button" className="secondary" onClick={props.onCancel} disabled={props.busy}>
             {S.editor.cancel}
-          </button>
+          </Btn>
         )}
       </ActionBar>
     </form>

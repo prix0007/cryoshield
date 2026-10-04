@@ -37,12 +37,14 @@ describe('mirrorWrite', () => {
 });
 
 describe('MirrorLine', () => {
-  it('failed: Retry plus a collapsed Details reference', () => {
+  it('failed: Retry plus a collapsed Details reference', async () => {
     render(<MirrorLine result={{ status: 'failed', ref: 'UPLOAD_FAILED · HTTP 402 · upload' }} fastIndexUrl="https://turbo-gateway.com" onRetry={() => {}} />);
     expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
-    const d = document.querySelector('details')!;
-    expect(d.open).toBe(false);
-    expect(within(d).getByText('UPLOAD_FAILED · HTTP 402 · upload')).toBeInTheDocument();
+    const toggle = screen.getByRole('button', { name: 'Details' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await userEvent.setup().click(toggle);
+    const panel = document.getElementById(toggle.getAttribute('aria-controls')!)!;
+    expect(within(panel).getByText('UPLOAD_FAILED · HTTP 402 · upload')).toBeInTheDocument();
   });
 
   it('saved: the item id linked on the fast index, with the settlement note', () => {

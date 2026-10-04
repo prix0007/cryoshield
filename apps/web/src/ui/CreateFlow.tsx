@@ -2,15 +2,17 @@ import { useEffect, useRef, useState } from 'react';
 import { deriveLocator } from '@cryoshield/vault-crypto';
 import { toHex, wipe } from '../lib/bytes';
 import type { SecretItem } from '../vault/payload';
-import { WriteError } from '../account/writes';
+import { WriteError, type SaveStage } from '../account/writes';
 import { cleanItems, KeyPrompt, Notice, PermanenceAck, SecretsEditor, StepHeading } from './components';
 import { enrollWithPrf, errorReference, messageFor, mirrorWrite, saveNewVault, type MirrorResult, type PendingKey, type VaultSession } from './operations';
 import { useServices } from './services';
 import { useAutoLock } from './useAutoLock';
 import { S } from './strings';
 import { ActionBar } from './chrome';
+import { AnimatePresence, Btn, CeremonyPresence, Disclosure, KeySlot, SaveProgress, StepTransition, useDirection } from './motionkit';
 
 type Step = 'intro' | 'keys' | 'secrets' | 'saving' | 'done';
+const STEP_ORDER: readonly Step[] = ['intro', 'keys', 'secrets', 'saving', 'done'];
 const MAX_KEYS = 8;
 
 export function CreateFlow(props: { onDone: (s: VaultSession) => void; onCancel: () => void }) {
@@ -30,6 +32,11 @@ export function CreateFlow(props: { onDone: (s: VaultSession) => void; onCancel:
   // Permanence + 18+ acknowledgement: required for every create, kept in memory only (never stored or sent).
   const [ackPermanent, setAckPermanent] = useState(false);
   const [ackAdult, setAckAdult] = useState(false);
+  // Save checklist: stages the write path has REALLY reported (app-motion-ux D5). Reset on a VaultIdTaken retry.
+  const [reached, setReached] = useState<ReadonlySet<SaveStage>>(new Set());
+  // Bumped by the idle wipe so the old step is dropped at once, with no exit animation.
+  const [epoch, setEpoch] = useState(0);
+  const dir = useDirection(STEP_ORDER, step);
 
   keysRef.current = keys;
   // Idle wipe: PRF outputs held for an unfinished setup are zeroized after 5 minutes without interaction.
@@ -38,6 +45,7 @@ export function CreateFlow(props: { onDone: (s: VaultSession) => void; onCancel:
     setKeys([]);
     setItems([{ label: '', secret: '' }]);
     setStep('keys');
+    setEpoch((n) => n + 1);
     setError(S.create.idleReset);
   });
   // Wipe any PRF outputs still held if the user leaves the flow.
@@ -65,6 +73,7 @@ export function CreateFlow(props: { onDone: (s: VaultSession) => void; onCancel:
     setErrorRef(undefined);
     setBusy(true);
     setStep('saving');
+    setReached(new Set());
     setPrompt(S.save.waitingForKey);
     try {
       // Pass copies: vault-crypto wipes what it is given, and a failed save must be retryable without new taps.
@@ -74,7 +83,14 @@ export function CreateFlow(props: { onDone: (s: VaultSession) => void; onCancel:
         attempt,
         cleanItems(items),
         () => setPrompt(S.create.touchToSave),
-        () => setError(S.create.retrying),
+        () => {
+          setReached(new Set());
+          setError(S.create.retrying);
+        },
+        (stage) => {
+          setReached((prev) => new Set(prev).add(stage));
+          if (stage === 'sent') setPrompt(null); // signed and accepted: no more touches for this attempt
+        },
       );
       setError(null);
       keys.forEach((k) => wipe(k.prf));
@@ -116,95 +132,104 @@ export function CreateFlow(props: { onDone: (s: VaultSession) => void; onCancel:
           {error}
         </Notice>
       )}
-      {prompt && <KeyPrompt text={prompt} />}
+      <CeremonyPresence>{prompt && <KeyPrompt text={prompt} />}</CeremonyPresence>
 
-      {step === 'intro' && (
-        <div className="card">
-          <StepHeading>{S.create.introTitle}</StepHeading>
-          <ul className="plain-list">
-            {S.create.intro.map((t) => (
-              <li key={t}>{t}</li>
-            ))}
-          </ul>
-          <ActionBar>
-            <button onClick={() => setStep('keys')}>{S.create.start}</button>
-            <button className="secondary" onClick={props.onCancel}>
-              {S.back}
-            </button>
-          </ActionBar>
-        </div>
-      )}
+      <StepTransition id={step} dir={dir} epoch={epoch}>
+        {step === 'intro' && (
+          <div className="card">
+            <StepHeading>{S.create.introTitle}</StepHeading>
+            <ul className="plain-list">
+              {S.create.intro.map((t) => (
+                <li key={t}>{t}</li>
+              ))}
+            </ul>
+            <ActionBar>
+              <Btn onClick={() => setStep('keys')}>{S.create.start}</Btn>
+              <Btn className="secondary" onClick={props.onCancel}>
+                {S.back}
+              </Btn>
+            </ActionBar>
+          </div>
+        )}
 
-      {step === 'keys' && (
-        <div className="card">
-          <StepHeading>{S.create.keysTitle}</StepHeading>
-          <ol className="key-list">
-            {keys.map((_, i) => (
-              <li key={i} className="key-ready">
-                {S.create.keyReady(i + 1)}
-              </li>
-            ))}
-          </ol>
-          <ActionBar>
+        {step === 'keys' && (
+          <div className="card">
+            <StepHeading>{S.create.keysTitle}</StepHeading>
+            <ol className="key-list">
+              <AnimatePresence initial={false}>
+                {/* Slot keys are positions, never credential data. */}
+                {keys.map((_, i) => (
+                  <KeySlot key={i}>{S.create.keyReady(i + 1)}</KeySlot>
+                ))}
+              </AnimatePresence>
+            </ol>
+            <ActionBar>
+              {keys.length < 2 && (
+                <Btn onClick={addKey} disabled={busy}>
+                  {S.create.addKey(keys.length + 1)}
+                </Btn>
+              )}
+              {keys.length >= 2 && keys.length < MAX_KEYS && (
+                <Btn className="secondary" onClick={addKey} disabled={busy}>
+                  {S.create.addAnother}
+                </Btn>
+              )}
+              <Btn onClick={() => setStep('secrets')} disabled={keys.length < 2 || busy} aria-describedby={keys.length < 2 ? 'need-second' : undefined}>
+                {S.create.continue}
+              </Btn>
+            </ActionBar>
             {keys.length < 2 && (
-              <button onClick={addKey} disabled={busy}>
-                {S.create.addKey(keys.length + 1)}
-              </button>
+              <p id="need-second" className="hint">
+                {S.create.needSecond}
+              </p>
             )}
-            {keys.length >= 2 && keys.length < MAX_KEYS && (
-              <button className="secondary" onClick={addKey} disabled={busy}>
-                {S.create.addAnother}
-              </button>
-            )}
-            <button onClick={() => setStep('secrets')} disabled={keys.length < 2 || busy} aria-describedby={keys.length < 2 ? 'need-second' : undefined}>
-              {S.create.continue}
-            </button>
-          </ActionBar>
-          {keys.length < 2 && (
-            <p id="need-second" className="hint">
-              {S.create.needSecond}
-            </p>
-          )}
-        </div>
-      )}
+          </div>
+        )}
 
-      {step === 'secrets' && (
-        <div>
-          <StepHeading>{S.create.secretsTitle}</StepHeading>
-          <SecretsEditor
-            rpId={svc.rpId}
-            credIds={keys.map((k) => k.credId)}
-            items={items}
-            onChange={setItems}
-            onSave={save}
-            busy={busy}
-            gate={{
-              ok: ackPermanent && ackAdult,
-              hintId: 'ack-hint',
-              content: <PermanenceAck permanent={ackPermanent} adult={ackAdult} onPermanent={setAckPermanent} onAdult={setAckAdult} hintId="ack-hint" />,
-            }}
-          />
-        </div>
-      )}
+        {step === 'secrets' && (
+          <div>
+            <StepHeading>{S.create.secretsTitle}</StepHeading>
+            <SecretsEditor
+              rpId={svc.rpId}
+              credIds={keys.map((k) => k.credId)}
+              items={items}
+              onChange={setItems}
+              onSave={save}
+              busy={busy}
+              gate={{
+                ok: ackPermanent && ackAdult,
+                hintId: 'ack-hint',
+                content: <PermanenceAck permanent={ackPermanent} adult={ackAdult} onPermanent={setAckPermanent} onAdult={setAckAdult} hintId="ack-hint" />,
+              }}
+            />
+          </div>
+        )}
 
-      {step === 'saving' && <StepHeading>{S.create.savingTitle}</StepHeading>}
+        {step === 'saving' && (
+          <div>
+            <StepHeading>{S.create.savingTitle}</StepHeading>
+            <SaveProgress reached={reached} />
+          </div>
+        )}
 
-      {step === 'done' && session && (
-        <div className="card">
-          <StepHeading>{S.create.doneTitle}</StepHeading>
-          <Notice kind="success">{S.save.saved}</Notice>
-          {S.create.done.map((t) => (
-            <p key={t}>{t}</p>
-          ))}
-          <MirrorLine result={mirror} fastIndexUrl={svc.fastIndexUrl} onRetry={() => {
-            setMirror({ status: 'pending' });
-            void mirrorWrite(svc, { vaultId: session.vaultId, version: session.version, blob: session.blob, locators: knownLocators }).then(setMirror);
-          }} />
-          <ActionBar>
-            <button onClick={() => props.onDone(session)}>{S.create.continue}</button>
-          </ActionBar>
-        </div>
-      )}
+        {step === 'done' && session && (
+          <div className="card">
+            <StepHeading>{S.create.doneTitle}</StepHeading>
+            <Notice kind="success">{S.save.saved}</Notice>
+            <SaveProgress reached={reached} arweave={mirror.status} />
+            {S.create.done.map((t) => (
+              <p key={t}>{t}</p>
+            ))}
+            <MirrorLine result={mirror} fastIndexUrl={svc.fastIndexUrl} onRetry={() => {
+              setMirror({ status: 'pending' });
+              void mirrorWrite(svc, { vaultId: session.vaultId, version: session.version, blob: session.blob, locators: knownLocators }).then(setMirror);
+            }} />
+            <ActionBar>
+              <Btn onClick={() => props.onDone(session)}>{S.create.continue}</Btn>
+            </ActionBar>
+          </div>
+        )}
+      </StepTransition>
     </section>
   );
 }
@@ -231,14 +256,13 @@ export function MirrorLine({ result, fastIndexUrl, onRetry }: { result: MirrorRe
   return (
     <div className="notice notice-info notice-inline" role="status">
       <p className="notice-text">{S.mirror.failed}</p>
-      <button className="secondary" onClick={onRetry}>
+      <Btn className="secondary" onClick={onRetry}>
         {S.mirror.retry}
-      </button>
+      </Btn>
       {'ref' in result && result.ref && (
-        <details className="notice-details">
-          <summary>{S.save.details}</summary>
+        <Disclosure label={S.save.details}>
           <code className="mono">{result.ref}</code>
-        </details>
+        </Disclosure>
       )}
     </div>
   );

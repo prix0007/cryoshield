@@ -41,9 +41,12 @@ test('a refusal on the FIRST create says nothing was saved and shows a Details r
     const alert = page.getByRole('alert');
     await expect(alert).toContainText('Nothing was saved. Please try again later.', { timeout: 30_000 });
     await expect(alert).not.toContainText('existing vault');
-    await alert.getByText('Details').click();
-    await expect(alert.locator('details code')).toContainText('SPONSORSHIP_REFUSED');
-    await expect(alert.locator('details code')).not.toContainText('http');
+    const toggle = alert.getByRole('button', { name: 'Details' });
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    await expect(alert.locator('.notice-details code')).toContainText('SPONSORSHIP_REFUSED');
+    await expect(alert.locator('.notice-details code')).not.toContainText('http');
   } finally {
     await rpc('cryoshield_setPolicy', [{ refuseAll: false }]);
   }
@@ -61,7 +64,7 @@ test('mirror failure is non-blocking with Retry; the next unlock self-heals; dow
   await expect(page.getByText('Your vault is saved')).toBeVisible();
   await expect(page.getByText('Extra backup copy not saved yet.')).toBeVisible({ timeout: 15_000 });
   // fix-arweave-mirror-status: a sanitized reason under Details.
-  await page.getByText('Details').click();
+  await page.getByRole('button', { name: 'Details' }).click();
   await expect(page.locator('.notice-details code')).toHaveText('UPLOAD_FAILED · HTTP 503 · upload');
   arweave.failUploads = false;
   await page.getByRole('button', { name: 'Retry' }).click();

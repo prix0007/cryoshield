@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { detectPrfSupport, rpIdAllowed } from '../webauthn';
 import { CreateFlow } from './CreateFlow';
 import { Notice } from './components';
@@ -9,18 +9,22 @@ import { ActionBar, AppFooter, GlobalNav, SubNav, useFocusClearOfActionBar } fro
 import { UnlockFlow, type Unlocked } from './UnlockFlow';
 import { useAutoLock } from './useAutoLock';
 import { VaultView } from './VaultView';
+import { Btn, MotionRoot, ScreenTransition, useDirection } from './motionkit';
 
 /** Test networks get the testnet + unaudited warning (add-privacy-and-compliance 4.3). */
 const TESTNETS: Record<number, string> = { 11155420: 'OP Sepolia', 421614: 'Arbitrum Sepolia', 11155111: 'Sepolia', 31337: 'a local test chain' };
 const testnetName = (chainId: number): string | undefined => TESTNETS[chainId];
 
 type Screen = { name: 'home' } | { name: 'create' } | { name: 'unlock' } | { name: 'vault'; locator: `0x${string}`; fresh: boolean };
+const SCREEN_ORDER = ['home', 'unlock', 'create', 'vault'] as const;
 
 export function App({ services }: { services?: Services }) {
   return (
-    <ServicesProvider {...(services ? { value: services } : {})}>
-      <Shell />
-    </ServicesProvider>
+    <MotionRoot>
+      <ServicesProvider {...(services ? { value: services } : {})}>
+        <Shell />
+      </ServicesProvider>
+    </MotionRoot>
   );
 }
 
@@ -33,6 +37,14 @@ function Shell() {
   const [prf, setPrf] = useState<'supported' | 'unsupported' | 'unknown'>('unknown');
   const allowed = rpIdAllowed(svc.host, svc.rpId);
   useFocusClearOfActionBar();
+  const dir = useDirection(SCREEN_ORDER, screen.name);
+  // Returning home (Back, Lock): focus the home heading, as every other step heading is focused on arrival.
+  const homeHeading = useRef<HTMLHeadingElement>(null);
+  const arrived = useRef(false);
+  useEffect(() => {
+    if (screen.name === 'home' && arrived.current) homeHeading.current?.focus();
+    arrived.current = true;
+  }, [screen.name]);
 
   useEffect(() => {
     void detectPrfSupport().then(setPrf);
@@ -80,41 +92,45 @@ function Shell() {
         {warning && session && (
           <div className="notice notice-info notice-inline" role="alert">
             <p className="notice-text">{S.vault.idleWarning}</p>
-            <button onClick={extend}>{S.vault.stillHere}</button>
+            <Btn onClick={extend}>{S.vault.stillHere}</Btn>
           </div>
         )}
         {locked && screen.name === 'home' && <Notice kind="info">{S.vault.locked}</Notice>}
 
-        {screen.name === 'home' && (
-          <section aria-labelledby="home-title" className="card step">
-            <h1 id="home-title">{S.appName}</h1>
-            <p>{S.tagline}</p>
-            <p>{S.home.explain}</p>
-            <ActionBar>
-              <button onClick={() => { setLocked(false); setScreen({ name: 'unlock' }); }} disabled={!allowed || prf === 'unsupported'}>
-                {S.home.unlock}
-              </button>
-              <button className="secondary" onClick={() => { setLocked(false); setScreen({ name: 'create' }); }} disabled={!allowed || prf === 'unsupported'}>
-                {S.home.create}
-              </button>
-            </ActionBar>
-          </section>
-        )}
-        {screen.name === 'create' && allowed && (
-          <CreateFlow
-            onCancel={() => setScreen({ name: 'home' })}
-            onDone={(s) => {
-              setSession(s);
-              setScreen({ name: 'vault', locator: '0x', fresh: true });
-            }}
-          />
-        )}
-        {screen.name === 'unlock' && allowed && (
-          <UnlockFlow onUnlocked={onUnlocked} onCreate={() => setScreen({ name: 'create' })} onCancel={() => setScreen({ name: 'home' })} />
-        )}
-        {screen.name === 'vault' && session && (
-          <VaultView session={session} locator={screen.locator} freshMirror={screen.fresh} onChange={setSession} onLock={lock} />
-        )}
+        <ScreenTransition id={screen.name} dir={dir}>
+          {screen.name === 'home' && (
+            <section aria-labelledby="home-title" className="card step">
+              <h1 id="home-title" ref={homeHeading} tabIndex={-1}>
+                {S.appName}
+              </h1>
+              <p>{S.tagline}</p>
+              <p>{S.home.explain}</p>
+              <ActionBar>
+                <Btn onClick={() => { setLocked(false); setScreen({ name: 'unlock' }); }} disabled={!allowed || prf === 'unsupported'}>
+                  {S.home.unlock}
+                </Btn>
+                <Btn className="secondary" onClick={() => { setLocked(false); setScreen({ name: 'create' }); }} disabled={!allowed || prf === 'unsupported'}>
+                  {S.home.create}
+                </Btn>
+              </ActionBar>
+            </section>
+          )}
+          {screen.name === 'create' && allowed && (
+            <CreateFlow
+              onCancel={() => setScreen({ name: 'home' })}
+              onDone={(s) => {
+                setSession(s);
+                setScreen({ name: 'vault', locator: '0x', fresh: true });
+              }}
+            />
+          )}
+          {screen.name === 'unlock' && allowed && (
+            <UnlockFlow onUnlocked={onUnlocked} onCreate={() => setScreen({ name: 'create' })} onCancel={() => setScreen({ name: 'home' })} />
+          )}
+          {screen.name === 'vault' && session && (
+            <VaultView session={session} locator={screen.locator} freshMirror={screen.fresh} onChange={setSession} onLock={lock} />
+          )}
+        </ScreenTransition>
       </main>
       <AppFooter />
     </div>

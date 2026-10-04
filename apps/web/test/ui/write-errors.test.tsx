@@ -1,5 +1,6 @@
 /** improve-write-failure-feedback 1.1: create-time sponsorship copy and the sanitized error reference. */
 import { render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import { WriteError } from '../../src/account/writes';
 import { Notice } from '../../src/ui/components';
@@ -50,12 +51,17 @@ describe('errorReference', () => {
 });
 
 describe('Notice with a reference', () => {
-  it('shows a collapsed Details disclosure holding the reference', () => {
+  it('shows a collapsed Details disclosure holding the reference (app-motion-ux: animated height, aria-expanded)', async () => {
     render(<Notice kind="error" reference="SPONSORSHIP_REFUSED · RPC -32500 · cap">{'Nothing was saved. Please try again later.'}</Notice>);
     const alert = screen.getByRole('alert');
-    const details = alert.querySelector('details')!;
-    expect(details.open).toBe(false);
-    expect(within(details).getByText('Details')).toBeInTheDocument();
-    expect(within(details).getByText(/SPONSORSHIP_REFUSED/)).toBeInTheDocument();
+    const toggle = within(alert).getByRole('button', { name: 'Details' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(within(alert).queryByText(/SPONSORSHIP_REFUSED/)).toBeNull();
+    await userEvent.setup().click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    const panel = document.getElementById(toggle.getAttribute('aria-controls')!)!;
+    expect(within(panel).getByText(/SPONSORSHIP_REFUSED/)).toBeInTheDocument();
+    await userEvent.setup().click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
   });
 });

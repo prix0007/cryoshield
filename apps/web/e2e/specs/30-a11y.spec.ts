@@ -5,8 +5,10 @@ import { expect, test, type Page } from '@playwright/test';
 import { APP } from '../fixtures/routes';
 import { ArweaveStub } from '../fixtures/arweave';
 import { VirtualKeys } from '../fixtures/webauthn';
+import { settled } from '../fixtures/motion';
 
 async function audit(page: Page, screen: string) {
+  await settled(page); // app-motion-ux: audit the settled screen, not a frame of a transition
   const r = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa']).analyze();
   expect(r.violations.map((v) => `${screen}: ${v.id} ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`)).toEqual([]);
   const small = await page.evaluate(() =>
@@ -33,7 +35,9 @@ test('keyboard-only create and unlock; every screen passes axe', async ({ page }
   await audit(page, 'home');
 
   const press = async (name: string) => {
-    // Tab until the named button has focus, then press Enter (keyboard only).
+    // Tab until the named button has focus, then press Enter (keyboard only). app-motion-ux: start once the previous
+    // step transition has finished (focus is then on the new heading, as for a real keyboard user).
+    await settled(page);
     for (let i = 0; i < 60; i++) {
       const focused = await page.evaluate(() => document.activeElement?.textContent?.trim() ?? '');
       if (focused === name) return page.keyboard.press('Enter');

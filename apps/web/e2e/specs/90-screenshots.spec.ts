@@ -2,6 +2,8 @@
 import { expect, test } from '@playwright/test';
 import { APP, LANDING } from '../fixtures/routes';
 import { VirtualKeys } from '../fixtures/webauthn';
+import { ArweaveStub } from '../fixtures/arweave';
+import { unlockWith } from '../fixtures/app';
 
 test.skip(!process.env.SCREENSHOTS, 'set SCREENSHOTS=1 to refresh apps/web/docs/screenshots');
 const dir = 'docs/screenshots';
@@ -173,4 +175,62 @@ test('system design page (add-architecture-page 2.2): light, dark and phone', as
     await page.screenshot({ path: `${dir}/${name}.png`, fullPage: true });
     await ctx.close();
   }
+});
+
+test('app motion (app-motion-ux 4.3): mid-transition, key slots, real save checklist, reveal + copy, reduced motion', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await page.setViewportSize({ width: 1024, height: 860 });
+  const arweave = new ArweaveStub();
+  await arweave.install(page);
+  // Hold the bundler's eth_sendUserOperation for a few seconds: the checklist then honestly shows a save that has
+  // been encrypted and sponsored but not yet accepted by the bundler.
+  let hold = true;
+  await page.route('http://127.0.0.1:4337/**', async (route) => {
+    if (hold && (route.request().postData() ?? '').includes('eth_sendUserOperation')) await new Promise((r) => setTimeout(r, 4_000));
+    await route.continue();
+  });
+  await page.goto(APP);
+  const keys = await VirtualKeys.attach(page);
+  await keys.add();
+  await keys.add();
+  await page.getByRole('button', { name: 'Create a new vault' }).click();
+  await page.waitForTimeout(90);
+  await page.screenshot({ path: `${dir}/motion-step-mid-transition.png` });
+  await page.getByRole('button', { name: 'Get started' }).click();
+  await keys.use(0);
+  await page.getByRole('button', { name: 'Set up key 1' }).click();
+  await expect(page.getByText('Key 1 is ready.')).toBeVisible();
+  await keys.use(1);
+  await page.getByRole('button', { name: 'Set up key 2' }).click();
+  await expect(page.getByText('Key 2 is ready.')).toBeVisible();
+  await page.waitForTimeout(600);
+  await page.screenshot({ path: `${dir}/motion-key-slots.png` });
+  await page.getByRole('button', { name: 'Continue' }).click();
+  await page.locator('#label-0').fill('Bitcoin seed');
+  await page.locator('#secret-0').fill('abandon ability able about');
+  await page.getByRole('checkbox', { name: /published permanently/ }).check();
+  await page.getByRole('checkbox', { name: 'I am 18 or over.' }).check();
+  await keys.use(0);
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page.locator('.stage-done').filter({ hasText: 'Network fee sponsored' })).toBeVisible({ timeout: 30_000 });
+  await page.waitForTimeout(400);
+  await page.screenshot({ path: `${dir}/motion-save-in-progress.png` });
+  hold = false;
+  await expect(page.getByText('Backup copy saved.')).toBeVisible({ timeout: 60_000 });
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: `${dir}/motion-save-complete.png` });
+
+  await unlockWith(page, keys, 1);
+  await page.getByRole('button', { name: 'Show Bitcoin seed' }).click();
+  await page.waitForTimeout(120);
+  await page.screenshot({ path: `${dir}/motion-reveal-mid.png` });
+  await page.waitForTimeout(500);
+  await page.getByRole('button', { name: 'Copy Bitcoin seed' }).click();
+  await page.waitForTimeout(3_000);
+  await page.screenshot({ path: `${dir}/motion-copy-countdown.png` });
+
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.getByRole('button', { name: 'Edit secrets' }).click();
+  await page.waitForTimeout(90);
+  await page.screenshot({ path: `${dir}/motion-reduced-mid-transition.png` });
 });

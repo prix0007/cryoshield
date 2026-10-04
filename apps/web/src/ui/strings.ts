@@ -114,6 +114,9 @@ export const S = {
     hide: 'Hide',
     copy: 'Copy',
     copied: 'Copied. It will be cleared from your clipboard in 30 seconds.',
+    copiedChip: 'Copied',
+    clearSkipped: 'This page wasn’t in focus after 30 seconds, so your clipboard was not cleared. Clear it yourself.',
+    clearsIn: 'Clipboard clears in 30 s',
     lock: 'Lock',
     edit: 'Edit secrets',
     addKey: 'Add a key',
@@ -147,6 +150,17 @@ export const S = {
     done: 'Your new key is ready. It can open this vault on its own.',
   },
 
+  progress: {
+    label: 'Save progress',
+    encrypted: 'Encrypted on this device',
+    sponsored: 'Network fee sponsored',
+    sent: 'Signed and sent',
+    confirmed: 'Confirmed on-chain',
+    arweave: 'Backup copy saved to Arweave',
+    done: 'done',
+    pending: 'not yet',
+    failed: 'not saved yet',
+  },
   save: {
     waitingForKey: 'Waiting for your key…',
     saving: 'Saving… this can take up to a minute.',
