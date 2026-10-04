@@ -194,3 +194,18 @@ test('CodeQL #1: PR-provided agent configuration under pr/ is replaced by the ba
   assert.ok(iHead < iRestore && iRestore < iReview);
   assert.match(String(steps[iReview].with.prompt), /\.\/pr\//);
 });
+
+test('CodeQL #1 review L3: exactly one base checkout, then one head checkout into pr/, both before the restore step', () => {
+  const headStep = '      - name: Check out the PR head into pr/ (read only)\n        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1\n        with:\n          ref: ${{ github.event.pull_request.head.sha }}\n          path: pr\n          persist-credentials: false\n';
+  // A second head checkout after the restore would bring PR config files back.
+  expectError('ecc-review.yml', replaceOnce(ecc, '      - name: Remove any PR-provided copy of the plugin directory\n', headStep.replace('into pr/ (read only)', 'again') + '      - name: Remove any PR-provided copy of the plugin directory\n'), /exactly one|before the restore/);
+  // Head before base: the root checkout would wipe pr/ or run in the wrong order.
+  const base = '      - name: Check out the base commit (trusted workspace root)\n';
+  const head = '      # The PR\'s exact head commit, as data only';
+  const i = ecc.indexOf(base);
+  const j = ecc.indexOf(head);
+  const k = ecc.indexOf('      - name: Assert no git credentials remain');
+  assert.ok(i > 0 && j > i && k > j);
+  const swapped = ecc.slice(0, i) + ecc.slice(j, k) + ecc.slice(i, j) + ecc.slice(k);
+  expectError('ecc-review.yml', swapped, /base commit checkout must come before/);
+});

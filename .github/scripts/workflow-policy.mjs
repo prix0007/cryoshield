@@ -95,6 +95,7 @@ export const PRIVILEGED = {
 const PRIVILEGED_ACTIONS = [/^actions\/checkout@[0-9a-f]{40}$/, /^anthropics\/claude-code-action@[0-9a-f]{40}$/];
 const HEAD_SHA_REF = '${{ github.event.pull_request.head.sha }}';
 const BASE_SHA_REF = '${{ github.event.pull_request.base.sha }}';
+const RESTORE_STEP = 'Restore agent configuration from the base commit';
 // Commands that would execute files from the (PR-controlled) workspace. A backstop only: every run step is also
 // pinned by digest, so no run step changes without a reviewed digest update.
 const EXECUTES_CHECKOUT =
@@ -210,6 +211,25 @@ function checkPrivileged(file, name, wf, on) {
     const hasCheckout = steps.some((s) => isObj(s) && /^actions\/checkout@/.test(String(s.uses ?? '')));
     if (hasSecret(job.env) && !(onlyGithubToken(job.env) && !hasCheckout)) {
       err(`job '${id}': secrets in job-level env are only allowed for GITHUB_TOKEN in jobs without a checkout; pass them per step`);
+    }
+
+    // Review workspace layout (harden-codeql-ci-findings, review L3): in a job that checks out this repository,
+    // exactly one base-commit checkout, then exactly one PR-head checkout into headPath, both before the step that
+    // restores agent configuration from the base commit.
+    if (profile.headPath) {
+      const isOwn = (s) => isObj(s) && /^actions\/checkout@/.test(String(s.uses ?? '')) && (!isObj(s.with) || s.with.repository === undefined);
+      const own = steps.map((s, i) => [s, i]).filter(([s]) => isOwn(s));
+      if (own.length > 0) {
+        const bases = own.filter(([s]) => norm(s.with?.ref) === BASE_SHA_REF).map(([, i]) => i);
+        const heads = own.filter(([s]) => norm(s.with?.ref) === HEAD_SHA_REF).map(([, i]) => i);
+        const restore = steps.findIndex((s) => isObj(s) && s.name === RESTORE_STEP);
+        if (bases.length !== 1 || heads.length !== 1 || own.length !== 2) {
+          err(`job '${id}': exactly one base commit checkout and exactly one PR head checkout (path: ${profile.headPath}) are allowed`);
+        } else if (bases[0] > heads[0]) {
+          err(`job '${id}': the base commit checkout must come before the PR head checkout`);
+        }
+        if (restore < 0 || own.some(([, i]) => i > restore)) err(`job '${id}': every checkout must come before the restore step '${RESTORE_STEP}'`);
+      }
     }
 
     for (const step of steps) {

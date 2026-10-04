@@ -220,9 +220,12 @@ export function composeComment({ diagnosis, previous, now, author, issue, append
   // The agent cannot forge markers or hide text (security review M1): every < and > in its text is HTML-escaped,
   // so no comment, tag or delimiter can survive or be re-formed. A regex strip could (CodeQL #3: `<<!!-- x --<!>`
   // became `<!-- x -->`). GitHub renders &lt; / &gt; as the characters. Marker names are broken up as well, so no
-  // marker text appears in the agent's part at all. @mentions become code spans (M4).
+  // marker text appears in the agent's part at all. Backticks are escaped too, so agent text cannot open or close
+  // the code spans that neutralise @mentions (M4), and link reference definitions (`[x]: ...`, which render as
+  // nothing) are escaped so they cannot hide text (harden-codeql-ci-findings review L4).
   const text = neutralizeMentions(String(diagnosis ?? '')
-    .replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/`/g, '&#96;')
+    .replace(/^(\s*)\[(?=[^\]\n]*\]:)/gm, '$1&#91;')
     .replace(/cryoshield-triage-/gi, 'cryoshield triage ')
     .trim());
   const prior = previous ? [...markerBlock(previous).matchAll(RUN_RE)].map((m) => m[0]) : [];

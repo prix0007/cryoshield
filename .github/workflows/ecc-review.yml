@@ -106,6 +106,7 @@ jobs:
         run: |
           set -euo pipefail
           for d in "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE/pr"; do
+            git -C "$d" rev-parse --git-dir >/dev/null # fails the step if the checkout is missing (review L2)
             git -C "$d" config --local --unset-all http.https://github.com/.extraheader || true
             if git -C "$d" config --local --get-regexp '^http\..*extraheader' >/dev/null; then
               echo "::error::git credentials remain in $d/.git/config"
@@ -118,12 +119,20 @@ jobs:
       - name: Restore agent configuration from the base commit
         run: |
           set -euo pipefail
+          files="$RUNNER_TEMP/pr-files"
           paths="$RUNNER_TEMP/agent-config-paths"
+          git -C pr ls-files -z > "$files"
+          # A path containing a newline would be split by the line-based steps below and slip past them (review M1):
+          # refuse to review such a PR at all.
+          if [ "$(tr -cd '\n' < "$files" | wc -c)" -ne 0 ]; then
+            echo "::error::The PR contains a file name with a newline; it is not reviewed automatically."
+            exit 1
+          fi
           {
             printf '%s\n' .claude .claude.json .mcp.json CLAUDE.md CLAUDE.local.md AGENTS.md .gitmodules .ripgreprc .husky
-            git -C pr ls-files -z | tr '\0' '\n' \
-              | grep -E '(^|/)(CLAUDE\.md|CLAUDE\.local\.md|AGENTS\.md|\.mcp\.json|\.claude/.*)$' \
-              | sed -E 's#^((.*/)?)\.claude/.*$#\1.claude#' || true
+            tr '\0' '\n' < "$files" \
+              | { grep -E '(^|/)(CLAUDE\.md|CLAUDE\.local\.md|AGENTS\.md|\.mcp\.json|\.claude/.*)$' || [ $? -eq 1 ]; } \
+              | sed -E 's#^((.*/)?)\.claude/.*$#\1.claude#'
           } | sort -u > "$paths"
           while IFS= read -r p; do
             rm -rf -- "pr/$p"
