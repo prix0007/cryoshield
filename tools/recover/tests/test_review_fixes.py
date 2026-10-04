@@ -313,8 +313,8 @@ def test_two_different_decrypting_copies_without_chain_warn() -> None:
     with FakeChain() as chain, FakeArweave() as ar:
         chain.down = True
         ar.mirror(BLOB1, vault_id=VID, locators=[LOC_A, LOC_B], version=1, height=5)
-        ar.mirror(BLOB2, vault_id=VID, locators=[LOC_A, LOC_B], version=2, height=6)
-        ui = RecUI(pick=lambda opts: next(i for i, o in enumerate(opts) if "claims version 2" in o))
+        tid2 = ar.mirror(BLOB2, vault_id=VID, locators=[LOC_A, LOC_B], version=2, height=6)
+        ui = RecUI(pick=lambda opts: next(i for i, o in enumerate(opts) if tid2 in o))
         res, _ = _run(cfg_for(chain, ar), [PhysicalKey.named("B")], ui)
     assert ui.choices and len(ui.choices[0]) == 2
     assert bytes(res.secret) == h(UPD["newSecret"])

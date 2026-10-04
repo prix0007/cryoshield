@@ -316,9 +316,10 @@ class Recovery:
             return chosen
         options = [chosen, *tied]
         labels = [
+            # Public metadata only. No claimed version: it is attacker-writable and could nudge the user
+            # toward an older copy (security review round 2).
             f"Copy {i + 1}: from {c.source} ({c.origin}); returned by {c.support} source(s); "
-            f"claims version {c.version if c.version is not None else '?'} (unverified); "
-            f"status: {c.freshness.value}"
+            f"status: {c.freshness.value} (unverified)"
             for i, c in enumerate(options)
         ]
         self.ui.warn(

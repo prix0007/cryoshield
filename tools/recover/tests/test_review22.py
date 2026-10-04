@@ -592,3 +592,33 @@ def test_state_reads_share_a_run_deadline(monkeypatch: pytest.MonkeyPatch) -> No
     assert len(calls) <= 3
     assert all(t is not None and t <= chain_mod.STATE_DEADLINE for t in calls)
     assert any("deadline" in w for w in reg.warnings)
+
+
+def test_tie_labels_do_not_show_attacker_writable_versions() -> None:
+    """Security review round 2 (M-new): a claimed version (e.g. 2**32-1) must not nudge the user."""
+    clients = [
+        Client("https://a.example", NEW, 2, honest_logs()),
+        Client("https://b.example", OLD, 2**32 - 1, honest_logs()[:1]),
+    ]
+    from test_network_trust import run
+
+    ui = UI(choice=0)
+    run(clients, ui)
+    text = " ".join(ui.asked[0])
+    assert "version" not in text and str(2**32 - 1) not in text and "unverified" in text
+
+
+def test_download_failing_on_every_gateway_marks_search_incomplete(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Security review round 2 (L-new)."""
+    from cryoshield_recover.net import NetError
+
+    def fail(url: str, **kw: Any) -> bytes:
+        raise NetError("down")
+
+    monkeypatch.setattr(arw, "get_capped", fail)
+    a = Arweave(["https://g.example/graphql"], ["https://gw1.example", "https://gw2.example"])
+    tx = arw.ArweaveTx(
+        id="A" * 43, size=None, height=1, vault_id=VID, version=None, locators=[LOC], server="g"
+    )
+    assert a.fetch(tx) is None
+    assert a.truncated

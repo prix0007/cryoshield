@@ -258,6 +258,8 @@ class Arweave:
             if got:
                 data = got
                 break
+        if data is None:
+            self.truncated = True  # listed but not retrievable anywhere: results may be incomplete
         self._data[tx.id] = data
         return data
 
