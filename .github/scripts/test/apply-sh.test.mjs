@@ -26,7 +26,10 @@ const liveMatching = () => ({
 
 const actionsCommitted = JSON.parse(readFileSync(new URL('../../rulesets/actions-permissions.json', import.meta.url), 'utf8'));
 
-function run({ rulesets = [], ruleset = {}, repo = { ...settings, id: 1, private: true }, labels = [{ name: 'no-spec' }, { name: 'hold' }], actions = actionsCommitted, args = [], env = {} }) {
+const MANAGED = JSON.parse(readFileSync(new URL('../../rulesets/labels.json', import.meta.url), 'utf8'));
+const allLabels = () => MANAGED.map((l) => ({ name: l.name }));
+
+function run({ rulesets = [], ruleset = {}, repo = { ...settings, id: 1, private: true }, labels = allLabels(), actions = actionsCommitted, args = [], env = {} }) {
   const dir = mkdtempSync(join(tmpdir(), 'apply-sh-'));
   writeFileSync(join(dir, 'actions.json'), JSON.stringify(actions));
   writeFileSync(join(dir, 'rulesets.json'), JSON.stringify(rulesets));
@@ -83,11 +86,11 @@ test('drifted merge settings and missing label are applied', () => {
     rulesets: [{ id: 7, name: 'main', target: 'branch' }],
     ruleset: liveMatching(),
     repo: { ...settings, allow_merge_commit: true },
-    labels: [{ name: 'bug' }],
+    labels: [{ name: 'bug' }, ...allLabels().filter((l) => l.name !== 'bug' && l.name !== 'hold')],
     args: ['--apply'],
   });
   assert.equal(r.status, 0, r.stderr + r.stdout);
-  assert.equal(r.writes.length, 3);
+  assert.equal(r.writes.length, 2);
   assert.match(r.writes[0], /^api -X PATCH repos\/prix0007\/cryoshield --input .*repo-settings\.json$/);
   assert.match(r.writes[1], /^api -X POST repos\/prix0007\/cryoshield\/labels /);
 });
@@ -136,7 +139,7 @@ test('--repo must be OWNER/NAME without dot segments', () => {
 });
 
 test('missing hold label is created (owner veto for auto-merge)', () => {
-  const r = run({ rulesets: [{ id: 7, name: 'main', target: 'branch' }], ruleset: liveMatching(), labels: [{ name: 'no-spec' }], args: ['--apply'] });
+  const r = run({ rulesets: [{ id: 7, name: 'main', target: 'branch' }], ruleset: liveMatching(), labels: allLabels().filter((l) => l.name !== 'hold'), args: ['--apply'] });
   assert.equal(r.status, 0, r.stderr + r.stdout);
   assert.equal(r.writes.length, 1);
   assert.match(r.writes[0], /^api -X POST repos\/prix0007\/cryoshield\/labels -f name=hold /);
@@ -174,4 +177,17 @@ test('rejects unknown arguments', () => {
   const r = run({ args: ['--force'] });
   assert.equal(r.status, 2);
   assert.match(r.stderr, /usage/);
+});
+
+test('labels with spaces and regex characters are matched literally and created from labels.json (add-issue-triage)', () => {
+  const names = MANAGED.map((l) => l.name);
+  for (const n of ['sensitive-content', 'security', 'needs-triage', 'duplicate?', 'good first issue', 'recovery-tool']) assert.ok(names.includes(n), n);
+  // 'duplicat' must not satisfy 'duplicate?' (grep -x would treat ? as a regex).
+  const present = allLabels().filter((l) => l.name !== 'duplicate?').concat([{ name: 'duplicat' }]);
+  const r = run({ rulesets: [{ id: 7, name: 'main', target: 'branch' }], ruleset: liveMatching(), labels: present, args: ['--apply'] });
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.equal(r.writes.length, 1);
+  assert.match(r.writes[0], /-f name=duplicate\? -f color=cfd3d7 -f description=Triage: possibly a duplicate$/);
+  const spaced = run({ rulesets: [{ id: 7, name: 'main', target: 'branch' }], ruleset: liveMatching(), labels: allLabels().filter((l) => l.name !== 'good first issue'), args: ['--apply'] });
+  assert.match(spaced.writes[0], /-f name=good first issue -f color=7057ff/);
 });
