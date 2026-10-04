@@ -207,3 +207,32 @@ export function bootCompareReveal(doc: Document, matchMedia: (q: string) => Medi
   );
   arm.observe(table);
 }
+
+/* ---------------- "Buy me a coffee" sheen (add-donation D3) ---------------- */
+
+type CoffeeModule = { sweep: (sheen: Element) => void };
+
+/**
+ * Motion sweeps a sheen across the coffee pill on hover or keyboard focus. The Motion code is a lazy chunk fetched on
+ * first use, so the landing's initial JS barely grows. Off under reduced motion; the CSS steam is separate.
+ */
+export function wireCoffee(
+  doc: Document,
+  matchMedia: (q: string) => MediaQueryList,
+  load: () => Promise<CoffeeModule> = () => import('./coffee'),
+): void {
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  let mod: Promise<CoffeeModule> | undefined;
+  for (const el of doc.querySelectorAll<HTMLElement>('[data-coffee]')) {
+    const sheen = el.querySelector('.coffee-sheen');
+    if (!sheen) continue;
+    const go = () => {
+      // Re-checked at every hover: a later switch to reduced motion stops the sheen too.
+      if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+      mod ??= load();
+      mod.then((m) => m.sweep(sheen)).catch(() => undefined);
+    };
+    el.addEventListener('pointerenter', go);
+    el.addEventListener('focus', go);
+  }
+}

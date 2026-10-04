@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react';
 import { cryoshield, defaultContractsDir } from './vite-plugins/cryoshield.ts';
 import { legalPagesPlugin } from './vite-plugins/legal-plugin.ts';
 import { appMotionIsolation } from './vite-plugins/app-motion-isolation.ts';
+import { donationPlugin } from './vite-plugins/donation.ts';
 
 export default defineConfig(({ mode }) => {
   const root = import.meta.dirname;
@@ -10,7 +11,7 @@ export default defineConfig(({ mode }) => {
   return {
     // Multi-page: unknown paths are 404 (no SPA fallback), as in production.
     appType: 'mpa',
-    plugins: [appMotionIsolation(`${root}/src/ui/`), react(), legalPagesPlugin(root), cryoshield(env, process.env.CRYOSHIELD_CONTRACTS_DIR ?? defaultContractsDir(root), mode, root)],
+    plugins: [appMotionIsolation(`${root}/src/ui/`), react(), legalPagesPlugin(root), donationPlugin(root), cryoshield(env, process.env.CRYOSHIELD_CONTRACTS_DIR ?? defaultContractsDir(root), mode, root)],
     // Always build against the vault-crypto source (never a stale dist/).
     resolve: { alias: [{ find: /^@cryoshield\/vault-crypto$/, replacement: `${root}/../../packages/vault-crypto/src/index.ts` }] },
     build: {
@@ -29,6 +30,7 @@ export default defineConfig(({ mode }) => {
           cookies: `${root}/cookies/index.html`,
           architecture: `${root}/architecture/index.html`,
           devices: `${root}/devices/index.html`,
+          support: `${root}/support/index.html`,
         },
         output: { minify: { compress: { dropConsole: true } } },
       },

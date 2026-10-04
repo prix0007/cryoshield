@@ -22,7 +22,7 @@
     "release/Install flyctl (pinned, checksum-verified)": "46ee8cd831c944f4d768ef059945846649c130395a0a08167327c5941bf680cc",
     "release/Deploy the built context (flyctl only)": "5bd0685d25638eed0a9e773deebdf9bd662649ca829e883ec8fd7b0be68b9f56",
     "release/Record the release in the job summary": "4f3067d6505947169e32d16cfec01d04d365d7777e32362bca8135fac660495e",
-    "release/Smoke test the live site": "117ac4dc0eaee1ae7f1b095fc94e701abe97e403765d7467bd2fb08170e141a9",
+    "release/Smoke test the live site": "ec5e7aa144d8beb9e184b36cef9bff539246213ea98bfb1b7c04dc3604f55ef2",
     "release/Roll back to the previous release": "99353c10d5d7ce0e22f85051509d133857926a5c63beb0d19d397522f6ee47de",
     "release/Fail loudly": "ef69d99f5e05a6d6e81e43e2ad194c07a1244a27026c6f41f0ae70a16311e6af"
   },

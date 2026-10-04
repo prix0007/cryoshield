@@ -2,7 +2,8 @@
 # Post-deploy smoke test of the live site (add-continuous-deploy, design D6; spec continuous-deployment
 # "Smoke test and automatic rollback"). Retries the whole suite, so a rolling deploy or a resuming machine can settle.
 #
-# env: EXPECT_SHA (40-hex), REGISTRY_ADDRESS (0x + 40 hex), BASE_URL (default https://cryoshield.app),
+# env: EXPECT_SHA (40-hex), REGISTRY_ADDRESS (0x + 40 hex), DONATION_ADDRESS (0x + 40 hex, config/donation.json),
+#      BASE_URL (default https://cryoshield.app),
 #      SMOKE_ATTEMPTS (default 10), SMOKE_SLEEP seconds (default 15)
 set -euo pipefail
 
@@ -11,10 +12,12 @@ ATTEMPTS="${SMOKE_ATTEMPTS:-10}"
 SLEEP="${SMOKE_SLEEP:-15}"
 EXPECT_SHA="${EXPECT_SHA:-}"
 REGISTRY_ADDRESS="${REGISTRY_ADDRESS:-}"
+DONATION_ADDRESS="${DONATION_ADDRESS:-}"
 [[ "$EXPECT_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "smoke: EXPECT_SHA must be a full 40-hex commit" >&2; exit 2; }
 [[ "$REGISTRY_ADDRESS" =~ ^0x[0-9a-fA-F]{40}$ ]] || { echo "smoke: REGISTRY_ADDRESS must be 0x + 40 hex" >&2; exit 2; }
+[[ "$DONATION_ADDRESS" =~ ^0x[0-9a-fA-F]{40}$ ]] || { echo "smoke: DONATION_ADDRESS must be 0x + 40 hex" >&2; exit 2; }
 
-PAGES=(/ /app/ /architecture /devices /privacy /healthz)
+PAGES=(/ /app/ /architecture /devices /support /privacy /healthz)
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 errors=()
@@ -45,6 +48,13 @@ check_once() {
         ;;
       /architecture)
         grep -qiF -- "$REGISTRY_ADDRESS" "$TMP/b" || errors+=("/architecture does not show the registry address $REGISTRY_ADDRESS")
+        ;;
+      /support)
+        # add-donation: the live page shows exactly the configured donation address (case-sensitive: EIP-55), and
+        # no other 20-byte hex address (post-deploy tamper check).
+        grep -qF -- "$DONATION_ADDRESS" "$TMP/b" || errors+=("/support does not show the donation address $DONATION_ADDRESS")
+        others="$(grep -oE '0x[0-9a-fA-F]{40}' "$TMP/b" | grep -vxF -- "$DONATION_ADDRESS" | sort -u | tr '\n' ' ' || true)"
+        [ -z "$others" ] || errors+=("/support shows another address: $others")
         ;;
     esac
   done

@@ -23,6 +23,7 @@ import { checkOrigins } from './origins-check.mjs';
 import { checkNoPlaceholders, unlistedStorageApis } from './legal-check.mjs';
 import { checkSecurityTxt } from './securitytxt-check.mjs';
 import { analyticsLeaks, landingCspDiff, policyDrift } from './analytics-check.mjs';
+import { donationViolations, validateDonation } from './donation-check.mjs';
 import { connectSrcViolations } from './csp-check.mjs';
 
 const root = new URL('..', import.meta.url).pathname;
@@ -135,7 +136,7 @@ for (const page of pages) {
 // add-privacy-preserving-analytics 4.2: no file of the app or the legal pages (HTML + reachable JS) mentions analytics.
 const token = label === 'production' && !realEnv ? PROD_ENV.VITE_CF_BEACON_TOKEN : undefined;
 const confined = {};
-for (const rel of [join('app', 'index.html'), join('privacy', 'index.html'), join('terms', 'index.html'), join('cookies', 'index.html'), join('architecture', 'index.html'), join('devices', 'index.html')]) {
+for (const rel of [join('app', 'index.html'), join('privacy', 'index.html'), join('terms', 'index.html'), join('cookies', 'index.html'), join('architecture', 'index.html'), join('devices', 'index.html'), join('support', 'index.html')]) {
   // The legal pages must NAME the analytics in their prose (5.1); everything else on them must not reference it.
   confined[rel] = readFileSync(join(dist, rel), 'utf8').replace(/<article class="(legal-doc|arch-doc)">[\s\S]*?<\/article>/, '');
   for (const f of graphOf(rel)) confined[f] = readFileSync(join(dist, f), 'utf8');
@@ -153,9 +154,22 @@ if (analyticsOn) {
 console.log(`ok   [${label}] analytics confined to the landing document${analyticsOn ? ' (beacon pinned to the lock; disclosed on /privacy and /cookies)' : ' (no beacon in this build)'}`);
 const html = pages.map((f) => readFileSync(f, 'utf8')).join('\n');
 // add-privacy-and-compliance 3.2: the legal pages exist.
-for (const p of ['privacy', 'terms', 'cookies', 'architecture', 'devices']) {
+for (const p of ['privacy', 'terms', 'cookies', 'architecture', 'devices', 'support']) {
   if (!all.includes(join(dist, p, 'index.html'))) fail(`[${label}] missing legal page ${p}/index.html`);
 }
+// add-donation: anti-swap. The donation address comes only from config/donation.json, and no other address or payment
+// URI appears in a donation context.
+let donation;
+try {
+  donation = validateDonation(JSON.parse(readFileSync(join(root, '..', '..', 'config', 'donation.json'), 'utf8')));
+} catch (e) {
+  fail(`[${label}] config/donation.json: ${e.message}`);
+}
+const shipped = Object.fromEntries(all.filter((f) => /\.(html|js|css|svg)$/.test(f)).map((f) => [relative(dist, f), readFileSync(f, 'utf8')]));
+const swaps = donationViolations(shipped, donation);
+if (swaps.length) fail(`[${label}] donation address check: ${swaps.join('; ')}`);
+if (/window\.ethereum|ethereum\.request\(/.test(js)) fail(`[${label}] the bundle calls an injected wallet (window.ethereum); donations must not`);
+console.log(`ok   [${label}] donation address ${donation.address} (chain ${donation.chainId}) is the only one in donation contexts`);
 // adopt-oss-project-defaults D3: no placeholder token and no @cryoshield.app address in any shipped HTML/text file.
 const leftovers = all.filter((f) => /\.(html|txt)$/.test(f)).flatMap((f) => checkNoPlaceholders(readFileSync(f, 'utf8'), relative(dist, f)));
 if (leftovers.length) fail(`[${label}] ${leftovers.join('; ')}`);

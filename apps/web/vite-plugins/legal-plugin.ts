@@ -5,7 +5,7 @@ import { partial, renderLegalPage, renderRepoDoc } from './legal.ts';
 export function legalPagesPlugin(root: string): Plugin {
   // Clean URLs like production (Caddy rewrites /privacy -> /privacy/index.html): dev server and `vite preview`.
   const rewrite = (req: { url?: string }, _res: unknown, next: () => void) => {
-    const m = req.url?.match(/^\/(privacy|terms|cookies|architecture|devices)(\?.*)?$/);
+    const m = req.url?.match(/^\/(privacy|terms|cookies|architecture|devices|support)(\?.*)?$/);
     if (m) req.url = `/${m[1]}/index.html${m[2] ?? ''}`;
     next();
   };

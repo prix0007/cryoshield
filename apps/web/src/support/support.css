@@ -1,0 +1,73 @@
+/* /support (add-donation): the donation card on the legal layout, which stays light in both themes (fixed --ink and
+   --canvas tokens, like legal.css). Tokens only, no colour literals. */
+.support-lede {
+  font-size: var(--lead-size, 21px);
+  line-height: 1.38;
+  color: var(--ink-muted-80);
+}
+.support-card {
+  margin: var(--space-lg) 0;
+  padding: var(--space-lg);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-lg);
+  background: var(--canvas);
+}
+.legal-doc .support-card h2 {
+  margin-top: 0;
+}
+.support-grid {
+  display: grid;
+  grid-template-columns: minmax(160px, 220px) 1fr;
+  gap: var(--space-lg);
+  align-items: start;
+}
+@media (max-width: 640px) {
+  .support-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.support-qr {
+  margin: 0;
+}
+.support-qr svg {
+  display: block;
+  width: 100%;
+  max-width: 220px;
+  height: auto;
+  border-radius: var(--radius-sm);
+}
+.support-qr figcaption {
+  margin-top: var(--space-xs);
+  font-size: var(--caption-size);
+  color: var(--ink-muted-80);
+}
+.support-label {
+  margin: 0 0 var(--space-xs);
+  font-size: var(--caption-size);
+  font-weight: 600;
+  color: var(--ink-muted-80);
+}
+#donation-address {
+  display: block;
+  padding: var(--space-sm);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--hairline);
+  font-size: 17px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+.support-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  margin-top: var(--space-md);
+}
+.support-status {
+  min-height: 1.5em;
+  margin: var(--space-xs) 0 0;
+  font-size: var(--caption-size);
+}
+.support-warning strong {
+  font-weight: 600;
+}

@@ -34,6 +34,7 @@ const healthySite = () => ({
   status: {},
   headers: { ...GOOD_HEADERS },
   architecture: `<td class="mono">${ADDRESS.toLowerCase()}</td>`,
+  support: `<code id="donation-address">${DONATION}</code>`,
   hits: {},
   healthyAfter: 0, // number of /healthz-or-page requests before the site turns healthy (rolling deploy)
 });
@@ -53,13 +54,13 @@ before(async () => {
       res.writeHead(site.release.status, { 'content-type': 'application/json', ...site.headers });
       return res.end(site.release.body);
     }
-    const known = ['/', '/app/', '/architecture', '/devices', '/privacy', '/healthz'];
+    const known = ['/', '/app/', '/architecture', '/devices', '/support', '/privacy', '/healthz'];
     if (!known.includes(path)) {
       res.writeHead(404);
       return res.end();
     }
     res.writeHead(site.status[path] ?? 200, { 'content-type': 'text/html', ...site.headers });
-    res.end(path === '/architecture' ? site.architecture : path === '/healthz' ? 'ok' : '<html></html>');
+    res.end(path === '/architecture' ? site.architecture : path === '/support' ? site.support : path === '/healthz' ? 'ok' : '<html></html>');
   });
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   base = `http://127.0.0.1:${server.address().port}`;
@@ -243,7 +244,8 @@ test('previous-image: an unexpected ImageRef or a fly error fails', async () => 
 });
 
 // ---- smoke.sh ----
-const smokeEnv = (over = {}) => ({ EXPECT_SHA: SHA, REGISTRY_ADDRESS: ADDRESS, SMOKE_ATTEMPTS: '2', ...over });
+const DONATION = '0xfb4172e26AC8735C06656f1df14151cFe8441481';
+const smokeEnv = (over = {}) => ({ EXPECT_SHA: SHA, REGISTRY_ADDRESS: ADDRESS, DONATION_ADDRESS: DONATION, SMOKE_ATTEMPTS: '2', ...over });
 
 test('smoke: a healthy release passes', async () => {
   site = healthySite();
@@ -260,6 +262,8 @@ test('smoke: every failure class fails and is named', async () => {
     [{ headers: { ...GOOD_HEADERS, 'content-security-policy': "default-src 'none'" } }, /frame-ancestors/],
     [{ architecture: '<td>0x0000000000000000000000000000000000000000</td>' }, /registry address/],
     [{ release: { status: 200, body: JSON.stringify({ commit: OTHER }) } }, /release\.json.*bbbb/],
+    [{ support: `<code>${DONATION.toLowerCase()}</code>` }, /does not show the donation address/],
+    [{ support: `<code>${DONATION}</code><code>0x1111111111111111111111111111111111111111</code>` }, /another address/],
   ];
   for (const [over, why] of cases) {
     site = { ...healthySite(), ...over };
@@ -279,6 +283,7 @@ test('smoke: rejects malformed inputs', async () => {
   site = healthySite();
   assert.equal((await run('smoke.sh', smokeEnv({ EXPECT_SHA: 'main' }))).status, 2);
   assert.equal((await run('smoke.sh', smokeEnv({ REGISTRY_ADDRESS: '0x12' }))).status, 2);
+  assert.equal((await run('smoke.sh', smokeEnv({ DONATION_ADDRESS: '' }))).status, 2);
 });
 
 // ---- rollback.sh ----

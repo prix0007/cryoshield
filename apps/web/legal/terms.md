@@ -1,6 +1,6 @@
 # Terms of service
 
-**Effective date:** 2026-10-03 (revision 2)
+**Effective date:** 2026-10-05
 
 <!--legal-note-->
 
@@ -39,6 +39,20 @@ by us or by anyone else.
 CryoShield pays the network fees for saving vaults through a third-party sponsor. Sponsorship is free, capped, and may
 be paused, limited or withdrawn at any time without notice. You have no entitlement to it. Opening a vault never
 depends on it.
+
+## Donations
+
+You can choose to send a donation in ETH on Ethereum mainnet to the address on [/support](/support), which is also
+published in the project's README.
+
+- **Voluntary:** donating is optional. CryoShield works the same whether or not you donate.
+- **Nothing in return:** a donation buys no goods, services, features, support or other perks, and creates no
+  obligation for us.
+- **Non-refundable:** blockchain transfers can't be reversed. We can't refund donations or recover anything sent to the
+  wrong network or in the wrong asset.
+- **Tax:** donations go to the open-source maintainer personally, not to a company or charity, so we issue no tax
+  receipts. The maintainer is responsible for any tax due on donations received; you're responsible for your own tax
+  position.
 
 ## Acceptable use
 
