@@ -79,6 +79,38 @@ describe('release manifest', () => {
     expect(pub).not.toMatch(/pim_|apikey|sp_hidden/);
   });
 
+  it('sorts paths byte-wise like LC_ALL=C sort, also for non-ASCII names (ECC #10)', () => {
+    const d = fixture(['index.html', 'assets/index-abc.js', 'assets/index-def.css']);
+    // U+FF21 (UTF-8 ef bc a1) sorts after U+00E9 (c3 a9) by bytes, but before an astral char by UTF-16 code units.
+    for (const f of ['assets/\u{1F600}.txt', 'assets/Ａ.txt', 'assets/é.txt']) writeFileSync(join(d, 'site', f), f);
+    const m = JSON.parse(run(d).json);
+    const paths = m.files.map((f: { path: string }) => f.path);
+    const bytewise = [...paths].sort((a, b) => Buffer.compare(Buffer.from(a), Buffer.from(b)));
+    expect(paths).toEqual(bytewise);
+    const shell = execFileSync('sh', ['-c', `cd "${join(d, 'site')}" && find . -type f | sed 's#^\\./##' | LC_ALL=C sort | while read f; do shasum -a 256 "$f"; done | shasum -a 256 | cut -d' ' -f1`], { encoding: 'utf8' }).trim();
+    expect(m.treeHash).toBe(`sha256:${shell}`);
+  });
+
+  it('refuses an unknown or non-decimal VITE_CHAIN_ID and a missing or invalid VITE_RP_ID (ECC #10)', () => {
+    for (const env of ['VITE_CHAIN_ID=0x1\nVITE_RP_ID=cryoshield.app\n', 'VITE_CHAIN_ID=1\nVITE_RP_ID=cryoshield.app\n', 'VITE_RP_ID=cryoshield.app\n',
+      'VITE_CHAIN_ID=11155420\n', 'VITE_CHAIN_ID=11155420\nVITE_RP_ID=https://cryoshield.app\n', 'VITE_CHAIN_ID=11155420\nVITE_RP_ID=Cryo Shield\n']) {
+      const d = fixture(['index.html', 'assets/index-abc.js', 'assets/index-def.css']);
+      writeFileSync(join(d, '.env'), env);
+      expect(() => run(d), env).toThrow(/VITE_CHAIN_ID|VITE_RP_ID/);
+    }
+  });
+
+  it('hashes the Caddyfile (response headers, CSP) into the manifest when given (ECC #5)', () => {
+    const d = fixture(['index.html', 'assets/index-abc.js', 'assets/index-def.css']);
+    writeFileSync(join(d, 'Caddyfile'), ':8080 {\n}\n');
+    const out = join(d, 'release-manifest.json');
+    execFileSync('node', [SCRIPT, '--site', join(d, 'site'), '--out', out, '--commit', 'e'.repeat(40), '--env', join(d, '.env'), '--contracts', join(d, 'contracts'), '--caddyfile', join(d, 'Caddyfile'), '--site-release'], { encoding: 'utf8' });
+    const m = JSON.parse(readFileSync(out, 'utf8'));
+    const shell = execFileSync('sh', ['-c', `shasum -a 256 "${join(d, 'Caddyfile')}" | cut -d' ' -f1`], { encoding: 'utf8' }).trim();
+    expect(m.caddyfile).toBe(`sha256:${shell}`);
+    expect(JSON.parse(readFileSync(join(d, 'site', 'release.json'), 'utf8')).caddyfile).toBe(m.caddyfile);
+  });
+
   it('refuses to run twice into a site that already has release.json (it would hash itself)', () => {
     const d = fixture(['index.html', 'assets/index-abc.js', 'assets/index-def.css']);
     writeFileSync(join(d, 'site', 'release.json'), '{}');

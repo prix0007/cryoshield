@@ -62,7 +62,7 @@ node deploy/gen-context.mjs --dist dist --out deploy/.build --host "$HOST" || di
 
 # 6. Publishable release manifest: commit, deterministic tree hash, config summary (no key values).
 node deploy/release-manifest.mjs --site deploy/.build/site --out deploy/.build/release-manifest.json \
-  --commit "$(git -C "$ROOT" rev-parse HEAD)" --env .env --contracts "$ROOT/contracts" --site-release || die "release manifest failed"
+  --commit "$(git -C "$ROOT" rev-parse HEAD)" --env .env --contracts "$ROOT/contracts" --caddyfile deploy/.build/Caddyfile --site-release || die "release manifest failed"
 # --site-release also publishes deploy/.build/site/release.json, served as /release.json (add-continuous-deploy D3).
 echo "deploy: the site serves /release.json; keep deploy/.build/release-manifest.json (CI uploads it as an artifact)"
 
