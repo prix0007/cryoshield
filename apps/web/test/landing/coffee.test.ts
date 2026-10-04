@@ -29,6 +29,16 @@ describe('wireCoffee', () => {
     el.dispatchEvent(new Event('pointerenter'));
     expect(load).not.toHaveBeenCalled();
   });
+  it('re-checks reduced motion at each hover (a later switch to reduce stops the sheen)', async () => {
+    const el = pill();
+    let reduced = false;
+    const sweep = vi.fn();
+    wireCoffee(document, (q: string) => ({ matches: q.includes('reduce') ? reduced : true }) as MediaQueryList, async () => ({ sweep }));
+    reduced = true;
+    el.dispatchEvent(new Event('pointerenter'));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(sweep).not.toHaveBeenCalled();
+  });
   it('a failed load is harmless (the pill is a plain link)', async () => {
     const el = pill();
     const load = vi.fn(async () => {

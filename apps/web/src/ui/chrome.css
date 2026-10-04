@@ -288,6 +288,10 @@ dd a {
   cursor: pointer;
   transition: transform 0.12s ease;
 }
+/* `hidden` must win over .pill's display (author CSS beats the UA [hidden] rule). */
+.pill[hidden] {
+  display: none;
+}
 .pill:active {
   transform: scale(0.95);
 }

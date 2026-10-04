@@ -73,3 +73,14 @@ test('/support shows the address, QR and wallet link, and Copy puts exactly the 
   expect(await page.evaluate(() => 'ethereum' in window)).toBe(false); // nothing injected or probed
   expect(problems).toEqual([]);
 });
+
+test('without JavaScript, /support hides the Copy button; the address and Open in wallet still work', async ({ browser }) => {
+  const ctx = await browser.newContext({ javaScriptEnabled: false });
+  const page = await ctx.newPage();
+  await page.goto('/support');
+  await expect(page.locator('#donation-address')).toHaveText(ADDRESS);
+  await expect(page.getByRole('button', { name: 'Copy address' })).toBeHidden();
+  await expect(page.getByRole('link', { name: 'Open in wallet' })).toBeVisible();
+  await expect(page.getByRole('group', { name: 'Donation address (Ethereum mainnet)' })).toBeVisible();
+  await ctx.close();
+});

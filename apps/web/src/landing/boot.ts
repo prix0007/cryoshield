@@ -227,6 +227,8 @@ export function wireCoffee(
     const sheen = el.querySelector('.coffee-sheen');
     if (!sheen) continue;
     const go = () => {
+      // Re-checked at every hover: a later switch to reduced motion stops the sheen too.
+      if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
       mod ??= load();
       mod.then((m) => m.sweep(sheen)).catch(() => undefined);
     };

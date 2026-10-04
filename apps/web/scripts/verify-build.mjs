@@ -23,7 +23,7 @@ import { checkOrigins } from './origins-check.mjs';
 import { checkNoPlaceholders, unlistedStorageApis } from './legal-check.mjs';
 import { checkSecurityTxt } from './securitytxt-check.mjs';
 import { analyticsLeaks, landingCspDiff, policyDrift } from './analytics-check.mjs';
-import { donationViolations } from './donation-check.mjs';
+import { donationViolations, validateDonation } from './donation-check.mjs';
 
 const root = new URL('..', import.meta.url).pathname;
 const storageInventory = JSON.parse(readFileSync(join(root, 'legal', 'storage-inventory.json'), 'utf8'));
@@ -158,7 +158,12 @@ for (const p of ['privacy', 'terms', 'cookies', 'architecture', 'devices', 'supp
 }
 // add-donation: anti-swap. The donation address comes only from config/donation.json, and no other address or payment
 // URI appears in a donation context.
-const donation = JSON.parse(readFileSync(join(root, '..', '..', 'config', 'donation.json'), 'utf8'));
+let donation;
+try {
+  donation = validateDonation(JSON.parse(readFileSync(join(root, '..', '..', 'config', 'donation.json'), 'utf8')));
+} catch (e) {
+  fail(`[${label}] config/donation.json: ${e.message}`);
+}
 const shipped = Object.fromEntries(all.filter((f) => /\.(html|js|css|svg)$/.test(f)).map((f) => [relative(dist, f), readFileSync(f, 'utf8')]));
 const swaps = donationViolations(shipped, donation);
 if (swaps.length) fail(`[${label}] donation address check: ${swaps.join('; ')}`);

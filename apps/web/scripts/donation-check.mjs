@@ -8,7 +8,26 @@
  *   address split by markup (<wbr>) or written as entities is still seen.
  * A swapped, mistyped or second address in a donation context fails the build.
  */
+import { getAddress } from 'viem';
+
 const HEX40 = /0x[0-9a-fA-F]{40}/g;
+/** In JS only `ethereum:0x…` counts as a payment URI, so minified keys like `{ethereum:t}` are not false positives. */
+const JS_URI_RE = /ethereum(?::|&#0*58;|&#x0*3a;|&colon;)0x[^"'`\s<>)]*/gi;
+/** Zero-width and bidi-control characters, and whitespace, removed before the text-level address scan. */
+const INVISIBLE = /[\s\u200B-\u200F\u202A-\u202E\u2060-\u2064\uFEFF]/g;
+
+/**
+ * Re-validates the reference itself (the same rules as vite-plugins/donation.ts loadDonation), so verify-build never
+ * compares a malformed config against itself, e.g. when run against an older dist.
+ */
+export function validateDonation(d) {
+  if (!d || typeof d.address !== 'string' || !/^0x[0-9a-fA-F]{40}$/.test(d.address)) throw new Error('donation: address is not 20 bytes of hex');
+  if (getAddress(d.address.toLowerCase()) !== d.address) throw new Error('donation: address does not have a valid EIP-55 checksum');
+  if (d.chainId !== 1) throw new Error('donation: chainId must be 1 (Ethereum mainnet)');
+  if (d.network !== 'Ethereum mainnet') throw new Error('donation: network must be "Ethereum mainnet"');
+  if (d.asset !== 'ETH') throw new Error('donation: asset must be ETH');
+  return d;
+}
 const URI_RE = /ethereum(?::|&#0*58;|&#x0*3a;|&colon;)[^"'`\s<>)]*/gi;
 
 /**
@@ -37,7 +56,7 @@ export function donationViolations(files, donation, supportPage = 'support/index
   const page = files[supportPage];
   if (page === undefined) out.push(`${supportPage} is missing`);
   else {
-    const found = [...page.matchAll(HEX40), ...textOf(page).matchAll(HEX40)].map((m) => m[0]);
+    const found = [...page.matchAll(HEX40), ...textOf(page).replace(INVISIBLE, '').matchAll(HEX40)].map((m) => m[0]);
     if (!found.includes(donation.address)) out.push(`${supportPage} does not show the configured address`);
     for (const a of new Set(found)) if (a !== donation.address) out.push(`${supportPage} contains another address ${a}`);
     if (!/<svg [^>]*class="qr"/.test(page)) out.push(`${supportPage} has no QR code`);
@@ -47,7 +66,7 @@ export function donationViolations(files, donation, supportPage = 'support/index
     for (const m of text.matchAll(/data-donation-address[^>]*>\s*([^<]*)</g)) {
       if (m[1].trim() !== donation.address) out.push(`${f}: data-donation-address shows "${m[1].trim()}"`);
     }
-    for (const m of text.matchAll(URI_RE)) if (m[0] !== uri) out.push(`${f}: unexpected payment URI ${m[0]}`);
+    for (const m of text.matchAll(f.endsWith('.js') ? JS_URI_RE : URI_RE)) if (m[0] !== uri) out.push(`${f}: unexpected payment URI ${m[0]}`);
   }
   return out;
 }

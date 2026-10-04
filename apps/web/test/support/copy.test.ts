@@ -41,6 +41,18 @@ describe('wireCopy', () => {
     expect(String(document.getSelection())).toBe(ADDRESS);
   });
 
+  it('a second Copy is announced again (the status is cleared, then set)', async () => {
+    const { btn, status } = page();
+    const seen: string[] = [];
+    new MutationObserver(() => seen.push(status.textContent ?? '')).observe(status, { childList: true, characterData: true, subtree: true });
+    wireCopy(document, { writeText: async () => undefined });
+    btn.click();
+    await vi.waitFor(() => expect(status.textContent).toMatch(/copied/));
+    btn.click();
+    await vi.waitFor(() => expect(seen.filter((t) => /copied/.test(t)).length).toBeGreaterThanOrEqual(2));
+    expect(seen).toContain('');
+  });
+
   it('if nothing can copy, leaves the address selected and says so', async () => {
     const { btn, status } = page();
     (document as unknown as { execCommand: () => boolean }).execCommand = () => false;

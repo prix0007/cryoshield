@@ -29,9 +29,9 @@
               <!--donation:qr-->
               <figcaption>Scan with a wallet app. It opens a payment to the address below on <!--donation:network--> (chain ID 1).</figcaption>
             </figure>
-            <div class="support-address">
+            <div class="support-address" role="group" aria-labelledby="address-label">
               <p class="support-label" id="address-label">Donation address (Ethereum mainnet)</p>
-              <code id="donation-address" class="mono" aria-labelledby="address-label" data-donation-address><!--donation:address--></code>
+              <code id="donation-address" class="mono" data-donation-address><!--donation:address--></code>
               <div class="support-actions">
                 <button type="button" id="copy-address" class="pill pill-primary" hidden>Copy address</button>
                 <a class="pill pill-secondary" href="__DONATION_URI__" data-donation-uri>Open in wallet</a>

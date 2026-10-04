@@ -37,6 +37,9 @@ export function wireCopy(doc: Document, clip: Clip = globalThis.navigator?.clipb
         ok = false;
       }
     }
-    status.textContent = ok ? 'Address copied. Check it matches before you send.' : 'Couldn’t copy automatically. The address is selected: copy it with your keyboard.';
+    // Clear first, then set on the next frame, so a repeated press is announced again by the live region.
+    status.textContent = '';
+    const message = ok ? 'Address copied. Check it matches before you send.' : 'Couldn’t copy automatically. The address is selected: copy it with your keyboard.';
+    requestAnimationFrame(() => (status.textContent = message));
   });
 }

@@ -1,7 +1,7 @@
 // @vitest-environment node
 /** add-donation: verify-build's anti-swap check. */
 import { describe, expect, it } from 'vitest';
-import { donationViolations, textOf } from '../../scripts/donation-check.mjs';
+import { donationViolations, textOf, validateDonation } from '../../scripts/donation-check.mjs';
 
 const D = { address: '0xfb4172e26AC8735C06656f1df14151cFe8441481', chainId: 1 };
 const URI = `ethereum:${D.address}@1`;
@@ -44,6 +44,20 @@ describe('donationViolations', () => {
     expect(donationViolations({ 'support/index.html': `<code data-donation-address>${D.address}</code>` }, D).join()).toMatch(/QR code[\s\S]*Open in wallet|Open in wallet[\s\S]*QR/);
   });
 
+  it('an address hidden with zero-width characters or whitespace on /support is still found', () => {
+    const zw = OTHER.slice(0, 10) + '&#8203;' + OTHER.slice(10, 30) + ' \n' + OTHER.slice(30);
+    expect(donationViolations({ 'support/index.html': page() + `<p>${zw}</p>` }, D).join()).toMatch(/another address/);
+  });
+  it('in JS, only ethereum:0x… is treated as a payment URI (no false positive on a minified {ethereum:x} key)', () => {
+    expect(donationViolations({ 'support/index.html': page(), 'assets/x.js': 'const n={ethereum:t,polygon:r}' }, D)).toEqual([]);
+    expect(donationViolations({ 'support/index.html': page(), 'assets/x.js': `"ethereum:${OTHER}@1"` }, D).join()).toMatch(/unexpected payment URI/);
+  });
+  it('validateDonation re-checks the config itself (EIP-55, chain 1, ETH) before it is used as the reference', () => {
+    expect(() => validateDonation({ address: D.address, chainId: 1, network: 'Ethereum mainnet', asset: 'ETH' })).not.toThrow();
+    expect(() => validateDonation({ address: D.address.toLowerCase(), chainId: 1, network: 'Ethereum mainnet', asset: 'ETH' })).toThrow(/checksum/);
+    expect(() => validateDonation({ address: D.address, chainId: 10, network: 'Ethereum mainnet', asset: 'ETH' })).toThrow(/chain/);
+    expect(() => validateDonation({ address: D.address, chainId: 1, network: 'Ethereum mainnet', asset: 'USDC' })).toThrow(/asset/);
+  });
   it('textOf drops all markup in one pass, including nested-looking tags, and decodes references once', () => {
     expect(textOf('a<b>c</b>d')).toBe('acd');
     expect(textOf('<scr<script>ipt>x</script>')).not.toContain('<');
