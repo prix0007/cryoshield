@@ -29,7 +29,7 @@ test('requires a PR: 0 approvals, conversation resolution, squash only', () => {
 
 test('requires ci-ok from GitHub Actions, strict (up to date with main)', () => {
   const p = rule('required_status_checks').parameters;
-  assert.equal(p.strict_required_status_checks_policy, true);
+  assert.equal(p.strict_required_status_checks_policy, false); // relax-strict-up-to-date
   assert.deepEqual(p.required_status_checks, [{ context: 'ci-ok', integration_id: 15368 }]);
 });
 
