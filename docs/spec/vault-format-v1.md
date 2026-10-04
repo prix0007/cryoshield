@@ -71,6 +71,33 @@ Fixing UV to "required" everywhere removes that split. Where the setting goes de
 
 UV is a request, not a guarantee, so a client MUST also check the result. Before using any PRF output from `create()` or `get()`, the client MUST verify that the UV flag (bit 2, mask 0x04, of the flags byte at offset 32 of `authenticatorData`) is set. Otherwise it MUST discard the PRF output and fail with `USER_NOT_VERIFIED`. Authenticator data shorter than 37 bytes is `INVALID_ARGUMENT`. The reference library's `assertUserVerified(authenticatorData)` does this check; the vectors' `authenticatorDataCases` pin it.
 
+### 3.1a UV enforced by the authenticator: credProtect level 3
+
+UV-required options and the UV-flag check protect what *this client* does. They do not stop an attacker who holds a
+key and runs their own client. The vault's credential IDs are public (they are stored in the blob), and the smart
+wallet that verifies signing assertions does not require the UV flag and does not check `rpIdHash` or the origin
+(audit AA-H1). So, unless the key itself refuses, one stolen key with no PIN can sign.
+
+Every credential used for a vault MUST therefore be created with CTAP 2.1 **credProtect level 3**
+(`userVerificationRequired`). At that level the authenticator returns no assertion for the credential, and does not
+even reveal that it exists, unless user verification (the PIN or built-in UV) is performed, even when the caller names
+its credential ID. In short: **UV is mandatory, and it is enforced by the authenticator via credProtect level 3.**
+- **Request:** registration MUST set `extensions: { credentialProtectionPolicy: "userVerificationRequired",
+  enforceCredentialProtectionPolicy: true }`. With enforcement, a browser fails `create()` rather than silently creating
+  a weaker credential. The reference library's `webauthnPrfCreateOptions()` sets both.
+- **Confirm:** before a new credential is used for a vault, the client MUST read the authenticator's extension output
+  (the `credProtect` integer in the CBOR extensions map of the registration `authenticatorData`, present when the ED
+  flag 0x80 is set) and require exactly 3. Browsers do not return this in `getClientExtensionResults()`. A missing,
+  lower or unparsable value fails with `CRED_PROTECT_UNSUPPORTED`, and the key MUST NOT be enrolled. The reference
+  library's `assertCredProtectUvRequired(authenticatorData)` does this.
+- **Recovery tool:** CTAP2 `getAssertion` with `hmac-secret` and UV (PIN) works unchanged for level 3 credentials. The
+  tool already always performs UV.
+- **Residual risk:**
+  - Keys enrolled before this rule may carry a lower level and MUST be re-created; the only such vault is the founder's
+    test vault.
+  - A contract-level fix (a validator that requires UV and checks `rpIdHash` and origin) is planned before mainnet, so
+    the protection does not rest on the authenticator alone.
+
 ## 4. Key derivation (single tap)
 
 Each ceremony yields one 32-byte PRF output `prf` per credential. From it:
@@ -285,6 +312,7 @@ The client returns the first candidate that opens, with its index and `vaultId`,
 | `AUTH_FAILED` | the payload failed authentication after a successful unwrap |
 | `NO_MATCHING_VAULT` | no candidate opened |
 | `USER_NOT_VERIFIED` | authenticatorData lacks the UV flag; the PRF output must not be used (§3.1) |
+| `CRED_PROTECT_UNSUPPORTED` | a new credential did not confirm credProtect level 3; it must not be enrolled (§3.1a) |
 
 ## 11. Test vectors and randomness order (informative)
 
