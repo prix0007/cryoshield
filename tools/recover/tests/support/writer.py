@@ -109,6 +109,8 @@ def create(
         _check_cred(c)
     if len(set(ids)) != n or any(len(p) != 32 for _, p in credentials):
         raise VaultError("INVALID_ARGUMENT")
+    if len({bytes(p) for _, p in credentials}) != n:  # one key enrolled twice (REC-L2)
+        raise VaultError("INVALID_ARGUMENT")
     if mode == MODE_ANY_OF_N and threshold != 1:
         raise VaultError("INVALID_ARGUMENT")
     if mode == MODE_SHAMIR and not 2 <= threshold <= n:

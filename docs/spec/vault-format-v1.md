@@ -183,6 +183,8 @@ wrapped_i = AES-GCM-Enc(wrapKey_i, wrapNonce_i, wrapAad_i, dataKey)   // 48 byte
 
 N ≥ 2 is required at creation (`TOO_FEW_KEYS`); N > 8 is `TOO_MANY_KEYS`. Any single key opens the vault.
 
+At creation, credential IDs MUST be distinct, and PRF outputs MUST be distinct (`INVALID_ARGUMENT`). Two credentials with the same PRF output are one key enrolled twice: their locators are equal, and the vault would only *appear* to have a backup key. This check runs after the credential-ID and PRF-length checks and before the secret and size checks (vector `duplicate-prf`).
+
 ### 6.4 Mode 0x02: Shamir M-of-N (experimental)
 
 This is the construction of `shamir-secret-sharing` 0.0.4:
@@ -279,7 +281,7 @@ The client returns the first candidate that opens, with its index and `vaultId`,
 | `VAULT_TOO_LARGE` | the blob would exceed 1024 bytes (the message states maxPayloadBytes) |
 | `TOO_FEW_KEYS` | N < 2 ("at least 2 keys required") |
 | `TOO_MANY_KEYS` | N > 8 |
-| `INVALID_ARGUMENT` | a bad rpId, credId, PRF length, threshold, or vaultId (not 32 bytes, or all zeros), or an empty secret; `addKey` on a mode 0x02 vault |
+| `INVALID_ARGUMENT` | a bad rpId, credId, PRF length, threshold, or vaultId (not 32 bytes, or all zeros); duplicate PRF outputs at creation; an empty secret; `addKey` on a mode 0x02 vault |
 | `NO_MATCHING_KEY` | no entry unwraps under the supplied key(s) and `vaultId` (this includes a blob cloned under another vaultId) |
 | `INSUFFICIENT_SHARES` | mode 0x02: at least 1 but fewer than M shares unwrapped |
 | `AUTH_FAILED` | the payload failed authentication after a successful unwrap |

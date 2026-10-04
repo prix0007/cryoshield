@@ -236,6 +236,8 @@ def create_vault(vault_id: bytes, rp_id: bytes, creds: list[dict], secret: bytes
         raise VaultError("INVALID_ARGUMENT")
     if any(len(c["prf"]) != 32 for c in creds):
         raise VaultError("INVALID_ARGUMENT")
+    if len({bytes(c["prf"]) for c in creds}) != n:  # equal PRFs = equal locators: one key twice (REC-L2)
+        raise VaultError("INVALID_ARGUMENT")
     if mode == MODE_ANY and m != 1 or mode == MODE_SHAMIR and not (2 <= m <= n):
         raise VaultError("INVALID_ARGUMENT")
     if len(secret) == 0:
@@ -692,6 +694,8 @@ def build() -> dict:
     add_create("cred-id-too-long", "129-byte credential ID.", [A, {"id": det("create/long", 129), "prf": B["prf"]}],
                b"secret")
     add_create("duplicate-cred-id", "Same credential twice.", [A, A], b"secret")
+    add_create("duplicate-prf", "Different credential IDs with identical PRF outputs (equal locators).",
+               [A, {"id": B["id"], "prf": A["prf"]}], b"secret")
     add_create("shamir-threshold-too-high", "Mode 0x02 with M = 4 > N = 3.", [A, B, C], b"secret",
                MODE_SHAMIR, 4)
     add_create("zero-vault-id", "All-zero vaultId.", [A, B], b"secret", vault_id=bytes(32))
