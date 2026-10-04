@@ -34,12 +34,16 @@ class Candidate:
     version: int | None = None
     freshness: Freshness = Freshness.UNVERIFIABLE
     height: int | None = None
+    # Distinct sources (RPCs, or GraphQL servers) that returned exactly this (vaultId, blob).
+    support: int = 1
 
     @property
     def rank(self) -> tuple[int, int, int]:
-        # Within one freshness class: higher claimed version first (a lagging RPC's older copy loses),
-        # then newer Arweave copies (higher block height).
-        return _RANK[self.freshness], -(self.version or 0), -(self.height or 0)
+        """Freshness class, then MORE independent sources, then newer Arweave block height.
+
+        A version reported by an RPC or an Arweave tag is attacker-writable and is NEVER used for
+        ranking (audit REC-M1: one liar claimed version 2**32-1 to win)."""
+        return _RANK[self.freshness], -self.support, -(self.height or 0)
 
 
 def dedupe(cands: list[Candidate]) -> list[Candidate]:

@@ -125,6 +125,7 @@ If the vault needs several keys, the tool asks for them one at a time: "Remove t
 | 9 | the secret was not output: not a terminal and no `--output`, or the output file already exists |
 | 10 | unexpected internal error |
 | 11 | cancelled |
+| 12 | ambiguous: different copies of your vault decrypt, and the servers disagree about which is current (non-interactive runs only; interactively you are asked to choose) |
 
 ## Troubleshooting
 
@@ -146,6 +147,16 @@ If the vault needs several keys, the tool asks for them one at a time: "Remove t
 - Secrets are kept in memory only and overwritten after use. Core dumps are disabled.
 - Python cannot guarantee that no copy survives in memory, so close the terminal when you are done.
 - The tool never writes your secret to disk unless you pass `--output`. It never overwrites an existing file.
+
+## How the tool decides which copy is current
+
+Public servers are untrusted, and a lying or stale server can serve an *older* genuine copy of your vault, which still decrypts. The tool therefore labels a copy **current** only when:
+- at least two different blockchain servers (or the only one you configured) return exactly that copy, and no server returns a different one; or
+- it matches the latest on-chain update record that several servers agree on.
+
+Versions reported by a server are never trusted for ranking. If servers disagree and the chain can't settle it, the tool prefers the copy more servers returned and warns you. On an exact tie it asks you to choose, showing only where each copy came from (never the secret). In a non-interactive run it stops with exit code 12.
+
+Every Arweave search server's answer is kept separately, so one bad server cannot hide the genuine mirror. Searches are paged and time-bounded, and claimed sizes are ignored; downloads are capped at 1 KB anyway.
 
 ## Memory-wiping limits
 

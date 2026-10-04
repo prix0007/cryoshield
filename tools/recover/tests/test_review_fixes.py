@@ -45,8 +45,8 @@ def _raw(server: Any, body: bytes, path: str | None = None) -> None:
     server.handle = handle
 
 
-def _run(cfg: Any, keys: list[PhysicalKey]) -> tuple[Any, FakePrfSource]:
-    ui = RecUI()
+def _run(cfg: Any, keys: list[PhysicalKey], ui: RecUI | None = None) -> tuple[Any, FakePrfSource]:
+    ui = ui or RecUI()
     prf = FakePrfSource(keys, ui=ui)
     return Recovery(cfg, prf, ui).run(), prf
 
@@ -115,8 +115,11 @@ def test_hostile_graphql_does_not_stop_search(body: bytes) -> None:
         _raw(bad, payload, "/graphql")
         ar = Arweave([bad.graphql_url, good.graphql_url], [good.url], timeout=5)
         txs = ar.find_by_locator(LOC_A)
-        assert [t.id for t in txs] == [tid]
-        assert ar.fetch(txs[0]) == BLOB1
+        # Per-server records (REC-M2): the hostile server's own record of the tx may be listed too,
+        # but it can never hide the honest one, and the data download ignores claimed sizes.
+        assert {t.id for t in txs} == {tid}
+        assert any(t.server == good.url.split("//")[1] for t in txs)
+        assert all(ar.fetch(t) == BLOB1 for t in txs)
 
 
 def test_hostile_graphql_full_recovery_continues() -> None:
@@ -149,13 +152,19 @@ def test_disagreeing_rpcs_do_not_silently_roll_back(stale_logs: bool) -> None:
     with liar, honest:
         cfg = cfg_for(honest)
         cfg.rpcs = [liar.url, honest.url]  # the liar answers first
-        res, _ = _run(cfg, [PhysicalKey.named("B")])
+        honest_host = honest.url.split("//")[1]
+        # 2 RPCs, 1 each: if the history can't settle it, it is a TIE that the user must resolve
+        # explicitly (harden-recovery-network-trust; never ranked by the RPC-reported version).
+        ui = RecUI(pick=lambda opts: next(i for i, o in enumerate(opts) if honest_host in o))
+        res, _ = _run(cfg, [PhysicalKey.named("B")], ui)
     assert bytes(res.secret) == h(UPD["newSecret"]), "stale blob was shown"
     assert any("disagree" in w for w in res.warnings)
     if stale_logs:
         assert res.candidate.freshness is Freshness.UNVERIFIABLE  # histories disagree: no false "current"
+        assert ui.choices and all("unverified" in o for o in ui.choices[0])
     else:
         assert res.candidate.freshness is Freshness.CURRENT
+        assert not ui.choices  # the agreed history decided; no question asked
 
 
 def test_disagreement_demotes_stale_blob_in_ranking() -> None:

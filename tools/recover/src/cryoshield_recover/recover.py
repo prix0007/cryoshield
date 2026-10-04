@@ -33,6 +33,7 @@ class UI(Protocol):
     def info(self, msg: str) -> None: ...
     def warn(self, msg: str) -> None: ...
     def pause(self, msg: str) -> None: ...
+    def choose(self, prompt: str, options: list[str]) -> int: ...
 
 
 @dataclass
@@ -135,23 +136,31 @@ class Recovery:
         if ar is None:
             return []
         self.ui.info("Searching the Arweave permanent archive…")
-        out: list[Candidate] = []
+        # One record per (GraphQL server, tx) (REC-M2). Identical (vaultId, blob) from several servers
+        # merge into one candidate whose support counts the distinct servers.
+        merged: dict[tuple[bytes | None, bytes], tuple[ArweaveTx, set[str]]] = {}
         for tx in txs_fn(ar):
             blob = ar.fetch(tx)
             if blob is None:
                 continue
-            out.append(
-                Candidate(
-                    blob,
-                    "arweave",
-                    tx.id,
-                    tx.vault_id,
-                    tx.version,
-                    classify(blob, self._hashes(tx.vault_id)),
-                    tx.height,
-                )
+            key = (tx.vault_id, blob)
+            if key in merged:
+                merged[key][1].add(tx.server)
+            else:
+                merged[key] = (tx, {tx.server})
+        return [
+            Candidate(
+                blob,
+                "arweave",
+                tx.id,
+                vid,
+                tx.version,
+                classify(blob, self._hashes(vid)),
+                tx.height,
+                support=len(servers),
             )
-        return out
+            for (vid, blob), (tx, servers) in merged.items()
+        ]
 
     def _arweave_by_locators(self, locators: Sequence[bytes]) -> list[Candidate]:
         def find(ar: Arweave) -> list[ArweaveTx]:
@@ -227,29 +236,67 @@ class Recovery:
                     ignored += 1
                 continue
             log.debug("selected candidate from %s (%s), ignored %d", cand.source, cand.origin, ignored)
-            self._check_ambiguity(cand, cands)
+            picked = self._resolve_ties(cand, cands)
+            if picked is not cand:
+                wipe(secret)
+                assert picked.vault_id is not None
+                secret = open_decoded(decode_blob(picked.blob), self._keys(), picked.vault_id)
+                cand = picked
             return Result(secret, cand, ignored), pending
         return None, pending
 
-    def _check_ambiguity(self, chosen: Candidate, cands: list[Candidate]) -> None:
-        """Without a chain-verified copy, ranking falls back to attacker-writable hints (the Arweave
-        version tag). If another DIFFERENT blob for the same vault also decrypts, say so loudly."""
-        if chosen.freshness in (Freshness.CURRENT, Freshness.VERIFIED):
-            return
+    def _decrypting_rivals(self, chosen: Candidate, cands: list[Candidate]) -> list[Candidate]:
+        """Other DIFFERENT blobs for the same vault that also decrypt with the keys held."""
+        rivals: list[Candidate] = []
         for other in ranked(cands):
-            if other.vault_id != chosen.vault_id or other.blob == chosen.blob:
+            if other is chosen or other.vault_id != chosen.vault_id or other.blob == chosen.blob:
                 continue
             try:
                 assert other.vault_id is not None  # equals chosen.vault_id, which opened
                 wipe(open_decoded(decode_blob(other.blob), self._keys(), other.vault_id))
             except VaultError:
                 continue
+            rivals.append(other)
+        return rivals
+
+    def _resolve_ties(self, chosen: Candidate, cands: list[Candidate]) -> Candidate:
+        """Without a chain-verified copy, never let ranking silently decide between different decrypting
+        copies of equal standing (audit REC-M1): warn, and on an exact tie make the user choose."""
+        if chosen.freshness in (Freshness.CURRENT, Freshness.VERIFIED):
+            return chosen
+        rivals = self._decrypting_rivals(chosen, cands)
+        if not rivals:
+            return chosen
+        vid = (chosen.vault_id or b"").hex()
+        tied = [r for r in rivals if r.rank == chosen.rank]
+        if not tied:
             self._notes.append(
-                f"Several different copies of vault 0x{(chosen.vault_id or b'').hex()} decrypt with this key "
-                "and the blockchain could not verify which one is current: an older copy may be shown. "
-                "Retry when the blockchain is reachable, or use --rpc with a server you trust."
+                f"Several different copies of vault 0x{vid} decrypt with this key and the blockchain could "
+                "not verify which one is current. Showing the copy most sources returned; an older copy may "
+                "be shown. Retry when the blockchain is reachable, or use --rpc with a server you trust."
             )
-            return
+            return chosen
+        options = [chosen, *tied]
+        labels = [
+            f"Copy {i + 1}: from {c.source} ({c.origin}); returned by {c.support} source(s); "
+            f"claims version {c.version if c.version is not None else '?'} (unverified); "
+            f"status: {c.freshness.value}"
+            for i, c in enumerate(options)
+        ]
+        self.ui.warn(
+            f"SECURITY: {len(options)} different copies of vault 0x{vid} decrypt with your key, and the "
+            "servers disagree about which is current. One of them may be an OLDER version served by a "
+            "stale or lying server. Choose the copy you expect, or cancel and retry with --rpc pointing at "
+            "a server you trust."
+        )
+        index = self.ui.choose("Which copy should be opened?", labels)
+        if not 0 <= index < len(options):
+            raise RecoveryError(ExitCode.CANCELLED, "No copy chosen.")
+        picked = options[index]
+        self._notes.append(
+            f"You chose copy {index + 1} of vault 0x{vid}; its freshness could not be verified on-chain."
+        )
+        return picked
 
     def _shamir(self, cand: Candidate, d: DecodedVault) -> Result:
         """Collect more enrolled keys, one tap at a time, until M distinct shares unwrap."""

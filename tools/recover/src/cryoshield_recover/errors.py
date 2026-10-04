@@ -57,6 +57,7 @@ class ExitCode(IntEnum):
     OUTPUT_REFUSED = 9
     INTERNAL = 10
     CANCELLED = 11
+    AMBIGUOUS = 12
 
 
 class RecoveryError(Exception):

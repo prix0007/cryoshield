@@ -65,6 +65,27 @@ class Console:
         if self.stdin.readline() == "":
             raise RecoveryError(ExitCode.CANCELLED, "Cancelled.")
 
+    def choose(self, prompt: str, options: list[str]) -> int:
+        """Ask the user to pick one of ``options`` (public metadata only). Non-interactive: refuse."""
+        if not self.interactive:
+            raise RecoveryError(
+                ExitCode.AMBIGUOUS,
+                "Several different copies of your vault decrypt and the servers disagree about which is "
+                "current. Run interactively to choose, or retry with --rpc pointing at a server you trust.",
+            )
+        for line in options:
+            self.info("  " + line)
+        print(
+            f"{prompt} Enter a number (1-{len(options)}), or anything else to cancel: ",
+            end="",
+            file=self.stderr,
+            flush=True,
+        )
+        answer = self.stdin.readline().strip()
+        if not answer.isdigit() or not 1 <= int(answer) <= len(options):
+            raise RecoveryError(ExitCode.CANCELLED, "Cancelled: no copy chosen.")
+        return int(answer) - 1
+
     def confirm_show(self) -> bool:
         self.info(
             "\nYour vault is unlocked. The secret will be printed on this screen.\n"
