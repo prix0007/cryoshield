@@ -16,7 +16,7 @@ The first plan for this PR (`paymaster-v2-attested-sponsorship`) proposed a self
 ## What Changes
 
 1. **Pimlico sponsorship hardening (configuration and docs; no contract).**
-   - Recommended policy limits: a global daily cap, a per-sender lifetime cap and a per-operation cap, for testnet and mainnet (design D2).
+   - Recommended policy limits: a global daily cap, a per-sender cap (lifetime on testnet, monthly on mainnet) and a per-operation cap, for testnet and mainnet (design D2).
    - API-key settings: origin restriction and bundler + paymaster methods only, with a separate key per environment. Pimlico's public docs make `sponsorshipPolicyId` **optional** and document no "policy required" key setting, so the account balance is the hard bound for policy-less abuse (design R1, D3).
    - An honest threat model: per-sender limits do not stop scripted fresh accounts, so the **global cap** (and, for policy-less calls, the **balance**) is the real bound. Abuse can only exhaust the budget ("Saving is paused"); it cannot read or corrupt any vault (D4).
    - A rewritten runbook, `apps/web/docs/paymaster-policy.md`, with the exact dashboard settings and a weekly check.
@@ -28,10 +28,10 @@ The first plan for this PR (`paymaster-v2-attested-sponsorship`) proposed a self
    - Existing testnet accounts are re-created. An in-place `upgradeToAndCall` is supported but not automated (D8).
 3. **VaultRegistry v2 (fixes AA-M1 and AA-M2).**
    - `vaultId = keccak256(abi.encode(msg.sender, salt))`, derived on-chain, so squatting is impossible.
-   - No per-locator cap; paginated `resolveLocator(locator, start, count)`, `locatorLength`, and batched `getVaults`.
+   - No per-locator cap; paginated `resolveLocator(locator, start, count)`, `locatorLength`, and batched `getVaults` (at most 32 ids per call).
    - Every other v1 rule is kept: no admin, append-only, a 1–1024-byte blob, 2–8 locators per vault, one vault per owner, the same events.
    - A `vaultIdDerivation` test vector, and v1 + v2 reads in the web app and the recovery tool.
-4. **Deploy to OP Sepolia only.** OP Mainnet stays behind an explicit gate (tasks section 8).
+4. **Deploy to OP Sepolia first** (both the production and the dev RP ID's wallet pair). OP Mainnet stays behind an explicit gate (tasks section 8). The founder has funded the mainnet deployer, but **VaultRegistry v1 is NOT deployed to OP Mainnet**: mainnet gets only VaultRegistry v2 and the `cryoshield.app` wallet implementation and factory, after testnet validation and the security review.
 
 ### Not doing (and why)
 
@@ -40,7 +40,7 @@ The first plan for this PR (`paymaster-v2-attested-sponsorship`) proposed a self
 | `CryoShieldPaymaster` (staked, EntryPoint v0.6) and the `sponsored-gas-paymaster` spec | Founder decision. It had two blocking flaws (add-key binding, AA50 from user-controlled `postOp` gas). It also needed a staked ETH deposit, a new privileged owner key and bundler-reputation risk, for a budget a dashboard cap already bounds. |
 | `AttestationRegistry` (on-chain packed attestation, Yubico roots, CBOR/DER/RSA parsers) and the `hardware-attestation` spec | It was only needed to gate the self-built paymaster. It meant unaudited parsers, about 0.5–1.2M extra gas per first operation, browser support gaps (withheld attestation) and public linkability of the user's keys. |
 | Staking, the `0x05` modexp precompile allowance, local Alto safe-mode simulation | Only the self-built paymaster needed them. |
-| The deployment-targets entries for `paymaster` and `attestationRegistry` | Those contracts no longer exist. The delta is kept but now lists only `vaultRegistryV2`, `walletImplementation` and `walletFactory`. |
+| The deployment-targets entries for `paymaster` and `attestationRegistry` | Those contracts no longer exist. The delta is kept but now lists only `vaultRegistryV2` and the RP-ID-keyed wallet pairs. |
 | Sponsorship webhooks | They need a server we operate, which `openspec/config.yaml` forbids. |
 | The sibling change `cbsw-uv-enforcing-implementation` | Folded into this change (Q7). |
 
@@ -84,7 +84,7 @@ The first plan for this PR (`paymaster-v2-attested-sponsorship`) proposed a self
 
 ### Modified Capabilities
 - `vault-registry`: on-chain `vaultId` derivation, no per-locator cap with paginated reads, and v1/v2 coexistence.
-- `deployment-targets`: per-chain deployment records list several contracts (`vaultRegistryV2`, `walletImplementation`, `walletFactory`).
+- `deployment-targets`: per-chain deployment records list VaultRegistry v2 and wallet pairs keyed by RP ID (`contracts.wallets.<rpId>`); dependency checks cover our wallet code instead of Coinbase's factory.
 
 ## Impact
 
@@ -98,7 +98,7 @@ The first plan for this PR (`paymaster-v2-attested-sponsorship`) proposed a self
   - `src/chain/registry.ts` reads v1 + v2 with pagination;
   - creates use a salt instead of a vaultId;
   - `docs/paymaster-policy.md` is rewritten as the runbook.
-- **packages/vault-crypto:** a `vaultIdDerivation` vector in `test-vectors/v1.json`, and the derivation text in `docs/spec/vault-format-v1.md`.
+- **packages/vault-crypto:** a `vaultIdDerivation` vector in `test-vectors/v1.json`, and `docs/spec/vault-format-v1.md` §4.1 rewritten for v1 and v2 vaultIds.
 - **tools/recover:** reads v1 and v2, with pagination. It never signs user operations, so the account change does not affect it.
 - **Ops:** the Pimlico dashboard policy and API-key settings per environment, and a small prepaid balance for mainnet (no card overdraft).
 - **Costs:** the account adds a few hundred gas per signature (one SHA-256 comparison, one flag check). The registry v2 gas is measured in `contracts/GAS.md`.

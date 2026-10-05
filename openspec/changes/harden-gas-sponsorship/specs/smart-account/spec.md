@@ -9,7 +9,7 @@
 - the flags have UP (`0x01`) and UV (`0x04`) set;
 - the WebAuthn assertion verifies, as in CBSW v1.1.
 
-Any other signature SHALL be invalid (`SIG_VALIDATION_FAILED` for user operations). This SHALL be tested against the WebAuthn fixtures in `contracts/test/fixtures/webauthn/`: a valid UV=1 assertion, and the same assertion with UV=0, UP=0, a foreign rpIdHash, and authenticatorData shorter than 37 bytes. Each negative fixture is re-signed, so that only the tested property differs.
+A well-formed signature that fails any of these checks SHALL return `SIG_VALIDATION_FAILED` for user operations, and the ERC-1271 failure value. A malformed signature (one that does not ABI-decode as `SignatureWrapper`/`WebAuthnAuth`) MAY revert, as in CBSW v1.1. No signature that fails a check SHALL ever validate. This SHALL be tested against the WebAuthn fixtures in `contracts/test/fixtures/webauthn/`: a valid UV=1 assertion; the same assertion with UV=0, UP=0, a foreign rpIdHash, or authenticatorData shorter than 37 bytes; and a malformed `signatureData`. Each negative fixture is re-signed, so that only the tested property differs.
 
 #### Scenario: Stolen key without PIN
 - **WHEN** a user operation is correctly signed by an owner key but its authenticator data has UV = 0
@@ -22,6 +22,10 @@ Any other signature SHALL be invalid (`SIG_VALIDATION_FAILED` for user operation
 #### Scenario: Replayable path is covered
 - **WHEN** an `executeWithoutChainIdValidation` operation (for example `addOwnerPublicKey`) is signed with UV = 0
 - **THEN** validation fails
+
+#### Scenario: Malformed signature never validates
+- **WHEN** a user operation carries `signatureData` that does not decode as `WebAuthnAuth`
+- **THEN** validation reverts or fails, and the operation is never executed
 
 #### Scenario: Valid tap with PIN
 - **WHEN** the UV=1 fixture signs a user operation for the fixture account
@@ -54,11 +58,11 @@ Signature validation SHALL do constant work per signature: it reads only `ownerA
 - **THEN** it is simulated, accepted and included
 
 ### Requirement: Immutable, admin-free account code
-`CryoShieldSmartWallet` and `CryoShieldSmartWalletFactory` SHALL have no admin, pause or owner role held by CryoShield. Upgrade authority SHALL remain with each account's own owners, as in CBSW v1.1. The factory SHALL be an unmodified copy of the CBSW v1.1 factory code with our implementation as its immutable, deployed via CREATE2 so that, for a given RP ID, both contracts have the same address on every supported chain. The implementation SHALL add no storage variables: its storage layout SHALL be identical to CBSW v1.1.
+`CryoShieldSmartWallet` and `CryoShieldSmartWalletFactory` SHALL have no admin, pause or owner role held by CryoShield. Upgrade authority SHALL remain with each account's own owners, as in CBSW v1.1. The factory SHALL be an unmodified copy of the CBSW v1.1 factory code with our implementation as its immutable, deployed via CREATE2 so that, for a given RP ID, both contracts have the same address on every supported chain. The implementation SHALL add no storage variables: its storage layout SHALL be identical to CBSW v1.1, including the ERC-7201 `MultiOwnableStorage` slot constant, which `forge inspect` does not show.
 
 #### Scenario: Storage layout unchanged
 - **WHEN** `forge inspect` storage layouts of `CryoShieldSmartWallet` and CBSW v1.1 are compared in CI
-- **THEN** they are identical
+- **THEN** they are identical, and a test asserts that the `MultiOwnableStorage` ERC-7201 slot constant equals CBSW v1.1's value
 
 #### Scenario: Deployer has no power over accounts
 - **WHEN** the deploying address tries to upgrade, add an owner to, or execute from any account it does not own

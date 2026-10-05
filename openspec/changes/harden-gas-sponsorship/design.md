@@ -12,6 +12,7 @@
   - Pimlico stays the paymaster: no self-built paymaster and no attestation.
   - Q7: upgrade CBSW with UV and rpId checks on all operations.
   - Fixing these findings is a mainnet requirement.
+- **Mainnet funding (2026-10-05):** the founder has funded the deployer on OP Mainnet. Funding does **not** open the gate. **VaultRegistry v1 is NOT deployed to OP Mainnet.** OP Mainnet gets only VaultRegistry v2 and the `cryoshield.app` wallet implementation and factory, and only after testnet validation (tasks section 6), the security review (7.1) and founder approval (8.1).
 - **Hard constraints** (`openspec/config.yaml`):
   - no CryoShield backend;
   - recovery without CryoShield;
@@ -96,15 +97,19 @@
 | Limit (Pimlico field) | Testnet (OP Sepolia) | Mainnet (OP Mainnet, at the gate) |
 |---|---|---|
 | Chain allowlist | 11155420 only | 10 only |
-| Per-sender count (`user.maximum_user_operation_count`, `reset_interval: never`) | **50 (lifetime)** | 50 (lifetime) |
-| Per-sender spend (`user.user_operation_spending`, `never`) | not set | $1.00 lifetime |
+| Per-sender count (`user.maximum_user_operation_count`) | **50, `never` (lifetime)** | 50, **`monthly`** |
+| Per-sender spend (`user.user_operation_spending`) | not set | $1.00, `monthly` |
 | Per-operation spend (`user_operation.user_operation_spending`) | $0.50 (Sepolia L1 data fees run higher) | **$0.10** |
 | Global spend (`global.user_operation_spending`, `daily`) | **USD equal to ~0.05 ETH** at setup; record the rate used | **$20 / day** |
 | Global count (`global.maximum_user_operation_count`, `daily`) | 500 | 2,000 |
 
 - **Basis:** the measured creates are about 1.5M gas on anvil (`apps/web/docs/costs.md`), with an OP Mainnet estimate of about $0.004 per create.
   - $0.10 per operation is about 25× that estimate. It allows for gas-price spikes and for Pimlico pre-charging at maximum cost.
-  - 50 lifetime operations is far above a real user's need: one create, a few edits, one or two add-key operations.
+  - 50 operations is far above a real user's need: one create, a few edits, one or two add-key operations.
+- **Per-sender lockout (review advisory).** Every edit and add-key is sponsored, so a lifetime cap could eventually stop a real user from editing a permanent vault, with no gas-free way out.
+  - **Testnet** keeps the founder's lifetime 50, because test vaults are short-lived. The runbook's remedy is that the founder raises the cap in the dashboard; the user is never asked to pay gas.
+  - **Mainnet** resets monthly, so no user is locked out for good. The global daily cap remains the real abuse bound either way (D4).
+  - Task 1.1 confirms whether failed or reverted operations count toward the per-sender count.
 - **Mainnet balance:** prepaid only. Keep it at about **7 days of global cap ($140)**, and add **no card**, so there is no overdraft (R1). That makes the balance the hard bound when a request skips the policy (D3).
 
 **D3. API-key settings.**
@@ -149,7 +154,8 @@ The founder checks this during the weekly dashboard review (runbook). There is n
   - **64-byte owner:** decode `WebAuthnAuth` and require `authenticatorData.length ≥ 37` and `authenticatorData[0:32] == RP_ID_HASH`, then `WebAuthn.verify(..., requireUV: true, ...)`. UP is always checked by the library.
   - **Any other owner** (a 32-byte address owner, which can only exist in an in-place-upgraded legacy account) is treated as an invalid signature.
 - **`RP_ID_HASH`** is an `immutable` set in the constructor to `sha256(bytes(rpId))`. It lives in code, not storage, so delegatecalled proxies read it safely.
-  - Each RP ID gets its own implementation and factory address. The production RP ID is `cryoshield.app` (`web-hosting`, "Domain bound to the RP ID"); dev and local builds deploy their own.
+  - Each RP ID gets its own implementation and factory address. Production (`cryoshield.app`, `web-hosting` "Domain bound to the RP ID") and dev (`cryoshield-web-dev.fly.dev`) both build for OP Sepolia (`docs/deploy.md`), so both pairs are deployed there.
+  - The deployment record keys wallet entries by RP ID (`contracts.wallets.<rpId>`), and each build selects its entry by `VITE_RP_ID` (deployment-targets delta). Local (anvil) builds deploy their own pair.
 - **P-256 only.**
   - `initialize` requires 1–8 owners, each exactly 64 bytes, then calls `super`.
   - `addOwnerAddress` always reverts.
@@ -186,7 +192,7 @@ The founder checks this during the weekly dashboard review (runbook). There is n
 - **No per-locator cap:**
   - `locatorLength(locator)`;
   - `resolveLocator(locator, start, count)`, with `count` clamped to 256;
-  - `getVaults(bytes32[])` for batched candidate reads.
+  - `getVaults(bytes32[])` for batched candidate reads, capped at **32 ids per call** (it reverts above that). Without a cap, a stuffed 256-entry page of 1 KB blobs is about 256 KB in one `eth_call`, which can exceed public RPC response or gas limits; recovery depends on public RPCs alone. Clients batch to 32.
 - **Kept from v1:**
   - append-only, insertion order;
   - 2–8 locators per vault, and a 1–1024-byte blob;
@@ -195,6 +201,7 @@ The founder checks this during the weekly dashboard review (runbook). There is n
   - no admin, no proxy, a deterministic CREATE2 address.
 - **Stuffing cost:** each junk entry costs the attacker a whole vault (one owner address per entry), and sponsored stuffing is bounded by D2's global cap. The victim's entry never moves, so stuffing only lengthens a paginated scan.
 - **Coexistence:** writers use only v2. Readers query v2, then v1, and treat the candidates as one list. v1 is **never deployed to OP Mainnet**.
+- **Published format text:** `docs/spec/vault-format-v1.md` §4.1 (and the locator note in §4) still says the client chooses the vaultId and retries on "taken". Task 3.1 rewrites it to cover v1 vaults (client-chosen id) and v2 vaults (registry-derived id, no retry). Only the text changes; the blob bytes and the version byte do not.
 
 ## Data flows
 
@@ -223,7 +230,7 @@ The founder checks this during the weekly dashboard review (runbook). There is n
 | 5 | Web app integration (v2 writes, our factory, v1 + v2 reads) | E2E green |
 | 6 | OP Sepolia deploy and hardware checklist | Real sponsored create, edit and add-key with two YubiKeys |
 | 7 | Security review | No open CRITICAL or HIGH |
-| 8 | Mainnet gate | Founder approval |
+| 8 | Mainnet gate, then the OP Mainnet deploy of VaultRegistry v2 and the `cryoshield.app` wallet pair only (no v1) | Founder approval |
 
 ## Risks / Trade-offs
 
