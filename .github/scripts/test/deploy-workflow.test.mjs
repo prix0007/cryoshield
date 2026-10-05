@@ -113,7 +113,7 @@ test('ECC #1: detect treats ANY failed earlier Deploy run of the commit as previ
 
 test('ECC #3: no || or `or` in any deploy.yml job condition', () => {
   expectError('deploy.yml', replaceOnce(deploy, "    if: github.ref == 'refs/heads/main'\n", "    if: github.ref == 'refs/heads/main' || true\n"), /job 'detect'.*\|\|/);
-  expectError('deploy.yml', replaceOnce(deploy, "    if: needs.detect.outputs.deploy == 'true'\n    uses:", "    if: needs.detect.outputs.deploy == 'true' || true\n    uses:"), /job 'test'.*\|\|/);
+  expectError('deploy.yml', replaceOnce(deploy, "    if: needs.detect.outputs.deploy == 'true' && needs.config.outputs.configured == 'true'\n    uses:", "    if: needs.detect.outputs.deploy == 'true' && needs.config.outputs.configured == 'true' || true\n    uses:"), /job 'test'.*\|\|/);
 });
 
 test('ECC #4: every job with needs must be gated on needs.detect.outputs.deploy', () => {

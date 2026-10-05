@@ -10,6 +10,12 @@ set -euo pipefail
 FLY="${FLY:-fly}"
 APP="${APP:-cryoshield-web}"
 [[ "$APP" =~ ^[a-z0-9-]+$ ]] || { echo "previous-image: invalid APP" >&2; exit 2; }
+# The token sits behind the approval in `production`, so it can only be checked here, after a human approved: fail
+# explicitly rather than with a flyctl auth error (deploy-skip-when-unconfigured).
+if [ -z "${FLY_API_TOKEN:-}" ]; then
+  echo "::error title=deploy not configured::FLY_API_TOKEN is empty: add it to the production environment (docs/deploy.md, First-time setup, step 2), then re-run with: gh workflow run deploy.yml --ref main -f force=true"
+  exit 1
+fi
 
 emit() {
   echo "$1"

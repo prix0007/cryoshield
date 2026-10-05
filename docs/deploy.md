@@ -112,7 +112,7 @@ gh secret delete VITE_BUNDLER_URL --env production
 for k in $(gh variable list --env production --json name --jq '.[].name'); do gh variable delete "$k" --env production; done
 ```
 
-Until `production-build` has its variables, `build` fails and nothing is deployed (fail closed).
+**Not configured yet?** Until `production-build` has every required variable and the `VITE_BUNDLER_URL` secret, the `config` job warns ("deploy not configured") and names what is missing. It never prints the values. Nothing after it runs (no CI, build or release), and the run still **succeeds**, so `main` is not marked red. A partial setup is skipped the same way. Skipped runs don't count as failed, so once the config is complete, the next merge or `gh workflow run deploy.yml --ref main -f force=true` deploys normally. `FLY_API_TOKEN` can only be checked after the release approval: if it is missing, the approved release fails at once with "deploy not configured: FLY_API_TOKEN is empty".
 
 **Optional hardening** (Dependabot security updates, and actions must be pinned to a full commit SHA): `.github/rulesets/apply.sh --with-ecc-review --environments --founder-hardening`, then again with `--apply`.
 
