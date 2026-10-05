@@ -122,6 +122,8 @@
 - [x] 5.3 [fe] Write failing tests: reads page v2 then v1 and use `getVaults`, and a v1-only vault still unlocks. Then implement in `src/chain/registry.ts`. Verify: unit tests, `test:int` and `test:e2e`.
 - [ ] 5.4 [ow] Regenerate the presets from the deployment records (`config/chain-presets.json` consumers). Verify: the parity tests in contracts, web and recover pass.
 
+- [ ] 5.5 [fe] Follow-up (overwatcher, 2026-10-06): lazy-load the write stack (viem account abstraction, the Pimlico client, `src/account/*`) on the first save instead of in the initial /app chunk. Verify: `/app` initial JS gzip drops by at least 10 KB in `pnpm --filter @cryoshield/web verify-build`, then lower `APP_BASELINE` in `apps/web/scripts/verify-build.mjs` back by the 2 KB raised for this change; unit, `test:int` and `test:e2e` green.
+
 ## 6. Testnet (OP Sepolia only) [ow] [sol] [fe]
 
 - [ ] 6.1 [ow] Deploy VaultRegistry v2 and the wallet implementation and factory for **both** `cryoshield.app` and `cryoshield-web-dev.fly.dev` to OP Sepolia with `BROADCAST=1`. Verify: `contracts/deployments/11155420.json` has `contracts.vaultRegistryV2` and both `contracts.wallets.<rpId>` entries, Blockscout verification passes, and both the production and the dev builds (`deploy-dev.yml`) succeed.
