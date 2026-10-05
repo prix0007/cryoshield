@@ -1,29 +1,19 @@
 /**
  * Client-side sponsorship allowlist (spec sponsored-vault-writes "Sponsorship scope"; security carry-over 2).
  * A sponsored user operation may only:
- *   - call the VaultRegistry: createVault / updateVault / addLocators, with value 0;
+ *   - call VaultRegistry v2: createVault / updateVault / addLocators, with value 0 (never v1: harden-gas-sponsorship);
  *   - call the account itself: addOwnerPublicKey (add-key flow), with value 0.
  * Anything else throws before the bundler or paymaster is contacted. The paymaster policy server-side is the
  * backstop (see docs/paymaster-policy.md); this check stops our own code from ever asking for more.
  */
-import { decodeFunctionData, parseAbi, toFunctionSelector, type Hex } from 'viem';
+import { decodeFunctionData, toFunctionSelector, type Hex } from 'viem';
 import { config } from '../config';
+import { smartWalletAbi } from '../chain/contracts';
 
-export const smartWalletAbi = parseAbi([
-  'function execute(address target, uint256 value, bytes data) payable',
-  'function executeBatch((address target, uint256 value, bytes data)[] calls) payable',
-  'function addOwnerPublicKey(bytes32 x, bytes32 y)',
-  'function addOwnerAddress(address owner)',
-  'function removeOwnerAtIndex(uint256 index, bytes owner)',
-  'function ownerAtIndex(uint256 index) view returns (bytes)',
-  'function nextOwnerIndex() view returns (uint256)',
-  'function ownerCount() view returns (uint256)',
-  'function isOwnerPublicKey(bytes32 x, bytes32 y) view returns (bool)',
-  'function upgradeToAndCall(address newImplementation, bytes data) payable',
-]);
+export { smartWalletAbi };
 
 export const REGISTRY_SELECTORS = new Set([
-  toFunctionSelector('createVault(bytes32,bytes,bytes32[])'),
+  toFunctionSelector('createVault(bytes32,bytes,bytes32[])'), // (salt, blob, locators) in v2
   toFunctionSelector('updateVault(bytes32,bytes)'),
   toFunctionSelector('addLocators(bytes32,bytes32[])'),
 ]);
@@ -39,7 +29,7 @@ export interface Call {
   data: Hex;
 }
 
-export function assertSponsorableCalls(calls: readonly Call[], account: Hex, registry: Hex = config.registry.address): void {
+export function assertSponsorableCalls(calls: readonly Call[], account: Hex, registry: Hex = config.registryV2.address): void {
   if (calls.length === 0 || calls.length > 4) throw new PolicyError('call count out of range');
   for (const c of calls) {
     if ((c.value ?? 0n) !== 0n) throw new PolicyError('sponsored calls must not transfer value');
@@ -56,7 +46,7 @@ export function assertSponsorableCalls(calls: readonly Call[], account: Hex, reg
 }
 
 /** Decodes a Coinbase Smart Wallet execute/executeBatch callData and applies the same allowlist. */
-export function assertSponsorableCallData(callData: Hex, account: Hex, registry: Hex = config.registry.address): void {
+export function assertSponsorableCallData(callData: Hex, account: Hex, registry: Hex = config.registryV2.address): void {
   let decoded;
   try {
     decoded = decodeFunctionData({ abi: smartWalletAbi, data: callData });

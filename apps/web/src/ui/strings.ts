@@ -60,16 +60,12 @@ export const S = {
     secretsTitle: 'Add your secrets',
     savingTitle: 'Saving your vault',
     touchToSave: 'Touch key 1 to save your vault.',
-    retrying:
-      'Someone else’s save happened to use the same vault number at the same moment, so nothing was saved. We’ve prepared your vault again with a new number; touch key 1 once more to finish.',
     doneTitle: 'Your vault is saved',
     done: [
       'Your secrets are now stored permanently, and only your keys can open them.',
       'Keep your keys in separate places, for example one at home and one somewhere else safe.',
     ],
     idleReset: 'Setup was cancelled because nothing happened for 5 minutes. For your safety, please set up your keys again.',
-    freshKeys:
-      'One of your keys can’t be used for a new vault right now (someone filled its slot). Please set up your keys again; this creates fresh, unused slots.',
   },
 
   ack: {
@@ -132,6 +128,8 @@ export const S = {
     locked: 'Your vault is locked.',
     empty: 'Your vault has no secrets yet. Use “Edit secrets” to add one.',
     surface: 'Your vault',
+    legacyReadOnly:
+      'This vault was made with an earlier test version. You can open it and copy your secrets, but not change it. To keep editing, create a new vault and copy your secrets into it.',
   },
 
   edit: {

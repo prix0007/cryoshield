@@ -7,6 +7,7 @@ import type { Hex } from 'viem';
 import { enrollKey, ENROLL, evaluatePrf, KeyError, type EnrolledKey } from '../webauthn';
 import { addKeyToBlob, createVaultBlob, editVaultBlob } from '../vault/adapter';
 import type { SecretItem } from '../vault/payload';
+import type { RegistryVersion } from '../vault/adapter';
 import { existingVaultAccount, newVaultAccount } from '../account/account';
 import { addKeyOnChain, createVaultOnChain, notify, updateVaultOnChain, WriteError, type ProgressListener } from '../account/writes';
 import { bytesEqual, toHex, wipe } from '../lib/bytes';
@@ -38,7 +39,12 @@ export interface VaultSession {
   blob: Uint8Array;
   items: SecretItem[];
   credIds: Uint8Array[];
+  /** Where the vault lives. 'v1' (legacy testnet) is read-only: clients never write to VaultRegistry v1. */
+  registry: RegistryVersion;
 }
+
+/** harden-gas-sponsorship: only VaultRegistry v2 vaults can be edited or given a new key. */
+export const isReadOnly = (s: Pick<VaultSession, 'registry'>) => s.registry === 'v1';
 
 export type MirrorStatus = 'pending' | 'saved' | 'failed';
 /** fix-arweave-mirror-status D3: the outcome plus, when known, the Arweave item id or a sanitized failure reference. */
@@ -54,12 +60,12 @@ function mirrorRef(e: unknown): string {
   return 'UPLOAD_FAILED · upload';
 }
 
-export async function mirrorWrite(svc: Services, s: { vaultId: Hex; version: number; blob: Uint8Array; locators?: readonly Hex[] }): Promise<MirrorResult> {
+export async function mirrorWrite(svc: Services, s: { vaultId: Hex; version: number; blob: Uint8Array; locators?: readonly Hex[]; registry?: RegistryVersion }): Promise<MirrorResult> {
   // Locators we already know (creation, the unlocking key) come first; chain logs can only add more. A log failure
   // (e.g. public-RPC eth_getLogs range limits) never prevents the upload (fix-arweave-mirror-status D2).
   let locators = s.locators ? [...new Set(s.locators.map((l) => l.toLowerCase() as Hex))] : [];
   try {
-    const fromChain = await svc.reader.locatorsOf(s.vaultId);
+    const fromChain = await svc.reader.locatorsOf(s.vaultId, s.registry ?? 'v2');
     locators = [...new Set([...locators, ...fromChain.map((l) => l.toLowerCase() as Hex)])];
   } catch {
     /* logs unavailable: use what we know */
@@ -73,10 +79,10 @@ export async function mirrorWrite(svc: Services, s: { vaultId: Hex; version: num
   }
 }
 
-export async function ensureMirror(svc: Services, s: { vaultId: Hex; version: number; blob: Uint8Array; locator: Hex }): Promise<MirrorResult> {
+export async function ensureMirror(svc: Services, s: { vaultId: Hex; version: number; blob: Uint8Array; locator: Hex; registry?: RegistryVersion }): Promise<MirrorResult> {
   let locators: Hex[] = [s.locator.toLowerCase() as Hex];
   try {
-    locators = [...new Set([...locators, ...(await svc.reader.locatorsOf(s.vaultId)).map((l) => l.toLowerCase() as Hex)])];
+    locators = [...new Set([...locators, ...(await svc.reader.locatorsOf(s.vaultId, s.registry ?? 'v2')).map((l) => l.toLowerCase() as Hex)])];
   } catch {
     /* keep the known locator */
   }
@@ -93,7 +99,6 @@ export async function saveNewVault(
   keys: PendingKey[],
   items: SecretItem[],
   onSign: () => void,
-  onRetry: () => void = () => undefined,
   onProgress?: ProgressListener,
 ): Promise<{ session: VaultSession; locators: Hex[] }> {
   let signerLocator: Uint8Array | undefined;
@@ -103,15 +108,15 @@ export async function saveNewVault(
     // Locators don't depend on the vaultId (empty-salt HKDF), so the signer's expected locator is known up front.
     signerLocator = deriveLocator(keys[0]!.prf!);
     const account = await newVaultAccount({ client: svc.client, owners, signerIndex: 0, expectedLocator: signerLocator, ...(svc.credentials ? { credentials: svc.credentials } : {}) });
-    // The blob is bound to its vaultId: each attempt (a fresh id after VaultIdTaken) re-encrypts from the PRF outputs
-    // held for this setup, so a retry costs one more signing touch, not a tap of every key.
+    // The blob is bound to its vaultId, which VaultRegistry v2 derives from the account address and a fresh salt; the
+    // write computes it, then this encrypts under it from the PRF outputs held for this setup.
     const build = async (vaultId: Hex) => {
       const r = await createVaultBlob({ vaultId, rpId: svc.rpId, keys: keys.map((k) => ({ credId: k.credId, prf: k.prf!.slice() })), items });
       return { blob: r.blob, locators: r.locators.map(toHex) };
     };
-    const res = await createVaultOnChain({ account, build }, { client: svc.client, sponsor: svc.sponsor, reader: svc.reader, onSign, onRetry, ...(onProgress ? { onProgress } : {}) });
+    const res = await createVaultOnChain({ account, build }, { client: svc.client, sponsor: svc.sponsor, reader: svc.reader, onSign, ...(onProgress ? { onProgress } : {}) });
     return {
-      session: { vaultId: res.vaultId, owner: res.owner, version: res.version, blob: res.blob, items, credIds: keys.map((k) => k.credId) },
+      session: { vaultId: res.vaultId, owner: res.owner, version: res.version, blob: res.blob, items, credIds: keys.map((k) => k.credId), registry: 'v2' },
       locators: res.locators,
     };
   } finally {
@@ -122,6 +127,7 @@ export async function saveNewVault(
 
 /** Edit: PRF tap with any key of this vault, re-encrypt payload, sign tap with the same key. */
 export async function saveEdit(svc: Services, s: VaultSession, items: SecretItem[], onSign: () => void, onProgress?: ProgressListener): Promise<VaultSession> {
+  if (isReadOnly(s)) throw new WriteError('READ_ONLY');
   const { credId, prf } = await evaluatePrf({ rpId: svc.rpId }, svc.credentials);
   let locator: Uint8Array | undefined;
   try {
@@ -144,6 +150,7 @@ export async function saveAddKey(
   s: VaultSession,
   steps: { onInsertNew: () => void | Promise<void>; onNewAgain: () => void; onSign: () => void | Promise<void>; onProgress?: ProgressListener },
 ): Promise<{ session: VaultSession; newLocator: Hex }> {
+  if (isReadOnly(s)) throw new WriteError('READ_ONLY');
   const current = await evaluatePrf({ rpId: svc.rpId }, svc.credentials);
   let locator: Uint8Array | undefined;
   let fresh: PendingKey | undefined;
@@ -182,8 +189,8 @@ export function messageFor(e: unknown, context: 'create' | 'edit' = 'edit'): str
     switch (e.code) {
       case 'SPONSORSHIP_REFUSED':
         return context === 'create' ? S.save.pausedCreate : S.save.paused;
-      case 'LOCATOR_FULL':
-        return S.create.freshKeys;
+      case 'READ_ONLY':
+        return S.vault.legacyReadOnly;
       case 'TOO_MANY_KEYS':
         return S.save.tooMany;
       case 'TOO_LARGE':

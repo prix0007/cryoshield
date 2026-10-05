@@ -20,11 +20,15 @@ export interface KeyPrf {
   prf: Uint8Array;
 }
 
+/** Which VaultRegistry a vault lives in: v2 takes every write; v1 is legacy and read-only (harden-gas-sponsorship). */
+export type RegistryVersion = 'v1' | 'v2';
+
 export interface Candidate {
   vaultId: Hex;
   blob: Uint8Array;
   owner: Hex;
   version: number;
+  registry: RegistryVersion;
 }
 
 export interface Match {

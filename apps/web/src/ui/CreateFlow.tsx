@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { deriveLocator } from '@cryoshield/vault-crypto';
-import { toHex, wipe } from '../lib/bytes';
+import { wipe } from '../lib/bytes';
 import type { SecretItem } from '../vault/payload';
-import { WriteError, type SaveStage } from '../account/writes';
+import type { SaveStage } from '../account/writes';
 import { cleanItems, KeyPrompt, Notice, PermanenceAck, SecretsEditor, StepHeading } from './components';
 import { enrollWithPrf, errorReference, messageFor, mirrorWrite, saveNewVault, type MirrorResult, type PendingKey, type VaultSession } from './operations';
 import { useServices } from './services';
@@ -32,7 +31,7 @@ export function CreateFlow(props: { onDone: (s: VaultSession) => void; onCancel:
   // Permanence + 18+ acknowledgement: required for every create, kept in memory only (never stored or sent).
   const [ackPermanent, setAckPermanent] = useState(false);
   const [ackAdult, setAckAdult] = useState(false);
-  // Save checklist: stages the write path has REALLY reported (app-motion-ux D5). Reset on a VaultIdTaken retry.
+  // Save checklist: stages the write path has REALLY reported (app-motion-ux D5).
   const [reached, setReached] = useState<ReadonlySet<SaveStage>>(new Set());
   // Bumped by the idle wipe so the old step is dropped at once, with no exit animation.
   const [epoch, setEpoch] = useState(0);
@@ -83,10 +82,6 @@ export function CreateFlow(props: { onDone: (s: VaultSession) => void; onCancel:
         attempt,
         cleanItems(items),
         () => setPrompt(S.create.touchToSave),
-        () => {
-          setReached(new Set());
-          setError(S.create.retrying);
-        },
         (stage) => {
           setReached((prev) => new Set(prev).add(stage));
           if (stage === 'sent') setPrompt(null); // signed and accepted: no more touches for this attempt
@@ -104,21 +99,7 @@ export function CreateFlow(props: { onDone: (s: VaultSession) => void; onCancel:
       setPrompt(null);
       setError(messageFor(e, 'create'));
       setErrorRef(errorReference(e));
-      if (e instanceof WriteError && e.code === 'LOCATOR_FULL' && e.detail.locator) {
-        // That key's locator is full (possibly front-run): drop it so the user sets it up again as a fresh
-        // credential (new PRF output -> new locator). The other keys stay set up.
-        const full = e.detail.locator.toLowerCase();
-        const keep: PendingKey[] = [];
-        for (const k of keys) {
-          const loc = k.prf ? toHex(deriveLocator(k.prf)).toLowerCase() : '';
-          if (loc === full) wipe(k.prf);
-          else keep.push(k);
-        }
-        setKeys(keep);
-        setStep('keys');
-      } else {
-        setStep('secrets');
-      }
+      setStep('secrets');
     } finally {
       setBusy(false);
     }

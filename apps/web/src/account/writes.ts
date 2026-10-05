@@ -1,5 +1,5 @@
 /**
- * Sponsored vault writes (spec sponsored-vault-writes). Every write:
+ * Sponsored vault writes (spec sponsored-vault-writes; harden-gas-sponsorship: VaultRegistry v2 only). Every write:
  *   1. builds registry (and, for add-key, self addOwnerPublicKey) calls;
  *   2. checks them against the client-side sponsorship allowlist (policy.ts);
  *   3. preflights each registry call with eth_call FROM the account address (decodes custom errors before any tap);
@@ -11,6 +11,7 @@ import {
   BaseError,
   ContractFunctionRevertedError,
   decodeErrorResult,
+  decodeFunctionResult,
   encodeFunctionData,
   http,
   type Hex,
@@ -22,7 +23,8 @@ import {
   type SmartAccount,
 } from 'viem/account-abstraction';
 import { createPimlicoClient } from 'permissionless/clients/pimlico';
-import { config, registryAbi } from '../config';
+import { config } from '../config';
+import { deriveVaultIdV2, registryV2Abi } from '../chain/contracts';
 import { bytesEqual, randomBytes, toHex } from '../lib/bytes';
 import type { RegistryReader } from '../chain/registry';
 import { findKeyError, KeyError } from '../webauthn';
@@ -30,9 +32,7 @@ import { ensureChain } from '../chain/guard';
 import { assertSponsorableCallData, assertSponsorableCalls, PolicyError, smartWalletAbi, type Call } from './policy';
 
 export type WriteErrorCode =
-  | 'SPONSORSHIP_REFUSED' // paymaster policy refused (cap reached, outside policy)
-  | 'LOCATOR_FULL' // a key's locator already lists 16 vaults (possibly front-run): enroll a fresh credential
-  | 'VAULT_ID_TAKEN' // two random vaultIds collided / were front-run
+  | 'SPONSORSHIP_REFUSED' // paymaster policy refused (cap reached, outside policy, balance exhausted)
   | 'ALREADY_HAS_VAULT'
   | 'TOO_MANY_KEYS'
   | 'TOO_LARGE'
@@ -43,6 +43,7 @@ export type WriteErrorCode =
   | 'KEY' // WebAuthn problem during signing (see .keyError)
   | 'POLICY' // our own allowlist refused the call (programming error)
   | 'OWNER_MISMATCH' // account owners don't line up with the blob's entries (owner index == entry index)
+  | 'READ_ONLY' // a legacy VaultRegistry v1 vault: clients never write to v1
   | 'NETWORK';
 
 export class WriteError extends Error {
@@ -56,26 +57,22 @@ export class WriteError extends Error {
 }
 
 const REGISTRY_ERROR_CODES: Record<string, WriteErrorCode> = {
-  VaultIdTaken: 'VAULT_ID_TAKEN',
   OwnerAlreadyHasVault: 'ALREADY_HAS_VAULT',
-  LocatorFull: 'LOCATOR_FULL',
   TooManyLocators: 'TOO_MANY_KEYS',
   TooFewLocators: 'REVERTED',
   InvalidBlobSize: 'TOO_LARGE',
   NotVaultOwner: 'NOT_OWNER',
   DuplicateLocator: 'DUPLICATE_KEY',
   ZeroLocator: 'REVERTED',
-  ZeroVaultId: 'REVERTED',
+  TooManyIds: 'REVERTED',
 };
 
-/** Maps registry revert data (custom error) to a WriteError. */
+/** Maps VaultRegistry v2 revert data (custom error) to a WriteError. */
 export function registryError(data: Hex | undefined): WriteError {
   if (data && data.length >= 10) {
     try {
-      const e = decodeErrorResult({ abi: registryAbi, data });
-      const code = REGISTRY_ERROR_CODES[e.errorName] ?? 'REVERTED';
-      const locator = e.errorName === 'LocatorFull' ? (e.args?.[0] as Hex) : undefined;
-      return new WriteError(code, locator ? { locator } : {});
+      const e = decodeErrorResult({ abi: registryV2Abi, data });
+      return new WriteError(REGISTRY_ERROR_CODES[e.errorName] ?? 'REVERTED');
     } catch {
       /* not a registry error */
     }
@@ -97,7 +94,7 @@ function revertData(e: unknown): Hex | undefined {
 export async function preflight(client: PublicClient, from: Hex, calls: readonly Call[]): Promise<void> {
   await ensureChain(client);
   for (const c of calls) {
-    if (c.to.toLowerCase() !== config.registry.address.toLowerCase()) continue;
+    if (c.to.toLowerCase() !== config.registryV2.address.toLowerCase()) continue;
     try {
       await client.call({ account: from, to: c.to, data: c.data });
     } catch (e) {
@@ -246,58 +243,55 @@ export interface WriteDeps {
   onSign?: () => void | Promise<void>;
   /** Save-checklist notifications (never awaited; see notify). */
   onProgress?: ProgressListener;
-  randomId?: () => Hex;
+  /** Test hook: the create salt (default: 32 random bytes). */
+  randomSalt?: () => Hex;
 }
 
-const randomVaultId = () => toHex(randomBytes(32));
+const randomSalt = () => toHex(randomBytes(32));
+const registryCall = (data: Hex): Call => ({ to: config.registryV2.address, value: 0n, data });
 
-function createCall(vaultId: Hex, blob: Uint8Array, locators: readonly Hex[]): Call {
-  return { to: config.registry.address, value: 0n, data: encodeFunctionData({ abi: registryAbi, functionName: 'createVault', args: [vaultId, toHex(blob), locators] }) };
+function createCall(salt: Hex, blob: Uint8Array, locators: readonly Hex[]): Call {
+  return registryCall(encodeFunctionData({ abi: registryV2Abi, functionName: 'createVault', args: [salt, toHex(blob), locators] }));
+}
+
+/** The registry's own derivation (eth_call vaultIdFor) must equal ours before anything is encrypted under it. */
+async function assertVaultId(client: PublicClient, owner: Hex, salt: Hex, vaultId: Hex): Promise<void> {
+  let onChain: Hex;
+  try {
+    const r = await client.call({ to: config.registryV2.address, data: encodeFunctionData({ abi: registryV2Abi, functionName: 'vaultIdFor', args: [owner, salt] }) });
+    onChain = decodeFunctionResult({ abi: registryV2Abi, functionName: 'vaultIdFor', data: r.data ?? '0x' });
+  } catch (e) {
+    throw new WriteError('NETWORK', { cause: e });
+  }
+  if (onChain.toLowerCase() !== vaultId.toLowerCase()) throw new WriteError('REVERTED', { cause: new Error('vaultId derivation mismatch') });
 }
 
 /**
- * Creates the vault (and deploys the account) in one user operation. The blob is cryptographically bound to its
- * vaultId, so `build(vaultId)` produces the blob for a given id. On VaultIdTaken (in preflight, or after inclusion
- * when front-run) it calls `onRetry`, rebuilds under a FRESH random vaultId, and retries exactly once.
- * LocatorFull surfaces as LOCATOR_FULL with the locator.
+ * Creates the vault (and deploys the account) in one user operation on VaultRegistry v2. The registry derives
+ * vaultId = keccak256(abi.encode(account, salt)), so the client computes it from the counterfactual account address
+ * and a fresh random salt, checks it against the registry's `vaultIdFor`, then encrypts under it (the blob is bound to
+ * its vaultId). Nobody else can create under that id, so there is no "taken" retry (spec vault-registry
+ * "Unique vault identifiers").
  */
 export async function createVaultOnChain(
   p: { account: SmartAccount; build: (vaultId: Hex) => Promise<{ blob: Uint8Array; locators: readonly Hex[] }> },
-  deps: WriteDeps & { onRetry?: () => void | Promise<void> },
+  deps: WriteDeps,
 ): Promise<WriteResult> {
   const owner = await p.account.getAddress();
-  const nextId = deps.randomId ?? randomVaultId;
-  let lastErr: WriteError | undefined;
-  for (let attempt = 0; attempt < 2; attempt++) {
-    if (attempt > 0) await deps.onRetry?.();
-    const vaultId = nextId();
-    const { blob, locators } = await p.build(vaultId);
-    notify(deps.onProgress, 'encrypted');
-    const calls = [createCall(vaultId, blob, locators)];
-    try {
-      await preflight(deps.client, owner, calls);
-    } catch (e) {
-      if (e instanceof WriteError && e.code === 'VAULT_ID_TAKEN') {
-        lastErr = e;
-        continue;
-      }
-      throw e;
-    }
-    await deps.onSign?.();
-    const r = await deps.sponsor.send(p.account, calls, guarded(deps.onProgress));
-    if (!r.success) {
-      const err = revertOf(r.reason);
-      if (err.code === 'VAULT_ID_TAKEN') {
-        lastErr = err;
-        continue;
-      }
-      throw err;
-    }
-    const v = await confirm(deps.reader, vaultId, owner, blob);
-    notify(deps.onProgress, 'confirmed');
-    return { vaultId, owner, version: v.version, blob, userOpHash: r.userOpHash, ...(r.txHash ? { txHash: r.txHash } : {}), locators: [...locators] };
-  }
-  throw lastErr ?? new WriteError('VAULT_ID_TAKEN');
+  const salt = (deps.randomSalt ?? randomSalt)();
+  const vaultId = deriveVaultIdV2(owner, salt);
+  await ensureChain(deps.client);
+  await assertVaultId(deps.client, owner, salt, vaultId);
+  const { blob, locators } = await p.build(vaultId);
+  notify(deps.onProgress, 'encrypted');
+  const calls = [createCall(salt, blob, locators)];
+  await preflight(deps.client, owner, calls);
+  await deps.onSign?.();
+  const r = await deps.sponsor.send(p.account, calls, guarded(deps.onProgress));
+  if (!r.success) throw revertOf(r.reason);
+  const v = await confirm(deps.reader, vaultId, owner, blob);
+  notify(deps.onProgress, 'confirmed');
+  return { vaultId, owner, version: v.version, blob, userOpHash: r.userOpHash, ...(r.txHash ? { txHash: r.txHash } : {}), locators: [...locators] };
 }
 
 export async function updateVaultOnChain(
@@ -305,9 +299,7 @@ export async function updateVaultOnChain(
   deps: WriteDeps,
 ): Promise<Omit<WriteResult, 'locators'>> {
   const owner = await p.account.getAddress();
-  const calls: Call[] = [
-    { to: config.registry.address, value: 0n, data: encodeFunctionData({ abi: registryAbi, functionName: 'updateVault', args: [p.vaultId, toHex(p.blob)] }) },
-  ];
+  const calls: Call[] = [registryCall(encodeFunctionData({ abi: registryV2Abi, functionName: 'updateVault', args: [p.vaultId, toHex(p.blob)] }))];
   await preflight(deps.client, owner, calls);
   await deps.onSign?.();
   const r = await deps.sponsor.send(p.account, calls, guarded(deps.onProgress));
@@ -331,8 +323,8 @@ export async function addKeyOnChain(
   const y = `0x${p.newPublicKey.slice(66, 130)}` as Hex;
   const calls: Call[] = [
     { to: owner, value: 0n, data: encodeFunctionData({ abi: smartWalletAbi, functionName: 'addOwnerPublicKey', args: [x, y] }) },
-    { to: config.registry.address, value: 0n, data: encodeFunctionData({ abi: registryAbi, functionName: 'addLocators', args: [p.vaultId, [p.newLocator]] }) },
-    { to: config.registry.address, value: 0n, data: encodeFunctionData({ abi: registryAbi, functionName: 'updateVault', args: [p.vaultId, toHex(p.blob)] }) },
+    registryCall(encodeFunctionData({ abi: registryV2Abi, functionName: 'addLocators', args: [p.vaultId, [p.newLocator]] })),
+    registryCall(encodeFunctionData({ abi: registryV2Abi, functionName: 'updateVault', args: [p.vaultId, toHex(p.blob)] })),
   ];
   await preflight(deps.client, owner, calls);
   await deps.onSign?.();

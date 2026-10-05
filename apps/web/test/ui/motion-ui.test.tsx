@@ -17,6 +17,7 @@ const session = {
   blob: new Uint8Array(400).fill(1),
   items: [{ label: 'Seed', secret: 'abandon art' }],
   credIds: [id(1), id(2)],
+  registry: 'v2' as const,
 };
 type OnProgress = (s: SaveStage) => void;
 
@@ -51,7 +52,7 @@ const doneStages = () =>
 describe('save checklist reflects real write events only (D5)', () => {
   it('stalled at signing: exactly "encrypted" and "sponsored" are checked', async () => {
     const u = userEvent.setup();
-    vi.spyOn(ops, 'saveNewVault').mockImplementation((_s, _k, _i, onSign, _r, onProgress?: OnProgress) => {
+    vi.spyOn(ops, 'saveNewVault').mockImplementation((_s, _k, _i, onSign, onProgress?: OnProgress) => {
       onProgress?.('encrypted');
       onSign();
       onProgress?.('sponsored');
@@ -65,7 +66,7 @@ describe('save checklist reflects real write events only (D5)', () => {
   it('the "touch your key" card goes once the bundler accepted the signed operation (sent), not before', async () => {
     const u = userEvent.setup();
     let progress!: OnProgress;
-    vi.spyOn(ops, 'saveNewVault').mockImplementation((_s, _k, _i, onSign, _r, onProgress?: OnProgress) => {
+    vi.spyOn(ops, 'saveNewVault').mockImplementation((_s, _k, _i, onSign, onProgress?: OnProgress) => {
       progress = onProgress!;
       onSign();
       return new Promise(() => undefined);
@@ -87,22 +88,9 @@ describe('save checklist reflects real write events only (D5)', () => {
     expect(doneStages()).toEqual([]);
   });
 
-  it('a VaultIdTaken retry unchecks everything', async () => {
-    const u = userEvent.setup();
-    vi.spyOn(ops, 'saveNewVault').mockImplementation((_s, _k, _i, _sign, onRetry, onProgress?: OnProgress) => {
-      onProgress?.('encrypted');
-      onRetry?.();
-      return new Promise(() => undefined);
-    });
-    await toSave(u);
-    await screen.findByRole('heading', { name: 'Saving your vault' });
-    await waitFor(() => expect(screen.getByText(/touch key 1 once more/)).toBeInTheDocument());
-    expect(doneStages()).toEqual([]);
-  });
-
   it('done: all four write stages plus the Arweave copy once the mirror reports it', async () => {
     const u = userEvent.setup();
-    vi.spyOn(ops, 'saveNewVault').mockImplementation(async (_s, _k, items, _sign, _r, onProgress?: OnProgress) => {
+    vi.spyOn(ops, 'saveNewVault').mockImplementation(async (_s, _k, items, _sign, onProgress?: OnProgress) => {
       for (const st of ['encrypted', 'sponsored', 'sent', 'confirmed'] as const) onProgress?.(st);
       return { session: { ...session, items }, locators: [] };
     });

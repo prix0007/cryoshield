@@ -45,6 +45,20 @@ export const walletFactoryAbi = parseAbi([
   'function implementation() view returns (address)',
 ]);
 
+/** The account calls the app uses (CBSW v1.1 ABI; CryoShieldSmartWallet keeps it). */
+export const smartWalletAbi = parseAbi([
+  'function execute(address target, uint256 value, bytes data) payable',
+  'function executeBatch((address target, uint256 value, bytes data)[] calls) payable',
+  'function addOwnerPublicKey(bytes32 x, bytes32 y)',
+  'function addOwnerAddress(address owner)',
+  'function removeOwnerAtIndex(uint256 index, bytes owner)',
+  'function ownerAtIndex(uint256 index) view returns (bytes)',
+  'function nextOwnerIndex() view returns (uint256)',
+  'function ownerCount() view returns (uint256)',
+  'function isOwnerPublicKey(bytes32 x, bytes32 y) view returns (bool)',
+  'function upgradeToAndCall(address newImplementation, bytes data) payable',
+]);
+
 /** Owner cap of CryoShieldSmartWallet (MAX_OWNERS), equal to the registry's 8 locators per vault. */
 export const MAX_OWNERS = 8;
 

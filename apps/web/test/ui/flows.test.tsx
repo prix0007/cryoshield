@@ -16,6 +16,7 @@ const session = (items = [{ label: 'Bitcoin seed', secret: 'abandon art' }]) => 
   blob: new Uint8Array(400).fill(1),
   items,
   credIds: [id(1), id(2)],
+  registry: 'v2' as const,
 });
 
 beforeEach(async () => {
@@ -68,30 +69,6 @@ describe('create flow (8.1)', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('This key is too old');
   });
 
-  it('LOCATOR_FULL drops only the affected key and returns to key setup', async () => {
-    const u = userEvent.setup();
-    vi.spyOn(ops, 'enrollWithPrf').mockImplementation(async (_s, n) => key(n));
-    const { deriveLocator } = await import('@cryoshield/vault-crypto');
-    const { toHex } = await import('../../src/lib/bytes');
-    const full = toHex(deriveLocator(new Uint8Array(32).fill(2)));
-    vi.spyOn(ops, 'saveNewVault').mockRejectedValue(new WriteError('LOCATOR_FULL', { locator: full }));
-    renderApp();
-    await u.click(screen.getByRole('button', { name: 'Create a new vault' }));
-    await u.click(screen.getByRole('button', { name: 'Get started' }));
-    await u.click(screen.getByRole('button', { name: 'Set up key 1' }));
-    await screen.findByText('Key 1 is ready.');
-    await u.click(screen.getByRole('button', { name: 'Set up key 2' }));
-    await screen.findByText('Key 2 is ready.');
-    await u.click(screen.getByRole('button', { name: 'Continue' }));
-    await u.type(screen.getByLabelText('Secret'), 'x');
-    await acknowledge(u); // add-privacy-and-compliance 4.1: permanence + 18+ before the first write
-    await u.click(screen.getByRole('button', { name: 'Save' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent('set up your keys again');
-    expect(screen.getByText('Key 1 is ready.')).toBeInTheDocument();
-    expect(screen.queryByText('Key 2 is ready.')).toBeNull();
-    expect(screen.getByRole('button', { name: 'Set up key 2' })).toBeInTheDocument();
-  });
-
   it('blocks saving when the payload does not fit', async () => {
     const u = userEvent.setup();
     vi.spyOn(ops, 'enrollWithPrf').mockImplementation(async (_s, n) => key(n));
@@ -110,32 +87,10 @@ describe('create flow (8.1)', () => {
   });
 });
 
-describe('10.7: VaultIdTaken retry is explained in plain language', () => {
-  it('shows the retry message and asks for one more touch of key 1', async () => {
-    const u = userEvent.setup();
-    vi.spyOn(ops, 'enrollWithPrf').mockImplementation(async (_s, n) => key(n));
-    let release!: () => void;
-    vi.spyOn(ops, 'saveNewVault').mockImplementation(async (_s, _k, items, onSign, onRetry) => {
-      onSign();
-      onRetry?.();
-      await new Promise<void>((r) => (release = r));
-      return { session: session(items), locators: [] };
-    });
-    renderApp();
-    await u.click(screen.getByRole('button', { name: 'Create a new vault' }));
-    await u.click(screen.getByRole('button', { name: 'Get started' }));
-    await u.click(screen.getByRole('button', { name: 'Set up key 1' }));
-    await screen.findByText('Key 1 is ready.');
-    await u.click(screen.getByRole('button', { name: 'Set up key 2' }));
-    await screen.findByText('Key 2 is ready.');
-    await u.click(screen.getByRole('button', { name: 'Continue' }));
-    await u.type(screen.getByLabelText('Secret'), 'x');
-    await acknowledge(u); // add-privacy-and-compliance 4.1: permanence + 18+ before the first write
-    await u.click(screen.getByRole('button', { name: 'Save' }));
-    expect(await screen.findByText(/touch key 1 once more to finish/)).toBeInTheDocument();
-    await act(async () => release());
-    expect(await screen.findByRole('heading', { name: 'Your vault is saved' })).toBeInTheDocument();
-    expect(screen.queryByText(/touch key 1 once more/)).toBeNull();
+describe('harden-gas-sponsorship 5.2: no "vault number taken" retry', () => {
+  it('the create flow no longer has a retry message', async () => {
+    const { S } = await import('../../src/ui/strings');
+    expect(JSON.stringify(S)).not.toMatch(/same vault number|filled its slot/);
   });
 });
 
@@ -243,6 +198,35 @@ async function openVaultReal(u: ReturnType<typeof userEvent.setup>, s: ReturnTyp
 void openVault;
 void act;
 void waitFor;
+
+describe('harden-gas-sponsorship: a VaultRegistry v1 vault opens read-only', () => {
+  it('shows and copies secrets, offers details and download, but no Edit or Add key, with a plain notice', async () => {
+    const u = userEvent.setup();
+    const save = vi.spyOn(ops, 'saveEdit');
+    vi.spyOn(unlockMod, 'unlock').mockResolvedValue({ credId: id(1), locator: new Uint8Array(32), matches: [{ ...session(), registry: 'v1', entryIndex: 0 }] });
+    renderApp();
+    await u.click(screen.getByRole('button', { name: 'Unlock my vault' }));
+    await u.click(screen.getByRole('button', { name: 'Unlock with my key' }));
+    expect(await screen.findByRole('heading', { name: 'Bitcoin seed' })).toBeInTheDocument();
+    expect(screen.getByText(/made with an earlier test version/)).toBeInTheDocument();
+    expect(screen.getByText(/create a new vault and copy your secrets into it/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Edit secrets' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Add a key' })).toBeNull();
+    await u.click(screen.getByRole('button', { name: 'Show Bitcoin seed' }));
+    expect(screen.getByText('abandon art')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Copy Bitcoin seed' })).toBeInTheDocument();
+    await u.click(screen.getByRole('button', { name: 'Vault details' }));
+    expect(screen.getByRole('button', { name: /Download/ })).toBeInTheDocument();
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it('a v2 vault keeps Edit and Add key', async () => {
+    const u = userEvent.setup();
+    await openVaultReal(u);
+    expect(screen.getByRole('button', { name: 'Add a key' })).toBeInTheDocument();
+    expect(screen.queryByText(/made with an earlier test version/)).toBeNull();
+  });
+});
 
 describe('review fix 3: create flow idle wipe', () => {
   it('after 5 minutes idle, wipes enrolled PRF outputs and resets the flow', async () => {

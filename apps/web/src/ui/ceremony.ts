@@ -13,7 +13,8 @@ const TITLES: [string, readonly (string | undefined)[]][] = [
   ['Can’t reach the network', [S.unlock.networkError]],
   ['Wrong network', [S.wrongNetwork]],
   ['Site set up incorrectly', [S.misconfigured, S.keyErrors.MISCONFIGURED]],
-  ['Setup needs your keys again', [S.create.idleReset, S.create.freshKeys, S.create.retrying]],
+  ['Setup needs your keys again', [S.create.idleReset]],
+  ['This vault can’t be changed', [S.vault.legacyReadOnly]],
   ['Too much to store', [S.save.tooLarge, S.save.tooMany]],
   ['Nothing was saved', [S.save.nothingSaved, S.save.notConfirmed, S.keyErrors.PRF_UNAVAILABLE]],
 ];

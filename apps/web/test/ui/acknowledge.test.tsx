@@ -32,7 +32,7 @@ async function toSecrets(u: ReturnType<typeof userEvent.setup>) {
 describe('permanence + 18+ acknowledgement before the first write', () => {
   it('Save stays disabled, and nothing is sent, until both boxes are ticked', async () => {
     const u = userEvent.setup();
-    const save = vi.spyOn(ops, 'saveNewVault').mockResolvedValue({ session: { vaultId: '0x01', owner: '0x02', version: 1, blob: new Uint8Array(1), items: [], credIds: [] } as never, locators: [] });
+    const save = vi.spyOn(ops, 'saveNewVault').mockResolvedValue({ session: { vaultId: '0x01', owner: '0x02', version: 1, blob: new Uint8Array(1), items: [], credIds: [], registry: 'v2' as const } as never, locators: [] });
     renderApp();
     await toSecrets(u);
     const saveBtn = screen.getByRole('button', { name: 'Save' });
@@ -75,7 +75,7 @@ describe('permanence + 18+ acknowledgement before the first write', () => {
 
   it('the acknowledgement leaves no cookie or browser storage behind', async () => {
     const u = userEvent.setup();
-    vi.spyOn(ops, 'saveNewVault').mockResolvedValue({ session: { vaultId: '0x01', owner: '0x02', version: 1, blob: new Uint8Array(1), items: [], credIds: [] } as never, locators: [] });
+    vi.spyOn(ops, 'saveNewVault').mockResolvedValue({ session: { vaultId: '0x01', owner: '0x02', version: 1, blob: new Uint8Array(1), items: [], credIds: [], registry: 'v2' as const } as never, locators: [] });
     const setItem = vi.spyOn(Storage.prototype, 'setItem');
     const cookie = vi.spyOn(document, 'cookie', 'set');
     renderApp();

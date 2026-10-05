@@ -27,6 +27,7 @@ function toSession(m: OpenedVault): VaultSession {
     blob: m.blob,
     items: m.items ?? [],
     credIds: decodeVault(m.blob).entries.map((e) => e.credId),
+    registry: m.registry,
   };
 }
 
