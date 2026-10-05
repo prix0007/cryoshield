@@ -31,7 +31,7 @@ This is not an external audit. CryoShield remains unaudited by any third party.
 ### Critical
 | ID | Finding | Proof | Fix (planned) |
 |---|---|---|---|
-| CI-C1 | Any same-repo PR can reach production with no human in the loop. The gates are an LLM verdict the PR can steer and a `ci-ok` the PR produces; zero approvals are required, and continuous deploy follows. | PROVED (#17 and #19 were merged by the bot with only bot reviews) | A required reviewer on the `production` environment was added (`gate-production-deploys`), then **removed by founder decision on 2026-10-05** (`remove-production-approval-gate`). **Status: accepted risk for testnet; re-gate before mainnet.** |
+| CI-C1 | Any same-repo PR can reach production with no human in the loop. The gates are an LLM verdict the PR can steer and a `ci-ok` the PR produces; zero approvals are required, and continuous deploy follows. | PROVED (#17 and #19 were merged by the bot with only bot reviews) | A required reviewer on `production` was added (`gate-production-deploys`) and removed by founder decision on 2026-10-05 (`remove-production-approval-gate`). **Partly restored by `split-dev-and-release-deploys`:**<ul><li>a merged PR now reaches only the development site (`dev.cryoshield.app`, its own RP ID, Fly app and app-scoped token);</li><li>production deploys only from a `v*` release that the owner publishes (an admin-only tag ruleset, an owner-only workflow gate, and `production` limited to `main` and `v*` tags);</li><li>agents (Write) cannot ship to production.</li></ul>**Status: mitigated for production by the owner's release, which is the human step. The residual risks (auto-shipped dev code, and dev on a subdomain of the production RP ID, threat T1) are accepted for testnet.** Before mainnet, meet the re-gate criterion: dev on a separate registrable domain, a reviewer back on `production`, and CI-H1 closed. Threat table and acceptance: [`split-dev-and-release-deploys` design → Security review](../../openspec/changes/split-dev-and-release-deploys/design.md#security-review). |
 
 ### High
 | ID | Finding | Proof | Fix (planned) |
@@ -50,7 +50,7 @@ This is not an external audit. CryoShield remains unaudited by any third party.
 | WEB-M2 | Decrypted secrets have no idle lock on the "saved" screen and the vault chooser | code-evident | Idle lock in those states, plus a `pagehide` wipe |
 | WEB-M3 | No published release manifest (`/release.json` 404; CD keeps the artifact for 7 days only) | PROVED | Publish a GitHub Release per deploy; fail the deploy if publishing fails |
 | CI-M1 | A draft PR leaves a skipped, and therefore passing, `ecc-review` | theoretical | Run on drafts and fail the first step |
-| CI-M2 | With strict mode off, two individually-benign PRs can combine into one payload | theoretical | Addressed by the human deploy gate (CI-C1) |
+| CI-M2 | With strict mode off, two individually-benign PRs can combine into one payload | theoretical | There is no approval gate on merges: a combined payload reaches the **development** site automatically. Every `main` commit gets the full CI again before any deploy. For **production**, the combination ships only in a release the owner publishes, after reading the run's release review (diff from the live commit, token-path files flagged). See CI-C1. |
 | CI-M3 | Scripts that run with the Fly token are not digest-pinned | code-evident | Pin `previous-image.sh` and `rollback.sh` |
 | CI-M4 | The review-body credential filter is weak, the job summary is unfiltered, and there's a symlink risk on `.git/config` | theoretical | Remove symlinks before the agent runs; treat the filter as a backstop |
 | REC-M1 | One lying RPC (of 3) can make recovery show an older vault version | PROVED | `getVault` quorum; never rank by a self-reported version |
@@ -72,7 +72,7 @@ This is not an external audit. CryoShield remains unaudited by any third party.
 ## Fix order
 
 1. AA-H1: enforce credProtect UV at enrollment.
-2. CI-C1 and CI-H1: the human deploy gate and the agent account (needs a founder decision).
+2. CI-C1 and CI-H1: owner-only production releases (`split-dev-and-release-deploys`, done) and the agent machine account (`docs/agent-account.md`). Before mainnet: move dev to a separate registrable domain (T1), and add the `production` reviewer back.
 3. REC-M1 and REC-M2, plus WEB-M1 and WEB-M2.
 4. The remaining MEDIUM and LOW items, as tracked OpenSpec changes.
 5. Before mainnet: registry v2 (AA-M1, AA-M2), the UV-checking validator (AA-H1, part 2), and an on-chain paymaster (AA-M3).

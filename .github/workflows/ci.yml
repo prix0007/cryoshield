@@ -20,14 +20,21 @@ on:
     # edited/labeled/unlabeled re-run the title and OpenSpec gates. Every job runs on every event, so a
     # later run can never report a partially skipped ci-ok for the same commit.
     types: [opened, synchronize, reopened, edited, labeled, unlabeled]
-  # Reused by deploy.yml to run the FULL CI on the exact main commit it deploys (add-continuous-deploy D4), so PR
-  # CI and deploy CI can never drift. `full: true` forces every area job on, regardless of path filters.
+  # Reused by the deploy workflows to run the FULL CI on the exact commit they deploy (add-continuous-deploy D4), so PR
+  # CI and deploy CI can never drift. `full: true` forces every area job on, regardless of path filters. `ref`
+  # (split-dev-and-release-deploys D3): the commit every area job checks out. deploy.yml passes the release tag's
+  # 40-hex commit, because a rollback dispatched from main would otherwise test main's HEAD; empty = the caller's commit.
   workflow_call:
     inputs:
       full:
         description: Run every area job regardless of changed paths
         type: boolean
         default: false
+      ref:
+        description: Commit to check out in every area job (empty = the triggering commit)
+        type: string
+        required: false
+        default: ""
 
 permissions:
   contents: read # least privilege; no job needs to write
@@ -204,6 +211,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          ref: ${{ inputs.ref }} # empty (default) = the triggering commit; deploy.yml passes the release commit
       - name: Set up uv
         uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
@@ -244,6 +252,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          ref: ${{ inputs.ref }} # empty (default) = the triggering commit; deploy.yml passes the release commit
       - name: Set up Foundry
         uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1.9.1
         with:
@@ -283,6 +292,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          ref: ${{ inputs.ref }} # empty (default) = the triggering commit; deploy.yml passes the release commit
       - name: Set up pnpm
         uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0 (version from packageManager)
       - name: Set up Node
@@ -322,6 +332,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          ref: ${{ inputs.ref }} # empty (default) = the triggering commit; deploy.yml passes the release commit
       # anvil + forge, so tests/test_anvil_e2e.py runs instead of auto-skipping.
       - name: Set up Foundry
         uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1.9.1
@@ -357,6 +368,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          ref: ${{ inputs.ref }} # empty (default) = the triggering commit; deploy.yml passes the release commit
       - name: Set up pnpm
         uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0 (version from packageManager)
       - name: Set up Node
@@ -401,6 +413,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          ref: ${{ inputs.ref }} # empty (default) = the triggering commit; deploy.yml passes the release commit
       - name: Set up pnpm
         uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0 (version from packageManager)
       - name: Set up Node
@@ -436,6 +449,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          ref: ${{ inputs.ref }} # empty (default) = the triggering commit; deploy.yml passes the release commit
       - name: Set up Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:

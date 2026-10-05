@@ -1,102 +1,95 @@
-# PRODUCTION deployment of https://cryoshield.app (Fly app cryoshield-web) from owner-published releases ONLY.
-# OpenSpec changes add-continuous-deploy, gate-production-deploys, deploy-skip-when-unconfigured,
-# split-dev-and-release-deploys. Every main commit goes to the development site instead (deploy-dev.yml).
+# Continuous deployment of every main commit to the DEVELOPMENT site https://dev.cryoshield.app (Fly app
+# cryoshield-web-dev, OP Sepolia). OpenSpec changes add-continuous-deploy, deploy-skip-when-unconfigured,
+# split-dev-and-release-deploys. Production is deploy.yml (owner-published releases only).
 #
-#   detect (owner only; resolve the v* tag to its commit, which must be reachable from main; summarise the diff)
-#   -> config (env production-build: is the build config there? if not, warn and skip the rest successfully)
-#   -> test (FULL ci.yml on the tagged commit) -> build (env production-build: DEPLOY_TARGET=production
-#   deploy.sh --build-only, no Fly token) -> release (env production: tag re-check, deploy + smoke test + automatic
-#   rollback, all in one job)
+#   detect -> config (env development-build: is the build config there? if not, warn and skip the rest successfully)
+#   -> test (FULL ci.yml on this exact commit) -> build (env development-build: DEPLOY_TARGET=development
+#   deploy.sh --build-only, no Fly token; RP ID dev.cryoshield.app, noindex Caddyfile) -> release (env development:
+#   head re-check, deploy + smoke test + automatic rollback, all in one job, no approval)
 #
-# Triggers: a GitHub Release published for a v* tag (gh release create vX.Y.Z --target main --generate-notes), and
-# workflow_dispatch with `tag` (redeploy or roll back: gh workflow run deploy.yml -f tag=vX.Y.Z). Never on push,
-# schedule or pull requests (enforced by .github/scripts/workflow-policy.mjs).
+# Triggers: push to main (human merges); every 15 minutes (merges by GitHub auto-merge start no push workflows);
+# workflow_dispatch (with `force` to redeploy). Never on pull requests (enforced by .github/scripts/workflow-policy.mjs).
 #
-# Who can deploy: only the repository owner. Three independent layers (design decision 4):
-#   1. the `release-tags` ruleset (.github/rulesets/release-tags.json): only admins may create, move or delete v* tags;
-#   2. the first job runs only when github.triggering_actor is the repository owner (covers a release published on an
-#      existing tag, a dispatch, or a re-run by anyone else);
-#   3. `production` and `production-build` accept only main and v* tags as deployment refs.
+# Concurrency: per commit at the workflow level (deploy-dev-<sha>; the schedule never stacks runs for one commit);
+# `deploy-development` on the release job only, never cancelled (one dev release at a time, never cut mid-deploy).
+# GitHub keeps at most one PENDING release per group, so a newer commit's release replaces an older pending one, and
+# the head re-check refuses a commit that is no longer main's HEAD. Separate from production's groups.
 #
-# Concurrency: per tag at the workflow level; `deploy-production` on the release job only, never cancelled (one release
-# at a time, never cut mid-deploy). Separate from the development groups, so dev and production never cancel each other.
-#
-# Credentials: FLY_API_TOKEN (Fly deploy token scoped to cryoshield-web) lives only in the GitHub Environment
-# `production` (main and v* tags, no reviewer: the owner's release is the human step) and is used only by the `deploy`
-# and `rollback` steps of the release job, which runs no node/pnpm or build code. Build config (VITE_* and
-# VITE_BUNDLER_URL) lives in `production-build`; it decides the chain (OP Sepolia today, OP Mainnet later), nothing
-# here is chain-specific. Runbook: docs/deploy.md.
+# Credentials: FLY_API_TOKEN here is a Fly deploy token scoped to cryoshield-web-dev only (it cannot touch
+# production). It lives only in the GitHub Environment `development` (main only) and is used only by the `deploy` and
+# `rollback` steps of the release job, which runs no node/pnpm or build code. Build config (VITE_* and
+# VITE_BUNDLER_URL, a dev-only Pimlico key) lives in `development-build` (main only). Runbook: docs/deploy.md.
 
-name: Deploy (production)
+name: Deploy (development)
 
 on:
-  release:
-    types: [published]
+  push:
+    branches: [main]
+  schedule:
+    - cron: "*/15 * * * *" # catches auto-merges (public repo: Actions minutes are free)
   workflow_dispatch:
     inputs:
-      tag:
-        description: Release tag to (re)deploy, e.g. v1.2.3 (must be on main)
-        type: string
-        required: true
+      force:
+        description: Redeploy even if the dev site already serves main's HEAD (or a previous deploy of it failed)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 concurrency:
-  group: deploy-release-${{ github.event.release.tag_name || inputs.tag }}
+  group: deploy-dev-${{ github.sha }}
   cancel-in-progress: false
 
 env:
   NODE_VERSION: "22"
-  SITE_URL: https://cryoshield.app
-  FLY_APP: cryoshield-web
-  FLY_CONFIG: fly.toml
+  SITE_URL: https://dev.cryoshield.app
+  FLY_APP: cryoshield-web-dev
+  FLY_CONFIG: fly.dev.toml
   # flyctl from the GitHub release, verified against flyctl_0.4.111_checksums.txt (2026-10-04).
   FLYCTL_VERSION: "0.4.111"
   FLYCTL_SHA256: 1878d7fb1f8a418039042cf0749e4b7216c6c7018b66ae10611a64c2b6d9aa9e # flyctl_0.4.111_Linux_x86_64.tar.gz
 
 jobs:
-  # Fails here, before anything is configured, tested or built, if the tag is malformed, missing, does not match the
-  # release event's commit, or is not reachable from main.
   detect:
     name: detect
-    if: github.triggering_actor == github.repository_owner && ((github.event_name == 'release' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'))
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
-      contents: read # the tag, main's HEAD and the compare API; the deploy scripts
+      contents: read # read main's HEAD and the detect script
+      actions: read # earlier dev deploy runs of this commit (do not retry a failed run every 15 minutes)
     outputs:
       deploy: ${{ steps.detect.outputs.deploy }}
-      sha: ${{ steps.detect.outputs.sha }}
-      tag: ${{ steps.detect.outputs.tag }}
+      sha: ${{ github.sha }}
     steps:
       - name: Checkout (deploy scripts only)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           sparse-checkout: .github/scripts/deploy
-      - name: Resolve the release tag (must be reachable from main)
+      - name: Compare the dev site's commit with main
         id: detect
         env:
           GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          TAG: ${{ github.event.release.tag_name || inputs.tag }}
-          # On a release event the tag must point at the event's commit; a dispatch has nothing to compare.
-          EXPECT_SHA: ${{ github.event_name == 'release' && github.sha || '' }}
-        run: .github/scripts/deploy/release-ref.sh
-      # Informational, never blocks: the diff from the live commit, token-path files flagged, and a warning when the
-      # release is not newer than what is live (a rollback).
-      - name: Summarise what this release changes
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          TARGET_SHA: ${{ steps.detect.outputs.sha }}
+          TARGET_SHA: ${{ github.sha }}
+          FORCE: ${{ inputs.force == true }}
           BASE_URL: ${{ env.SITE_URL }}
-        run: .github/scripts/deploy/release-diff.sh
+        run: |
+          set -euo pipefail
+          MAIN_SHA="$(gh api "repos/${GITHUB_REPOSITORY}/commits/main" --jq .sha)"
+          # ANY failed earlier dev deploy run of this commit (test, build, deploy or smoke) stops automatic retries; a
+          # newer commit or workflow_dispatch force=true deploys again (ECC review #1).
+          failed="$(gh run list -R "${GITHUB_REPOSITORY}" --workflow deploy-dev.yml --commit "${TARGET_SHA}" --status failure \
+                      --limit 1 --json databaseId --jq 'length')"
+          PREVIOUSLY_FAILED=false
+          if [ "$failed" != "0" ]; then PREVIOUSLY_FAILED=true; fi
+          export MAIN_SHA PREVIOUSLY_FAILED
+          .github/scripts/deploy/detect.sh
 
-  # An unconfigured (or partially configured) production-build environment must not fail the run: warn with the
-  # missing NAMES and skip everything after this job. Only presence flags reach the step, never a value
-  # (deploy-skip-when-unconfigured). FLY_API_TOKEN lives in `production` and is checked in the release job.
+  # An unconfigured (or partially configured) development-build environment must not turn main red: warn with the
+  # missing NAMES and skip everything after this job; the run succeeds. Only presence flags reach the step, never a
+  # value (deploy-skip-when-unconfigured). FLY_API_TOKEN lives in `development` and is checked in the release job.
   config:
     name: config
     needs: detect
@@ -104,7 +97,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     environment:
-      name: production-build # presence checks only
+      name: development-build # presence checks only
     permissions:
       contents: read # the check script
     outputs:
@@ -116,11 +109,11 @@ jobs:
           ref: ${{ needs.detect.outputs.sha }}
           persist-credentials: false
           sparse-checkout: .github/scripts/deploy
-      - name: Check the production build configuration (names only)
+      - name: Check the development build configuration (names only)
         id: config
         env:
-          BUILD_ENVIRONMENT: production-build
-          WORKFLOW: deploy.yml
+          BUILD_ENVIRONMENT: development-build
+          WORKFLOW: deploy-dev.yml
           HAS_VITE_CHAIN_ID: ${{ vars.VITE_CHAIN_ID != '' }}
           HAS_VITE_RPC_URL: ${{ vars.VITE_RPC_URL != '' }}
           HAS_VITE_BUNDLER_URL: ${{ secrets.VITE_BUNDLER_URL != '' }}
@@ -131,7 +124,6 @@ jobs:
           HAS_VITE_RP_NAME: ${{ vars.VITE_RP_NAME != '' }}
         run: .github/scripts/deploy/check-config.sh
 
-  # The FULL CI on the tagged commit. On a dispatch the run's own commit is main's HEAD, so `ref` pins the checkout.
   test:
     name: test
     needs: [detect, config]
@@ -139,14 +131,13 @@ jobs:
     uses: ./.github/workflows/ci.yml # not `$/...`: actionlint 1.7.12 rejects it (rhysd/actionlint#711); zizmor ignore in .github/zizmor.yml
     with:
       full: true
-      ref: ${{ needs.detect.outputs.sha }}
     permissions:
       contents: read # the called CI checks out code
       pull-requests: read # the most any called job declares (its PR path filter, skipped here)
 
-  # Runs all build code (pnpm, vite, plugins) WITHOUT the Fly token: DEPLOY_TARGET=production deploy.sh --build-only
-  # performs every guard (clean tree, no exported VITE_*, RP ID == cryoshield.app, two identical production builds,
-  # bundle checks) and writes deploy/.build (site, Caddyfile, release manifest, site/release.json).
+  # Runs all build code (pnpm, vite, plugins) WITHOUT the Fly token: DEPLOY_TARGET=development deploy.sh --build-only
+  # performs every guard (clean tree, no exported VITE_*, RP ID == dev.cryoshield.app and never the production RP ID,
+  # two identical builds, bundle checks) and writes deploy/.build (site, noindex Caddyfile, release manifest).
   build:
     name: build
     needs: [detect, config, test]
@@ -154,7 +145,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     environment:
-      name: production-build # build config only; never the Fly token
+      name: development-build # build config only; never the Fly token
     permissions:
       contents: read # checkout only
     steps:
@@ -172,7 +163,8 @@ jobs:
           package-manager-cache: false
       - name: Install (frozen lockfile)
         run: pnpm install --frozen-lockfile
-      - name: Write apps/web/.env from the production-build environment
+      # VITE_CF_BEACON_TOKEN is deliberately not set in development-build: no analytics on dev.
+      - name: Write apps/web/.env from the development-build environment
         id: web-env
         env:
           VITE_CHAIN_ID: ${{ vars.VITE_CHAIN_ID }}
@@ -186,10 +178,10 @@ jobs:
           VITE_RP_NAME: ${{ vars.VITE_RP_NAME }}
           VITE_CF_BEACON_TOKEN: ${{ vars.VITE_CF_BEACON_TOKEN }}
         run: .github/scripts/deploy/write-env.sh
-      - name: Guarded build (DEPLOY_TARGET=production deploy.sh --build-only)
+      - name: Guarded build (DEPLOY_TARGET=development deploy.sh --build-only)
         id: build
         env:
-          DEPLOY_TARGET: production
+          DEPLOY_TARGET: development
         run: apps/web/deploy/deploy.sh --build-only
       - name: Check the manifest names the tested commit
         env:
@@ -206,9 +198,9 @@ jobs:
           if-no-files-found: error
           retention-days: 7 # the bundle (and its public bundler key) only needs to outlive the deploy
 
-  # The ONLY job in environment `production`: re-checks the tag, deploys, smoke-tests and, on failure or cancellation
-  # after `fly deploy` started, rolls back. It holds the Fly token and runs only flyctl, curl, jq, gh and coreutils on
-  # the verified build artifact (enforced by workflow-policy.mjs).
+  # The ONLY job in environment `development`: re-checks that its commit is still main's HEAD, deploys, smoke-tests and,
+  # on failure or cancellation after `fly deploy` started, rolls back. It holds the dev Fly token and runs only flyctl,
+  # curl, jq, gh and coreutils on the verified build artifact (enforced by workflow-policy.mjs).
   release:
     name: release
     needs: [detect, build]
@@ -216,37 +208,40 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     environment:
-      name: production
-      url: https://cryoshield.app
+      name: development
+      url: https://dev.cryoshield.app
     concurrency:
-      group: deploy-production
+      group: deploy-development
       cancel-in-progress: false
     permissions:
-      contents: read # checkout, and the tag and main reachability checks via the API
+      contents: read # checkout, and the main HEAD check via the API
     steps:
-      - name: Checkout (fly.toml, Dockerfile, .dockerignore, deploy scripts, deployment records, donation config)
+      # An older commit whose release queued behind a newer one must not roll the dev site back (security review M1).
+      - name: Refuse a release that is no longer main's HEAD
+        id: head-check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ needs.detect.outputs.sha }}
+        run: |
+          set -euo pipefail
+          head="$(gh api "repos/${GITHUB_REPOSITORY}/commits/main" --jq .sha)"
+          if [ "$head" != "$SHA" ]; then
+            echo "::error title=Superseded::main moved on to ${head}; this dev release (${SHA}) is stale. A newer run deploys it."
+            exit 1
+          fi
+      - name: Checkout (fly.dev.toml, Dockerfile, .dockerignore, deploy scripts, deployment records, donation config)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.detect.outputs.sha }}
           persist-credentials: false
           sparse-checkout: |
             .github/scripts/deploy
-            apps/web/fly.toml
+            apps/web/fly.dev.toml
             apps/web/.dockerignore
             apps/web/deploy/Dockerfile
             contracts/deployments
             config/donation.json
           sparse-checkout-cone-mode: false
-      # Not "is this main's HEAD" (main moves on after a tag): the tag must still point at the commit that was tested
-      # and built, and that commit must still be reachable from main.
-      - name: Refuse a release whose tag moved or left main
-        id: tag-check
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          TAG: ${{ needs.detect.outputs.tag }}
-          EXPECT_SHA: ${{ needs.detect.outputs.sha }}
-        run: .github/scripts/deploy/release-ref.sh
       - name: Download the deploy context built without the token
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
@@ -282,7 +277,7 @@ jobs:
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
           APP: ${{ env.FLY_APP }}
-          DEPLOY_ENVIRONMENT: production
+          DEPLOY_ENVIRONMENT: development
         run: |
           set -euo pipefail
           .github/scripts/deploy/previous-image.sh
@@ -290,13 +285,11 @@ jobs:
           cd apps/web
           fly deploy --config "$FLY_CONFIG" --remote-only --app "$FLY_APP"
       - name: Record the release in the job summary
-        env:
-          TAG: ${{ needs.detect.outputs.tag }}
         run: |
           set -euo pipefail
           m=apps/web/deploy/.build/release-manifest.json
           {
-            echo "### Deployed ${SITE_URL} (release ${TAG})"
+            echo "### Deployed ${SITE_URL} (development)"
             echo ""
             echo "| | |"
             echo "|---|---|"
@@ -308,14 +301,13 @@ jobs:
             echo ""
             echo "Release manifest: artifact \`deploy-context-$(jq -r .commit "$m")\`."
           } >> "${GITHUB_STEP_SUMMARY}"
-      # Chain and registry come from the verified manifest and the deployment record at the same commit, so this job
-      # needs no variables from production-build, and nothing here names a chain.
+      # Chain and registry come from the verified manifest and the deployment record at the same commit.
       - name: Smoke test the live site
         id: smoke
         env:
           EXPECT_SHA: ${{ needs.detect.outputs.sha }}
           BASE_URL: ${{ env.SITE_URL }}
-          EXPECT_NOINDEX: "false"
+          EXPECT_NOINDEX: "true"
         run: |
           set -euo pipefail
           m=apps/web/deploy/.build/release-manifest.json
@@ -329,7 +321,7 @@ jobs:
           [[ "$DONATION_ADDRESS" =~ ^0x[0-9a-fA-F]{40}$ ]] || { echo "::error::config/donation.json .address is not 0x + 40 hex (got '${DONATION_ADDRESS}'); is the file in the sparse checkout?"; exit 1; }
           export DONATION_ADDRESS
           .github/scripts/deploy/smoke.sh
-      # Same job: also on cancellation after `fly deploy` started. Uses the NEW commit's fly.toml with the previous
+      # Same job: also on cancellation after `fly deploy` started. Uses the NEW commit's fly.dev.toml with the previous
       # image (docs/deploy.md -> Rollback, review L1).
       - name: Roll back to the previous release
         id: rollback
@@ -345,16 +337,15 @@ jobs:
         if: failure() || cancelled()
         env:
           SHA: ${{ needs.detect.outputs.sha }}
-          TAG: ${{ needs.detect.outputs.tag }}
           DEPLOY: ${{ steps.deploy.outcome }}
           SMOKE: ${{ steps.smoke.outcome }}
           ROLLBACK: ${{ steps.rollback.outcome }}
         run: |
           {
-            echo "### Release ${TAG} (\`$SHA\`) FAILED"
+            echo "### Dev release of \`$SHA\` FAILED"
             echo ""
             echo "deploy: **${DEPLOY:-not run}**, smoke test: **${SMOKE:-not run}**, automatic rollback: **${ROLLBACK:-not attempted}**."
-            echo "Fix forward with a new release, or redeploy a good one: gh workflow run deploy.yml -f tag=<vX.Y.Z> (docs/deploy.md -> Rollback)."
+            echo "This commit will not be retried automatically; fix forward, or see docs/deploy.md -> Rollback."
           } >> "${GITHUB_STEP_SUMMARY}"
-          echo "::error title=deploy::Release ${TAG} ($SHA) failed (deploy: ${DEPLOY:-not run}, smoke: ${SMOKE:-not run}, rollback: ${ROLLBACK:-not attempted})."
+          echo "::error title=deploy::The dev release of $SHA failed (deploy: ${DEPLOY:-not run}, smoke: ${SMOKE:-not run}, rollback: ${ROLLBACK:-not attempted})."
           exit 1

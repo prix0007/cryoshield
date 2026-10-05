@@ -1,4 +1,4 @@
-// gate-production-deploys (security review H1): before the owner approves, the run shows what the release changes
+// gate-production-deploys (security review H1), split-dev-and-release-deploys: the production run shows what the release changes
 // relative to the live commit, and flags every file on the Fly-token path (scripts the release job runs with the
 // token, workflows, the policy, fly.toml, the Docker build context).
 import { test } from 'node:test';

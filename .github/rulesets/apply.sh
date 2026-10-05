@@ -10,15 +10,18 @@
 #                                             # exists, and keep passing it afterwards: without the flag, --apply
 #                                             # refuses to drop a live ecc-review requirement.
 #   .github/rulesets/apply.sh --environments [--apply]
-#                                             # also the deploy environments (environments.json; change
-#                                             # gate-production-deploys): `production` waits for the repo owner's
-#                                             # approval with no admin bypass; `production-build` holds the build
-#                                             # config; both deploy from main only. Extra branch policies are removed.
+#                                             # also the deploy environments (environments.json; changes
+#                                             # gate-production-deploys, split-dev-and-release-deploys): `production`
+#                                             # (Fly token) and `production-build` (build config) deploy from main and
+#                                             # v* tags; `development` and `development-build` from main only. No
+#                                             # admin bypass. Extra branch/tag policies are removed. The repo owner is
+#                                             # looked up only if an environment names "@owner" as a reviewer.
 #   .github/rulesets/apply.sh --founder-hardening [--apply]
 #                                             # also Dependabot security updates and "require actions pinned to a
 #                                             # full-length commit SHA" (actions-hardening.json). Off unless passed.
 #
-# Covers: ruleset main.json (by name), repo merge settings (repo-settings.json, incl. auto-merge), Actions
+# Covers: rulesets main.json (branch) and release-tags.json (tag: only admins may create, move or delete v* tags,
+# so only the owner can cut a production release; split-dev-and-release-deploys), each by name and target, repo merge settings (repo-settings.json, incl. auto-merge), Actions
 # workflow permissions (actions-permissions.json: read-only token, Actions may not approve PRs), and the
 # managed labels (labels.json); with the flags above, the environments and the founder hardening.
 # Idempotent: when the live state matches, no write call is made. Requires an admin `gh auth login`.
@@ -52,11 +55,11 @@ fi
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 RULESET_FILE="$HERE/main.json"
+TAG_RULESET_FILE="$HERE/release-tags.json"
 ECC_CHECK="$HERE/ecc-review-check.json"
 SETTINGS="$HERE/repo-settings.json"
 ACTIONS="$HERE/actions-permissions.json"
 NORMALIZE="$HERE/../scripts/ruleset-normalize.mjs"
-NAME="$(jq -r .name "$RULESET_FILE")"
 # Managed labels: name, color, description (labels.json; names may contain spaces and '?').
 LABELS_FILE="$HERE/labels.json"
 ENVIRONMENTS="$HERE/environments.json"
@@ -84,39 +87,45 @@ show_diff() {
   return 1
 }
 
+# sync_ruleset <committed file>: the ruleset with the file's name AND target (branch or tag), created or updated.
 sync_ruleset() {
-  local ids id
-  ids="$("$GH" api "repos/$REPO/rulesets" --jq ".[] | select(.name == \"$NAME\" and .target == \"branch\") | .id")"
+  local file="$1" name target ids id live
+  name="$(jq -r .name "$file")"
+  target="$(jq -r .target "$file")"
+  [[ "$name" =~ ^[A-Za-z0-9_-]+$ ]] && [[ "$target" =~ ^(branch|tag)$ ]] || { echo "invalid ruleset name/target in $file" >&2; exit 1; }
+  live="$TMP/live-ruleset-$name.json"
+  ids="$("$GH" api "repos/$REPO/rulesets" --jq ".[] | select(.name == \"$name\" and .target == \"$target\") | .id")"
   if [ "$(printf '%s\n' "$ids" | grep -c .)" -gt 1 ]; then
-    echo "more than one ruleset named '$NAME' ($(echo "$ids" | tr '\n' ' ')); delete the extras first" >&2
+    echo "more than one ruleset named '$name' ($(echo "$ids" | tr '\n' ' ')); delete the extras first" >&2
     exit 1
   fi
   id="$ids"
   if [ -z "$id" ]; then
-    echo "ruleset '$NAME' does not exist"
-    echo '{}' > "$TMP/live-ruleset.json"
-    show_diff "$RULESET" "$TMP/live-ruleset.json" "ruleset '$NAME'" || true
+    echo "ruleset '$name' does not exist"
+    echo '{}' > "$live"
+    show_diff "$file" "$live" "ruleset '$name'" || true
     drift=1
     if [ "$APPLY" -eq 1 ]; then
-      "$GH" api -X POST "repos/$REPO/rulesets" --input "$RULESET" > /dev/null
-      echo "ruleset '$NAME': created"
+      "$GH" api -X POST "repos/$REPO/rulesets" --input "$file" > /dev/null
+      echo "ruleset '$name': created"
     fi
     return 0
   fi
-  "$GH" api "repos/$REPO/rulesets/$id" > "$TMP/live-ruleset.json"
-  if [ "$ECC" -eq 0 ] && jq -e '[.rules[]? | select(.type == "required_status_checks") | .parameters.required_status_checks[]?.context] | index("ecc-review")' \
-       "$TMP/live-ruleset.json" > /dev/null; then
+  [[ "$id" =~ ^[0-9]+$ ]] || { echo "unexpected ruleset id '$id'" >&2; exit 1; }
+  "$GH" api "repos/$REPO/rulesets/$id" > "$live"
+  if [ "$file" = "$RULESET" ] && [ "$ECC" -eq 0 ] && jq -e '[.rules[]? | select(.type == "required_status_checks") | .parameters.required_status_checks[]?.context] | index("ecc-review")' \
+       "$live" > /dev/null; then
     if [ "$APPLY" -eq 1 ]; then
       echo "the live ruleset requires ecc-review; pass --with-ecc-review to keep it (refusing to drop it silently)" >&2
       exit 1
     fi
     echo "note: the live ruleset requires ecc-review; pass --with-ecc-review to compare against that" >&2
   fi
-  if ! show_diff "$RULESET" "$TMP/live-ruleset.json" "ruleset '$NAME'"; then
+  if ! show_diff "$file" "$live" "ruleset '$name'"; then
     drift=1
     if [ "$APPLY" -eq 1 ]; then
-      "$GH" api -X PUT "repos/$REPO/rulesets/$id" --input "$RULESET" > /dev/null
-      echo "ruleset '$NAME': updated (id $id)"
+      "$GH" api -X PUT "repos/$REPO/rulesets/$id" --input "$file" > /dev/null
+      echo "ruleset '$name': updated (id $id)"
     fi
   fi
   return 0
@@ -187,7 +196,7 @@ get_or_empty() {
 }
 
 # The reviewer "@owner" in environments.json is the repository owner's numeric user id (a User, not an organization).
-# Resolved once, before any environment is read or written.
+# Resolved once, before any environment is read or written, and only when some environment names "@owner".
 OWNER_ID=""
 resolve_owner() {
   local owner="${REPO%%/*}" user
@@ -218,7 +227,7 @@ sync_environment() {
       | {name, can_admins_bypass, prevent_self_review, wait_timer,
          deployment_branch_policy: {protected_branches: false, custom_branch_policies: true},
          reviewers: [.required_reviewers[] | if . == "@owner" then "User:" + $oid else error("unknown reviewer " + .) end],
-         branches: [.branches[] | "branch:" + .]} | '"$ENV_SHAPE" "$ENVIRONMENTS" > "$desired"
+         branches: ([.branches[] | "branch:" + .] + [(.tags // [])[] | "tag:" + .])} | '"$ENV_SHAPE" "$ENVIRONMENTS" > "$desired"
   get_or_empty "repos/$REPO/environments/$name" "$raw"
   if [ "$(jq 'length' "$raw")" -eq 0 ]; then
     echo "environment '$name' does not exist"
@@ -269,7 +278,10 @@ sync_environments() {
     echo "environments: skipped (pass --environments)"
     return 0
   fi
-  [ -n "$OWNER_ID" ] || resolve_owner
+  # Only an "@owner" reviewer needs the owner's id; with none, no users/ lookup is made (PR #32 review).
+  if [ -z "$OWNER_ID" ] && jq -e '[.[].required_reviewers[]?] | index("@owner")' "$ENVIRONMENTS" > /dev/null; then
+    resolve_owner
+  fi
   while read -r name; do
     [[ "$name" =~ ^[A-Za-z0-9_-]+$ ]] || { echo "invalid environment name '$name' in environments.json" >&2; exit 1; }
     sync_environment "$name"
@@ -315,7 +327,8 @@ sync_hardening() {
 }
 
 sync_all() {
-  sync_ruleset
+  sync_ruleset "$RULESET"
+  sync_ruleset "$TAG_RULESET_FILE"
   sync_settings
   sync_actions
   sync_labels

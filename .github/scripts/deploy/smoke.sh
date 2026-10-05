@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
-# Post-deploy smoke test of the live site (add-continuous-deploy, design D6; spec continuous-deployment
-# "Smoke test and automatic rollback"). Retries the whole suite, so a rolling deploy or a resuming machine can settle.
+# Post-deploy smoke test of the live site (add-continuous-deploy, design D6; split-dev-and-release-deploys, spec
+# continuous-deployment "Smoke test and automatic rollback per target"). Retries the whole suite, so a rolling deploy or
+# a resuming machine can settle.
 #
 # env: EXPECT_SHA (40-hex), REGISTRY_ADDRESS (0x + 40 hex), DONATION_ADDRESS (0x + 40 hex, config/donation.json),
 #      BASE_URL (default https://cryoshield.app),
+#      EXPECT_NOINDEX (true on the development site: every page must send X-Robots-Tag: noindex, nofollow;
+#                      false, the default, on production: no page may send a noindex X-Robots-Tag),
 #      SMOKE_ATTEMPTS (default 10), SMOKE_SLEEP seconds (default 15)
 set -euo pipefail
 
@@ -13,9 +16,11 @@ SLEEP="${SMOKE_SLEEP:-15}"
 EXPECT_SHA="${EXPECT_SHA:-}"
 REGISTRY_ADDRESS="${REGISTRY_ADDRESS:-}"
 DONATION_ADDRESS="${DONATION_ADDRESS:-}"
+EXPECT_NOINDEX="${EXPECT_NOINDEX:-false}"
 [[ "$EXPECT_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "smoke: EXPECT_SHA must be a full 40-hex commit" >&2; exit 2; }
 [[ "$REGISTRY_ADDRESS" =~ ^0x[0-9a-fA-F]{40}$ ]] || { echo "smoke: REGISTRY_ADDRESS must be 0x + 40 hex" >&2; exit 2; }
 [[ "$DONATION_ADDRESS" =~ ^0x[0-9a-fA-F]{40}$ ]] || { echo "smoke: DONATION_ADDRESS must be 0x + 40 hex" >&2; exit 2; }
+[[ "$EXPECT_NOINDEX" =~ ^(true|false)$ ]] || { echo "smoke: EXPECT_NOINDEX must be true or false" >&2; exit 2; }
 
 PAGES=(/ /app/ /architecture /devices /support /privacy /healthz)
 TMP="$(mktemp -d)"
@@ -36,6 +41,13 @@ check_once() {
   for p in "${PAGES[@]}"; do
     fetch "$p"
     [ "$status" = "200" ] || errors+=("$p returned $status")
+    # Development is never indexed; production never says noindex (a dev Caddyfile shipped to production fails here).
+    robots="$(grep -E "^x-robots-tag:" "$TMP/hl" | cut -d: -f2- | tr -d " " | tr "\n" ";" || true)"
+    if [ "$EXPECT_NOINDEX" = "true" ]; then
+      [ "$robots" = "noindex,nofollow;" ] || errors+=("$p: x-robots-tag is '${robots%;}', expected 'noindex, nofollow' on the development site")
+    else
+      case "$robots" in *noindex* | *none*) errors+=("$p: production sends x-robots-tag '${robots%;}' (noindex)") ;; esac
+    fi
     case "$p" in
       / | /app/)
         header_has content-security-policy "frame-ancestors 'none'" || errors+=("$p: content-security-policy missing or without frame-ancestors 'none'")

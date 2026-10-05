@@ -128,3 +128,41 @@ describe('deploy context generator (1.2)', () => {
     expect(() => run(fixture('<html><head><meta http-equiv="Content-Security-Policy" content="default-src `x`"></head></html>'))).toThrow(/backtick/);
   });
 });
+
+describe('development site: --noindex (split-dev-and-release-deploys)', () => {
+  const page = `<html><head><meta charset="utf-8" /><meta http-equiv="Content-Security-Policy" content="${META}"></head></html>`;
+  const gen = (d: string, host: string, noindex: boolean) =>
+    execFileSync('node', [GEN, '--dist', join(d, 'dist'), '--out', join(d, 'out'), '--host', host, ...(noindex ? ['--noindex'] : [])], { encoding: 'utf8', stdio: 'pipe' });
+
+  it('adds X-Robots-Tag to every response (normal and error), and nothing else: no robots.txt (the SEO change owns it); the CSP is unchanged', () => {
+    const d = fixture(page);
+    gen(d, 'dev.cryoshield.app', true);
+    const caddy = readFileSync(join(d, 'out', 'Caddyfile'), 'utf8');
+    // once in the site-wide header block, once in handle_errors
+    expect(caddy.match(/X-Robots-Tag `noindex, nofollow`/g)).toHaveLength(2);
+    const global = caddy.slice(caddy.indexOf(':8080 {'), caddy.indexOf('@landing'));
+    expect(global).toContain('X-Robots-Tag `noindex, nofollow`');
+    const errors = caddy.slice(caddy.indexOf('handle_errors'));
+    expect(errors).toContain('X-Robots-Tag `noindex, nofollow`');
+    // A crawler must be able to FETCH a page to see its noindex header, so dev never disallows crawling in robots.txt;
+    // whatever robots.txt the build ships (production's, owned by the SEO change) is served unchanged.
+    expect(caddy).not.toMatch(/robots\.txt/);
+    expect(caddy).toContain(`Content-Security-Policy \`${META}; frame-ancestors 'none'\``);
+    expect(caddy).toContain('redir @noncanonical https://dev.cryoshield.app{uri} permanent');
+    // the site files (and therefore the tree hash) are the same as without --noindex
+    const prodLike = fixture(page);
+    gen(prodLike, 'dev.cryoshield.app', false);
+    expect(caddy.replace(/^.*X-Robots-Tag.*\n/gm, '')).toBe(readFileSync(join(prodLike, 'out', 'Caddyfile'), 'utf8'));
+  });
+
+  it('without --noindex (production) there is no X-Robots-Tag', () => {
+    const d = fixture(page);
+    gen(d, 'cryoshield.app', false);
+    const caddy = readFileSync(join(d, 'out', 'Caddyfile'), 'utf8');
+    expect(caddy).not.toMatch(/X-Robots-Tag|robots\.txt/);
+  });
+
+  it('refuses --noindex for the production host (a dev Caddyfile must never serve cryoshield.app)', () => {
+    expect(() => gen(fixture(page), 'cryoshield.app', true)).toThrow(/noindex/);
+  });
+});

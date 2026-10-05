@@ -1,0 +1,60 @@
+## Why
+
+The founder asked on 2026-10-05: "Make as such a release triggers production, else main merge triggers development deployment via op sepolia."
+
+Today every commit on `main` goes straight to https://cryoshield.app with no human step (`remove-production-approval-gate`). Audit finding CI-C1 is therefore open: an agent (Write role) can get code to production through a PR, the LLM review and auto-merge alone. Splitting the targets keeps the fast, automatic loop for `main` and puts a human step, owned by the repository owner, in front of production.
+
+## What Changes
+
+- **Development target.** A merge to `main` (push, the existing 15-minute schedule that catches auto-merges, or `workflow_dispatch`) deploys to a new Fly app, `cryoshield-web-dev`, at `https://dev.cryoshield.app`. The new workflow `.github/workflows/deploy-dev.yml` does this with no approval, using two new GitHub Environments:
+  - `development` holds only the dev app's `FLY_API_TOKEN`;
+  - `development-build` holds the `VITE_*` build config and the `VITE_BUNDLER_URL` secret.
+
+  Both are deployable from `main` only. Dev runs on OP Sepolia. Its WebAuthn RP ID is `dev.cryoshield.app` (never `cryoshield.app`), it sends `X-Robots-Tag: noindex, nofollow` on every response (header only: no dev `robots.txt`, which another change owns for production), and it has no analytics beacon.
+- **Production target.** `.github/workflows/deploy.yml` now runs only when:
+  - a GitHub Release is published for a tag `v*`; or
+  - the owner starts `workflow_dispatch` with a `tag` input, to redeploy or roll back to an earlier release.
+
+  The tagged commit must be reachable from `main`. The workflow runs the full CI on that commit, builds in `production-build`, and releases to `cryoshield-web` (https://cryoshield.app) in `production`, with no reviewer. The release job re-checks, right before deploying, that the tag still points at the commit and that the commit is still reachable from `main`. Releases are not polled. The chain is whatever `production-build` configures: OP Sepolia today, OP Mainnet later, by changing environment variables only.
+- **Only the owner can ship to production.**
+  - A tag ruleset as code (`.github/rulesets/release-tags.json`, synced by `apply.sh`) restricts creating, updating and deleting `refs/tags/v*`, with the repository admin role as the only bypass actor.
+  - The production workflow runs only when `github.triggering_actor` is the repository owner.
+  - `production` and `production-build` allow `main` (for the dispatch) and `v*` tags (for the release event).
+- **Per-target parametrisation:**
+  - `deploy.sh` takes `DEPLOY_TARGET=production|development` (host, Fly app, Fly config, noindex);
+  - `gen-context.mjs --noindex` adds the dev-only header;
+  - `smoke.sh` checks that the noindex header is present on dev and absent on production;
+  - `previous-image.sh` and `rollback.sh` take the app and config.
+- **Policy.** `workflow-policy.mjs` gets one profile per deploy workflow. Each Fly token's environment can be used only by its own workflow's release job, and no other workflow may use any of the four environments or `FLY_API_TOKEN`. The `supersede` job, its script and the policy's only `actions: write` exception are removed: with no approval, runs never wait, and pending releases are replaced natively by concurrency.
+- **CI.** `ci.yml`'s `workflow_call` gains an optional `ref` input, so the production workflow can run the full CI on the tagged commit when it is dispatched from `main`.
+- **Folds in PR #32** (`remove-production-approval-gate`, which failed ECC review): this change carries its security review (threat table, compensating controls, explicit acceptance for dev, mainnet re-gate criterion), its `apply.sh` test fixes (single-property drift cases, reviewer removal) and its fix to look up the owner only when an environment names `@owner`.
+- **Docs:** `docs/deploy.md`, `CLAUDE.md` (step 9), `README.md`, `apps/web/deploy/README.md`, `docs/agent-account.md`, `docs/system-design.md`, and the audit report (CI-C1 partly restored).
+
+## Capabilities
+
+### New Capabilities
+- None.
+
+### Modified Capabilities
+- `continuous-deployment`: `main` goes to development; production only from an owner-published release; owner-only tag ruleset.
+- `ci-pipeline`: the deploy workflow restrictions and the deploy environment policy now cover two workflows; the reusable CI takes a `ref`.
+
+## Out of scope
+
+- Re-adding a required reviewer on `production`. The owner-only release is the human step.
+- Creating the Fly app, the DNS records, the environments or the secrets. The owner does these once; `docs/deploy.md` gives the commands.
+- OP Mainnet. Production keeps whatever chain `production-build` configures.
+- A separate dev contract deployment. Dev uses the OP Sepolia registry recorded in `contracts/deployments/`.
+- Automatic release creation (release-please or similar). Agents never create releases or tags.
+
+## Impact
+
+- **Runtime dependencies:** none new. The dev site is another static Caddy container on Fly, with the same allowed pieces (public RPC, third-party bundler/paymaster, Arweave). It is not a CryoShield-operated backend.
+- **Security:** see `design.md` → Threats. Dev auto-deploys under its own RP ID, so code that reaches dev without a human step can never request PRF outputs for production vaults. CI-C1 is partly restored: production needs the owner's release.
+- **Operations:** the owner must, once:
+  - create `cryoshield-web-dev` and its deploy token;
+  - add DNS for `dev.cryoshield.app`;
+  - run `apply.sh --environments --apply` (the environments and the tag ruleset);
+  - fill in `development-build`.
+
+  Until `development-build` is configured, the dev workflow skips without failing (`deploy-skip-when-unconfigured`).

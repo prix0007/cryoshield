@@ -1,0 +1,136 @@
+// split-dev-and-release-deploys: what differs between the two targets.
+//   deploy.yml      production: published v* release or owner dispatch with `tag`; tag reachable from main; no polling.
+//   deploy-dev.yml  development: every main commit (push, 15-minute schedule, dispatch) to https://dev.cryoshield.app.
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { parse } from 'yaml';
+import { checkWorkflow } from '../workflow-policy.mjs';
+
+const real = (name) => readFileSync(new URL(`../../workflows/${name}`, import.meta.url), 'utf8');
+const prodText = real('deploy.yml');
+const devText = real('deploy-dev.yml');
+const prod = parse(prodText);
+const dev = parse(devText);
+const errs = (file, text) => checkWorkflow(`workflows/${file}`, text);
+const expectError = (file, text, re) => {
+  const e = errs(file, text);
+  assert.ok(e.some((m) => re.test(m)), `expected ${re} in ${JSON.stringify(e, null, 1)}`);
+};
+const replaceOnce = (text, from, to) => {
+  assert.ok(text.includes(from), `fixture drift: ${JSON.stringify(from)} not found`);
+  return text.replace(from, to);
+};
+const step = (wf, job, id) => wf.jobs[job].steps.find((s) => s.id === id);
+
+const OWNER = 'github.triggering_actor == github.repository_owner';
+const REF_GATE = "((github.event_name == 'release' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'))";
+
+// ---- production ----
+test('production: triggers are exactly release (published) and workflow_dispatch with a required tag', () => {
+  assert.deepEqual(Object.keys(prod.on).sort(), ['release', 'workflow_dispatch']);
+  assert.deepEqual(prod.on.release, { types: ['published'] });
+  assert.equal(prod.on.workflow_dispatch.inputs.tag.required, true);
+  assert.equal(prod.on.workflow_dispatch.inputs.tag.type, 'string');
+});
+
+test('production: push, schedule or other release types are refused (releases are not polled)', () => {
+  expectError('deploy.yml', replaceOnce(prodText, 'on:\n  release:\n', 'on:\n  push:\n    branches: [main]\n  release:\n'), /trigger 'push'/);
+  expectError('deploy.yml', replaceOnce(prodText, 'on:\n  release:\n', 'on:\n  schedule:\n    - cron: "*/15 * * * *"\n  release:\n'), /trigger 'schedule'/);
+  expectError('deploy.yml', replaceOnce(prodText, '    types: [published]\n', '    types: [published, edited]\n'), /types/);
+  expectError('deploy.yml', replaceOnce(prodText, '    types: [published]\n', '    types: [created]\n'), /types/);
+});
+
+test('production: the first job requires the owner AND a release tag or a dispatch from main', () => {
+  const cond = String(prod.jobs.detect.if);
+  assert.ok(cond.includes(OWNER), cond);
+  assert.ok(cond.includes(REF_GATE), cond);
+  expectError('deploy.yml', replaceOnce(prodText, `${OWNER} && `, ''), /triggering_actor/);
+  expectError('deploy.yml', replaceOnce(prodText, ` && ${REF_GATE}`, ''), /refs\/tags\/v/);
+  expectError('deploy.yml', replaceOnce(prodText, `${OWNER} && `, `${OWNER} || `), /\|\|/);
+});
+
+test('production: detect resolves the tag (release-ref.sh) before config, CI or build, and summarises the diff', () => {
+  const d = step(prod, 'detect', 'detect');
+  assert.match(String(d.run), /release-ref\.sh/);
+  assert.equal(d.env.TAG, '${{ github.event.release.tag_name || inputs.tag }}');
+  assert.equal(d.env.EXPECT_SHA, "${{ github.event_name == 'release' && github.sha || '' }}");
+  assert.equal(d.env.GH_TOKEN, '${{ github.token }}');
+  assert.deepEqual(prod.jobs.detect.outputs, { deploy: '${{ steps.detect.outputs.deploy }}', sha: '${{ steps.detect.outputs.sha }}', tag: '${{ steps.detect.outputs.tag }}' });
+  const steps = prod.jobs.detect.steps;
+  assert.ok(steps.findIndex((s) => /release-diff\.sh/.test(String(s.run))) > steps.findIndex((s) => s.id === 'detect'));
+  for (const id of ['config', 'test', 'build', 'release']) assert.ok([].concat(prod.jobs[id].needs).includes('detect'), id);
+});
+
+test('production: the full CI runs on the resolved commit (ref), then build and release use it', () => {
+  assert.deepEqual(prod.jobs.test.with, { full: true, ref: '${{ needs.detect.outputs.sha }}' });
+  assert.equal(prod.jobs.build.steps.find((s) => String(s.uses).startsWith('actions/checkout@')).with.ref, '${{ needs.detect.outputs.sha }}');
+  assert.deepEqual(prod.jobs.release.needs, ['detect', 'build']);
+});
+
+test('production: the release re-checks the tag and main reachability, not main HEAD (tag-check)', () => {
+  const tc = step(prod, 'release', 'tag-check');
+  assert.match(String(tc.run), /release-ref\.sh/);
+  assert.doesNotMatch(String(tc.run), /commits\/main/);
+  assert.equal(tc.env.TAG, '${{ needs.detect.outputs.tag }}');
+  assert.equal(tc.env.EXPECT_SHA, '${{ needs.detect.outputs.sha }}');
+  assert.equal(tc.env.GH_TOKEN, '${{ github.token }}');
+  assert.equal(step(prod, 'release', 'head-check'), undefined);
+  // the script must come from the checked-out commit, so checkout precedes it
+  const steps = prod.jobs.release.steps;
+  assert.ok(steps.findIndex((s) => String(s.uses).startsWith('actions/checkout@')) < steps.findIndex((s) => s.id === 'tag-check'));
+});
+
+test('production: site, app and config; smoke expects NO noindex; chain is not hardcoded', () => {
+  assert.equal(prod.env.SITE_URL, 'https://cryoshield.app');
+  assert.equal(prod.env.FLY_APP, 'cryoshield-web');
+  assert.equal(prod.env.FLY_CONFIG, 'fly.toml');
+  assert.equal(prod.jobs.release.environment.url, 'https://cryoshield.app');
+  assert.equal(step(prod, 'release', 'smoke').env.EXPECT_NOINDEX, 'false');
+  assert.doesNotMatch(prodText, /11155420|VITE_CHAIN_ID: "?\d/);
+  assert.deepEqual(prod.concurrency, { group: 'deploy-release-${{ github.event.release.tag_name || inputs.tag }}', 'cancel-in-progress': false });
+});
+
+// ---- development ----
+test('development: push to main, the 15-minute schedule and dispatch; first job only on main', () => {
+  assert.deepEqual(Object.keys(dev.on).sort(), ['push', 'schedule', 'workflow_dispatch']);
+  assert.deepEqual(dev.on.push.branches, ['main']);
+  assert.deepEqual(dev.on.schedule, [{ cron: '*/15 * * * *' }]);
+  assert.match(String(dev.jobs.detect.if), /github\.ref == 'refs\/heads\/main'/);
+  expectError('deploy-dev.yml', replaceOnce(devText, "    if: github.ref == 'refs/heads/main'\n", ''), /job 'detect'.*refs\/heads\/main/);
+  expectError('deploy-dev.yml', replaceOnce(devText, '    branches: [main]\n', '    branches: [main, "release/*"]\n'), /push.*main/);
+  expectError('deploy-dev.yml', replaceOnce(devText, 'on:\n  push:\n', 'on:\n  release:\n    types: [published]\n  push:\n'), /trigger 'release'/);
+});
+
+test('development: detect compares the dev site with main and counts only failed deploy-dev.yml runs', () => {
+  const run = String(step(dev, 'detect', 'detect').run);
+  assert.match(run, /--workflow deploy-dev\.yml/);
+  assert.match(run, /--status failure/);
+  assert.equal(step(dev, 'detect', 'detect').env.BASE_URL, '${{ env.SITE_URL }}');
+  assert.deepEqual(dev.jobs.test.with, { full: true });
+});
+
+test('development: the release refuses a commit that is no longer main HEAD (head-check)', () => {
+  const hc = step(dev, 'release', 'head-check');
+  assert.match(String(hc.run), /commits\/main/);
+  assert.equal(hc.env.GH_TOKEN, '${{ github.token }}');
+  assert.deepEqual(dev.jobs.release.needs, ['detect', 'build']);
+});
+
+test('development: dev site, dev app and fly.dev.toml; smoke expects noindex; per-commit concurrency', () => {
+  assert.equal(dev.env.SITE_URL, 'https://dev.cryoshield.app');
+  assert.equal(dev.env.FLY_APP, 'cryoshield-web-dev');
+  assert.equal(dev.env.FLY_CONFIG, 'fly.dev.toml');
+  assert.equal(dev.jobs.release.environment.url, 'https://dev.cryoshield.app');
+  assert.equal(step(dev, 'release', 'smoke').env.EXPECT_NOINDEX, 'true');
+  assert.deepEqual(dev.concurrency, { group: 'deploy-dev-${{ github.sha }}', 'cancel-in-progress': false });
+  const sparse = String(dev.jobs.release.steps.find((s) => String(s.uses).startsWith('actions/checkout@')).with['sparse-checkout']);
+  assert.match(sparse, /apps\/web\/fly\.dev\.toml/);
+});
+
+test('development: the token is checked as the development environment, the build config as development-build', () => {
+  assert.equal(step(dev, 'release', 'deploy').env.DEPLOY_ENVIRONMENT, 'development');
+  assert.equal(step(prod, 'release', 'deploy').env.DEPLOY_ENVIRONMENT, 'production');
+  assert.equal(step(dev, 'config', 'config').env.BUILD_ENVIRONMENT, 'development-build');
+  assert.equal(step(prod, 'config', 'config').env.BUILD_ENVIRONMENT, 'production-build');
+});

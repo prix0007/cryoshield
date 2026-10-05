@@ -3,17 +3,21 @@
 # Newest release with Status "complete" from `fly releases --json --image`; the ref is validated so nothing
 # unexpected can reach `fly deploy --image` later. No complete release yet (first deploy) = empty output.
 #
-# env: FLY (default fly), APP (default cryoshield-web); needs FLY_API_TOKEN in the environment for real runs.
+# env: FLY (default fly), APP (default cryoshield-web; cryoshield-web-dev for development), DEPLOY_ENVIRONMENT (the
+#      GitHub Environment holding the token, for the "not configured" message; default production); needs
+#      FLY_API_TOKEN in the environment for real runs.
 # out: previous_image=<ref or empty> to $GITHUB_OUTPUT (and stdout)
 set -euo pipefail
 
 FLY="${FLY:-fly}"
 APP="${APP:-cryoshield-web}"
+DEPLOY_ENVIRONMENT="${DEPLOY_ENVIRONMENT:-production}"
 [[ "$APP" =~ ^[a-z0-9-]+$ ]] || { echo "previous-image: invalid APP" >&2; exit 2; }
-# The token sits behind the approval in `production`, so it can only be checked here, after a human approved: fail
-# explicitly rather than with a flyctl auth error (deploy-skip-when-unconfigured).
+[[ "$DEPLOY_ENVIRONMENT" =~ ^[a-z-]+$ ]] || { echo "previous-image: invalid DEPLOY_ENVIRONMENT" >&2; exit 2; }
+# The token is only visible to the release job, so it can only be checked here: fail explicitly rather than with a
+# flyctl auth error (deploy-skip-when-unconfigured).
 if [ -z "${FLY_API_TOKEN:-}" ]; then
-  echo "::error title=deploy not configured::FLY_API_TOKEN is empty: add it to the production environment (docs/deploy.md, First-time setup, step 2), then re-run with: gh workflow run deploy.yml --ref main -f force=true"
+  echo "::error title=deploy not configured::FLY_API_TOKEN is empty: add it to the ${DEPLOY_ENVIRONMENT} environment (docs/deploy.md, First-time setup), then re-run the deploy (docs/deploy.md)"
   exit 1
 fi
 

@@ -12,8 +12,6 @@ import { checkWorkflow } from '../workflow-policy.mjs';
 
 const script = fileURLToPath(new URL('../deploy/check-config.sh', import.meta.url));
 const writeEnv = readFileSync(new URL('../deploy/write-env.sh', import.meta.url), 'utf8');
-const deploy = readFileSync(new URL('../../workflows/deploy.yml', import.meta.url), 'utf8');
-const wf = parse(deploy);
 const REQUIRED = /^REQUIRED=\(([^)]*)\)/m.exec(writeEnv)[1].trim().split(/\s+/);
 
 const allTrue = () => Object.fromEntries(REQUIRED.map((k) => [`HAS_${k}`, 'true']));
@@ -56,41 +54,59 @@ test('a missing or malformed HAS_* flag is a workflow bug: fail loudly instead o
   assert.equal(run({ ...allTrue(), HAS_VITE_RP_ID: 'yes' }).status, 2);
 });
 
-// ---- workflow structure ----
-test('config job: production-build, before the full CI, presence flags only (never a value)', () => {
-  const job = wf.jobs.config;
-  assert.equal(String(job.environment?.name ?? job.environment), 'production-build');
-  assert.deepEqual([].concat(job.needs), ['detect']);
-  const step = job.steps.find((s) => s.id === 'config');
-  assert.match(String(step.run), /check-config\.sh/);
-  const env = step.env;
-  assert.deepEqual(Object.keys(env).sort(), REQUIRED.map((k) => `HAS_${k}`).sort());
-  for (const k of REQUIRED) {
-    const src = k === 'VITE_BUNDLER_URL' ? 'secrets' : 'vars';
-    assert.equal(env[`HAS_${k}`], `\${{ ${src}.${k} != '' }}`, k);
+test('the warning names the build environment and the workflow to re-run (split-dev-and-release-deploys)', () => {
+  const r = run({ ...allTrue(), HAS_VITE_RP_ID: 'false', BUILD_ENVIRONMENT: 'development-build', WORKFLOW: 'deploy-dev.yml' });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /The development-build environment is missing: VITE_RP_ID/);
+  assert.match(r.stdout, /gh workflow run deploy-dev\.yml/);
+  const d = run({ ...allTrue(), HAS_VITE_RP_ID: 'false' });
+  assert.match(d.stdout, /The production-build environment is missing/);
+  for (const bad of [{ BUILD_ENVIRONMENT: 'prod build' }, { WORKFLOW: 'x.yml;true' }]) {
+    assert.equal(run({ ...allTrue(), ...bad }).status, 2, JSON.stringify(bad));
   }
-  assert.equal(job.outputs.configured, '${{ steps.config.outputs.configured }}');
 });
 
-test('test and build run only when configured; supersede and release depend on build (so they skip too)', () => {
-  for (const id of ['test', 'build']) {
-    assert.ok([].concat(wf.jobs[id].needs).includes('config'), id);
-    assert.match(String(wf.jobs[id].if), /needs\.config\.outputs\.configured == 'true'/, id);
-  }
-  assert.ok([].concat(wf.jobs.supersede.needs).includes('build'));
-  assert.ok([].concat(wf.jobs.release.needs).includes('build'));
-});
+// ---- workflow structure (both deploy workflows) ----
+for (const [file, buildEnv] of [['deploy.yml', 'production-build'], ['deploy-dev.yml', 'development-build']]) {
+  const deploy = readFileSync(new URL(`../../workflows/${file}`, import.meta.url), 'utf8');
+  const wf = parse(deploy);
 
-test('policy: the bundler secret may appear only as a presence check in the config step, and in web-env', () => {
-  assert.deepEqual(checkWorkflow('workflows/deploy.yml', deploy), []);
-  const leak = deploy.replace("HAS_VITE_BUNDLER_URL: ${{ secrets.VITE_BUNDLER_URL != '' }}", 'HAS_VITE_BUNDLER_URL: ${{ secrets.VITE_BUNDLER_URL }}');
-  assert.notEqual(leak, deploy);
-  assert.ok(checkWorkflow('workflows/deploy.yml', leak).some((e) => /VITE_BUNDLER_URL/.test(e)));
-  const fly = deploy.replace("HAS_VITE_BUNDLER_URL: ${{ secrets.VITE_BUNDLER_URL != '' }}", "HAS_VITE_BUNDLER_URL: ${{ secrets.FLY_API_TOKEN != '' }}");
-  assert.ok(checkWorkflow('workflows/deploy.yml', fly).some((e) => /FLY_API_TOKEN/.test(e)));
-});
+  test(`${file}: config job in ${buildEnv}, before the full CI, presence flags only (never a value)`, () => {
+    const job = wf.jobs.config;
+    assert.equal(String(job.environment?.name ?? job.environment), buildEnv);
+    assert.deepEqual([].concat(job.needs), ['detect']);
+    const step = job.steps.find((s) => s.id === 'config');
+    assert.match(String(step.run), /check-config\.sh/);
+    const { BUILD_ENVIRONMENT, WORKFLOW, ...env } = step.env;
+    assert.equal(BUILD_ENVIRONMENT, buildEnv);
+    assert.equal(WORKFLOW, file);
+    assert.deepEqual(Object.keys(env).sort(), REQUIRED.map((k) => `HAS_${k}`).sort());
+    for (const k of REQUIRED) {
+      const src = k === 'VITE_BUNDLER_URL' ? 'secrets' : 'vars';
+      assert.equal(env[`HAS_${k}`], `\${{ ${src}.${k} != '' }}`, k);
+    }
+    assert.equal(job.outputs.configured, '${{ steps.config.outputs.configured }}');
+  });
 
-test('detect counts only failed runs as "previously failed": a skipped (unconfigured) run concludes success', () => {
-  const detectRun = String(wf.jobs.detect.steps.find((s) => s.id === 'detect').run);
-  assert.match(detectRun, /--status failure/);
+  test(`${file}: test and build run only when configured; release depends on build (so it skips too)`, () => {
+    for (const id of ['test', 'build']) {
+      assert.ok([].concat(wf.jobs[id].needs).includes('config'), id);
+      assert.match(String(wf.jobs[id].if), /needs\.config\.outputs\.configured == 'true'/, id);
+    }
+    assert.ok([].concat(wf.jobs.release.needs).includes('build'));
+  });
+
+  test(`${file}: the bundler secret may appear only as a presence check in config, and in web-env`, () => {
+    assert.deepEqual(checkWorkflow(`workflows/${file}`, deploy), []);
+    const leak = deploy.replace("HAS_VITE_BUNDLER_URL: ${{ secrets.VITE_BUNDLER_URL != '' }}", 'HAS_VITE_BUNDLER_URL: ${{ secrets.VITE_BUNDLER_URL }}');
+    assert.notEqual(leak, deploy);
+    assert.ok(checkWorkflow(`workflows/${file}`, leak).some((e) => /VITE_BUNDLER_URL/.test(e)));
+    const fly = deploy.replace("HAS_VITE_BUNDLER_URL: ${{ secrets.VITE_BUNDLER_URL != '' }}", "HAS_VITE_BUNDLER_URL: ${{ secrets.FLY_API_TOKEN != '' }}");
+    assert.ok(checkWorkflow(`workflows/${file}`, fly).some((e) => /FLY_API_TOKEN/.test(e)));
+  });
+}
+
+test('development: the analytics beacon is optional, so an unset VITE_CF_BEACON_TOKEN in development-build is fine', () => {
+  assert.match(writeEnv, /^OPTIONAL=\([^)]*VITE_CF_BEACON_TOKEN[^)]*\)/m);
+  assert.ok(!REQUIRED.includes('VITE_CF_BEACON_TOKEN'));
 });

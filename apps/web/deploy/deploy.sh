@@ -1,18 +1,29 @@
 #!/usr/bin/env bash
 # Deploy the CryoShield web app to Fly.io (add-fly-hosting D5). Fails closed at every step.
-#   DEPLOY_HOST=cryoshield.app apps/web/deploy/deploy.sh
+#   apps/web/deploy/deploy.sh                                  # production: https://cryoshield.app (cryoshield-web)
+#   DEPLOY_TARGET=development apps/web/deploy/deploy.sh        # development: https://dev.cryoshield.app (cryoshield-web-dev)
 #   apps/web/deploy/deploy.sh --build-only   # every guard and build step, but no fly (CI build job, add-continuous-deploy H1)
 # Never pass secrets on the command line; this script needs none (fly uses its own auth).
+#
+# Targets (split-dev-and-release-deploys D5/D6): each fixes the host (= the WebAuthn RP ID the build must use), the Fly app,
+# its config and whether the site may be indexed. The development RP ID is dev.cryoshield.app and NEVER cryoshield.app.
 set -euo pipefail
 
-HOST="${DEPLOY_HOST:-cryoshield.app}"
-APP="cryoshield-web"
-WEB="$(cd "$(dirname "$0")/.." && pwd)"
-
+PROD_HOST="cryoshield.app"
 die() {
   echo "deploy: REFUSED: $*" >&2
   exit 1
 }
+
+# DEPLOY_HOST is retired: a stale invocation must not silently build for production.
+[ -z "${DEPLOY_HOST+x}" ] || die "DEPLOY_HOST is no longer supported; set DEPLOY_TARGET=production or DEPLOY_TARGET=development"
+TARGET="${DEPLOY_TARGET:-production}"
+case "$TARGET" in
+  production) HOST="$PROD_HOST" APP="cryoshield-web" CONFIG="fly.toml" NOINDEX=() ;;
+  development) HOST="dev.cryoshield.app" APP="cryoshield-web-dev" CONFIG="fly.dev.toml" NOINDEX=(--noindex) ;;
+  *) die "unknown DEPLOY_TARGET '$TARGET' (production or development)" ;;
+esac
+WEB="$(cd "$(dirname "$0")/.." && pwd)"
 
 BUILD_ONLY=0
 case "${1:-}" in
@@ -50,6 +61,11 @@ for f in "${shadow[@]}"; do
   [[ -e "$f" ]] && die "$(basename "$f") exists in apps/web; it would override .env in the production build. Remove it."
 done
 RP_ID="$(grep -E '^VITE_RP_ID=' "$WEB/.env" | tail -n 1 | cut -d= -f2- | tr -d "[:space:]\"'")"
+# A non-production build may never carry the production RP ID: code that ships to dev without a human step must not
+# be configured to request PRF outputs for production vaults (split-dev-and-release-deploys D5; residual risk T1).
+if [[ "$TARGET" != "production" && "$RP_ID" == "$PROD_HOST" ]]; then
+  die "the $TARGET build uses the production RP ID ($PROD_HOST); it must be $HOST"
+fi
 [[ "$RP_ID" == "$HOST" ]] || die "VITE_RP_ID ($RP_ID) != deploy host ($HOST)"
 
 cd "$WEB"
@@ -58,7 +74,8 @@ cd "$WEB"
 NODE_ENV=production node scripts/verify-build.mjs --real-env --expect-host "$HOST" || die "verify-build failed"
 
 # 5. Docker context = verified dist/ (minus _headers) + Caddyfile with the CSP derived from the built meta tag.
-node deploy/gen-context.mjs --dist dist --out deploy/.build --host "$HOST" || die "context generation failed"
+# Development adds X-Robots-Tag: noindex, nofollow to every response (never on production).
+node deploy/gen-context.mjs --dist dist --out deploy/.build --host "$HOST" ${NOINDEX[@]+"${NOINDEX[@]}"} || die "context generation failed"
 
 # 6. Publishable release manifest: commit, deterministic tree hash, config summary (no key values).
 node deploy/release-manifest.mjs --site deploy/.build/site --out deploy/.build/release-manifest.json \
@@ -70,5 +87,5 @@ if [ "$BUILD_ONLY" -eq 1 ]; then
   echo "deploy: build only: deploy/.build is ready for commit $(git -C "$ROOT" rev-parse --short HEAD); fly deploy not run"
   exit 0
 fi
-echo "deploy: commit $(git -C "$ROOT" rev-parse --short HEAD) -> https://$HOST ($APP)"
-fly deploy --config fly.toml --remote-only --app "$APP"
+echo "deploy: commit $(git -C "$ROOT" rev-parse --short HEAD) -> https://$HOST ($APP, $TARGET)"
+fly deploy --config "$CONFIG" --remote-only --app "$APP"

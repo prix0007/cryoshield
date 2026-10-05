@@ -35,6 +35,7 @@ const healthySite = () => ({
   headers: { ...GOOD_HEADERS },
   architecture: `<td class="mono">${ADDRESS.toLowerCase()}</td>`,
   support: `<code id="donation-address">${DONATION}</code>`,
+  robots: null, // body of /robots.txt (404 when null)
   hits: {},
   healthyAfter: 0, // number of /healthz-or-page requests before the site turns healthy (rolling deploy)
 });
@@ -53,6 +54,10 @@ before(async () => {
     if (path === '/release.json') {
       res.writeHead(site.release.status, { 'content-type': 'application/json', ...site.headers });
       return res.end(site.release.body);
+    }
+    if (path === "/robots.txt" && site.robots !== null) {
+      res.writeHead(200, { "content-type": "text/plain", ...site.headers });
+      return res.end(site.robots);
     }
     const known = ['/', '/app/', '/architecture', '/devices', '/support', '/privacy', '/healthz'];
     if (!known.includes(path)) {
@@ -318,6 +323,67 @@ test('rollback: refuses an unexpected image ref, and fails if fly or /healthz fa
   assert.notEqual((await run('rollback.sh', { PREVIOUS_IMAGE: IMAGE, STUB_FLY_FAIL: '1' })).status, 0);
   site = { ...healthySite(), status: { '/healthz': 503 } };
   assert.notEqual((await run('rollback.sh', { PREVIOUS_IMAGE: IMAGE, ROLLBACK_ATTEMPTS: '2' })).status, 0);
+});
+
+// ---- split-dev-and-release-deploys: per-target parameters ----
+const DEV_IMAGE = 'registry.fly.io/cryoshield-web-dev:deployment-01M41Z2MXSZQKZWXR97MSQG02X';
+const NOINDEX = 'noindex, nofollow';
+const devSite = () => ({ ...healthySite(), headers: { ...GOOD_HEADERS, 'x-robots-tag': NOINDEX } });
+
+test('smoke: EXPECT_NOINDEX=true (dev) passes only with X-Robots-Tag: noindex, nofollow on every page (robots.txt is not used)', async () => {
+  site = devSite();
+  const ok = await run('smoke.sh', smokeEnv({ EXPECT_NOINDEX: 'true' }));
+  assert.equal(ok.status, 0, ok.stdout + ok.stderr);
+  // whatever robots.txt the build ships (or none) does not matter for dev: the header is the control
+  site = { ...devSite(), robots: 'User-agent: *\nAllow: /\n' };
+  assert.equal((await run('smoke.sh', smokeEnv({ EXPECT_NOINDEX: 'true' }))).status, 0);
+  const cases = [
+    [{ headers: { ...GOOD_HEADERS } }, /x-robots-tag/],
+    [{ headers: { ...GOOD_HEADERS, 'x-robots-tag': 'nofollow' } }, /x-robots-tag/],
+    [{ headers: { ...GOOD_HEADERS, 'x-robots-tag': 'noindex' } }, /x-robots-tag/],
+  ];
+  for (const [over, why] of cases) {
+    site = { ...devSite(), ...over };
+    const r = await run('smoke.sh', smokeEnv({ EXPECT_NOINDEX: 'true' }));
+    assert.notEqual(r.status, 0, JSON.stringify(over));
+    assert.match(r.stdout + r.stderr, why, JSON.stringify(over));
+  }
+});
+
+test('smoke: production (EXPECT_NOINDEX=false, the default) fails if any page says noindex (dev Caddyfile shipped)', async () => {
+  site = devSite();
+  for (const env of [{ EXPECT_NOINDEX: 'false' }, {}]) {
+    const r = await run('smoke.sh', smokeEnv(env));
+    assert.notEqual(r.status, 0, JSON.stringify(env));
+    assert.match(r.stdout + r.stderr, /noindex/);
+  }
+  site = healthySite();
+  assert.equal((await run('smoke.sh', smokeEnv({ EXPECT_NOINDEX: 'false' }))).status, 0);
+  assert.equal((await run('smoke.sh', smokeEnv({ EXPECT_NOINDEX: 'yes' }))).status, 2);
+});
+
+test('previous-image and rollback work for the dev app and config, and refuse the other app\'s images', async () => {
+  const f = releases([{ Status: 'complete', ImageRef: DEV_IMAGE }]);
+  const prev = await run('previous-image.sh', { STUB_RELEASES: f, APP: 'cryoshield-web-dev' });
+  assert.equal(prev.status, 0, prev.stderr);
+  assert.match(prev.output, new RegExp(`^previous_image=${DEV_IMAGE}$`, 'm'));
+  assert.deepEqual(prev.fly, ['releases --app cryoshield-web-dev --json --image']);
+  // a production image never lands on dev, nor a dev image on production
+  assert.notEqual((await run('previous-image.sh', { STUB_RELEASES: releases([{ Status: 'complete', ImageRef: IMAGE }]), APP: 'cryoshield-web-dev' })).status, 0);
+  assert.notEqual((await run('previous-image.sh', { STUB_RELEASES: f })).status, 0);
+  site = healthySite();
+  const rb = await run('rollback.sh', { PREVIOUS_IMAGE: DEV_IMAGE, APP: 'cryoshield-web-dev', CONFIG: 'apps/web/fly.dev.toml' });
+  assert.equal(rb.status, 0, rb.stdout + rb.stderr);
+  assert.deepEqual(rb.fly, [`deploy --app cryoshield-web-dev --config apps/web/fly.dev.toml --image ${DEV_IMAGE}`]);
+  assert.notEqual((await run('rollback.sh', { PREVIOUS_IMAGE: IMAGE, APP: 'cryoshield-web-dev', CONFIG: 'apps/web/fly.dev.toml' })).status, 0);
+});
+
+test('previous-image: the "not configured" error names the target environment (DEPLOY_ENVIRONMENT)', async () => {
+  const r = await run('previous-image.sh', { STUB_RELEASES: releases([]), FLY_API_TOKEN: '', DEPLOY_ENVIRONMENT: 'development' });
+  assert.notEqual(r.status, 0);
+  assert.match(r.stdout, /add it to the development environment/);
+  const bad = await run('previous-image.sh', { STUB_RELEASES: releases([]), DEPLOY_ENVIRONMENT: 'prod;x' });
+  assert.equal(bad.status, 2);
 });
 
 test('harness: a hung (killed) script fails the test instead of counting as a non-zero exit (ECC #11)', async () => {

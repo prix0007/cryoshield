@@ -129,3 +129,47 @@ describe('deploy.sh guards', () => {
     expect(r.calls()).toEqual([]);
   });
 });
+
+describe('deploy.sh targets (split-dev-and-release-deploys)', () => {
+  it('DEPLOY_TARGET=development: dev host, RP ID dev.cryoshield.app, --noindex, cryoshield-web-dev with fly.dev.toml', () => {
+    const r = repo('dev.cryoshield.app');
+    const out = r.run({ DEPLOY_TARGET: 'development' });
+    expect(out.status, out.stderr).toBe(0);
+    expect(r.calls()).toEqual([
+      'node scripts/verify-build.mjs --real-env --expect-host dev.cryoshield.app',
+      'node deploy/gen-context.mjs --dist dist --out deploy/.build --host dev.cryoshield.app --noindex',
+      expect.stringMatching(/^node deploy\/release-manifest\.mjs .* --site-release$/),
+      'fly deploy --config fly.dev.toml --remote-only --app cryoshield-web-dev',
+    ]);
+  });
+
+  it('development refuses the production RP ID (dev code must never be able to ask for production PRF outputs)', () => {
+    const r = repo('cryoshield.app');
+    const out = r.run({ DEPLOY_TARGET: 'development' }, ['--build-only']);
+    expect(out.status).not.toBe(0);
+    expect(out.stderr).toMatch(/production RP ID/);
+    expect(r.calls()).toEqual([]);
+  });
+
+  it('production (the default, or explicit) refuses the dev RP ID and never passes --noindex', () => {
+    for (const env of [{}, { DEPLOY_TARGET: 'production' }]) {
+      const bad = repo('dev.cryoshield.app');
+      const out = bad.run(env, ['--build-only']);
+      expect(out.status).not.toBe(0);
+      expect(out.stderr).toContain('VITE_RP_ID (dev.cryoshield.app) != deploy host (cryoshield.app)');
+      const ok = repo();
+      expect(ok.run(env, ['--build-only']).status).toBe(0);
+      expect(ok.calls().some((c) => c.includes('--noindex'))).toBe(false);
+    }
+  });
+
+  it('an unknown DEPLOY_TARGET, or the retired DEPLOY_HOST, is refused before anything runs', () => {
+    for (const env of [{ DEPLOY_TARGET: 'staging' }, { DEPLOY_TARGET: 'Production' }, { DEPLOY_HOST: 'cryoshield.app' }, { DEPLOY_HOST: 'dev.cryoshield.app', DEPLOY_TARGET: 'development' }]) {
+      const r = repo();
+      const out = r.run(env);
+      expect(out.status, JSON.stringify(env)).not.toBe(0);
+      expect(out.stderr).toMatch(/DEPLOY_TARGET|DEPLOY_HOST/);
+      expect(r.calls()).toEqual([]);
+    }
+  });
+});

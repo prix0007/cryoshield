@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# What this release changes, shown on the run page BEFORE the owner approves it (OpenSpec change
-# gate-production-deploys, security review H1). Compares the commit live on the site (/release.json) with the
+# What this release changes, shown on the production run page for the owner who cut the release (OpenSpec changes
+# gate-production-deploys H1, split-dev-and-release-deploys). Compares the commit live on the site (/release.json) with the
 # release commit, writes the compare link and the changed files to the job summary, and raises a
 # "TOKEN-PATH CHANGED" warning for every file that can change what runs with the Fly token: the deploy scripts,
 # workflows, the workflow policy and its digests, fly.toml and the Docker build context.
@@ -27,7 +27,7 @@ whole_commit() {
   {
     echo "## Release review"
     echo
-    echo "**$1** Review the whole commit before approving: ${commit_url}"
+    echo "**$1** Review the whole commit: ${commit_url}"
   } >> "$SUMMARY"
   exit 0
 }
@@ -50,7 +50,7 @@ compare_url="https://github.com/${REPO}/compare/${live}...${TARGET_SHA}"
   echo
 } >> "$SUMMARY"
 if [ "$status" = "behind" ] || [ "$status" = "diverged" ]; then
-  echo "::warning title=NOT NEWER THAN LIVE::The release ${TARGET_SHA} is ${status} relative to the live ${live}; approving it would roll the site back."
+  echo "::warning title=NOT NEWER THAN LIVE::The release ${TARGET_SHA} is ${status} relative to the live ${live}; deploying it rolls the site back."
 fi
 [ "$count" -lt 300 ] || echo "::warning title=REVIEW THE WHOLE COMMIT::The compare API lists at most 300 files; this list may be incomplete."
 
@@ -66,7 +66,7 @@ if ! [ -s "$flagged" ]; then
   exit 0
 fi
 {
-  echo "### TOKEN-PATH CHANGED: read these before approving"
+  echo "### TOKEN-PATH CHANGED: read these"
   echo
   echo "These files can change what runs with the Fly token:"
   echo
