@@ -2,9 +2,10 @@
 /**
  * split-dev-and-release-deploys decision 5: the development Caddyfile (gen-context --noindex) is valid Caddy and sends
  * `X-Robots-Tag: noindex, nofollow` on EVERY response (pages, redirects, /healthz, errors), with the strict CSP
- * unchanged. Runs the pinned Caddy image from deploy/Dockerfile. Requires Docker.
+ * unchanged. Runs the pinned Caddy image from deploy/Dockerfile. Skipped when Docker is unavailable; the host port is
+ * chosen by Docker (no fixed port to collide with).
  */
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { request } from 'node:http';
 import { tmpdir } from 'node:os';
@@ -14,7 +15,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 const web = join(__dirname, '..', '..');
 const FROM = readFileSync(join(web, 'deploy', 'Dockerfile'), 'utf8').match(/^FROM (caddy:\S+@sha256:[0-9a-f]{64})$/m)![1]!;
 const NAME = `cs-web-noindex-${process.pid}`;
-const PORT = 18081;
+const DOCKER = spawnSync('docker', ['info'], { stdio: 'ignore' }).status === 0;
+let PORT = 0; // assigned by Docker (-p 127.0.0.1::8080)
 const HOST = 'cryoshield-web-dev.fly.dev';
 const META = "default-src 'none'; script-src 'self'; connect-src 'self' https://rpc.example; require-trusted-types-for 'script'";
 let dir = '';
@@ -31,6 +33,7 @@ function get(path: string, host = HOST): Promise<{ status: number; headers: Reco
   });
 }
 
+describe.skipIf(!DOCKER)('development container (noindex)', () => {
 beforeAll(async () => {
   dir = mkdtempSync(join(tmpdir(), 'cs-noindex-'));
   const html = `<html><head><meta http-equiv="Content-Security-Policy" content="${META}"></head><body>x</body></html>`;
@@ -41,10 +44,11 @@ beforeAll(async () => {
     writeFileSync(join(dir, 'dist', p, 'index.html'), html);
   }
   execFileSync('node', [join(web, 'deploy', 'gen-context.mjs'), '--dist', join(dir, 'dist'), '--out', join(dir, 'out'), '--host', HOST, '--noindex'], { stdio: 'pipe' });
-  execFileSync('docker', ['run', '-d', '--rm', '--name', NAME, '-p', `127.0.0.1:${PORT}:8080`, '--user', '65534:65534',
+  execFileSync('docker', ['run', '-d', '--rm', '--name', NAME, '-p', '127.0.0.1::8080', '--user', '65534:65534',
     '-e', 'XDG_CONFIG_HOME=/tmp/c', '-e', 'XDG_DATA_HOME=/tmp/d',
     '-v', `${join(dir, 'out', 'Caddyfile')}:/etc/caddy/Caddyfile:ro`, '-v', `${join(dir, 'out', 'site')}:/srv:ro`,
     FROM, 'caddy', 'run', '--config', '/etc/caddy/Caddyfile', '--adapter', 'caddyfile'], { stdio: 'pipe' });
+  PORT = Number(/:(\d+)\s*$/m.exec(execFileSync('docker', ['port', NAME, '8080/tcp'], { encoding: 'utf8' }))![1]);
   for (let i = 0; i < 100; i++) {
     try {
       if ((await get('/healthz')).status === 200) return;
@@ -64,7 +68,6 @@ afterAll(() => {
   }
 });
 
-describe('development container (noindex)', () => {
   it.each(['/', '/app/', '/privacy', '/healthz', '/robots.txt', '/release.json', '/nope', '/app'])('%s carries X-Robots-Tag: noindex, nofollow', async (p) => {
     const r = await get(p);
     expect(r.headers['x-robots-tag'], `${p} -> ${r.status}`).toBe('noindex, nofollow');

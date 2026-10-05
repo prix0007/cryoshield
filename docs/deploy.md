@@ -7,7 +7,7 @@ There are two targets (OpenSpec change `split-dev-and-release-deploys`, which bu
 | Site | https://cryoshield-web-dev.fly.dev | https://cryoshield.app |
 | Fly app / config | `cryoshield-web-dev` / `apps/web/fly.dev.toml` | `cryoshield-web` / `apps/web/fly.toml` |
 | Workflow | `.github/workflows/deploy-dev.yml` | `.github/workflows/deploy.yml` |
-| Deploys when | every commit on `main` (push, the 15-minute schedule, dispatch) | the **owner publishes a release** `vX.Y.Z` (or dispatches a redeploy of one) |
+| Deploys when | every commit on `main` (push, the 15-minute schedule, dispatch) | the **owner publishes a release** `vX.Y.Z` (or dispatches a redeploy **at** one: `--ref vX.Y.Z`) |
 | Human step | none | the owner's release |
 | Environments | `development-build` (config), `development` (Fly token) | `production-build` (config), `production` (Fly token) |
 | Chain | OP Sepolia | whatever `production-build` says (OP Sepolia today, OP Mainnet later) |
@@ -31,13 +31,13 @@ Both workflows share one shape. Each stage runs only if the previous one passed:
 |---|---|
 | `detect` | **Dev:** reads `https://cryoshield-web-dev.fly.dev/release.json`. If it already names `main`'s HEAD, or `main` moved on (a newer run owns the deploy), the run stops here. **Production:** runs only if *you* triggered it. It resolves the tag to its commit (`.github/scripts/deploy/release-ref.sh`) and **fails** if the tag is malformed, missing or not reachable from `main`. It also writes the diff from the live commit to the run summary (`release-diff.sh`): a **NOT NEWER THAN LIVE** warning means you are rolling back, and **TOKEN-PATH CHANGED** lists files that change what runs with the Fly token. |
 | `config` | Checks that the build environment has every required variable (names only). If not, it warns and skips the rest, and the run still succeeds. |
-| `test` | The **full** `ci.yml` (`full: true`) on the exact commit: every area job, no path filters. Production passes `ref:` so that a dispatched rollback tests the tag's commit, not `main`'s HEAD. |
+| `test` | The **full** `ci.yml` (`full: true`) on the exact commit: every area job, no path filters. Production always runs at the release tag, so that commit is the tag's (a rollback runs the old tag's own CI), not `main`'s HEAD. |
 | `build` | In the build environment, **without the Fly token**. It writes `apps/web/.env` from the environment, then runs `DEPLOY_TARGET=<target> apps/web/deploy/deploy.sh --build-only`. That applies every guard: clean tree, RP ID == the target's host (and never the production RP ID on dev), two identical builds, bundle checks. The output is uploaded as an artifact: the site, Caddyfile (with the noindex header for dev only), release manifest and `release.json`. |
 | `release` | The only job in the Fly-token environment. It runs **no node, pnpm or build code** (enforced by `workflow-policy.mjs`). It verifies the artifact against its manifest and installs pinned, checksummed flyctl. Then, **immediately before `fly deploy`**, it re-checks the commit. On dev, if the commit is no longer `main`'s HEAD, the run deploys nothing and ends green with a "Superseded" notice. On production, if the tag no longer points at the commit or the commit is no longer on `main`, the run fails. Otherwise it records the live image, runs `fly deploy`, and smoke-tests the site. The smoke test covers the pages, the security headers, the registry and donation addresses and `/release.json`; on dev it also requires the noindex header, and on production it requires its *absence*. On any failure, or a cancellation after `fly deploy` started, it **rolls back automatically** to the previous image and fails the run. |
 
 **Concurrency.**
 - Dev runs share `deploy-dev-<sha>` per commit, and the dev release job holds `deploy-development`. A newer commit's pending release replaces an older pending one.
-- Production runs share `deploy-release-<tag>`, and the release job holds `deploy-production`.
+- Production has **no** workflow-level group: one would be claimed before the owner gate, so a stranger's run (skipped at once) could hold it, or replace your pending run. `detect`, `config` and `build` use per-run groups (`github.run_id`) that no other run shares. Only the release job holds a shared group, `deploy-production`, and only runs you started reach it.
 - Neither is ever cancelled mid-deploy, and dev and production never cancel or wait for each other.
 
 Neither pipeline runs on pull requests, and `workflow-policy.mjs` enforces that in CI.
@@ -50,7 +50,7 @@ Only the repository owner can ship to production. Three independent layers enfor
 1. **The tag ruleset `release-tags`** (`.github/rulesets/release-tags.json`): only admins may create, move or delete `v*` tags.
 2. **The workflow:** the production run starts only when you trigger it (`github.triggering_actor == github.repository_owner`). This also covers a release published on an existing tag, a dispatch, or a re-run by anyone else.
    - **Caveat:** `repository_owner` is the account that owns the repository, today your user `prix0007`. If the repository is ever transferred to an **organization**, it becomes the organization's login, which no person's login equals. Production deploys then fail closed: `detect` is always skipped. Replace that gate (for example with an admin-team membership check) as part of the transfer.
-3. **The environments:** `production` and `production-build` accept only `main` and `v*` tags.
+3. **The environments:** `production` and `production-build` accept **only `v*` tags**, with no branch policy at all, not even `main`. No workflow on any branch can obtain the production token or build config. Because only admins can create `v*` tags, **the only path to production secrets is a tag you created.**
 
 The agents' machine account (Write role) therefore cannot ship to production. Agents never create tags or releases.
 
@@ -73,10 +73,10 @@ curl -s https://cryoshield.app/release.json                   # names the releas
 
 ```sh
 gh release list --limit 10                     # pick a good tag
-gh workflow run deploy.yml -f tag=v1.1.0       # runs from main: full CI on v1.1.0's commit, build, deploy, smoke
+gh workflow run deploy.yml --ref v1.1.0        # runs AT the tag: full CI on v1.1.0's commit, build, deploy, smoke
 ```
 
-This works for any `v*` tag on `main`. The CI *definition* comes from `main`, but the code tested and built is the tag's. If today's CI cannot run on a very old tag, cut a fix-forward release instead.
+This works for any `v*` tag on `main`. The run uses the tag's own workflow and CI, the ones that release passed. A dispatch from a branch (`main` included) is skipped, and could not reach the production environments anyway.
 
 A release whose deploy or smoke test fails rolls back by itself and the run fails. Fix forward with a new release, or redeploy a good tag as above.
 
@@ -95,7 +95,7 @@ Run these once. None of them prints a secret value.
 **0. The dev app, and retiring `dev.cryoshield.app`.**
 - **Already done** (2026-10-05): the Fly app `cryoshield-web-dev` exists (org `cryoshield`, region `sin`). It serves on its `fly.dev` name with Fly's own certificate, so it needs **no** DNS record and **no** `fly certs add`.
 - **Already done:** the Fly certificate for `dev.cryoshield.app` has been removed.
-- **To do:** delete the `dev` A/AAAA (or CNAME) records for `dev.cryoshield.app` at the DNS provider. A dangling record pointing at Fly could otherwise be claimed by someone else.
+- **To do before the first production release:** delete the `dev` A/AAAA (or CNAME) records for `dev.cryoshield.app` at the DNS provider. A dangling record pointing at Fly could otherwise be claimed by someone else.
 
 To check:
 
@@ -109,7 +109,7 @@ curl -sI https://cryoshield-web-dev.fly.dev/ | grep -i x-robots-tag     # noinde
 If you ever need to recreate the app: `fly apps create cryoshield-web-dev --org cryoshield`. Never add a custom domain under `cryoshield.app` to it.
 
 **1. Environments and the tag ruleset.** Four environments, with no reviewers and no admin bypass:
-- `production` and `production-build`, deployable from `main` and `v*` tags;
+- `production` and `production-build`, deployable **only from `v*` tags** (no branch);
 - `development` and `development-build`, deployable from `main` only.
 
 The same command also syncs the `release-tags` ruleset (only admins may create, move or delete `v*` tags). It is idempotent, and without `--apply` it only prints the diff.
@@ -186,21 +186,21 @@ gh secret list --repo prix0007/cryoshield   # must NOT list FLY_API_TOKEN or VIT
 
 **Not configured yet?** Until a build environment has every required variable and its `VITE_BUNDLER_URL` secret, that workflow's `config` job reports "deploy not configured" and names what is missing (never the values). Nothing after it runs.
 - **Dev:** it is a warning, and the run **succeeds**, so `main` is not marked red.
-- **Production:** a release or dispatch is deliberate, so the run **fails**. Configure, then re-run `gh workflow run deploy.yml -f tag=vX.Y.Z`. `FLY_API_TOKEN` is only visible to the release job: if it is missing, the release fails at once with "FLY_API_TOKEN is empty: add it to the <environment> environment".
+- **Production:** a release or dispatch is deliberate, so the run **fails**. Configure, then re-run `gh workflow run deploy.yml --ref vX.Y.Z`. `FLY_API_TOKEN` is only visible to the release job: if it is missing, the release fails at once with "FLY_API_TOKEN is empty: add it to the <environment> environment".
 
 **Optional hardening** (Dependabot security updates, and actions must be pinned to a full commit SHA): `.github/rulesets/apply.sh --with-ecc-review --environments --founder-hardening`, then again with `--apply`.
 
 ## Manual deploy
 
 - **Through the pipelines (preferred):**
-  - production: `gh workflow run deploy.yml -f tag=vX.Y.Z`;
+  - production: `gh workflow run deploy.yml --ref vX.Y.Z`;
   - dev: `gh workflow run deploy-dev.yml --ref main -f force=true`.
 - **From a laptop** (pipelines disabled, or GitHub down): `apps/web/deploy/deploy.sh` (production) or `DEPLOY_TARGET=development apps/web/deploy/deploy.sh` (dev), with a real `apps/web/.env` for that target and `fly auth login`. See `apps/web/deploy/README.md`.
 
 ## Rollback
 
 - **Automatic:** when a deploy or the smoke test fails, the `release` job redeploys the image that was live before (`fly releases --json --image`, validated against the app) and fails the run. The job summary shows the outcome.
-- **Production, by release:** `gh workflow run deploy.yml -f tag=<last good vX.Y.Z>`. This is the normal way.
+- **Production, by release:** `gh workflow run deploy.yml --ref <last good vX.Y.Z>`. This is the normal way.
 - **By image** (if automatic rollback was impossible, for example on the first deploy):
 
   ```sh
@@ -223,7 +223,7 @@ fly tokens list -a cryoshield-web                                   # find the o
 fly tokens create deploy -a cryoshield-web --expiry 8760h --name github-actions-deploy \
   | gh secret set FLY_API_TOKEN --env production                    # replace the secret
 fly tokens revoke <old-token-id>                                    # then revoke the old one
-gh workflow run deploy.yml -f tag=<current vX.Y.Z>                  # prove the new token works (redeploys the live release)
+gh workflow run deploy.yml --ref <current vX.Y.Z>                   # prove the new token works (redeploys the live release)
 ```
 
 If a Pimlico key changes, re-run step 3 of the setup. If any other value changes, re-run step 4 or 5, then redeploy.
@@ -231,7 +231,6 @@ If a Pimlico key changes, re-run step 3 of the setup. If any other value changes
 ## Before OP Mainnet
 
 Production's chain is changed only through `production-build` variables (`VITE_CHAIN_ID`, `VITE_RPC_URL`, the bundler and policy), plus a deployment record in `contracts/deployments/<chainId>.json`. Before that switch, meet the re-gate criterion in `openspec/changes/split-dev-and-release-deploys/design.md` → Security review:
-- `dev.cryoshield.app` with no DNS record, and nothing under `cryoshield.app` but production serving the app;
 - a required reviewer back on `production`;
 - agents only through the machine account;
 - hardware-key 2FA on the owner's account.

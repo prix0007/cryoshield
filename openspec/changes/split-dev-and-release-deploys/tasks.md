@@ -1,5 +1,7 @@
 # Tasks
 
+> **Archive after:** add-continuous-deploy, gate-production-deploys, deploy-skip-when-unconfigured.
+
 ## 1. Policy and workflows (tests first)
 
 - [x] 1.1 First, rewrite `test/deploy-workflow.test.mjs` (shared rules, both files) and `test/deploy-config.test.mjs`, and replace `test/gate-deploy.test.mjs` with `test/deploy-targets.test.mjs` (per-target rules). Cover:
@@ -9,7 +11,7 @@
   - concurrency groups;
   - no write scopes;
   - `tag-check` before `deploy` in production and `head-check` in dev;
-  - the full CI with `ref`;
+  - the full CI on the run's own commit;
   - zizmor `self-repository` once per file.
 
   Then:
@@ -18,7 +20,7 @@
   - remove `supersede` (job, script, test and stub).
 
   Proved by `npm test --prefix .github/scripts` and `node .github/scripts/workflow-policy.mjs`.
-- [x] 1.2 `ci.yml`: optional `workflow_call` input `ref`, used by every area-job checkout. Proved by the `ci.yml` assertions in `test/deploy-workflow.test.mjs`.
+- [x] 1.2 `ci.yml`: no `ref` input. Production runs at the tag, so the caller's own commit is the tagged one; the input added in an earlier revision is removed (task 8.1). Proved by the `ci.yml` assertions in `test/deploy-workflow.test.mjs`.
 - [x] 1.3 Review every run step of both token jobs, then re-pin their digests in `privileged-run-steps.json`. Proved by the policy run, and by the digest tests in `test/deploy-workflow.test.mjs`.
 
 ## 2. Deploy scripts (tests first)
@@ -121,4 +123,23 @@
 - [x] 7.7 L1: the dev `head-check` runs immediately before `deploy`; a superseded run exits 0 with a notice, and `deploy`/summary/`smoke` are skipped. The production `tag-check` also runs immediately before `deploy`. The policy enforces both.
 - [x] 7.8 L2: `check-config.sh` with `MISSING_IS_ERROR=true` (production) fails. L3: the org-owner caveat is in `design.md` and `docs/deploy.md`. L4: `fly-toml.test.ts` parses the TOML per table. L5: `deploy-sh.test.ts` drops inherited `DEPLOY_*` and asserts the gen-context call. L6: `write-env.sh` names `BUILD_ENVIRONMENT` in its messages.
 - [x] 7.9 Re-run every suite, `actionlint`, `zizmor`, `shellcheck` and `openspec validate --all --strict`; re-pin the changed dev `head-check` digest.
-- [ ] 7.10 [owner] Delete the DNS records for `dev.cryoshield.app` (its Fly certificate is already removed).
+- [ ] 7.10 [owner, **before the first production release**] Delete the DNS records for `dev.cryoshield.app` (its Fly certificate is already removed). Check with `dig +short dev.cryoshield.app`, which must print nothing.
+
+## 8. ECC review of #33 at c1ce7f6 (tests first)
+
+- [x] 8.1 HIGH, fix (a), tags only:
+  - `production` and `production-build` deploy only from `v*` tags (`environments.json`, `apply.sh` tests: no `main` policy, and a live one is removed);
+  - the `deploy.yml` gate is `owner && startsWith(github.ref, 'refs/tags/v')` for both events;
+  - the dispatch takes no inputs (the tag is `github.ref_name`, `EXPECT_SHA` is `github.sha`), and the policy forbids inputs and a branch path;
+  - `ci.yml`'s `ref` input is removed.
+- [x] 8.2 `UNCONDITIONAL` is case-insensitive; `ALWAYS()`-style cases in `deploy-workflow.test.mjs` and `deploy-targets.test.mjs`.
+- [x] 8.3 Archive order recorded in the proposal and here. `dev.cryoshield.app` DNS removal moves to before the first release (7.10).
+- [x] 8.4 Lows:
+  - no workflow-level concurrency in `deploy.yml` (it would be claimed before the owner gate; policy-enforced);
+  - the missing-config hint is `gh workflow run deploy.yml --ref vX.Y.Z`;
+  - `fly-toml.test.ts` checks `[env]`/`[mounts]`/`[[mounts]]` through the parsed table names;
+  - `deploy-sh.test.ts` strips `GIT_*` and asserts the refusals made no calls;
+  - `noindex-container.test.ts` uses a Docker-chosen port and is skipped without Docker;
+  - `gen-context.mjs` builds header lines once;
+  - the policy no longer treats `or` as an expression keyword.
+- [x] 8.5 Re-run everything, and re-pin the production `Fail loudly` digest (its rollback hint now reads `--ref`).

@@ -42,7 +42,9 @@ if [ "${#missing[@]}" -eq 0 ]; then
   exit 0
 fi
 
-msg="The ${BUILD_ENVIRONMENT} environment is missing: ${missing[*]}. Nothing was built or deployed; set them up as in docs/deploy.md (First-time setup), then re-run: gh workflow run ${WORKFLOW} (see docs/deploy.md for its inputs)"
+# The exact re-run command per workflow: production runs AT the release tag (no inputs); dev re-runs main with force.
+if [ "$WORKFLOW" = "deploy.yml" ]; then RERUN="gh workflow run deploy.yml --ref vX.Y.Z (the release tag)"; else RERUN="gh workflow run ${WORKFLOW} --ref main -f force=true"; fi
+msg="The ${BUILD_ENVIRONMENT} environment is missing: ${missing[*]}. Nothing was built or deployed; set them up as in docs/deploy.md (First-time setup), then re-run: ${RERUN}"
 if [ "$MISSING_IS_ERROR" = "true" ]; then
   echo "::error title=deploy not configured::${msg}"
   { echo "## Deploy FAILED: not configured"; echo; echo "${msg}"; } >> "$SUMMARY"

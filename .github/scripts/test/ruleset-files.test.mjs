@@ -65,14 +65,14 @@ test('release-tags: tag ruleset on refs/tags/v*, blocks create/update/delete, ad
   assert.deepEqual(t.bypass_actors, [{ actor_id: 5, actor_type: 'RepositoryRole', bypass_mode: 'always' }]);
 });
 
-test('environments: production/production-build deploy from main and v* tags; development/development-build from main only; no reviewers, no admin bypass', () => {
+test('environments: production/production-build deploy ONLY from v* tags (ECC HIGH: no branch, not even main); development/development-build from main only; no reviewers, no admin bypass', () => {
   const envs = Object.fromEntries(load('environments.json').map((e) => [e.name, e]));
   assert.deepEqual(Object.keys(envs).sort(), ['development', 'development-build', 'production', 'production-build']);
   for (const e of Object.values(envs)) {
     assert.deepEqual(e.required_reviewers, [], e.name);
     assert.equal(e.can_admins_bypass, false, e.name);
     assert.equal(e.wait_timer, 0, e.name);
-    assert.deepEqual(e.branches, ['main'], e.name);
+    assert.deepEqual(e.branches, e.name.startsWith('production') ? [] : ['main'], e.name);
   }
   assert.deepEqual(envs.production.tags, ['v*']);
   assert.deepEqual(envs['production-build'].tags, ['v*']);

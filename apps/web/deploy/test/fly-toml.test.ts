@@ -10,9 +10,13 @@ import { describe, expect, it } from 'vitest';
 const web = join(__dirname, '..', '..');
 
 /** Minimal TOML reader for these flat configs: `[table]` / `[[array-table]]` headers and `key = value` lines.
- * Keys become "<table>.<key>"; a repeated key or any line it does not understand fails the test. */
+ * Keys become "<table>.<key>"; a repeated key or any line it does not understand fails the test. Every table name,
+ * plain or array (`[[mounts]]` too), is collected in TABLES. */
+const TABLES = new WeakMap<object, Set<string>>();
 function parseToml(text: string): Record<string, string> {
   const out: Record<string, string> = {};
+  const tables = new Set<string>();
+  TABLES.set(out, tables);
   let table = '';
   for (const raw of text.split('\n')) {
     const line = raw.replace(/^([^"#]*("[^"]*"[^"#]*)*)#.*$/, '$1').trim();
@@ -20,6 +24,7 @@ function parseToml(text: string): Record<string, string> {
     const header = /^\[\[?([A-Za-z0-9_.]+)\]\]?$/.exec(line);
     if (header) {
       table = header[1]!;
+      tables.add(table);
       continue;
     }
     const kv = /^([A-Za-z0-9_]+)\s*=\s*(.+)$/.exec(line);
@@ -35,6 +40,9 @@ const text = readFileSync(join(web, 'fly.toml'), 'utf8');
 const prod = parseToml(text);
 const devText = readFileSync(join(web, 'fly.dev.toml'), 'utf8');
 const dev = parseToml(devText);
+const tablesOf = (parsed: Record<string, string>) => [...TABLES.get(parsed)!];
+// No [env] (values would ship in the image config) and no [mounts]/[[mounts]] (the image is static, nothing persists).
+const FORBIDDEN_TABLE = /^(env|mounts)(\.|$)/;
 const SHARED = [
   'build.dockerfile',
   'http_service.internal_port',
@@ -64,10 +72,21 @@ describe('fly.toml', () => {
   it('the parser rejects keys outside their table and repeated keys', () => {
     expect(parseToml('[build]\npath = "/healthz"\n')['http_service.checks.path']).toBeUndefined();
     expect(() => parseToml('app = "a"\napp = "b"\n')).toThrow(/duplicate/);
+    // [env], [mounts] and the array form [[mounts]] are all seen as forbidden tables
+    for (const t of ['[env]\nA = "1"\n', '[mounts]\nsource = "x"\n', '[[mounts]]\nsource = "x"\n', '[ env ]\n']) {
+      let tables: string[] = [];
+      try {
+        tables = tablesOf(parseToml(t));
+      } catch {
+        tables = ['env']; // a header the parser refuses is refused too
+      }
+      expect(tables.some((x) => FORBIDDEN_TABLE.test(x)), t).toBe(true);
+    }
   });
 
   it('has no env, secrets, mounts, or secret-looking values', () => {
-    expect(text).not.toMatch(/^\s*\[(env|mounts)\]/m);
+    expect(tablesOf(prod).filter((t) => FORBIDDEN_TABLE.test(t))).toEqual([]);
+    expect(tablesOf(prod)).toContain('http_service.checks');
     expect(text).not.toMatch(/VITE_|apikey|pim_|sp_[a-z]|secret\s*=|token\s*=|password/i);
   });
 
@@ -94,7 +113,7 @@ describe('fly.dev.toml (split-dev-and-release-deploys)', () => {
   });
 
   it('has no env, secrets, mounts, or secret-looking values', () => {
-    expect(devText).not.toMatch(/^\s*\[(env|mounts)\]/m);
+    expect(tablesOf(dev).filter((t) => FORBIDDEN_TABLE.test(t))).toEqual([]);
     expect(devText).not.toMatch(/VITE_|apikey|pim_|sp_[a-z]|secret\s*=|token\s*=|password/i);
   });
 });

@@ -10,10 +10,6 @@
 **Reason**: The rule now covers four environments in two workflows, and the `supersede` `actions: write` exception is removed.
 **Migration**: See "Deploy workflow restrictions per target".
 
-### Requirement: Reusable full CI run
-**Reason**: The reusable CI must also test a given commit (the tagged one) when it is called from a dispatch on `main`.
-**Migration**: See "Reusable full CI run on a given commit".
-
 ## MODIFIED Requirements
 
 ### Requirement: Unconfigured deploys skip without failing
@@ -21,7 +17,7 @@ Before the full CI, each deploy workflow SHALL check, in its build environment, 
 
 If anything is missing:
 - `deploy-dev.yml` (polled on every `main` commit) SHALL emit a `deploy not configured` warning that names the missing items and the environment and points to `docs/deploy.md`, in the log and the job summary. It SHALL skip every later job (CI, build, release) and conclude successfully, so `main` is never marked red.
-- `deploy.yml` (an owner's release or dispatch, always deliberate) SHALL emit the same message as an error, skip every later job, and **fail**.
+- `deploy.yml` (an owner's release, or a dispatch at a release tag, always deliberate) SHALL emit the same message as an error, skip every later job, and **fail**.
 
 Fully configured runs SHALL behave as before. The workflow policy SHALL allow a secret presence expression only for `VITE_BUNDLER_URL`, in the `config` step of a job in the workflow's own build environment.
 
@@ -43,13 +39,6 @@ Fully configured runs SHALL behave as before. The workflow policy SHALL allow a 
 
 ## ADDED Requirements
 
-### Requirement: Reusable full CI run on a given commit
-The CI workflow SHALL be callable by other workflows. When called with `full: true`, it MUST run every area job regardless of path filters, and it MUST report failure if any job fails. When called with a `ref`, every area job MUST check out that commit; without one, the caller's commit is used. A called run MUST NOT share a concurrency group with push or pull-request CI runs.
-
-#### Scenario: Rollback dispatch tests the tag
-- **WHEN** the production workflow is dispatched from `main` for tag `v1.1.0` and calls CI with `ref` set to that tag's commit
-- **THEN** every area job checks out and tests that commit, not `main`'s HEAD
-
 ### Requirement: Deploy workflow restrictions per target
 The workflow policy SHALL enforce, for each deploy workflow:
 
@@ -58,17 +47,18 @@ The workflow policy SHALL enforce, for each deploy workflow:
   - its first job requires `github.ref == 'refs/heads/main'`;
   - it uses only environments `development` and `development-build`.
 - **`deploy.yml` (production):**
-  - triggers only on `release` with `types: [published]` and `workflow_dispatch`;
-  - its first job requires `github.triggering_actor == github.repository_owner`, and the release-or-dispatch-from-`main` ref condition;
+  - triggers only on `release` with `types: [published]` and `workflow_dispatch` without inputs (the release tag is the run's own ref);
+  - its first job requires `github.triggering_actor == github.repository_owner` and `startsWith(github.ref, 'refs/tags/v')`, for both events;
+  - it has no workflow-level concurrency group (that group would be claimed before the owner gate);
   - it uses only environments `production` and `production-build`;
   - its release job re-checks the tag (`release-ref.sh`) before deploying.
 - **Both:**
   - no `pull_request` or `pull_request_target` trigger;
-  - an exact, never-cancelled workflow concurrency group, and a separate job-level release group (`deploy-development` or `deploy-production`);
+  - a never-cancelled job-level release group (`deploy-development` or `deploy-production`); `deploy-dev.yml` also has an exact, never-cancelled per-commit workflow group;
   - exactly one job in the release environment, holding `FLY_API_TOKEN` only in the step env of steps `deploy` and `rollback`;
   - the bundler URL only in its build environment;
   - no write scopes;
-  - no `always()`, `failure()` or `cancelled()` in a job-level condition (they are allowed only in the step conditions of the rollback and fail-loudly steps);
+  - no `always()`, `failure()` or `cancelled()`, in any letter case, in a job-level condition (they are allowed only in the step conditions of the rollback and fail-loudly steps);
   - every job that needs `config` requires `needs.config.outputs.configured == 'true'`;
   - the release job's re-check step runs immediately before the `deploy` step;
   - `deploy-dev.yml` never references `VITE_CF_BEACON_TOKEN`;
@@ -76,7 +66,7 @@ The workflow policy SHALL enforce, for each deploy workflow:
   - every run step of a token-holding job pinned by digest;
   - no build tooling in the release job.
 
-No other workflow may reference `FLY_API_TOKEN` or use any of the four deploy environments.
+No other workflow may reference `FLY_API_TOKEN` or use any of the four deploy environments; in particular only `deploy.yml` may use `production` or `production-build`.
 
 #### Scenario: Production workflow on push
 - **WHEN** `deploy.yml` gains a `push` or `schedule` trigger
@@ -88,6 +78,10 @@ No other workflow may reference `FLY_API_TOKEN` or use any of the four deploy en
 
 #### Scenario: Release after a failed build
 - **WHEN** a deploy workflow's release job condition becomes `always() && needs.detect.outputs.deploy == 'true'`
+- **THEN** the workflow policy check fails
+
+#### Scenario: Production from a branch
+- **WHEN** `deploy.yml`'s first job accepts a dispatch from `refs/heads/main`, or the dispatch gains a `tag` input
 - **THEN** the workflow policy check fails
 
 #### Scenario: Owner gate removed

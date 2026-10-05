@@ -24,14 +24,29 @@ const replaceOnce = (text, from, to) => {
 const step = (wf, job, id) => wf.jobs[job].steps.find((s) => s.id === id);
 
 const OWNER = 'github.triggering_actor == github.repository_owner';
-const REF_GATE = "((github.event_name == 'release' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'))";
+const REF_GATE = "startsWith(github.ref, 'refs/tags/v')";
 
 // ---- production ----
-test('production: triggers are exactly release (published) and workflow_dispatch with a required tag', () => {
+test('production: triggers are exactly release (published) and workflow_dispatch WITHOUT inputs (the tag is the run ref)', () => {
   assert.deepEqual(Object.keys(prod.on).sort(), ['release', 'workflow_dispatch']);
   assert.deepEqual(prod.on.release, { types: ['published'] });
-  assert.equal(prod.on.workflow_dispatch.inputs.tag.required, true);
-  assert.equal(prod.on.workflow_dispatch.inputs.tag.type, 'string');
+  assert.equal(prod.on.workflow_dispatch, null);
+  const withInput = replaceOnce(prodText, '  workflow_dispatch: # run it AT the tag', '  workflow_dispatch:\n    inputs:\n      tag:\n        type: string\n  # run it AT the tag');
+  expectError('deploy.yml', withInput, /workflow_dispatch may not take inputs/);
+});
+
+test('ECC HIGH: production never runs from a branch: the gate is the v* tag ref for both events; no workflow-level concurrency', () => {
+  // the old "dispatch from main" alternative is refused (it does not include the tag-ref conjunct)
+  const mainPath = replaceOnce(prodText, `${OWNER} && ${REF_GATE}`, `${OWNER} && ((github.event_name == 'release' && ${REF_GATE}) || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'))`);
+  expectError('deploy.yml', mainPath, /refs\/tags\/v/);
+  assert.equal(prod.concurrency, undefined);
+  const grouped = replaceOnce(prodText, 'permissions:\n  contents: read\n', 'permissions:\n  contents: read\n\nconcurrency:\n  group: deploy-release-${{ github.ref_name }}\n  cancel-in-progress: false\n');
+  expectError('deploy.yml', grouped, /no workflow-level concurrency/);
+  assert.doesNotMatch(prodText, /inputs\.|refs\/heads\/main/);
+  // job groups before the release are per run, so a stranger's run cannot hold or replace them
+  for (const id of ['detect', 'config', 'build']) assert.match(String(prod.jobs[id].concurrency.group), /\$\{\{ github\.run_id \}\}$/, id);
+  const shared = replaceOnce(prodText, '      group: deploy-production-detect-${{ github.run_id }}\n', '      group: deploy-production-detect\n');
+  expectError('deploy.yml', shared, /job 'detect': only the release job may share a concurrency group/);
 });
 
 test('production: push, schedule or other release types are refused (releases are not polled)', () => {
@@ -41,7 +56,14 @@ test('production: push, schedule or other release types are refused (releases ar
   expectError('deploy.yml', replaceOnce(prodText, '    types: [published]\n', '    types: [created]\n'), /types/);
 });
 
-test('production: the first job requires the owner AND a release tag or a dispatch from main', () => {
+test('ECC M-case: a status function in any case is refused in the first job of either workflow', () => {
+  for (const fn of ['ALWAYS()', 'Always()', 'always()']) {
+    expectError('deploy.yml', replaceOnce(prodText, `    if: ${OWNER} && `, `    if: ${fn} && ${OWNER} && `), /job 'detect'.*always\(\)/);
+    expectError('deploy-dev.yml', replaceOnce(devText, "    if: github.ref == 'refs/heads/main'\n", `    if: ${fn} && github.ref == 'refs/heads/main'\n`), /job 'detect'.*always\(\)/);
+  }
+});
+
+test('production: the first job requires the owner AND the v* tag ref', () => {
   const cond = String(prod.jobs.detect.if);
   assert.ok(cond.includes(OWNER), cond);
   assert.ok(cond.includes(REF_GATE), cond);
@@ -53,8 +75,9 @@ test('production: the first job requires the owner AND a release tag or a dispat
 test('production: detect resolves the tag (release-ref.sh) before config, CI or build, and summarises the diff', () => {
   const d = step(prod, 'detect', 'detect');
   assert.match(String(d.run), /release-ref\.sh/);
-  assert.equal(d.env.TAG, '${{ github.event.release.tag_name || inputs.tag }}');
-  assert.equal(d.env.EXPECT_SHA, "${{ github.event_name == 'release' && github.sha || '' }}");
+  // the tag is the run's own ref, and must point at the run's own commit (release event or dispatch alike)
+  assert.equal(d.env.TAG, '${{ github.ref_name }}');
+  assert.equal(d.env.EXPECT_SHA, '${{ github.sha }}');
   assert.equal(d.env.GH_TOKEN, '${{ github.token }}');
   assert.deepEqual(prod.jobs.detect.outputs, { deploy: '${{ steps.detect.outputs.deploy }}', sha: '${{ steps.detect.outputs.sha }}', tag: '${{ steps.detect.outputs.tag }}' });
   const steps = prod.jobs.detect.steps;
@@ -62,8 +85,8 @@ test('production: detect resolves the tag (release-ref.sh) before config, CI or 
   for (const id of ['config', 'test', 'build', 'release']) assert.ok([].concat(prod.jobs[id].needs).includes('detect'), id);
 });
 
-test('production: the full CI runs on the resolved commit (ref), then build and release use it', () => {
-  assert.deepEqual(prod.jobs.test.with, { full: true, ref: '${{ needs.detect.outputs.sha }}' });
+test('production: the full CI runs on the run\'s own (tagged) commit, then build and release use it', () => {
+  assert.deepEqual(prod.jobs.test.with, { full: true });
   assert.equal(prod.jobs.build.steps.find((s) => String(s.uses).startsWith('actions/checkout@')).with.ref, '${{ needs.detect.outputs.sha }}');
   assert.deepEqual(prod.jobs.release.needs, ['detect', 'build']);
 });
@@ -88,7 +111,6 @@ test('production: site, app and config; smoke expects NO noindex; chain is not h
   assert.equal(prod.jobs.release.environment.url, 'https://cryoshield.app');
   assert.equal(step(prod, 'release', 'smoke').env.EXPECT_NOINDEX, 'false');
   assert.doesNotMatch(prodText, /11155420|VITE_CHAIN_ID: "?\d/);
-  assert.deepEqual(prod.concurrency, { group: 'deploy-release-${{ github.event.release.tag_name || inputs.tag }}', 'cancel-in-progress': false });
 });
 
 // ---- development ----

@@ -8,6 +8,10 @@ import { describe, expect, it } from 'vitest';
 
 const SCRIPT = join(__dirname, '..', 'deploy.sh');
 
+// Hermetic (L5): no inherited VITE_* (would override .env), DEPLOY_* (would change the target) or GIT_* (GIT_DIR,
+// GIT_WORK_TREE, GIT_INDEX_FILE... would point git at another repository, e.g. when run from a git hook).
+const HERMETIC = Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^(VITE|DEPLOY|GIT)_/.test(k)));
+
 function repo(rpId = 'cryoshield.app') {
   const root = mkdtempSync(join(tmpdir(), 'cs-deploy-'));
   const web = join(root, 'apps', 'web');
@@ -24,13 +28,12 @@ function repo(rpId = 'cryoshield.app') {
     writeFileSync(p, `#!/bin/sh\necho "${tool} $*" >> "${log}"\nif [ "${tool}" = node ] && [ -n "$STUB_VERIFY_FAIL" ] && echo "$*" | grep -q verify-build; then echo "FAIL bundle RP ID x != y" >&2; exit 1; fi\nexit 0\n`);
     chmodSync(p, 0o755);
   }
-  const git = (...a: string[]) => spawnSync('git', a, { cwd: root, encoding: 'utf8' });
+  const git = (...a: string[]) => spawnSync('git', a, { cwd: root, encoding: 'utf8', env: HERMETIC });
   git('init', '-q');
   git('-c', 'user.email=t@t', '-c', 'user.name=t', 'add', '-A');
   git('-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'init');
   const run = (env: Record<string, string> = {}, args: string[] = []) => {
-    // Hermetic: no inherited VITE_* (would override .env) or DEPLOY_* (would change the target) from the caller (L5).
-    const clean = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('VITE_') && !k.startsWith('DEPLOY_')));
+    const clean = HERMETIC;
     return spawnSync('bash', [join(web, 'deploy', 'deploy.sh'), ...args], {
       cwd: web,
       encoding: 'utf8',
@@ -93,7 +96,7 @@ describe('deploy.sh guards', () => {
     writeFileSync(join(r.web, f), 'VITE_RP_ID=evil.example\n');
     // keep the tree clean: these files are git-ignored in the real repo
     writeFileSync(join(r.root, '.gitignore'), '.env\n.env.*\n');
-    spawnSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qam', 'ignore'], { cwd: r.root });
+    spawnSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qam', 'ignore'], { cwd: r.root, env: HERMETIC });
     const out = r.run();
     expect(out.status).not.toBe(0);
     expect(out.stderr).toContain(f);
@@ -115,7 +118,7 @@ describe('deploy.sh guards', () => {
   it('--build-only runs every guard and build step but never fly, and does not need fly (add-continuous-deploy H1)', () => {
     const r = repo();
     rmSync(join(r.bin, 'fly'));
-    spawnSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qam', 'no fly'], { cwd: r.root });
+    spawnSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qam', 'no fly'], { cwd: r.root, env: HERMETIC });
     const out = r.run({}, ['--build-only']);
     expect(out.status, out.stderr).toBe(0);
     expect(r.calls().some((c) => c.startsWith('fly'))).toBe(false);
@@ -167,6 +170,7 @@ describe('deploy.sh targets (split-dev-and-release-deploys)', () => {
       const out = bad.run(env, ['--build-only']);
       expect(out.status).not.toBe(0);
       expect(out.stderr).toContain('VITE_RP_ID (cryoshield-web-dev.fly.dev) != deploy host (cryoshield.app)');
+      expect(bad.calls()).toEqual([]); // refused before any build step
       const ok = repo();
       expect(ok.run(env, ['--build-only']).status).toBe(0);
       expect(ok.calls().some((c) => c.includes('--noindex'))).toBe(false);

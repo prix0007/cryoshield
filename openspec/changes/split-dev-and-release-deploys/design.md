@@ -18,7 +18,7 @@ The relevant pieces today:
 
 **Goals:**
 - `main` deploys to `https://cryoshield-web-dev.fly.dev` (Fly app `cryoshield-web-dev`) automatically.
-- Production deploys only from a published `v*` release, or from an owner-dispatched redeploy of a `v*` tag.
+- Production deploys only from a published `v*` release, or from an owner's dispatch **at** a `v*` tag (redeploy or rollback).
 - Only the owner can cause a production deploy.
 - Code that reaches dev without a human step can never request PRF outputs for production vaults.
 - Each Fly token is reachable only from its own workflow's release job, and the policy check proves it.
@@ -38,7 +38,7 @@ There is one file per target. The policy then has one profile per file, and toke
 
 *Alternative:* one workflow whose first job resolves the target. Rejected because environment names must be literal (review M3). One file would therefore hold jobs for both environments behind `if:` conditions, and proving that a push to `main` can never reach the `production` job would depend on condition logic instead of on which file the job is in.
 
-The file name `deploy.yml` stays with production, so the rollback command `gh workflow run deploy.yml -f tag=vX.Y.Z` reads naturally.
+The file name `deploy.yml` stays with production, so the rollback command `gh workflow run deploy.yml --ref vX.Y.Z` reads naturally.
 
 ### 2. Development: `deploy-dev.yml`
 
@@ -65,29 +65,26 @@ The shape is today's pipeline: `detect → config → test (full ci.yml) → bui
 
 - **Triggers:**
   - `release: types: [published]`;
-  - `workflow_dispatch` with a required `tag` input.
+  - `workflow_dispatch` **at a tag ref** (`gh workflow run deploy.yml --ref vX.Y.Z`), with no inputs.
 
-  There is no `push`, no `schedule` and no `pull_request`. The policy also requires `types` to be exactly `[published]`, so `created` and `edited` (which Write users can trigger) are excluded.
-- **First-job gate** (`detect`), as two top-level conjuncts the policy requires verbatim:
+  There is no `push`, no `schedule` and no `pull_request`. Both events run at `refs/tags/v*`, so the workflow file, the tested code and the deployed code all come from the admin-created tag. The tag is `github.ref_name`, never an input: an input could name a different tag than the code that runs (ECC review of #33, HIGH, fix (a): tags only). The policy also requires `types` to be exactly `[published]`, so `created` and `edited` (which Write users can trigger) are excluded.
+- **First-job gate** (`detect`), as two top-level conjuncts the policy requires verbatim (`github.triggering_actor == github.repository_owner && startsWith(github.ref, 'refs/tags/v')`):
   - `github.triggering_actor == github.repository_owner`. Only the owner can start, or *re-run*, a production deploy. `triggering_actor` is the user who re-ran a run, so an agent re-running the owner's run is refused too.
     - *Org-owner caveat (ECC L3):* `github.repository_owner` is the **account that owns the repository**. Today that is the user `prix0007`. If the repository moves to an organization, `repository_owner` becomes the organization's login, which no user's `triggering_actor` can ever equal. Production deploys then **fail closed** (the first job is always skipped) until this conjunct is replaced, for example by a check of membership in an admin team through the API. Moving the repository must include that change.
-  - `((github.event_name == 'release' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'))`. Dispatches from any branch other than `main` are skipped, because a branch could carry a modified workflow file.
+  - `startsWith(github.ref, 'refs/tags/v')`. A dispatch from any branch, `main` included, is skipped. Independently of this condition, the environments refuse every ref but `v*` tags (decision 4), so a branch's modified workflow file can never obtain production secrets.
 - **`release-ref.sh`** (new) resolves and checks the tag through the API, before any build:
   - The tag must match `^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z.-]*)?$`. This is stricter than `v*`, so names stay sane in logs and concurrency groups.
   - `GET git/ref/tags/<tag>` must answer exactly `refs/tags/<tag>`. Annotated tags are followed through `git/tags/<sha>`, for at most 5 hops, to a commit. A branch called `v1.2.3` can never shadow the tag, because the ref namespace is explicit.
-  - On a `release` event, the resolved commit must equal `github.sha` (`EXPECT_SHA`).
+  - The resolved commit must equal `github.sha` (`EXPECT_SHA`), the run's own commit, for both events.
   - `GET compare/<commit>...<main HEAD>` must be `identical` or `ahead`, which means the commit is an ancestor of, or equal to, `main`'s HEAD. Otherwise the run fails ("not reachable from main"), before the config, CI or build jobs.
   - Outputs: `deploy=true`, `sha`, `tag`.
 - **Config:** a release or dispatch is deliberate, so a missing `production-build` value **fails** the run (`MISSING_IS_ERROR=true`, ECC L2) instead of skipping green.
-- **Full CI on the tagged commit.**
-  - On a `release` event, `github.sha` *is* the tagged commit. On a dispatch, it is `main`'s HEAD.
-  - So `ci.yml`'s `workflow_call` gains an optional `ref` input that every area-job checkout uses (empty means the default, as before). The production workflow passes the resolved 40-hex commit, never the tag name.
-  - On a dispatch, the CI *definition* comes from `main` while the code is the tag's. This is acceptable for redeploys and rollbacks: today's CI rules are applied to the older code. If today's CI can no longer run on an old tag, cut a fix-forward release instead.
+- **Full CI on the tagged commit.** Both events run at the tag, so `github.sha` is the tagged commit, and the reusable `ci.yml` checks it out unchanged (no `ref` input; the one an earlier revision added is removed, along with its CodeQL cache-poisoning alerts). A rollback runs the CI definition *of the old tag*, which is the CI that release passed.
 - **Build** in `production-build` with `DEPLOY_TARGET=production`, at the resolved commit.
 - **Release** in `production` (no reviewer), concurrency `deploy-production`, never cancelled.
   - The old "still `main`'s HEAD" check is wrong for releases, because `main` normally moves on after a tag.
   - It is replaced by a step with id `tag-check`, **immediately before** `deploy`. It runs `release-ref.sh` again with `EXPECT_SHA` set to the built commit: the tag must still point at that commit, and the commit must still be reachable from `main`. If not, the run fails (a moved tag is never "superseded").
-- **Workflow concurrency:** `deploy-release-${{ github.event.release.tag_name || inputs.tag }}`, never cancelled.
+- **No workflow-level concurrency** (ECC review low). A workflow-level group is claimed *before* the owner gate is evaluated. A non-owner's dispatch at the same tag (skipped a moment later) could then hold it, or replace the owner's pending run in it. `detect`, `config` and `build` get per-run groups (`github.run_id`, policy-enforced), so no other run can share them. The only shared group is `deploy-production` on the release job, which only owner-started runs reach. Two owner runs for the same tag simply release one after the other.
 - **`release-diff.sh`** keeps running for production, as an informational `detect` step. It shows the diff from the live commit and warns "NOT NEWER THAN LIVE" on a rollback. It never blocks.
 - **Chain:** unchanged mechanism. `production-build`'s `VITE_CHAIN_ID` and RPC choose it, and the smoke test reads the chain from the verified manifest. Moving to OP Mainnet means changing environment variables only (plus the deployment record), with no workflow edit.
 - Production has no `detect`-style "already live" skip: a published release or an explicit dispatch is always a deliberate deploy.
@@ -97,7 +94,7 @@ The shape is today's pipeline: `detect → config → test (full ci.yml) → bui
 There are three independent layers:
 1. **Tag ruleset** `release-tags` (`.github/rulesets/release-tags.json`): target `tag`, `refs/tags/v*`, rules `creation`, `update` and `deletion`, bypass actor `RepositoryRole` 5 (admin) only. The agents' machine account (Write) can create no `v*` tag. `gh release create` with a new tag creates the tag, so it is blocked for them too. `apply.sh` syncs the ruleset by name and target, like `main`.
 2. **Workflow gate:** `github.triggering_actor == github.repository_owner` on the first job (decision 3, including the org-owner caveat). This covers what the ruleset cannot: Write users can publish a release on an *existing* owner-created tag, and can run `workflow_dispatch`.
-3. **Environment branch policies:** `production` and `production-build` allow `main` (dispatch) and `v*` tags (release event). A workflow on any other branch or tag gets no secrets. The dev environments allow `main` only.
+3. **Environment deployment policies:** `production` and `production-build` allow **only `v*` tags**, with no branch policy, not even `main`. A workflow on any branch gets no production secrets, whatever its file says. Because creating a `v*` tag needs admin rights (layer 1), **the only path to production secrets is an admin-created tag.** The dev environments allow `main` only.
 
 `environments.json` gains a `tags` list beside `branches`. `apply.sh` reconciles it as `tag:` deployment policies, and its existing "delete every other policy" logic covers both types.
 
@@ -163,8 +160,8 @@ Every other workflow may name none of the four environments and may not referenc
 - **T1. Dev code requesting production PRF outputs: RESOLVED.** Dev is served from `cryoshield-web-dev.fly.dev`, another registrable domain (decision 5). The browser refuses `rpId: 'cryoshield.app'` from that origin, whatever the dev code does. `deploy.sh` and `gen-context.mjs` refuse any dev host under `cryoshield.app`. `dev.cryoshield.app` is retired (its certificate is removed and its DNS records are to be deleted), and a request with that Host header is redirected to the dev host, never served.
 - **T2. An agent ships to production.** Blocked by layers 1–3 of decision 4. Write role can push branches, open PRs and dispatch workflows, but:
   - it cannot create, move or delete `v*` tags;
-  - a release it publishes on an existing tag, a dispatch, or a re-run it triggers is skipped by the owner gate;
-  - a workflow it changes on a branch gets no production secrets.
+  - `production` and `production-build` accept only `v*` tags, so no workflow it runs or modifies on any branch, `main` included, can obtain production secrets. The only path is an admin-created tag, and that tag's code is what runs;
+  - a release it publishes on an existing tag, a dispatch at a tag, or a re-run it triggers is skipped by the owner gate, and could at most redeploy an owner-tagged commit.
 
   Residual: a change merged to `main` reaches production the next time the owner publishes a release from `main`. The owner reviews the generated notes and `release-diff.sh`'s summary, which is the human step CI-C1 asked for.
 - **T3. Token confusion.** Both environments hold a secret named `FLY_API_TOKEN`, but GitHub resolves environment secrets per job environment. The policy pins:
@@ -188,19 +185,19 @@ This is the review that PR #32 lacked; that PR is folded into this change. The a
 |---|---|---|---|---|---|
 | S1 | **Auto-shipped dev code.** Code merged by an agent (PR → LLM review → auto-merge) goes live on `cryoshield-web-dev.fly.dev` with no human step. | It went to **production** the same way (after PR #32). | Dev only. Production needs an owner release. | <ul><li>PR gates: `ci-ok`, ECC review, gitleaks, osv, the OpenSpec gate.</li><li>The full CI is re-run on the merge commit.</li><li>Dev is on another registrable domain with its own RP ID, so it cannot reach production credentials (T1 resolved).</li><li>Its own Fly app and app-scoped token, and its own Pimlico key with a small cap.</li><li>noindex; no analytics.</li></ul> | **Accepted for dev.** Worst case: a broken or defaced testnet site, and dev-only vaults. |
 | S2 | **Fly-token-path scripts run with a token and no human step.** These are `.github/scripts/deploy/*`, `apps/web/fly.toml`, `apps/web/fly.dev.toml`, `apps/web/.dockerignore` and `apps/web/deploy/Dockerfile`, all from the deployed commit. | They ran with the *production* token on every merge. | On dev they run with the **dev** token only. On production they run only for an owner-cut tag, so production token use is human-gated. | <ul><li>Release-job run steps are digest-pinned (`privileged-run-steps.json`).</li><li>No build tooling or third-party actions in token jobs.</li><li>`release-diff.sh` flags TOKEN-PATH files in the production run summary.</li><li>The dev token is an **app-scoped deploy token** (`fly tokens create deploy -a cryoshield-web-dev`): it can deploy, roll back and read releases of `cryoshield-web-dev` only, and cannot touch `cryoshield-web` or the org.</li></ul> | **Accepted for dev**: worst case is a defaced or broken dev site. |
-| S3 | **Production token gated only by owner-only `v*` tags.** | A merge was enough. | It needs a published `v*` release, or a dispatch, by the owner. | <ul><li>Tag ruleset (admin-only bypass).</li><li>The `triggering_actor == repository_owner` gate (fails closed if the repository moves to an organization).</li><li>`production` accepts only `main` and `v*` refs.</li><li>The tag must be on `main`, re-checked immediately before deploy.</li></ul> | The owner's GitHub account is now the production key. It must keep 2FA (hardware key) and never share admin. |
+| S3 | **Production token gated only by owner-only `v*` tags.** | A merge was enough. | It needs a published `v*` release, or a dispatch at a `v*` tag, by the owner. The only path to the production secrets is an admin-created tag. | <ul><li>Tag ruleset (admin-only bypass).</li><li>`production` and `production-build` accept **only** `v*` tag refs, with no branch policy: no workflow on `main` or any branch can obtain the token.</li><li>The `triggering_actor == repository_owner` gate (fails closed if the repository moves to an organization).</li><li>The tag must be on `main`, re-checked immediately before deploy.</li><li>No workflow-level concurrency group that a non-owner run could claim.</li></ul> | The owner's GitHub account is now the production key. It must keep 2FA (hardware key) and never share admin. |
 | S4 | **Cross-target token use** (dev code getting the production token, or the reverse). | n/a | Blocked. | Per-file policy profiles: each workflow names only its own environments; each environment holds only its own app's token; both are proved by tests. | None known. |
 | T1 | **Dev page asserting production credentials** (`rpId: 'cryoshield.app'`). | Not applicable (no dev site). | **Resolved**: dev is on `cryoshield-web-dev.fly.dev`, another registrable domain. | The browser enforces the RP ID; `deploy.sh` and `gen-context` refuse dev hosts under `cryoshield.app`; `dev.cryoshield.app` is retired. | None. |
 
 ### Acceptance and the mainnet re-gate criterion
 
 - **Development:** S1 and S2 are accepted by the founder's request ("main merge triggers development deployment"). Dev holds no production credential and cannot assert the production RP ID.
+- **Before the first production release:** the DNS records for `dev.cryoshield.app` are deleted (its Fly certificate is already removed), so nothing under `cryoshield.app` other than the production site serves the app. The owner is doing this now (tasks 7.10).
 - **Production:** the owner-published release is the human step that CI-C1 asked for. No required reviewer is added on top.
 - **Re-gate before OP Mainnet.** Before `production-build` points at OP Mainnet, **all** of the following must hold:
   1. `production` regains a required reviewer (`"required_reviewers": ["@owner"]`, then `apply.sh --environments --apply`), so a mainnet deploy needs both a release and an approval.
   2. CI-H1 is closed: agents use the machine account only (`docs/agent-account.md`).
   3. The owner's account has hardware-key 2FA.
-  4. `dev.cryoshield.app` has no DNS record, and nothing under `cryoshield.app` other than the production site serves the app.
 
   Record the check in a `docs/reviews/` entry.
 
@@ -214,7 +211,8 @@ This is the review that PR #32 lacked; that PR is folded into this change. The a
 - **Write scopes:** none remain in the deploy workflows. The `supersede` job, which only ever cancelled runs *waiting for an approval* and was dead without one, and its `actions: write` exception were removed.
 - **Triggers:** neither workflow can run on `pull_request`; `deploy.yml` has no push or schedule; `release` is limited to `published`.
 - **Job conditions:** no status functions at job level; config-dependent jobs require `configured == 'true'` (ECC M3).
-- **Owner gate:** the policy requires it as a top-level conjunct, alongside the tag ruleset (admin-only bypass) and the tag-aware environment policies. Org-owner caveat documented.
+- **Owner gate:** the policy requires it and the tag-ref conjunct as top-level conjuncts, forbids dispatch inputs and workflow-level concurrency in `deploy.yml`, and (with the tag ruleset and the tag-only production environments) leaves an admin-created tag as the only path to production secrets. Org-owner caveat documented.
+- **Status functions** are matched case-insensitively (`ALWAYS()` is refused like `always()`).
 - **`apply.sh`:**
   - looks up the owner only when an environment names `@owner`;
   - removes a live reviewer when the committed list is empty;

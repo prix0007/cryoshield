@@ -9,20 +9,24 @@
 #   rollback, all in one job)
 #
 # Triggers: a GitHub Release published for a v* tag (gh release create vX.Y.Z --target main --generate-notes), and
-# workflow_dispatch with `tag` (redeploy or roll back: gh workflow run deploy.yml -f tag=vX.Y.Z). Never on push,
-# schedule or pull requests (enforced by .github/scripts/workflow-policy.mjs).
+# workflow_dispatch AT a v* tag ref (redeploy or roll back: gh workflow run deploy.yml --ref vX.Y.Z). The tag is always
+# the run's own ref (github.ref_name), never an input, so the workflow file, the tested code and the deployed code all
+# come from the admin-created tag. Never on push, schedule or pull requests (enforced by workflow-policy.mjs).
 #
 # Who can deploy: only the repository owner. Three independent layers (design decision 4):
 #   1. the `release-tags` ruleset (.github/rulesets/release-tags.json): only admins may create, move or delete v* tags;
 #   2. the first job runs only when github.triggering_actor is the repository owner (covers a release published on an
 #      existing tag, a dispatch, or a re-run by anyone else);
-#   3. `production` and `production-build` accept only main and v* tags as deployment refs.
+#   3. `production` and `production-build` accept ONLY v* tags as deployment refs (no branch, not even main), so the
+#      only path to production secrets is a tag that only an admin can create.
 #
-# Concurrency: per tag at the workflow level; `deploy-production` on the release job only, never cancelled (one release
-# at a time, never cut mid-deploy). Separate from the development groups, so dev and production never cancel each other.
+# Concurrency: none at the workflow level, so a run started by anyone else (skipped at once by the owner gate) can never
+# hold or replace a group the owner's run needs; detect/config/build use per-run groups (github.run_id), shared with no
+# other run. `deploy-production` on the release job only, reached only after the owner gate, never cancelled (one
+# release at a time, never cut mid-deploy). Separate from the development groups.
 #
 # Credentials: FLY_API_TOKEN (Fly deploy token scoped to cryoshield-web) lives only in the GitHub Environment
-# `production` (main and v* tags, no reviewer: the owner's release is the human step) and is used only by the `deploy`
+# `production` (v* tags only, no reviewer: the owner's release is the human step) and is used only by the `deploy`
 # and `rollback` steps of the release job, which runs no node/pnpm or build code. Build config (VITE_* and
 # VITE_BUNDLER_URL) lives in `production-build`; it decides the chain (OP Sepolia today, OP Mainnet later), nothing
 # here is chain-specific. Runbook: docs/deploy.md.
@@ -32,19 +36,10 @@ name: Deploy (production)
 on:
   release:
     types: [published]
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: Release tag to (re)deploy, e.g. v1.2.3 (must be on main)
-        type: string
-        required: true
+  workflow_dispatch: # run it AT the tag: gh workflow run deploy.yml --ref vX.Y.Z (no inputs)
 
 permissions:
   contents: read
-
-concurrency:
-  group: deploy-release-${{ github.event.release.tag_name || inputs.tag }}
-  cancel-in-progress: false
 
 env:
   NODE_VERSION: "22"
@@ -60,9 +55,12 @@ jobs:
   # release event's commit, or is not reachable from main.
   detect:
     name: detect
-    if: github.triggering_actor == github.repository_owner && ((github.event_name == 'release' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'))
+    if: github.triggering_actor == github.repository_owner && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    concurrency: # per run: nothing shared with any other run, so no run can hold or replace it (no workflow-level group)
+      group: deploy-production-detect-${{ github.run_id }}
+      cancel-in-progress: false
     permissions:
       contents: read # the tag, main's HEAD and the compare API; the deploy scripts
     outputs:
@@ -80,9 +78,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          TAG: ${{ github.event.release.tag_name || inputs.tag }}
-          # On a release event the tag must point at the event's commit; a dispatch has nothing to compare.
-          EXPECT_SHA: ${{ github.event_name == 'release' && github.sha || '' }}
+          # The run's own ref (release event or dispatch, both at refs/tags/v*), so the tag must point at github.sha.
+          TAG: ${{ github.ref_name }}
+          EXPECT_SHA: ${{ github.sha }}
         run: .github/scripts/deploy/release-ref.sh
       # Informational, never blocks: the diff from the live commit, token-path files flagged, and a warning when the
       # release is not newer than what is live (a rollback).
@@ -103,6 +101,9 @@ jobs:
     if: needs.detect.outputs.deploy == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    concurrency: # per run: nothing shared with any other run, so no run can hold or replace it (no workflow-level group)
+      group: deploy-production-config-${{ github.run_id }}
+      cancel-in-progress: false
     environment:
       name: production-build # presence checks only
     permissions:
@@ -132,7 +133,7 @@ jobs:
           HAS_VITE_RP_NAME: ${{ vars.VITE_RP_NAME != '' }}
         run: .github/scripts/deploy/check-config.sh
 
-  # The FULL CI on the tagged commit. On a dispatch the run's own commit is main's HEAD, so `ref` pins the checkout.
+  # The FULL CI on the tagged commit (the run's own commit: it runs at the tag ref).
   test:
     name: test
     needs: [detect, config]
@@ -140,7 +141,6 @@ jobs:
     uses: ./.github/workflows/ci.yml # not `$/...`: actionlint 1.7.12 rejects it (rhysd/actionlint#711); zizmor ignore in .github/zizmor.yml
     with:
       full: true
-      ref: ${{ needs.detect.outputs.sha }}
     permissions:
       contents: read # the called CI checks out code
       pull-requests: read # the most any called job declares (its PR path filter, skipped here)
@@ -154,6 +154,9 @@ jobs:
     if: needs.detect.outputs.deploy == 'true' && needs.config.outputs.configured == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    concurrency: # per run: nothing shared with any other run, so no run can hold or replace it (no workflow-level group)
+      group: deploy-production-build-${{ github.run_id }}
+      cancel-in-progress: false
     environment:
       name: production-build # build config only; never the Fly token
     permissions:
@@ -356,7 +359,7 @@ jobs:
             echo "### Release ${TAG} (\`$SHA\`) FAILED"
             echo ""
             echo "deploy: **${DEPLOY:-not run}**, smoke test: **${SMOKE:-not run}**, automatic rollback: **${ROLLBACK:-not attempted}**."
-            echo "Fix forward with a new release, or redeploy a good one: gh workflow run deploy.yml -f tag=<vX.Y.Z> (docs/deploy.md -> Rollback)."
+            echo "Fix forward with a new release, or redeploy a good one: gh workflow run deploy.yml --ref <vX.Y.Z> (docs/deploy.md -> Rollback)."
           } >> "${GITHUB_STEP_SUMMARY}"
           echo "::error title=deploy::Release ${TAG} ($SHA) failed (deploy: ${DEPLOY:-not run}, smoke: ${SMOKE:-not run}, rollback: ${ROLLBACK:-not attempted})."
           exit 1

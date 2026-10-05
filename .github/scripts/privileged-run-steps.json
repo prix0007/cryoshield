@@ -24,7 +24,7 @@
     "release/Record the release in the job summary": "5ea4edf37a1847b0ce775e3c34393edfacd2b41aa0ddb85f466e70343984e8b7",
     "release/Smoke test the live site": "ec5e7aa144d8beb9e184b36cef9bff539246213ea98bfb1b7c04dc3604f55ef2",
     "release/Roll back to the previous release": "99353c10d5d7ce0e22f85051509d133857926a5c63beb0d19d397522f6ee47de",
-    "release/Fail loudly": "efcbba7249bf6109e6e416ea0443d9f0c09b85522cf89830995a96a71f8f0968"
+    "release/Fail loudly": "074b82f9213bc2e850566f5d23bfe35141e9c1b3ee3a4f9e96a9c482f9d09be1"
   },
   "issue-triage.yml": {
     "ack/Acknowledge the issue (once)": "29a3a848fa999461994f83b2b7e8716ed04ff552d067f7a6320994f5906718e5",

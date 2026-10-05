@@ -175,7 +175,7 @@ Both pipelines run the same stages:
 3. **build** (no deploy token): run the guarded `DEPLOY_TARGET=<target> apps/web/deploy/deploy.sh --build-only` in the target's build environment (`development-build` or `production-build`).
 4. **release** (Environment `development` or `production`, no manual approval): run pinned flyctl on the verified build artifact, then check the routes, headers (noindex on dev only), registry address and `/release.json`. On failure, roll back to the previous image automatically in the same job.
 
-Neither pipeline runs on pull requests. To roll production back, run `gh workflow run deploy.yml -f tag=vX.Y.Z` with an earlier release. To redeploy dev, run `gh workflow run deploy-dev.yml --ref main -f force=true`. See [`docs/deploy.md`](docs/deploy.md) for first-time setup and token rotation.
+Neither pipeline runs on pull requests. To roll production back, run `gh workflow run deploy.yml --ref vX.Y.Z` with an earlier release tag. Production secrets are reachable only from `v*` tags, which only admins can create. To redeploy dev, run `gh workflow run deploy-dev.yml --ref main -f force=true`. See [`docs/deploy.md`](docs/deploy.md) for first-time setup and token rotation.
 
 ## Support the project
 

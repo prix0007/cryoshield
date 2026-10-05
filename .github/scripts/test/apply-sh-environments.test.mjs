@@ -53,8 +53,8 @@ const policies = (...keys) => ({
   branch_policies: keys.map((k, i) => (k.startsWith('tag:') ? { id: 50 + i, name: k.slice(4), type: 'tag' } : { id: 50 + i, name: k, type: 'branch' })),
 });
 const inSyncEnvs = () => ({
-  production: { env: envLive({ name: 'production', bypass: false }), policies: policies('main', 'tag:v*') },
-  'production-build': { env: envLive({ name: 'production-build', bypass: false }), policies: policies('main', 'tag:v*') },
+  production: { env: envLive({ name: 'production', bypass: false }), policies: policies('tag:v*') },
+  'production-build': { env: envLive({ name: 'production-build', bypass: false }), policies: policies('tag:v*') },
   development: { env: envLive({ name: 'development', bypass: false }), policies: policies('main') },
   'development-build': { env: envLive({ name: 'development-build', bypass: false }), policies: policies('main') },
 });
@@ -108,7 +108,7 @@ test('--environments dry run with all four environments missing: diff, exit 3, n
   assert.deepEqual(r.writes, []);
 });
 
-test('--environments --apply creates both: no reviewer, no admin bypass, self-approval allowed, main only', () => {
+test('--environments --apply creates all four: no reviewer, no admin bypass; production from v* tags only, dev from main only', () => {
   const r = run({ args: ['--environments', '--apply'] });
   assert.equal(r.status, 0, r.stderr + r.stdout);
   assert.match(r.stdout, /re-check: in sync/);
@@ -125,14 +125,15 @@ test('--environments --apply creates both: no reviewer, no admin bypass, self-ap
   assert.ok(putBuild);
   assert.deepEqual(r.read('body-PUT-production-build.json').reviewers, []);
   for (const n of ['production', 'production-build', 'development', 'development-build']) {
-    assert.ok(r.writes.includes(`api -X POST repos/prix0007/cryoshield/environments/${n}/deployment-branch-policies -f name=main -f type=branch`), n);
+    // ECC HIGH: production environments get NO branch policy at all, so no workflow on main can reach their secrets
+    assert.equal(r.writes.includes(`api -X POST repos/prix0007/cryoshield/environments/${n}/deployment-branch-policies -f name=main -f type=branch`), n.startsWith('development'), n);
     assert.equal(r.read(`env-${n}.json`).can_admins_bypass, false, n);
     assert.deepEqual(r.read(`body-PUT-${n}.json`).reviewers, [], n);
   }
   // split-dev-and-release-deploys: production deploys from main (dispatch) and v* tags (release event); dev from main only.
   for (const n of ['production', 'production-build']) {
     assert.ok(r.writes.includes(`api -X POST repos/prix0007/cryoshield/environments/${n}/deployment-branch-policies -f name=v* -f type=tag`), n);
-    assert.deepEqual(r.read(`policies-${n}.json`).branch_policies.map((p) => `${p.type}:${p.name}`).sort(), ['branch:main', 'tag:v*'], n);
+    assert.deepEqual(r.read(`policies-${n}.json`).branch_policies.map((p) => `${p.type}:${p.name}`), ['tag:v*'], n);
   }
   for (const n of ['development', 'development-build']) {
     assert.deepEqual(r.read(`policies-${n}.json`).branch_policies.map((p) => `${p.type}:${p.name}`), ['branch:main'], n);
@@ -141,14 +142,14 @@ test('--environments --apply creates both: no reviewer, no admin bypass, self-ap
 
 test("today's live production (admin bypass, no reviewer, an extra branch policy) is fixed; an in-sync production-build is untouched", () => {
   const envs = inSyncEnvs();
-  envs.production = { env: envLive({ name: 'production' }), policies: policies('main', 'tag:v*', 'release/*') };
+  envs.production = { env: envLive({ name: 'production' }), policies: policies('tag:v*', 'release/*') };
   const r = run({ envs, args: ['--environments', '--apply'] });
   assert.equal(r.status, 0, r.stderr + r.stdout);
   assert.match(r.stdout, /-.*"can_admins_bypass": true/);
   assert.match(r.stdout, /-.*branch:release\/\*/);
   assert.deepEqual(r.writes.map((c) => c.split(' --input ')[0]), [
     'api -X PUT repos/prix0007/cryoshield/environments/production',
-    'api -X DELETE repos/prix0007/cryoshield/environments/production/deployment-branch-policies/52',
+    'api -X DELETE repos/prix0007/cryoshield/environments/production/deployment-branch-policies/51',
   ]);
   assert.match(r.stdout, /environment 'production-build': in sync/);
 });
@@ -163,14 +164,18 @@ test('--environments is idempotent: in sync means no write, dry run or apply', (
   }
 });
 
-test('split-dev-and-release-deploys: a missing v* tag policy on production is added; a v* tag policy on development is removed', () => {
+test('ECC HIGH: a live main branch policy on production (the old layout) is removed and v* added; a v* tag policy on development is removed', () => {
   const envs = inSyncEnvs();
   envs.production.policies = policies('main');
+  envs['production-build'].policies = policies('main', 'tag:v*');
   envs.development.policies = policies('main', 'tag:v*');
   const r = run({ envs, args: ['--environments', '--apply'] });
   assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.match(r.stdout, /-\s+"branch:main"/);
   assert.deepEqual(r.writes, [
     'api -X POST repos/prix0007/cryoshield/environments/production/deployment-branch-policies -f name=v* -f type=tag',
+    'api -X DELETE repos/prix0007/cryoshield/environments/production/deployment-branch-policies/50',
+    'api -X DELETE repos/prix0007/cryoshield/environments/production-build/deployment-branch-policies/50',
     'api -X DELETE repos/prix0007/cryoshield/environments/development/deployment-branch-policies/51',
   ]);
   assert.match(r.stdout, /re-check: in sync/);

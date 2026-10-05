@@ -113,7 +113,7 @@ Do not probe the rulesets or the environments with a write: a ruleset `PUT` of `
 
 Then, as the owner, confirm that nothing changed: `.github/rulesets/apply.sh --with-ecc-review --environments` must report "in sync".
 
-To see that the machine user cannot release, as the machine user: pushing a tag `v0.0.0-probe` must be rejected by the `release-tags` ruleset, and `gh workflow run deploy.yml -f tag=<existing tag>` must end with its `detect` job **skipped** (the production workflow runs only for the owner).
+To see that the machine user cannot release, as the machine user: pushing a tag `v0.0.0-probe` must be rejected by the `release-tags` ruleset, and `gh workflow run deploy.yml --ref <existing tag>` must end with its `detect` job **skipped** (the production workflow runs only for the owner). A dispatch on `main` cannot even reach the production environments, which accept only `v*` tags.
 
 **What Write still allows.**
 - **Changing the scripts that the release jobs run with a Fly token.** The machine user can open PRs that change `.github/scripts/deploy/`, `apps/web/fly.toml`, `apps/web/fly.dev.toml` or the Docker context, and those PRs auto-merge.

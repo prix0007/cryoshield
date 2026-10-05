@@ -103,7 +103,8 @@ const RESTORE_STEP = 'Restore agent configuration from the base commit';
 // pinned by digest, so no run step changes without a reviewed digest update.
 const EXECUTES_CHECKOUT =
   /(^|[\s;&|(`!])(\.{1,2}\/\S*|\/(usr\/)?(local\/)?bin\/\S+|(ba|z|da|k)?sh\b|source\s|\.\s+\S|node\b|python3?\b|pip3?\b|perl\b|ruby\b|php\b|awk\s+-f|tsx\b|npm\b|pnpm\b|npx\b|yarn\b|make\b|uvx?\b|bunx?\b|deno\b|go\s+(run|build|test|generate)\b|cargo\b|forge\b|anvil\b|docker\b|eval\b|exec\b|env\s|xargs\b|chmod\s+\+x|git\s+-c\s)/m;
-const UNCONDITIONAL = /\b(always|failure|cancelled)\s*\(/;
+// Case-insensitive: GitHub expression functions are (ALWAYS() works), so the check must be too (ECC review M-case).
+const UNCONDITIONAL = /\b(always|failure|cancelled)\s*\(/i;
 const norm = (s) => String(s ?? '').replace(/\s+/g, ' ').trim();
 // Full-line shell comments only; anything after code on a line is still checked (fails closed).
 const withoutComments = (run) => String(run).split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
@@ -428,14 +429,17 @@ export function checkWorkflow(file, text) {
 // One profile per deploy workflow (split-dev-and-release-deploys D1/D7). Each file may name ONLY its own two environments,
 // so each Fly token's environment is reachable from exactly one workflow's release job. Every value is literal.
 const OWNER_GATE = 'github.triggering_actor == github.repository_owner';
-const RELEASE_REF_GATE =
-  "((github.event_name == 'release' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'))";
+// Production runs only AT a v* tag ref, for the release event and for a dispatch alike (ECC review HIGH: no main path).
+const RELEASE_REF_GATE = "startsWith(github.ref, 'refs/tags/v')";
 export const DEPLOY_PROFILES = {
-  // Production: only an owner-published v* release, or the owner's dispatch from main with a `tag` (redeploy/rollback).
+  // Production: only an owner-published v* release, or the owner's dispatch AT a v* tag (redeploy/rollback).
   'deploy.yml': {
     triggers: ['release', 'workflow_dispatch'],
     releaseTypes: ['published'],
-    concurrency: 'deploy-release-${{ github.event.release.tag_name || inputs.tag }}',
+    // the tag is the run's own ref (github.ref_name); an input could name another tag than the code that runs
+    dispatchInputs: false,
+    // no workflow-level group: it is claimed before the owner gate, so anyone's skipped run could hold or replace it
+    concurrency: null,
     firstJob: [OWNER_GATE, RELEASE_REF_GATE],
     releaseEnv: 'production',
     buildEnv: 'production-build',
@@ -478,7 +482,7 @@ const BUILD_TOOLING = /(^|[\s;&|(`!/])(node|npm|npx|pnpm|yarn|bunx?|deno|vite|ts
 const exprsOf = (node) => strings(node).flatMap((s) => [...s.matchAll(/\$\{\{([\s\S]*?)\}\}/g)].map((m) => m[1]));
 const usesSecret = (node, re = /\bsecrets\b/i) => exprsOf(node).some((e) => re.test(e) && !/^\s*secrets\.GITHUB_TOKEN\s*$/i.test(e));
 
-// Split a job condition into its top-level `&&` conjuncts (parentheses respected) and report any top-level `||`/`or`,
+// Split a job condition into its top-level `&&` conjuncts (parentheses respected) and report any top-level `||`,
 // so `a && (b || c)` is fine but `a || true` or `a && b || true` is not (ECC review #3).
 export function splitCondition(cond) {
   const text = String(cond ?? '');
@@ -500,7 +504,7 @@ export function splitCondition(cond) {
       conjuncts.push(norm(text.slice(start, i)));
       start = i + 2;
       i++;
-    } else if (depth === 0 && (text.startsWith('||', i) || /^\bor\b/.test(text.slice(i)) && /\W/.test(text[i - 1] ?? ' '))) {
+    } else if (depth === 0 && text.startsWith('||', i)) {
       topLevelOr = true;
     }
   }
@@ -525,8 +529,14 @@ function checkDeploy(file, name, wf, on) {
     if (JSON.stringify(types) !== JSON.stringify(profile.releaseTypes ?? null)) err(`release must be limited to types: [${(profile.releaseTypes ?? []).join(', ')}] (edited/created releases never deploy)`);
   }
   const c = wf.concurrency;
-  if (!isObj(c) || norm(c.group) !== profile.concurrency || c['cancel-in-progress'] !== false) {
+  if (profile.concurrency === null) {
+    if (c !== undefined) err('no workflow-level concurrency: it is claimed before the owner gate (a non-owner run could hold or replace it); use the release job\'s group');
+  } else if (!isObj(c) || norm(c.group) !== profile.concurrency || c['cancel-in-progress'] !== false) {
     err(`workflow concurrency must be { group: ${profile.concurrency}, cancel-in-progress: false } (never cancelled)`);
+  }
+  if (profile.dispatchInputs === false && on.includes('workflow_dispatch')) {
+    const d = isObj(wf.on) ? wf.on.workflow_dispatch : undefined;
+    if (isObj(d) && d.inputs !== undefined) err('workflow_dispatch may not take inputs: the release tag is the run\'s own ref (gh workflow run deploy.yml --ref vX.Y.Z)');
   }
   const releaseJobs = Object.entries(isObj(wf.jobs) ? wf.jobs : {}).filter(([, j]) => isObj(j) && envName(j.environment) === profile.releaseEnv);
   if (releaseJobs.length > 1) err(`only one job may use environment ${profile.releaseEnv} (one release job), found ${releaseJobs.map(([i]) => i).join(', ')}`);
@@ -557,6 +567,14 @@ function checkDeploy(file, name, wf, on) {
     }
     const envn = envName(job.environment);
     const isRelease = envn === profile.releaseEnv;
+    // Without a workflow-level group, any other job group must be per run: a shared one would be claimed by a
+    // non-owner's run (skipped a moment later) and could hold or replace the owner's (ECC review low).
+    if (profile.concurrency === null && !isRelease && job.concurrency !== undefined) {
+      const jc = job.concurrency;
+      if (!isObj(jc) || !String(jc.group ?? '').includes('${{ github.run_id }}') || jc['cancel-in-progress'] !== false) {
+        err(`job '${id}': only the release job may share a concurrency group; use a per-run group (... \${{ github.run_id }}, cancel-in-progress: false)`);
+      }
+    }
     if (job.environment !== undefined && !allowedEnvs.includes(envn)) err(`job '${id}': environment '${envn}' is not allowed here; ${name} may only use ${allowedEnvs.join(' and ')}`);
     if (usesSecret(job) && !allowedEnvs.includes(envn)) err(`job '${id}' uses secrets, so it must run in environment ${allowedEnvs.join(' or ')}`);
     const tokenJob = strings(job).some((s) => /FLY_API_TOKEN/i.test(s));

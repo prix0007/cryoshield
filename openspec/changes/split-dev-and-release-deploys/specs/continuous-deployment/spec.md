@@ -68,7 +68,9 @@ The development site SHALL be served from `https://cryoshield-web-dev.fly.dev`, 
 ### Requirement: Production releases from published tags
 Production (`https://cryoshield.app`, Fly app `cryoshield-web`) SHALL be deployed only in two cases:
 - a GitHub Release is published for a tag matching `v<major>.<minor>.<patch>[-<pre>]`;
-- the repository owner dispatches the production workflow from `main` with such a tag, to redeploy or roll back.
+- the repository owner dispatches the production workflow **at** such a tag (`--ref vX.Y.Z`), to redeploy or roll back.
+
+In both cases the run's own ref MUST be the `v*` tag; the tag SHALL be taken from that ref, never from an input.
 
 The tagged commit MUST be reachable from `main`'s HEAD, or the run MUST fail before any build. The full CI MUST pass on the tagged commit, the build MUST use `production-build`, and the release MUST run in `production`. Right before deploying, the release MUST re-check that the tag still points at the built commit and that the commit is still reachable from `main`. Production SHALL use the chain configured in `production-build`, and no chain SHALL be hardcoded in the workflow. Releases SHALL NOT be polled.
 
@@ -81,15 +83,19 @@ The tagged commit MUST be reachable from `main`'s HEAD, or the run MUST fail bef
 - **THEN** the run fails in its first job, and nothing is built or deployed
 
 #### Scenario: Rollback to an earlier release
-- **WHEN** the owner runs `gh workflow run deploy.yml -f tag=v1.1.0`
+- **WHEN** the owner runs `gh workflow run deploy.yml --ref v1.1.0`
 - **THEN** the production workflow tests, builds and deploys the commit of `v1.1.0`
+
+#### Scenario: Dispatch from a branch
+- **WHEN** anyone dispatches the production workflow on `main` or any other branch
+- **THEN** its first job is skipped, and no job can obtain `production` or `production-build` secrets, because those environments accept only `v*` tags
 
 #### Scenario: Merge to main
 - **WHEN** a pull request is merged into `main`
 - **THEN** the production workflow does not run
 
 ### Requirement: Only the owner can trigger production
-Creating, updating and deleting tags `refs/tags/v*` SHALL be restricted by a tag ruleset, kept as code and synced by `.github/rulesets/apply.sh`, whose only bypass actor is the repository admin role. The production workflow SHALL run only when the triggering actor is the repository owner. The `production` and `production-build` environments SHALL be deployable only from `main` and from `v*` tags.
+Creating, updating and deleting tags `refs/tags/v*` SHALL be restricted by a tag ruleset, kept as code and synced by `.github/rulesets/apply.sh`, whose only bypass actor is the repository admin role. The production workflow SHALL run only when the triggering actor is the repository owner. The `production` and `production-build` environments SHALL be deployable ONLY from `v*` tags, with no branch policy at all (not even `main`), so the only path to production secrets is a tag that only an admin can create.
 
 #### Scenario: Agent creates a release tag
 - **WHEN** the agents' machine account (Write role) tries to push tag `v9.9.9`, or to create a release that would create it

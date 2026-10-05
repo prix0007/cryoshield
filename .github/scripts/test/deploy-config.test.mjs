@@ -58,9 +58,12 @@ test('the warning names the build environment and the workflow to re-run (split-
   const r = run({ ...allTrue(), HAS_VITE_RP_ID: 'false', BUILD_ENVIRONMENT: 'development-build', WORKFLOW: 'deploy-dev.yml' });
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stdout, /The development-build environment is missing: VITE_RP_ID/);
-  assert.match(r.stdout, /gh workflow run deploy-dev\.yml/);
+  assert.match(r.stdout, /re-run: gh workflow run deploy-dev\.yml --ref main -f force=true/);
   const d = run({ ...allTrue(), HAS_VITE_RP_ID: 'false' });
   assert.match(d.stdout, /The production-build environment is missing/);
+  // production runs AT the release tag, with no inputs (ECC low: the hint must be runnable)
+  assert.match(d.stdout, /re-run: gh workflow run deploy\.yml --ref vX\.Y\.Z/);
+  assert.doesNotMatch(d.stdout, /-f tag=/);
   for (const bad of [{ BUILD_ENVIRONMENT: 'prod build' }, { WORKFLOW: 'x.yml;true' }]) {
     assert.equal(run({ ...allTrue(), ...bad }).status, 2, JSON.stringify(bad));
   }

@@ -153,7 +153,8 @@ for (const [file] of Object.entries(TARGETS)) {
   const wf = parse(text);
 
   test(`${file}: ECC M3: no always()/failure()/cancelled() in a JOB condition, alone or combined`, () => {
-    for (const fn of ['always()', 'failure()', 'cancelled()', '!cancelled()']) {
+    // case-insensitive, like GitHub's expression functions (ECC M-case)
+    for (const fn of ['always()', 'failure()', 'cancelled()', '!cancelled()', 'ALWAYS()', 'Failure()', 'CANCELLED ()']) {
       const combined = replaceOnce(text, "    needs: [detect, build]\n    if: needs.detect.outputs.deploy == 'true'\n", `    needs: [detect, build]\n    if: "${fn} && needs.detect.outputs.deploy == 'true'"\n`);
       expectError(file, combined, /job 'release'.*always\(\), failure\(\) and cancelled\(\)/);
     }
@@ -178,7 +179,8 @@ for (const [file] of Object.entries(TARGETS)) {
 
 test('deploy.yml and deploy-dev.yml never share a concurrency group', () => {
   const [p, d] = ['deploy.yml', 'deploy-dev.yml'].map((f) => parse(real(f)));
-  assert.notEqual(p.concurrency.group, d.concurrency.group);
+  assert.equal(p.concurrency, undefined); // production: only the release job's group, behind the owner gate
+  assert.equal(d.concurrency.group, 'deploy-dev-${{ github.sha }}');
   assert.notEqual(p.jobs.release.concurrency.group, d.jobs.release.concurrency.group);
 });
 
@@ -201,19 +203,18 @@ test('the privileged workflows may not use the Fly token or any environment eith
   expectError('auto-merge.yml', am.replace('      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n', '      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n      T: ${{ secrets.FLY_API_TOKEN }}\n'), /FLY_API_TOKEN/);
 });
 
-test('ci.yml: `full` forces every area job on; `ref` (optional) is checked out by every area job', () => {
+test('ci.yml: `full` forces every area job on; every area job checks out the caller\'s own commit (no `ref` input)', () => {
   const wf = parse(ci);
   assert.equal(wf.on.workflow_call.inputs.full.type, 'boolean');
-  assert.equal(wf.on.workflow_call.inputs.ref.type, 'string');
-  assert.equal(wf.on.workflow_call.inputs.ref.required, false);
-  assert.equal(wf.on.workflow_call.inputs.ref.default, '');
+  // production runs AT the tag, so its own commit is the tagged one; a ref input is not needed (ECC HIGH, CodeQL)
+  assert.deepEqual(Object.keys(wf.on.workflow_call.inputs), ['full']);
   const forced = Object.entries(wf.jobs).filter(([id]) => !['changes', 'pr-checks', 'ci-ok'].includes(id));
   assert.ok(forced.length >= 7);
   for (const [id, job] of forced) {
     assert.match(String(job.if), /inputs\.full \|\|/, id);
     const checkouts = job.steps.filter((s) => String(s.uses).startsWith('actions/checkout@'));
     assert.ok(checkouts.length >= 1, id);
-    for (const c of checkouts) assert.equal(c.with?.ref, '${{ inputs.ref }}', id);
+    for (const c of checkouts) assert.equal(c.with?.ref, undefined, id);
   }
   assert.match(String(wf.concurrency.group), /github\.workflow/);
 });
