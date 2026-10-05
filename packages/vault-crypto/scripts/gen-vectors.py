@@ -2,7 +2,8 @@
 """Generate packages/vault-crypto/test-vectors/v1.json.
 
 An independent implementation of docs/spec/vault-format-v1.md in Python,
-using only the `cryptography` library (AES-GCM, HKDF) and hashlib. It shares
+using only the `cryptography` library (AES-GCM, HKDF), hashlib, and
+pycryptodome's Keccak-256 (registry v2 vaultId derivation only). It shares
 no code with the TypeScript library. Shamir sharing is reimplemented here from
 the spec (GF(2^8)/0x11B, the shamir-secret-sharing 0.0.4 randomness order), so
 the vectors cross-check the npm package, too.
@@ -27,6 +28,7 @@ from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+from Crypto.Hash import keccak
 
 OUT = Path(__file__).resolve().parent.parent / "test-vectors" / "v1.json"
 
@@ -71,6 +73,22 @@ def nonzero(b: bytes) -> bytes:
 
 
 # --------------------------------------------------------------- primitives
+def keccak256(data: bytes) -> bytes:
+    """Ethereum Keccak-256 (original Keccak padding, not NIST SHA3-256)."""
+    return keccak.new(digest_bits=256, data=data).digest()
+
+
+def abi_encode_owner_salt(owner: bytes, salt: bytes) -> bytes:
+    """abi.encode(address owner, bytes32 salt): two 32-byte words."""
+    assert len(owner) == 20 and len(salt) == 32
+    return b"\x00" * 12 + owner + salt
+
+
+def registry_v2_vault_id(owner: bytes, salt: bytes) -> bytes:
+    """VaultRegistry v2: vaultId = keccak256(abi.encode(owner, salt)) (harden-gas-sponsorship D9)."""
+    return keccak256(abi_encode_owner_salt(owner, salt))
+
+
 def hkdf(ikm: bytes, salt: bytes, info: bytes) -> bytes:
     return HKDF(algorithm=hashes.SHA256(), length=32, salt=salt, info=info).derive(ikm)
 
@@ -837,6 +855,34 @@ def build() -> dict:
         auth_cases.append({"name": name, "description": desc, "authenticatorData": data.hex(),
                            "expectedError": o.get("error")})
 
+    # VaultRegistry v2 derivation. The first three cases equal contracts/test/fixtures/vaultIdDerivation.json
+    # (owner addresses there are EIP-55 checksummed with a 0x prefix; here lowercase hex without one).
+    assert keccak256(b"").hex() == "c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"
+    derivation_cases = []
+    for name, desc, owner, salt in [
+        ("typical-repeated-bytes", "Owner 0x11..11, salt 0x22..22 (Solidity fixture case 0).",
+         b"\x11" * 20, b"\x22" * 32),
+        ("anvil-0-zero-salt", "Anvil/Foundry default account 0 with the all-zero salt (Solidity fixture case 1).",
+         bytes.fromhex("f39fd6e51aad88f6f4ce6ab8827279cfffb92266"), b"\x00" * 32),
+        ("typical-random", "Arbitrary owner and salt (Solidity fixture case 2).",
+         bytes.fromhex("b43f58cf17e64b603ae5588a1dd17e96a0849e44"),
+         bytes.fromhex("8f2b6c1d0e9a7b3c5d4e6f708192a3b4c5d6e7f8091a2b3c4d5e6f7081920a1b")),
+        ("zero-owner-zero-salt", "All-zero owner and salt; the id is still non-zero.", b"\x00" * 20, b"\x00" * 32),
+        ("max-owner-max-salt", "Owner 0xff..ff and salt 0xff..ff (maximum values).", b"\xff" * 20, b"\xff" * 32),
+        ("max-owner-zero-salt", "Maximum owner with the all-zero salt.", b"\xff" * 20, b"\x00" * 32),
+        ("zero-owner-max-salt", "All-zero owner with the maximum salt.", b"\x00" * 20, b"\xff" * 32),
+        ("salt-low-bit", "Anvil account 0 with salt 0x00..01: one salt bit changes the id.",
+         bytes.fromhex("f39fd6e51aad88f6f4ce6ab8827279cfffb92266"), b"\x00" * 31 + b"\x01"),
+        ("typical-det", "Deterministic owner and salt from the vector labels.",
+         det("registry-v2/owner", 20), det("registry-v2/salt", 32)),
+        ("typical-det-other-owner", "Same salt as typical-det under another owner: a different id (no squatting).",
+         det("registry-v2/other-owner", 20), det("registry-v2/salt", 32)),
+    ]:
+        vid = registry_v2_vault_id(owner, salt)
+        assert vid != b"\x00" * 32
+        derivation_cases.append({"name": name, "description": desc, "owner": owner.hex(), "salt": salt.hex(),
+                                 "abiEncoded": abi_encode_owner_salt(owner, salt).hex(), "vaultId": vid.hex()})
+
     return {
         "name": "cryoshield-vault-v1",
         "formatVersion": 1,
@@ -875,6 +921,7 @@ def build() -> dict:
         "updatePayloadCases": update_cases,
         "selectCases": select_cases,
         "authenticatorDataCases": auth_cases,
+        "vaultIdDerivation": derivation_cases,
     }
 
 

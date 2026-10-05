@@ -1508,5 +1508,87 @@
       "authenticatorData": "b14ad9e287e85374ad73c3d305858294a7afc28d13b9b924606b7a2d1af03d7f05000000",
       "expectedError": "INVALID_ARGUMENT"
     }
+  ],
+  "vaultIdDerivation": [
+    {
+      "name": "typical-repeated-bytes",
+      "description": "Owner 0x11..11, salt 0x22..22 (Solidity fixture case 0).",
+      "owner": "1111111111111111111111111111111111111111",
+      "salt": "2222222222222222222222222222222222222222222222222222222222222222",
+      "abiEncoded": "00000000000000000000000011111111111111111111111111111111111111112222222222222222222222222222222222222222222222222222222222222222",
+      "vaultId": "f4f69ba108f6504dc58f181a5b843d353a4b9b2ec8149a50e0822656df2c3a8c"
+    },
+    {
+      "name": "anvil-0-zero-salt",
+      "description": "Anvil/Foundry default account 0 with the all-zero salt (Solidity fixture case 1).",
+      "owner": "f39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+      "salt": "0000000000000000000000000000000000000000000000000000000000000000",
+      "abiEncoded": "000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb922660000000000000000000000000000000000000000000000000000000000000000",
+      "vaultId": "723077b8a1b173adc35e5f0e7e3662fd1208212cb629f9c128551ea7168da722"
+    },
+    {
+      "name": "typical-random",
+      "description": "Arbitrary owner and salt (Solidity fixture case 2).",
+      "owner": "b43f58cf17e64b603ae5588a1dd17e96a0849e44",
+      "salt": "8f2b6c1d0e9a7b3c5d4e6f708192a3b4c5d6e7f8091a2b3c4d5e6f7081920a1b",
+      "abiEncoded": "000000000000000000000000b43f58cf17e64b603ae5588a1dd17e96a0849e448f2b6c1d0e9a7b3c5d4e6f708192a3b4c5d6e7f8091a2b3c4d5e6f7081920a1b",
+      "vaultId": "aa0abe208eb145cc7100e181fed5d087806944cb5a77983fa5cef2a7d082118a"
+    },
+    {
+      "name": "zero-owner-zero-salt",
+      "description": "All-zero owner and salt; the id is still non-zero.",
+      "owner": "0000000000000000000000000000000000000000",
+      "salt": "0000000000000000000000000000000000000000000000000000000000000000",
+      "abiEncoded": "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+      "vaultId": "ad3228b676f7d3cd4284a5443f17f1962b36e491b30a40b2405849e597ba5fb5"
+    },
+    {
+      "name": "max-owner-max-salt",
+      "description": "Owner 0xff..ff and salt 0xff..ff (maximum values).",
+      "owner": "ffffffffffffffffffffffffffffffffffffffff",
+      "salt": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "abiEncoded": "000000000000000000000000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "vaultId": "cdcdfaf640ccaa746456591f72b9aab9064a3ce6a2a22e2355139c8e948612eb"
+    },
+    {
+      "name": "max-owner-zero-salt",
+      "description": "Maximum owner with the all-zero salt.",
+      "owner": "ffffffffffffffffffffffffffffffffffffffff",
+      "salt": "0000000000000000000000000000000000000000000000000000000000000000",
+      "abiEncoded": "000000000000000000000000ffffffffffffffffffffffffffffffffffffffff0000000000000000000000000000000000000000000000000000000000000000",
+      "vaultId": "50c7a3d1a23c7ff4a61d37c3f2c4aeb36cf60b43ee893723db201d3eb941cbad"
+    },
+    {
+      "name": "zero-owner-max-salt",
+      "description": "All-zero owner with the maximum salt.",
+      "owner": "0000000000000000000000000000000000000000",
+      "salt": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "abiEncoded": "0000000000000000000000000000000000000000000000000000000000000000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "vaultId": "22ddafaf521412b39e3398371002be31620857ea0b5270601013b775e0cc6bad"
+    },
+    {
+      "name": "salt-low-bit",
+      "description": "Anvil account 0 with salt 0x00..01: one salt bit changes the id.",
+      "owner": "f39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+      "salt": "0000000000000000000000000000000000000000000000000000000000000001",
+      "abiEncoded": "000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb922660000000000000000000000000000000000000000000000000000000000000001",
+      "vaultId": "a3c1274aadd82e4d12c8004c33fb244ca686dad4fcc8957fc5668588c11d9502"
+    },
+    {
+      "name": "typical-det",
+      "description": "Deterministic owner and salt from the vector labels.",
+      "owner": "4bab04a5721c72fafaf6f0db9e799ae8f3611d0b",
+      "salt": "81ff19b4e5dcb0fb12c05f9992a8480beff0b6f52b478eca4f8238df3fa4e29a",
+      "abiEncoded": "0000000000000000000000004bab04a5721c72fafaf6f0db9e799ae8f3611d0b81ff19b4e5dcb0fb12c05f9992a8480beff0b6f52b478eca4f8238df3fa4e29a",
+      "vaultId": "9674818c2d47155f7d412a0e02d8adcdd8618ae73ee464eeb173942fb4e2abb0"
+    },
+    {
+      "name": "typical-det-other-owner",
+      "description": "Same salt as typical-det under another owner: a different id (no squatting).",
+      "owner": "8929326a8c2a4a86295d963f513a38f5f5f8b05c",
+      "salt": "81ff19b4e5dcb0fb12c05f9992a8480beff0b6f52b478eca4f8238df3fa4e29a",
+      "abiEncoded": "0000000000000000000000008929326a8c2a4a86295d963f513a38f5f5f8b05c81ff19b4e5dcb0fb12c05f9992a8480beff0b6f52b478eca4f8238df3fa4e29a",
+      "vaultId": "a8a5cf6f6db9b4ce272a1f2b8e89fa415ec6d3194c6793852107be8b4b164380"
+    }
   ]
 }

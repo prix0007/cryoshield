@@ -57,7 +57,7 @@
 
 ## 3. VaultRegistry v2 [cry] [sol] [rec]
 
-- [ ] 3.1 [cry] Write a failing TypeScript test first, then add `vaultIdDerivation` cases (owner address, salt, `keccak256(abi.encode(owner, salt))`) to `packages/vault-crypto/test-vectors/v1.json`. Rewrite `docs/spec/vault-format-v1.md` §4.1 (and the locator note in §4) so it covers v1 vaults (client-chosen id, retry on "taken") and v2 vaults (registry-derived id, no retry); the blob bytes and version byte are unchanged. List in the PR the tests that encode the old retry text (`apps/web/test/account/writes.test.ts`, `apps/web/test/ui/flows.test.tsx`, `apps/web/test/ui/motion-ui.test.tsx`, `contracts/test/VaultRegistry.t.sol`), to be updated in 5.2. Verify: the vault-crypto tests fail before and pass after.
+- [x] 3.1 [cry] Write a failing TypeScript test first, then add `vaultIdDerivation` cases (owner address, salt, `keccak256(abi.encode(owner, salt))`) to `packages/vault-crypto/test-vectors/v1.json`. Rewrite `docs/spec/vault-format-v1.md` §4.1 (and the locator note in §4) so it covers v1 vaults (client-chosen id, retry on "taken") and v2 vaults (registry-derived id, no retry); the blob bytes and version byte are unchanged. List in the PR the tests that encode the old retry text (`apps/web/test/account/writes.test.ts`, `apps/web/test/ui/flows.test.tsx`, `apps/web/test/ui/motion-ui.test.tsx`, `contracts/test/VaultRegistry.t.sol`), to be updated in 5.2. Verify: the vault-crypto tests fail before and pass after.
 - [ ] 3.2 [sol] Write failing tests in `contracts/test/VaultRegistryV2.t.sol`:
   - derivation against the vector;
   - squatting impossible;
