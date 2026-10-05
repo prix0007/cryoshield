@@ -53,7 +53,7 @@
   - in `test/config/` (or the existing config test file), loading the configuration with `VITE_SPONSORSHIP_POLICY_ID` missing or invalid throws a configuration error naming the variable.
 
   Make them pass, with code changes only if a test fails. Verify: `pnpm --filter web test`.
-- [ ] 2.3 [fe] Update `docs/system-design.md` and the threat-model text to the Pimlico-hardened design, and remove any reference to an own paymaster. Verify: the docs review in 7.1.
+- [x] 2.3 [fe] Update `docs/system-design.md` and the threat-model text to the Pimlico-hardened design, and remove any reference to an own paymaster. Verify: the docs review in 7.1.
 
 ## 3. VaultRegistry v2 [cry] [sol] [rec]
 
