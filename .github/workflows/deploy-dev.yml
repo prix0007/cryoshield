@@ -303,7 +303,8 @@ jobs:
             echo "| treeHash | \`$(jq -r .treeHash "$m")\` |"
             echo "| chain | \`$(jq -r .config.chainId "$m")\` |"
             echo "| rpId | \`$(jq -r .config.rpId "$m")\` |"
-            echo "| registry | \`$(jq -r .config.registry.address "$m")\` |"
+            echo "| registry v2 | \`$(jq -r .config.registryV2.address "$m")\` |"
+            echo "| wallet factory | \`$(jq -r .config.wallet.factory "$m")\` |"
             echo ""
             echo "Release manifest: artifact \`deploy-context-$(jq -r .commit "$m")\`."
           } >> "${GITHUB_STEP_SUMMARY}"
@@ -320,10 +321,14 @@ jobs:
           m=apps/web/deploy/.build/release-manifest.json
           chain="$(jq -r .config.chainId "$m")"
           [[ "$chain" =~ ^[0-9]+$ ]] || { echo "::error::manifest chainId is not a chain id"; exit 1; }
-          REGISTRY_ADDRESS="$(jq -r .address "contracts/deployments/${chain}.json")"
-          [ "$(jq -r .config.registry.address "$m" | tr 'A-F' 'a-f')" = "$(tr 'A-F' 'a-f' <<<"$REGISTRY_ADDRESS")" ] \
-            || { echo "::error::manifest registry differs from contracts/deployments/${chain}.json"; exit 1; }
-          export REGISTRY_ADDRESS
+          rec="contracts/deployments/${chain}.json"
+          rp="$(jq -r .config.rpId "$m")"
+          # harden-gas-sponsorship: registry v2 and this RP ID's wallet factory always; v1 only where the record has it.
+          # smoke.sh checks each against the live /release.json and /architecture.
+          REGISTRY_V2_ADDRESS="$(jq -r '.contracts.vaultRegistryV2.address // empty' "$rec")"
+          WALLET_FACTORY_ADDRESS="$(jq -r --arg rp "$rp" '.contracts.wallets[$rp].factory // empty' "$rec")"
+          REGISTRY_ADDRESS="$(jq -r '.address // empty' "$rec")"
+          export REGISTRY_V2_ADDRESS WALLET_FACTORY_ADDRESS REGISTRY_ADDRESS
           DONATION_ADDRESS="$(jq -r .address config/donation.json)"
           [[ "$DONATION_ADDRESS" =~ ^0x[0-9a-fA-F]{40}$ ]] || { echo "::error::config/donation.json .address is not 0x + 40 hex (got '${DONATION_ADDRESS}'); is the file in the sparse checkout?"; exit 1; }
           export DONATION_ADDRESS

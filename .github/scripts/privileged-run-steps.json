@@ -23,8 +23,8 @@
     "release/Install flyctl (pinned, checksum-verified)": "46ee8cd831c944f4d768ef059945846649c130395a0a08167327c5941bf680cc",
     "release/Refuse a release whose tag moved or left main": "88d3eae5559fc6ac18005fc6a5edaf5ce0429eff481728eae3b6f537a4e03970",
     "release/Deploy the built context (flyctl only)": "80f8b6cd2e034b069d009994c90707977864e772fdbe8ed9132af0be31c47caf",
-    "release/Record the release in the job summary": "5ea4edf37a1847b0ce775e3c34393edfacd2b41aa0ddb85f466e70343984e8b7",
-    "release/Smoke test the live site": "ec5e7aa144d8beb9e184b36cef9bff539246213ea98bfb1b7c04dc3604f55ef2",
+    "release/Record the release in the job summary": "940d00c5b21e2dd8f183db8c0df5b11e1c154a1a838e3bfb6a5d1bf3eca59bca",
+    "release/Smoke test the live site": "97a606d62e1082dab8a53c2811dc82f91fac8436e85bf7a797139a581d7e33c3",
     "release/Roll back to the previous release": "99353c10d5d7ce0e22f85051509d133857926a5c63beb0d19d397522f6ee47de",
     "release/Fail loudly": "074b82f9213bc2e850566f5d23bfe35141e9c1b3ee3a4f9e96a9c482f9d09be1"
   },
@@ -49,8 +49,8 @@
     "release/Install flyctl (pinned, checksum-verified)": "46ee8cd831c944f4d768ef059945846649c130395a0a08167327c5941bf680cc",
     "release/Skip a release that is no longer main's HEAD": "a7905a0f09cc0e80d8c458d5ec6753abd0e433f0d6829b0f67945999f4e2423e",
     "release/Deploy the built context (flyctl only)": "80f8b6cd2e034b069d009994c90707977864e772fdbe8ed9132af0be31c47caf",
-    "release/Record the release in the job summary": "10e3d9a7b07fcdff1ba43fa2da4346a02b98d75af825c66c932a43801b449e3c",
-    "release/Smoke test the live site": "ec5e7aa144d8beb9e184b36cef9bff539246213ea98bfb1b7c04dc3604f55ef2",
+    "release/Record the release in the job summary": "7c5d94866bc58a68610bcc142899c6f2bf4196faa13c32425c2db3ae51d69075",
+    "release/Smoke test the live site": "97a606d62e1082dab8a53c2811dc82f91fac8436e85bf7a797139a581d7e33c3",
     "release/Roll back to the previous release": "99353c10d5d7ce0e22f85051509d133857926a5c63beb0d19d397522f6ee47de",
     "release/Fail loudly": "a09790e6c5b4015d4b680773e5e40f6c835f3863935506b4fe3f13a95a0aa41c"
   }
