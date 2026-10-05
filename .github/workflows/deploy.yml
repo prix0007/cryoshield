@@ -1,7 +1,8 @@
 # Continuous deployment of https://cryoshield.app from main (OpenSpec changes add-continuous-deploy,
 # gate-production-deploys).
 #
-#   detect -> test (FULL ci.yml on this exact commit) -> build (env production-build: deploy.sh --build-only, no Fly
+#   detect -> config (env production-build: is the build config there? if not, warn and skip the rest
+#   successfully, deploy-skip-when-unconfigured) -> test (FULL ci.yml on this exact commit) -> build (env production-build: deploy.sh --build-only, no Fly
 #   token) -> supersede (cancel OLDER runs still waiting for approval) -> release (env production: OWNER APPROVAL,
 #   then deploy + smoke test + automatic rollback, all in one job so one click covers the release)
 #
@@ -83,10 +84,46 @@ jobs:
           export MAIN_SHA PREVIOUSLY_FAILED
           .github/scripts/deploy/detect.sh
 
-  test:
-    name: test
+  # An unconfigured (or partially configured) production-build environment must not turn main red: warn with the
+  # missing NAMES and skip everything after this job; the run succeeds. Only presence flags reach the step, never a
+  # value (deploy-skip-when-unconfigured). FLY_API_TOKEN lives behind the approval in `production` and is checked
+  # there, after a human approved.
+  config:
+    name: config
     needs: detect
     if: needs.detect.outputs.deploy == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    environment:
+      name: production-build # presence checks only; no approval needed
+    permissions:
+      contents: read # the check script
+    outputs:
+      configured: ${{ steps.config.outputs.configured }}
+    steps:
+      - name: Checkout (deploy scripts only)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.detect.outputs.sha }}
+          persist-credentials: false
+          sparse-checkout: .github/scripts/deploy
+      - name: Check the production build configuration (names only)
+        id: config
+        env:
+          HAS_VITE_CHAIN_ID: ${{ vars.VITE_CHAIN_ID != '' }}
+          HAS_VITE_RPC_URL: ${{ vars.VITE_RPC_URL != '' }}
+          HAS_VITE_BUNDLER_URL: ${{ secrets.VITE_BUNDLER_URL != '' }}
+          HAS_VITE_SPONSORSHIP_POLICY_ID: ${{ vars.VITE_SPONSORSHIP_POLICY_ID != '' }}
+          HAS_VITE_TURBO_UPLOAD_URL: ${{ vars.VITE_TURBO_UPLOAD_URL != '' }}
+          HAS_VITE_ARWEAVE_GATEWAY_URL: ${{ vars.VITE_ARWEAVE_GATEWAY_URL != '' }}
+          HAS_VITE_RP_ID: ${{ vars.VITE_RP_ID != '' }}
+          HAS_VITE_RP_NAME: ${{ vars.VITE_RP_NAME != '' }}
+        run: .github/scripts/deploy/check-config.sh
+
+  test:
+    name: test
+    needs: [detect, config]
+    if: needs.detect.outputs.deploy == 'true' && needs.config.outputs.configured == 'true'
     uses: ./.github/workflows/ci.yml # not `$/...`: actionlint 1.7.12 rejects it (rhysd/actionlint#711); zizmor ignore in .github/zizmor.yml
     with:
       full: true
@@ -99,8 +136,8 @@ jobs:
   # deploy/.build (site, Caddyfile, release manifest, site/release.json).
   build:
     name: build
-    needs: [detect, test]
-    if: needs.detect.outputs.deploy == 'true'
+    needs: [detect, config, test]
+    if: needs.detect.outputs.deploy == 'true' && needs.config.outputs.configured == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     environment:

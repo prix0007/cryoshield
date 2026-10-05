@@ -74,7 +74,7 @@ function run(name, env = {}, { path = script(name), timeout = 30_000 } = {}) {
   writeFileSync(output, '');
   return new Promise((resolve, reject) => {
     execFile('bash', [path], {
-      env: { PATH: process.env.PATH, BASE_URL: base, GITHUB_OUTPUT: output, FLY: flyStub, FLY_LOG: flyLog, SMOKE_SLEEP: '0', ROLLBACK_SLEEP: '0', ...env },
+      env: { PATH: process.env.PATH, BASE_URL: base, GITHUB_OUTPUT: output, FLY_API_TOKEN: 'test-token', FLY: flyStub, FLY_LOG: flyLog, SMOKE_SLEEP: '0', ROLLBACK_SLEEP: '0', ...env },
       encoding: 'utf8',
       timeout,
     }, (err, stdout, stderr) => {
@@ -232,6 +232,14 @@ test('previous-image: no complete release -> empty output (first deploy), not an
   const r = await run('previous-image.sh', { STUB_RELEASES: releases([]) });
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.output, /^previous_image=$/m);
+});
+
+test('previous-image: an empty FLY_API_TOKEN fails with a clear "not configured" error before calling fly (deploy-skip-when-unconfigured)', async () => {
+  const r = await run('previous-image.sh', { STUB_RELEASES: releases([]), FLY_API_TOKEN: '' });
+  assert.notEqual(r.status, 0);
+  assert.match(r.stdout, /::error title=deploy not configured::FLY_API_TOKEN/);
+  assert.match(r.stdout, /docs\/deploy\.md/);
+  assert.deepEqual(r.fly.filter(Boolean), []);
 });
 
 test('previous-image: an unexpected ImageRef or a fly error fails', async () => {

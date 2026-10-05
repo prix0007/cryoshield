@@ -20,4 +20,4 @@ rules:
   # Drop it once actionlint supports `$/`.
   self-repository:
     ignore:
-      - deploy.yml:90
+      - deploy.yml:127

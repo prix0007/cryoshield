@@ -432,6 +432,8 @@ const DEPLOY_SECRETS = { deploy: ['FLY_API_TOKEN'], rollback: ['FLY_API_TOKEN'],
 // gate-production-deploys: the approved release job is the only `production` job; build config is in production-build.
 const DEPLOY_ENVIRONMENTS = ['production', 'production-build'];
 const SECRET_ENVIRONMENT = { FLY_API_TOKEN: 'production', VITE_BUNDLER_URL: 'production-build' };
+// deploy-skip-when-unconfigured: presence checks (`secrets.X != ''`, a boolean, never the value), per step id.
+const DEPLOY_SECRET_PRESENCE = { config: ['VITE_BUNDLER_URL'] };
 // Jobs holding the Fly token run no build tooling or third-party code (review H1).
 const TOKEN_JOB_ACTIONS = [/^actions\/checkout@[0-9a-f]{40}$/, /^actions\/download-artifact@[0-9a-f]{40}$/];
 const BUILD_TOOLING = /(^|[\s;&|(`!/])(node|npm|npx|pnpm|yarn|bunx?|deno|vite|tsx|python3?|pip3?|uvx?|make|docker)\b/m;
@@ -524,6 +526,8 @@ function checkDeploy(file, wf, on) {
       for (const e of exprsOf(rest)) if (/\bsecrets\b/i.test(e)) err(`${label}: secret expression \${{${e}}} is only allowed in a step env`);
       for (const e of exprsOf(env)) {
         if (!/\bsecrets\b/i.test(e)) continue;
+        const presence = /^\s*secrets\.([A-Z_]+)\s*!=\s*''\s*$/.exec(e);
+        if (presence && (DEPLOY_SECRET_PRESENCE[step.id] ?? []).includes(presence[1]) && envn === SECRET_ENVIRONMENT[presence[1]]) continue;
         const m = /^\s*secrets\.([A-Z_]+)\s*$/.exec(e);
         if (!m || !(DEPLOY_SECRETS[step.id] ?? []).includes(m[1]) || envn !== SECRET_ENVIRONMENT[m[1]]) {
           err(`${label}: secret expression \${{${e}}} is not allowed here (allowed: ${Object.entries(DEPLOY_SECRETS).map(([k, v]) => `${v.join(',')} in step '${k}'`).join('; ')})`);
