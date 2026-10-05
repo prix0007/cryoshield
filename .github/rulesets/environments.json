@@ -1,7 +1,7 @@
 [
   {
     "name": "production",
-    "required_reviewers": ["@owner"],
+    "required_reviewers": [],
     "prevent_self_review": false,
     "can_admins_bypass": false,
     "wait_timer": 0,

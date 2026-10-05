@@ -31,7 +31,7 @@ This is not an external audit. CryoShield remains unaudited by any third party.
 ### Critical
 | ID | Finding | Proof | Fix (planned) |
 |---|---|---|---|
-| CI-C1 | Any same-repo PR can reach production with no human in the loop. The gates are an LLM verdict the PR can steer and a `ci-ok` the PR produces; zero approvals are required, and continuous deploy follows. | PROVED (#17 and #19 were merged by the bot with only bot reviews) | A required reviewer on the `production` environment; agents moved to a non-admin account; code-owner review for sensitive paths (founder decision pending) |
+| CI-C1 | Any same-repo PR can reach production with no human in the loop. The gates are an LLM verdict the PR can steer and a `ci-ok` the PR produces; zero approvals are required, and continuous deploy follows. | PROVED (#17 and #19 were merged by the bot with only bot reviews) | A required reviewer on the `production` environment was added (`gate-production-deploys`), then **removed by founder decision on 2026-10-05** (`remove-production-approval-gate`). **Status: accepted risk for testnet; re-gate before mainnet.** |
 
 ### High
 | ID | Finding | Proof | Fix (planned) |

@@ -1,6 +1,6 @@
 # Agent account: agents work without admin rights
 
-OpenSpec change `gate-production-deploys` (audit CI-H1). The owner's account `prix0007` is a repository admin. An agent using the owner's `gh` login could change the `main` ruleset, the `production` environment or the repository settings. Agents therefore push and open PRs as a separate **machine user** with the **Write** role. Write cannot change rulesets, environments, secrets or settings, and cannot approve a production release. Only the owner is a required reviewer, and admins cannot bypass that.
+OpenSpec change `gate-production-deploys` (audit CI-H1). The owner's account `prix0007` is a repository admin. An agent using the owner's `gh` login could change the `main` ruleset, the `production` environment or the repository settings. Agents therefore push and open PRs as a separate **machine user** with the **Write** role. Write cannot change rulesets, environments, secrets or settings. (Production releases no longer wait for an approval; change `remove-production-approval-gate`.)
 
 Everything below is done by the founder. Agents never create credentials.
 
@@ -46,7 +46,7 @@ After the transfer, the default `--repo` in `.github/rulesets/apply.sh` and the 
 
 A classic token reaches every repository the machine user can access. That is only this one, so keep the account a collaborator nowhere else. The real boundary in both options is the account's **Write role**: rulesets, environments, secrets and settings need Admin whatever scopes the token has.
 
-**Trade-off: no Workflows permission.** Without Workflows (`workflow` scope for a classic token), the token cannot push a commit that changes `.github/workflows/`. CI changes made by agents are then pushed by the owner after reading them, for example by checking out the agent's branch locally and pushing it with the owner's own credentials. This is deliberate: workflow edits can reach secrets, so they are the highest-risk change. If CI changes from agents become routine, you can grant Workflows (read and write). The ruleset, ECC review and the production approval still apply.
+**Trade-off: no Workflows permission.** Without Workflows (`workflow` scope for a classic token), the token cannot push a commit that changes `.github/workflows/`. CI changes made by agents are then pushed by the owner after reading them, for example by checking out the agent's branch locally and pushing it with the owner's own credentials. This is deliberate: workflow edits can reach secrets, so they are the highest-risk change. If CI changes from agents become routine, you can grant Workflows (read and write). The ruleset and ECC review still apply.
 
 ## 3. Configure gh and git on the agent machine
 
@@ -116,7 +116,7 @@ Then, as the owner, confirm that nothing changed: `.github/rulesets/apply.sh --w
 To see that a release waits for the owner, open the newest Deploy run: its `release` job shows *Waiting for review*, and the machine user has no *Review deployments* button.
 
 **What Write still allows.**
-- **Changing the scripts that the release job runs with the Fly token.** The machine user can open PRs that change `.github/scripts/deploy/`, `apps/web/fly.toml` or the Docker context, and those PRs auto-merge. Before you approve, the Deploy run's `supersede` job summary ("Release review") lists those files as **TOKEN-PATH CHANGED**, with the diff link. Read them before approving.
+- **Changing the scripts that the release job runs with the Fly token.** The machine user can open PRs that change `.github/scripts/deploy/`, `apps/web/fly.toml` or the Docker context, and those PRs auto-merge. After the merge, the Deploy run's `supersede` job summary ("Release review") lists those files as **TOKEN-PATH CHANGED**, with the diff link. Read them; there is no approval step, so use the `hold` label on the PR if you want to look before it merges.
 - **Cancelling a running Deploy.** A cancel after `fly deploy` started triggers the rollback, so it disrupts a release but cannot deploy anything.
 
 ## Rotation and revocation

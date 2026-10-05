@@ -1,6 +1,6 @@
 # Deploy runbook: cryoshield.app
 
-This covers continuous deployment of `main` to Fly.io (OpenSpec changes `add-continuous-deploy` and `gate-production-deploys`). Merges stay automatic, but **every production release waits for the owner's one-click approval**. The hosting details, DNS and certificates are in [`apps/web/deploy/README.md`](../apps/web/deploy/README.md).
+This covers continuous deployment of `main` to Fly.io (OpenSpec changes `add-continuous-deploy`, `gate-production-deploys` and `remove-production-approval-gate`). Merges and releases are both automatic: a commit on `main` goes live once its full CI and build pass, with **no manual approval** (founder decision, 2026-10-05). The hosting details, DNS and certificates are in [`apps/web/deploy/README.md`](../apps/web/deploy/README.md).
 
 ## How it works
 
@@ -17,7 +17,7 @@ It has five stages:
 | `test` | The **full** `ci.yml` (`workflow_call`, `full: true`) on that exact commit: every area job, no path filters. |
 | `build` | Runs in the GitHub Environment `production-build` (build config only, `main` only, no approval) and **never sees the Fly token**. It writes `apps/web/.env` from the environment's variables, then runs `apps/web/deploy/deploy.sh --build-only`. That run applies every guard (clean tree, RP ID equals host, two identical production builds, bundle checks) and produces `deploy/.build`: the site, the Caddyfile, the release manifest and `release.json`. The result is uploaded as an artifact. |
 | `supersede` | Cancels **older** Deploy runs, for other commits, that are still waiting for approval (`.github/scripts/deploy/supersede.sh`). It runs only after this commit passed the full CI and built, and it never touches a run that is deploying. |
-| `release` | The only job in the Environment `production`, so it **waits for the owner's approval**. One approval covers the whole release. The job holds the Fly token and runs **no node, pnpm or build code** (enforced by the workflow policy). It downloads the artifact, checks the manifest's commit and tree hash against the files, records the live image, runs `fly deploy` with pinned, checksummed flyctl, then smoke-tests `/`, `/app/`, `/architecture`, `/privacy`, `/healthz`, the security headers, the registry address and `/release.json`. If the deploy or the smoke test fails, or the job is cancelled after `fly deploy` started, it **rolls back automatically** to the previous image in the same job, with no second approval, and fails the run. |
+| `release` | The only job in the Environment `production` (no required reviewer, so it starts right away). The job holds the Fly token and runs **no node, pnpm or build code** (enforced by the workflow policy). It downloads the artifact, checks the manifest's commit and tree hash against the files, records the live image, runs `fly deploy` with pinned, checksummed flyctl, then smoke-tests `/`, `/app/`, `/architecture`, `/privacy`, `/healthz`, the security headers, the registry address and `/release.json`. If the deploy or the smoke test fails, or the job is cancelled after `fly deploy` started, it **rolls back automatically** to the previous image in the same job, and fails the run. |
 
 **Concurrency.**
 - Runs for the same commit share the group `deploy-<sha>`. While one waits for approval, the 15-minute schedule adds at most one pending run behind it, and that run stops at `detect` once the release is live.
@@ -26,7 +26,11 @@ It has five stages:
 
 The pipeline never runs on pull requests, and `workflow-policy.mjs` enforces that in CI.
 
-## Approving a release [owner]
+## Re-adding an approval gate [owner]
+
+The `production` environment has no required reviewer. To make releases wait for you again (recommended before the OP Mainnet launch), set `"required_reviewers": ["@owner"]` for `production` in `.github/rulesets/environments.json`, merge it, and run `.github/rulesets/apply.sh --with-ecc-review --environments --apply`. Waiting runs are then approved like this:
+
+### Approving a release (only while a gate is set)
 
 You get a GitHub notification ("Deployment review required") when a release is waiting.
 
@@ -61,7 +65,7 @@ Run these once, from a checkout that has the real `apps/web/.env`. None of them 
 
 > **Order matters.** The branch policies (step 1) keep the secrets away from any other branch: a workflow pushed on a feature branch could otherwise ask for either environment. Create them, run the step 5 check, and only then set secrets.
 
-**1. Create both environments, deployable from `main` only.** `production` gets the owner as required reviewer with no admin bypass; `production-build` holds the build config with no reviewer. The script is idempotent, and without `--apply` it only prints the diff.
+**1. Create both environments, deployable from `main` only.** `production` holds the Fly token, with no required reviewer; `production-build` holds the build config with no reviewer. The script is idempotent, and without `--apply` it only prints the diff.
 
 ```sh
 .github/rulesets/apply.sh --with-ecc-review --environments           # dry run

@@ -1,5 +1,5 @@
-// gate-production-deploys task 3.1: apply.sh --environments (production with the owner as required reviewer, no admin
-// bypass; production-build; both main-only) and --founder-hardening (Dependabot security updates, SHA-pinned actions).
+// gate-production-deploys task 3.1, remove-production-approval-gate: apply.sh --environments (production with no required
+// reviewer and no admin bypass; production-build; both main-only) and --founder-hardening (Dependabot security updates, SHA-pinned actions).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -33,7 +33,7 @@ const envLive = ({ name, reviewers = [], bypass = true, selfReview = false, wait
 });
 const policies = (...names) => ({ total_count: names.length, branch_policies: names.map((n, i) => ({ id: 50 + i, name: n, type: 'branch' })) });
 const inSyncEnvs = () => ({
-  production: { env: envLive({ name: 'production', reviewers: [OWNER_ID], bypass: false }), policies: policies('main') },
+  production: { env: envLive({ name: 'production', bypass: false }), policies: policies('main') },
   'production-build': { env: envLive({ name: 'production-build', bypass: false }), policies: policies('main') },
 });
 
@@ -78,11 +78,11 @@ test('--environments dry run with both environments missing: diff, exit 3, no wr
   assert.ok(r.calls.some((c) => c.startsWith('api users/prix0007 ')), r.calls.join('\n'));
   assert.match(r.stdout, /environment 'production' does not exist/);
   assert.match(r.stdout, /environment 'production-build' does not exist/);
-  assert.match(r.stdout, /\+.*User:30095502/);
+  assert.doesNotMatch(r.stdout, /User:30095502/);
   assert.deepEqual(r.writes, []);
 });
 
-test('--environments --apply creates both: owner reviewer, no admin bypass, self-approval allowed, main only', () => {
+test('--environments --apply creates both: no reviewer, no admin bypass, self-approval allowed, main only', () => {
   const r = run({ args: ['--environments', '--apply'] });
   assert.equal(r.status, 0, r.stderr + r.stdout);
   assert.match(r.stdout, /re-check: in sync/);
@@ -92,7 +92,7 @@ test('--environments --apply creates both: owner reviewer, no admin bypass, self
     wait_timer: 0,
     prevent_self_review: false,
     can_admins_bypass: false,
-    reviewers: [{ type: 'User', id: OWNER_ID }],
+    reviewers: [],
     deployment_branch_policy: { protected_branches: false, custom_branch_policies: true },
   });
   const putBuild = r.writes.find((c) => c.startsWith('api -X PUT repos/prix0007/cryoshield/environments/production-build '));

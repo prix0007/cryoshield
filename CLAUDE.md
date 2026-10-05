@@ -61,12 +61,12 @@ The source of truth is `openspec/config.yaml`; the product requirements are in `
    - Once on, it merges the moment all required checks are green.
    - Branches do not need to be up to date with `main` (strict mode is off, change `relax-strict-up-to-date`), so a PR keeps auto-merging after another PR lands. Each resulting `main` commit is re-tested by the deploy pipeline before it goes live.
    - **Owner veto:** the `hold` label switches auto-merge off for that PR; remove it to switch it back on. `gh pr merge <n> --disable-auto` also works.
-9. **Deploy (waits for the owner).** After the merge, `.github/workflows/deploy.yml` picks up `main` within about 15 minutes (on push for human merges, on its 15-minute schedule for auto-merges). It runs:
+9. **Deploy (automatic).** After the merge, `.github/workflows/deploy.yml` picks up `main` within about 15 minutes (on push for human merges, on its 15-minute schedule for auto-merges). It runs:
    - the full CI on the merge commit;
    - the guarded `deploy.sh --build-only` in environment `production-build`, without the Fly token;
-   - then the `release` job in environment `production`, which **waits for the owner's approval** (Actions → Deploy → Review deployments; `docs/deploy.md` → Approving a release). One approval covers `fly deploy`, the smoke test and any rollback. A newer built commit supersedes an older release that is still waiting.
+   - then the `release` job in environment `production`, which runs `fly deploy`, the smoke test and any rollback **without a manual approval** (change `remove-production-approval-gate`). A newer built commit supersedes an older release that has not started.
 
-   A merged PR is therefore not live until the owner approves. Agents report "merged, awaiting release approval" and never approve. Check what is live with `curl -s https://cryoshield.app/release.json`. If the deploy or smoke test fails, it rolls back by itself, the run fails, and that commit is not retried. Fix forward with a new PR, or roll back by hand (`docs/deploy.md` → Rollback).
+   A merged PR therefore goes live by itself once the deploy run passes. Agents report "merged, deploying" and check the run. Check what is live with `curl -s https://cryoshield.app/release.json`. If the deploy or smoke test fails, it rolls back by itself, the run fails, and that commit is not retried. Fix forward with a new PR, or roll back by hand (`docs/deploy.md` → Rollback).
 10. **After the merge,** archive the OpenSpec change (`/opsx:archive`) in a follow-up PR.
 
    Merges made by the workflow token do not trigger `push` workflows on `main`. The deploy pipeline's full CI on the merge commit is the verification of the merged result.
