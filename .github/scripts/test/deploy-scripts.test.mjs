@@ -366,7 +366,7 @@ test('previous-image and rollback work for the dev app and config, and refuse th
   const f = releases([{ Status: 'complete', ImageRef: DEV_IMAGE }]);
   const prev = await run('previous-image.sh', { STUB_RELEASES: f, APP: 'cryoshield-web-dev' });
   assert.equal(prev.status, 0, prev.stderr);
-  assert.match(prev.output, new RegExp(`^previous_image=${DEV_IMAGE}$`, 'm'));
+  assert.ok(prev.output.split('\n').includes(`previous_image=${DEV_IMAGE}`), prev.output);
   assert.deepEqual(prev.fly, ['releases --app cryoshield-web-dev --json --image']);
   // a production image never lands on dev, nor a dev image on production
   assert.notEqual((await run('previous-image.sh', { STUB_RELEASES: releases([{ Status: 'complete', ImageRef: IMAGE }]), APP: 'cryoshield-web-dev' })).status, 0);
