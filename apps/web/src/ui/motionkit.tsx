@@ -145,15 +145,24 @@ export function KeySlot({ children }: { children: ReactNode }) {
   );
 }
 
-/** Height + opacity enter/exit for list items and disclosures (`layout` needs domMax: design D2). */
+/**
+ * List items and disclosures: a top-down clip reveal + fade on enter; removal is immediate. Never a layout tween
+ * (fix-floating-bar-focus): a growing row kept pushing content after a field was focused and scrolled clear of the
+ * floating action bar, hiding it again (WCAG 2.4.11). Reduced motion: no animation at all.
+ */
 export function Collapse({ children, as = 'div', ...rest }: { children: ReactNode; as?: 'div' | 'li'; id?: string; className?: string }) {
   const C = as === 'li' ? m.li : m.div;
-  // A leaving row is inert, so nothing typed during its exit can land on it (or on the row that took its place).
+  // Belt and braces: if a parent presence ever keeps a removed row mounted for a frame, it can't take input.
   const present = useIsPresent();
-  // Height is not a transform, so MotionConfig would still animate it: reduced motion opens and closes instantly.
-  const transition = useReduced() ? { duration: 0 } : collapse.transition;
+  const reduced = useReduced();
   return (
-    <C initial={{ ...collapse.initial, overflow: 'hidden' }} animate={{ ...collapse.animate, transitionEnd: { overflow: 'visible' } }} exit={{ ...collapse.exit, overflow: 'hidden' }} transition={transition} inert={!present} {...rest}>
+    <C
+      initial={reduced ? false : collapse.initial}
+      animate={collapse.animate}
+      transition={reduced ? { duration: 0 } : collapse.transition}
+      inert={!present}
+      {...rest}
+    >
       <Fresh>{children}</Fresh>
     </C>
   );

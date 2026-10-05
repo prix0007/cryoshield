@@ -5,7 +5,8 @@ import { expect, test, type Page } from '@playwright/test';
 import { APP } from '../fixtures/routes';
 import { ArweaveStub } from '../fixtures/arweave';
 import { VirtualKeys } from '../fixtures/webauthn';
-import { settled } from '../fixtures/motion';
+import { createVault } from '../fixtures/app';
+import { animationsDone, layoutStable, settled } from '../fixtures/motion';
 
 async function audit(page: Page, screen: string) {
   await settled(page); // app-motion-ux: audit the settled screen, not a frame of a transition
@@ -101,7 +102,62 @@ test('keyboard-only create and unlock; every screen passes axe', async ({ page }
   await audit(page, 'add-key');
 });
 
-test('the floating action bar never hides the focused field (WCAG 2.4.11), on a short phone viewport', async ({ page }) => {
+/**
+ * fix-floating-bar-focus: the focused element is never under the floating action bar (or the header). Measured twice
+ * per Tab with real geometry: right after the key press (what the user sees first) and again once animations and
+ * layout have settled (catches anything that moves the field AFTER focus, the cause of the earlier flake).
+ */
+const obscured = (page: import('@playwright/test').Page) =>
+  page.evaluate(() => {
+    const el = document.activeElement as HTMLElement | null;
+    const bar = [...document.querySelectorAll<HTMLElement>('.action-bar')].find((b) => getComputedStyle(b).position === 'sticky');
+    if (!el || el === document.body || !bar || bar.contains(el) || el.closest('.site-header') || el.classList.contains('skip-link')) return null;
+    const r = el.getBoundingClientRect();
+    const b = bar.getBoundingClientRect();
+    const header = document.querySelector('.site-header')!.getBoundingClientRect();
+    const label = el.id || el.getAttribute('aria-label') || el.textContent?.trim().slice(0, 30) || el.tagName;
+    return (r.bottom > b.top + 1 && r.top < b.bottom - 1) || r.top < header.bottom - 1 ? `${label} [${r.top},${r.bottom}] bar [${b.top},${b.bottom}]` : null;
+  });
+
+async function tabCheckingFocus(page: import('@playwright/test').Page, tabs: number) {
+  for (let i = 0; i < tabs; i++) {
+    expect(await obscured(page), `tab ${i}, immediately`).toBeNull();
+    await animationsDone(page);
+    await layoutStable(page);
+    expect(await obscured(page), `tab ${i}, settled`).toBeNull();
+    await page.keyboard.press('Tab');
+  }
+}
+
+for (const reducedMotion of ['no-preference', 'reduce'] as const) {
+  test(`the floating action bar never hides the focused field (WCAG 2.4.11), on a short phone viewport (motion ${reducedMotion})`, async ({ page }) => {
+    await page.emulateMedia({ reducedMotion });
+    await page.setViewportSize({ width: 390, height: 600 });
+    const arweave = new ArweaveStub();
+    await arweave.install(page);
+    await page.goto(APP);
+    const keys = await VirtualKeys.attach(page);
+    await keys.add();
+    await keys.add();
+    await page.getByRole('button', { name: 'Create a new vault' }).click();
+    await page.getByRole('button', { name: 'Get started' }).click();
+    await keys.use(0);
+    await page.getByRole('button', { name: 'Set up key 1' }).click();
+    await expect(page.getByText('Key 1 is ready.')).toBeVisible();
+    await keys.use(1);
+    await page.getByRole('button', { name: 'Set up key 2' }).click();
+    await expect(page.getByText('Key 2 is ready.')).toBeVisible();
+    await page.getByRole('button', { name: 'Continue' }).click();
+    await settled(page);
+    for (let i = 0; i < 3; i++) await page.getByRole('button', { name: 'Add another secret' }).click();
+    await page.locator('#label-0').focus();
+    await tabCheckingFocus(page, 16);
+    await settled(page);
+    await audit(page, `create/secrets (phone, ${reducedMotion})`);
+  });
+}
+
+test('nothing moves a field after it gets focus: adding a secret row does not shift the controls below it later', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 600 });
   const arweave = new ArweaveStub();
   await arweave.install(page);
@@ -118,22 +174,46 @@ test('the floating action bar never hides the focused field (WCAG 2.4.11), on a 
   await page.getByRole('button', { name: 'Set up key 2' }).click();
   await expect(page.getByText('Key 2 is ready.')).toBeVisible();
   await page.getByRole('button', { name: 'Continue' }).click();
-  for (let i = 0; i < 3; i++) await page.getByRole('button', { name: 'Add another secret' }).click();
+  await settled(page);
+  // Add a row and, in the same task, focus the first acknowledgement checkbox below it (a fast keyboard user).
+  const before = await page.evaluate(async () => {
+    const add = [...document.querySelectorAll('button')].find((b) => b.textContent === 'Add another secret')!;
+    add.click();
+    await new Promise((r) => requestAnimationFrame(() => r(null)));
+    const box = document.querySelector<HTMLInputElement>('.ack input[type=checkbox]')!;
+    box.focus();
+    const r = box.getBoundingClientRect();
+    return { top: Math.round(r.top + scrollY), docH: document.documentElement.scrollHeight };
+  });
+  await animationsDone(page);
+  await layoutStable(page);
+  const after = await page.evaluate(() => {
+    const r = document.activeElement!.getBoundingClientRect();
+    return { top: Math.round(r.top + scrollY), docH: document.documentElement.scrollHeight };
+  });
+  expect(after, 'the focused field moved after focus (a layout animation is still running)').toEqual(before);
+  expect(await obscured(page)).toBeNull();
+});
+
+test('the vault editor (Save + Cancel stacked on a phone) never hides the focused field (WCAG 2.4.11)', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 600 });
+  const arweave = new ArweaveStub();
+  await arweave.install(page);
+  await page.goto(APP);
+  const keys = await VirtualKeys.attach(page);
+  await keys.add();
+  await keys.add();
+  await createVault(page, keys, [
+    { label: 'One', secret: 'a' },
+    { label: 'Two', secret: 'b' },
+  ]);
+  await page.getByRole('button', { name: 'Continue' }).click();
+  await page.getByRole('button', { name: 'Edit secrets' }).click();
+  await expect(page.getByRole('heading', { name: 'Edit secrets' })).toBeFocused();
+  await settled(page);
+  await page.getByRole('button', { name: 'Add another secret' }).click();
   await page.locator('#label-0').focus();
-  for (let i = 0; i < 16; i++) {
-    const hidden = await page.evaluate(() => {
-      const el = document.activeElement as HTMLElement | null;
-      const bar = document.querySelector('.action-bar');
-      if (!el || el === document.body || !bar || bar.contains(el) || el.closest('.site-header') || el.classList.contains('skip-link')) return null;
-      const r = el.getBoundingClientRect();
-      const b = bar.getBoundingClientRect();
-      const header = document.querySelector('.site-header')!.getBoundingClientRect();
-      return (r.bottom > b.top + 1 && r.top < b.bottom - 1) || r.top < header.bottom - 1 ? `${el.id || el.textContent} [${r.top},${r.bottom}] bar ${b.top}` : null;
-    });
-    expect(hidden).toBeNull();
-    await page.keyboard.press('Tab');
-  }
-  await audit(page, 'create/secrets (phone)');
+  await tabCheckingFocus(page, 12);
 });
 
 test('dark theme: home and an error state pass axe (contrast included)', async ({ page }) => {

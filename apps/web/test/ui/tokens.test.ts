@@ -159,6 +159,11 @@ describe('stylesheets use tokens only', () => {
     }
     expect(readFileSync(join(ui, 'motionkit.tsx'), 'utf8')).toMatch(/whileTap: TAP/);
     expect(g).toMatch(/scroll-padding-bottom/);
+    // fix-floating-bar-focus: the padding is derived from the bar's real geometry (rows of 44px targets, its padding,
+    // border and sticky offset), and stacked phone bars raise the row count.
+    expect(g).toMatch(/scroll-padding-bottom:\s*var\(--bar-footprint\)/);
+    expect(g).toMatch(/--bar-footprint:\s*calc\([^;]*var\(--bar-rows\)[^;]*var\(--target\)/);
+    for (const n of [2, 3, 4]) expect(g).toMatch(new RegExp(`html:has\\(\\.action-bar > :nth-child\\(${n}\\)\\)\\s*\\{\\s*--bar-rows:\\s*${n}`));
     expect(g).not.toMatch(/dashed/); // disabled pills keep the guide's solid pill shape
     expect(g).toMatch(/\.card \.action-bar \{[^}]*background: none[^}]*border: 0/);
   });
