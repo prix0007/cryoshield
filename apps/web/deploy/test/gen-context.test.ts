@@ -136,7 +136,7 @@ describe('development site: --noindex (split-dev-and-release-deploys)', () => {
 
   it('adds X-Robots-Tag to every response (normal and error), and nothing else: no robots.txt (the SEO change owns it); the CSP is unchanged', () => {
     const d = fixture(page);
-    gen(d, 'dev.cryoshield.app', true);
+    gen(d, 'cryoshield-web-dev.fly.dev', true);
     const caddy = readFileSync(join(d, 'out', 'Caddyfile'), 'utf8');
     // once in the site-wide header block, once in handle_errors
     expect(caddy.match(/X-Robots-Tag `noindex, nofollow`/g)).toHaveLength(2);
@@ -148,11 +148,12 @@ describe('development site: --noindex (split-dev-and-release-deploys)', () => {
     // whatever robots.txt the build ships (production's, owned by the SEO change) is served unchanged.
     expect(caddy).not.toMatch(/robots\.txt/);
     expect(caddy).toContain(`Content-Security-Policy \`${META}; frame-ancestors 'none'\``);
-    expect(caddy).toContain('redir @noncanonical https://dev.cryoshield.app{uri} permanent');
-    // the site files (and therefore the tree hash) are the same as without --noindex
-    const prodLike = fixture(page);
-    gen(prodLike, 'dev.cryoshield.app', false);
-    expect(caddy.replace(/^.*X-Robots-Tag.*\n/gm, '')).toBe(readFileSync(join(prodLike, 'out', 'Caddyfile'), 'utf8'));
+    expect(caddy).toContain('redir @noncanonical https://cryoshield-web-dev.fly.dev{uri} permanent');
+    // apart from the header and the host, the dev Caddyfile is the production one
+    const prod = fixture(page);
+    gen(prod, 'cryoshield.app', false);
+    const prodCaddy = readFileSync(join(prod, 'out', 'Caddyfile'), 'utf8').replaceAll('cryoshield.app', 'cryoshield-web-dev.fly.dev');
+    expect(caddy.replace(/^.*X-Robots-Tag.*\n/gm, '')).toBe(prodCaddy);
   });
 
   it('without --noindex (production) there is no X-Robots-Tag', () => {
@@ -164,5 +165,24 @@ describe('development site: --noindex (split-dev-and-release-deploys)', () => {
 
   it('refuses --noindex for the production host (a dev Caddyfile must never serve cryoshield.app)', () => {
     expect(() => gen(fixture(page), 'cryoshield.app', true)).toThrow(/noindex/);
+  });
+
+  it('allowlist (ECC M5): only cryoshield.app without noindex and cryoshield-web-dev.fly.dev with noindex', () => {
+    expect(() => gen(fixture(page), 'cryoshield-web-dev.fly.dev', false)).toThrow(/requires --noindex/);
+    for (const host of ['dev.cryoshield.app', 'x.y.cryoshield.app']) {
+      expect(() => gen(fixture(page), host, true), host).toThrow(/subdomain of cryoshield\.app/);
+    }
+    for (const host of ['example.com', 'cryoshield.app.evil.com', 'other.fly.dev']) {
+      expect(() => gen(fixture(page), host, true), host).toThrow(/invalid host/);
+      expect(() => gen(fixture(page), host, false), host).toThrow(/invalid host/);
+    }
+  });
+
+  it('strict arguments (ECC M5): an unknown flag, a positional, a value on --noindex or a missing --host fail', () => {
+    const d = fixture(page);
+    const base = ['--dist', join(d, 'dist'), '--out', join(d, 'out')];
+    for (const extra of [['--host', 'cryoshield.app', '--no-index'], ['--host', 'cryoshield.app', 'stray'], ['--host', 'cryoshield-web-dev.fly.dev', '--noindex=false'], []]) {
+      expect(() => execFileSync('node', [GEN, ...base, ...extra], { stdio: 'pipe' }), JSON.stringify(extra)).toThrow();
+    }
   });
 });

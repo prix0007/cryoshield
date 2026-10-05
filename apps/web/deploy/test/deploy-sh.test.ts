@@ -29,7 +29,8 @@ function repo(rpId = 'cryoshield.app') {
   git('-c', 'user.email=t@t', '-c', 'user.name=t', 'add', '-A');
   git('-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'init');
   const run = (env: Record<string, string> = {}, args: string[] = []) => {
-    const clean = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('VITE_')));
+    // Hermetic: no inherited VITE_* (would override .env) or DEPLOY_* (would change the target) from the caller (L5).
+    const clean = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('VITE_') && !k.startsWith('DEPLOY_')));
     return spawnSync('bash', [join(web, 'deploy', 'deploy.sh'), ...args], {
       cwd: web,
       encoding: 'utf8',
@@ -119,6 +120,7 @@ describe('deploy.sh guards', () => {
     expect(out.status, out.stderr).toBe(0);
     expect(r.calls().some((c) => c.startsWith('fly'))).toBe(false);
     expect(r.calls()).toHaveLength(3);
+    expect(r.calls()[1]).toBe('node deploy/gen-context.mjs --dist dist --out deploy/.build --host cryoshield.app');
     expect(out.stdout).toMatch(/build only/);
   });
 
@@ -131,32 +133,40 @@ describe('deploy.sh guards', () => {
 });
 
 describe('deploy.sh targets (split-dev-and-release-deploys)', () => {
-  it('DEPLOY_TARGET=development: dev host, RP ID dev.cryoshield.app, --noindex, cryoshield-web-dev with fly.dev.toml', () => {
-    const r = repo('dev.cryoshield.app');
+  it('DEPLOY_TARGET=development: dev host, RP ID cryoshield-web-dev.fly.dev, --noindex, cryoshield-web-dev with fly.dev.toml', () => {
+    const r = repo('cryoshield-web-dev.fly.dev');
     const out = r.run({ DEPLOY_TARGET: 'development' });
     expect(out.status, out.stderr).toBe(0);
     expect(r.calls()).toEqual([
-      'node scripts/verify-build.mjs --real-env --expect-host dev.cryoshield.app',
-      'node deploy/gen-context.mjs --dist dist --out deploy/.build --host dev.cryoshield.app --noindex',
+      'node scripts/verify-build.mjs --real-env --expect-host cryoshield-web-dev.fly.dev',
+      'node deploy/gen-context.mjs --dist dist --out deploy/.build --host cryoshield-web-dev.fly.dev --noindex',
       expect.stringMatching(/^node deploy\/release-manifest\.mjs .* --site-release$/),
       'fly deploy --config fly.dev.toml --remote-only --app cryoshield-web-dev',
     ]);
   });
 
-  it('development refuses the production RP ID (dev code must never be able to ask for production PRF outputs)', () => {
-    const r = repo('cryoshield.app');
+  it.each(['cryoshield.app', 'dev.cryoshield.app', 'a.b.cryoshield.app'])('development refuses RP ID %s: the production RP ID or under it (T1: dev must never ask for production PRF outputs)', (rp) => {
+    const r = repo(rp);
     const out = r.run({ DEPLOY_TARGET: 'development' }, ['--build-only']);
     expect(out.status).not.toBe(0);
-    expect(out.stderr).toMatch(/production RP ID/);
+    expect(out.stderr).toMatch(/production RP ID cryoshield\.app or under it/);
     expect(r.calls()).toEqual([]);
+  });
+
+  it('the development host itself is not under cryoshield.app (a different registrable domain)', () => {
+    const sh = readFileSync(SCRIPT, 'utf8');
+    const host = sh.match(/development\) HOST="([^"]+)"/)![1];
+    expect(host).toBe('cryoshield-web-dev.fly.dev');
+    expect(host === 'cryoshield.app' || host.endsWith('.cryoshield.app')).toBe(false);
+    expect(sh).toMatch(/under_prod "\$HOST"/);
   });
 
   it('production (the default, or explicit) refuses the dev RP ID and never passes --noindex', () => {
     for (const env of [{}, { DEPLOY_TARGET: 'production' }]) {
-      const bad = repo('dev.cryoshield.app');
+      const bad = repo('cryoshield-web-dev.fly.dev');
       const out = bad.run(env, ['--build-only']);
       expect(out.status).not.toBe(0);
-      expect(out.stderr).toContain('VITE_RP_ID (dev.cryoshield.app) != deploy host (cryoshield.app)');
+      expect(out.stderr).toContain('VITE_RP_ID (cryoshield-web-dev.fly.dev) != deploy host (cryoshield.app)');
       const ok = repo();
       expect(ok.run(env, ['--build-only']).status).toBe(0);
       expect(ok.calls().some((c) => c.includes('--noindex'))).toBe(false);
@@ -164,7 +174,7 @@ describe('deploy.sh targets (split-dev-and-release-deploys)', () => {
   });
 
   it('an unknown DEPLOY_TARGET, or the retired DEPLOY_HOST, is refused before anything runs', () => {
-    for (const env of [{ DEPLOY_TARGET: 'staging' }, { DEPLOY_TARGET: 'Production' }, { DEPLOY_HOST: 'cryoshield.app' }, { DEPLOY_HOST: 'dev.cryoshield.app', DEPLOY_TARGET: 'development' }]) {
+    for (const env of [{ DEPLOY_TARGET: 'staging' }, { DEPLOY_TARGET: 'Production' }, { DEPLOY_HOST: 'cryoshield.app' }, { DEPLOY_HOST: 'cryoshield-web-dev.fly.dev', DEPLOY_TARGET: 'development' }]) {
       const r = repo();
       const out = r.run(env);
       expect(out.status, JSON.stringify(env)).not.toBe(0);

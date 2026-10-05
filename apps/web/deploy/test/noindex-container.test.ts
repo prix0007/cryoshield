@@ -15,7 +15,7 @@ const web = join(__dirname, '..', '..');
 const FROM = readFileSync(join(web, 'deploy', 'Dockerfile'), 'utf8').match(/^FROM (caddy:\S+@sha256:[0-9a-f]{64})$/m)![1]!;
 const NAME = `cs-web-noindex-${process.pid}`;
 const PORT = 18081;
-const HOST = 'dev.cryoshield.app';
+const HOST = 'cryoshield-web-dev.fly.dev';
 const META = "default-src 'none'; script-src 'self'; connect-src 'self' https://rpc.example; require-trusted-types-for 'script'";
 let dir = '';
 
@@ -71,9 +71,9 @@ describe('development container (noindex)', () => {
   });
 
   it('a non-canonical host is redirected to the dev host, also with noindex', async () => {
-    const r = await get('/app/', 'cryoshield-web-dev.fly.dev');
+    const r = await get('/app/', 'dev.cryoshield.app'); // the retired subdomain must never serve the app (T1)
     expect(r.status).toBe(301);
-    expect(r.headers.location).toBe('https://dev.cryoshield.app/app/');
+    expect(r.headers.location).toBe('https://cryoshield-web-dev.fly.dev/app/');
     expect(r.headers['x-robots-tag']).toBe('noindex, nofollow');
   });
 

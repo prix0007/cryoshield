@@ -14,6 +14,33 @@
 **Reason**: The reusable CI must also test a given commit (the tagged one) when it is called from a dispatch on `main`.
 **Migration**: See "Reusable full CI run on a given commit".
 
+## MODIFIED Requirements
+
+### Requirement: Unconfigured deploys skip without failing
+Before the full CI, each deploy workflow SHALL check, in its build environment, that every required build variable and the `VITE_BUNDLER_URL` secret are non-empty: `deploy-dev.yml` checks `development-build`, and `deploy.yml` checks `production-build`. The check SHALL use presence flags only (`${{ vars.X != '' }}`, `${{ secrets.X != '' }}`), never the values.
+
+If anything is missing:
+- `deploy-dev.yml` (polled on every `main` commit) SHALL emit a `deploy not configured` warning that names the missing items and the environment and points to `docs/deploy.md`, in the log and the job summary. It SHALL skip every later job (CI, build, release) and conclude successfully, so `main` is never marked red.
+- `deploy.yml` (an owner's release or dispatch, always deliberate) SHALL emit the same message as an error, skip every later job, and **fail**.
+
+Fully configured runs SHALL behave as before. The workflow policy SHALL allow a secret presence expression only for `VITE_BUNDLER_URL`, in the `config` step of a job in the workflow's own build environment.
+
+#### Scenario: Dev not configured
+- **WHEN** `deploy-dev.yml` runs and `development-build` has no variables or secrets
+- **THEN** the run logs a warning naming every missing item and `development-build`, builds and deploys nothing, and concludes success
+
+#### Scenario: Production partly configured
+- **WHEN** the owner publishes a release and only `VITE_BUNDLER_URL` is missing from `production-build`
+- **THEN** the run reports an error naming `VITE_BUNDLER_URL`, builds and deploys nothing, and fails
+
+#### Scenario: Configured later
+- **WHEN** the configuration is completed after skipped dev runs
+- **THEN** the next merge or a forced `workflow_dispatch` of `deploy-dev.yml` deploys normally, because skipped runs do not count as failed
+
+#### Scenario: Fly token missing
+- **WHEN** a release job runs with an empty `FLY_API_TOKEN` in its environment (`development` or `production`)
+- **THEN** it fails at once with a `deploy not configured` error that names `FLY_API_TOKEN` and that environment, before calling flyctl
+
 ## ADDED Requirements
 
 ### Requirement: Reusable full CI run on a given commit
@@ -41,6 +68,10 @@ The workflow policy SHALL enforce, for each deploy workflow:
   - exactly one job in the release environment, holding `FLY_API_TOKEN` only in the step env of steps `deploy` and `rollback`;
   - the bundler URL only in its build environment;
   - no write scopes;
+  - no `always()`, `failure()` or `cancelled()` in a job-level condition (they are allowed only in the step conditions of the rollback and fail-loudly steps);
+  - every job that needs `config` requires `needs.config.outputs.configured == 'true'`;
+  - the release job's re-check step runs immediately before the `deploy` step;
+  - `deploy-dev.yml` never references `VITE_CF_BEACON_TOKEN`;
   - no `secrets: inherit`;
   - every run step of a token-holding job pinned by digest;
   - no build tooling in the release job.
@@ -53,6 +84,10 @@ No other workflow may reference `FLY_API_TOKEN` or use any of the four deploy en
 
 #### Scenario: Cross-target environment
 - **WHEN** a job in `deploy-dev.yml` uses environment `production`
+- **THEN** the workflow policy check fails
+
+#### Scenario: Release after a failed build
+- **WHEN** a deploy workflow's release job condition becomes `always() && needs.detect.outputs.deploy == 'true'`
 - **THEN** the workflow policy check fails
 
 #### Scenario: Owner gate removed

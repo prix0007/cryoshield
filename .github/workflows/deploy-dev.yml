@@ -1,10 +1,10 @@
-# Continuous deployment of every main commit to the DEVELOPMENT site https://dev.cryoshield.app (Fly app
+# Continuous deployment of every main commit to the DEVELOPMENT site https://cryoshield-web-dev.fly.dev (Fly app
 # cryoshield-web-dev, OP Sepolia). OpenSpec changes add-continuous-deploy, deploy-skip-when-unconfigured,
 # split-dev-and-release-deploys. Production is deploy.yml (owner-published releases only).
 #
 #   detect -> config (env development-build: is the build config there? if not, warn and skip the rest successfully)
 #   -> test (FULL ci.yml on this exact commit) -> build (env development-build: DEPLOY_TARGET=development
-#   deploy.sh --build-only, no Fly token; RP ID dev.cryoshield.app, noindex Caddyfile) -> release (env development:
+#   deploy.sh --build-only, no Fly token; RP ID cryoshield-web-dev.fly.dev, noindex Caddyfile) -> release (env development:
 #   head re-check, deploy + smoke test + automatic rollback, all in one job, no approval)
 #
 # Triggers: push to main (human merges); every 15 minutes (merges by GitHub auto-merge start no push workflows);
@@ -43,7 +43,7 @@ concurrency:
 
 env:
   NODE_VERSION: "22"
-  SITE_URL: https://dev.cryoshield.app
+  SITE_URL: https://cryoshield-web-dev.fly.dev
   FLY_APP: cryoshield-web-dev
   FLY_CONFIG: fly.dev.toml
   # flyctl from the GitHub release, verified against flyctl_0.4.111_checksums.txt (2026-10-04).
@@ -136,7 +136,7 @@ jobs:
       pull-requests: read # the most any called job declares (its PR path filter, skipped here)
 
   # Runs all build code (pnpm, vite, plugins) WITHOUT the Fly token: DEPLOY_TARGET=development deploy.sh --build-only
-  # performs every guard (clean tree, no exported VITE_*, RP ID == dev.cryoshield.app and never the production RP ID,
+  # performs every guard (clean tree, no exported VITE_*, RP ID == cryoshield-web-dev.fly.dev and never the production RP ID,
   # two identical builds, bundle checks) and writes deploy/.build (site, noindex Caddyfile, release manifest).
   build:
     name: build
@@ -163,7 +163,7 @@ jobs:
           package-manager-cache: false
       - name: Install (frozen lockfile)
         run: pnpm install --frozen-lockfile
-      # VITE_CF_BEACON_TOKEN is deliberately not set in development-build: no analytics on dev.
+      # No analytics on dev: the Cloudflare beacon token is never passed here (enforced by workflow-policy.mjs, ECC M2).
       - name: Write apps/web/.env from the development-build environment
         id: web-env
         env:
@@ -176,7 +176,7 @@ jobs:
           VITE_ARWEAVE_FAST_INDEX_URL: ${{ vars.VITE_ARWEAVE_FAST_INDEX_URL }}
           VITE_RP_ID: ${{ vars.VITE_RP_ID }}
           VITE_RP_NAME: ${{ vars.VITE_RP_NAME }}
-          VITE_CF_BEACON_TOKEN: ${{ vars.VITE_CF_BEACON_TOKEN }}
+          BUILD_ENVIRONMENT: development-build
         run: .github/scripts/deploy/write-env.sh
       - name: Guarded build (DEPLOY_TARGET=development deploy.sh --build-only)
         id: build
@@ -198,7 +198,8 @@ jobs:
           if-no-files-found: error
           retention-days: 7 # the bundle (and its public bundler key) only needs to outlive the deploy
 
-  # The ONLY job in environment `development`: re-checks that its commit is still main's HEAD, deploys, smoke-tests and,
+  # The ONLY job in environment `development`: right before deploying, skips if its commit is no longer main's HEAD;
+  # otherwise deploys, smoke-tests and,
   # on failure or cancellation after `fly deploy` started, rolls back. It holds the dev Fly token and runs only flyctl,
   # curl, jq, gh and coreutils on the verified build artifact (enforced by workflow-policy.mjs).
   release:
@@ -209,26 +210,13 @@ jobs:
     timeout-minutes: 45
     environment:
       name: development
-      url: https://dev.cryoshield.app
+      url: https://cryoshield-web-dev.fly.dev
     concurrency:
       group: deploy-development
       cancel-in-progress: false
     permissions:
       contents: read # checkout, and the main HEAD check via the API
     steps:
-      # An older commit whose release queued behind a newer one must not roll the dev site back (security review M1).
-      - name: Refuse a release that is no longer main's HEAD
-        id: head-check
-        env:
-          GH_TOKEN: ${{ github.token }}
-          SHA: ${{ needs.detect.outputs.sha }}
-        run: |
-          set -euo pipefail
-          head="$(gh api "repos/${GITHUB_REPOSITORY}/commits/main" --jq .sha)"
-          if [ "$head" != "$SHA" ]; then
-            echo "::error title=Superseded::main moved on to ${head}; this dev release (${SHA}) is stale. A newer run deploys it."
-            exit 1
-          fi
       - name: Checkout (fly.dev.toml, Dockerfile, .dockerignore, deploy scripts, deployment records, donation config)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -271,9 +259,26 @@ jobs:
           tar -xzf "${RUNNER_TEMP}/flyctl.tar.gz" -C "${RUNNER_TEMP}/fly-bin" flyctl
           ln -sf flyctl "${RUNNER_TEMP}/fly-bin/fly"
           echo "${RUNNER_TEMP}/fly-bin" >> "${GITHUB_PATH}"
+      # Right before fly deploy (ECC L1): an older commit whose release queued behind a newer one must not roll the dev
+      # site back (security review M1). Superseded is not a failure: the run ends green with a notice, deploying nothing.
+      - name: Skip a release that is no longer main's HEAD
+        id: head-check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ needs.detect.outputs.sha }}
+        run: |
+          set -euo pipefail
+          head="$(gh api "repos/${GITHUB_REPOSITORY}/commits/main" --jq .sha)"
+          if [ "$head" != "$SHA" ]; then
+            echo "::notice title=Superseded::main moved on to ${head}; this dev release (${SHA}) is stale and was not deployed. The newer run deploys main."
+            echo "current=false" >> "${GITHUB_OUTPUT}"
+          else
+            echo "current=true" >> "${GITHUB_OUTPUT}"
+          fi
       # Record the live image (rollback target), then deploy.
       - name: Deploy the built context (flyctl only)
         id: deploy
+        if: steps.head-check.outputs.current == 'true'
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
           APP: ${{ env.FLY_APP }}
@@ -285,6 +290,7 @@ jobs:
           cd apps/web
           fly deploy --config "$FLY_CONFIG" --remote-only --app "$FLY_APP"
       - name: Record the release in the job summary
+        if: steps.head-check.outputs.current == 'true'
         run: |
           set -euo pipefail
           m=apps/web/deploy/.build/release-manifest.json
@@ -304,6 +310,7 @@ jobs:
       # Chain and registry come from the verified manifest and the deployment record at the same commit.
       - name: Smoke test the live site
         id: smoke
+        if: steps.head-check.outputs.current == 'true'
         env:
           EXPECT_SHA: ${{ needs.detect.outputs.sha }}
           BASE_URL: ${{ env.SITE_URL }}

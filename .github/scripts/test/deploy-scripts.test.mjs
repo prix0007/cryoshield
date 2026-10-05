@@ -155,6 +155,16 @@ test('write-env: refuses values dotenv would reinterpret: leading quote/backtick
   assert.equal((await run('write-env.sh', { ...FULL_ENV, VITE_RP_NAME: 'Cryo#Shield', OUT: ok })).status, 0);
 });
 
+test('write-env: messages name the build environment (ECC L6)', async () => {
+  const { VITE_RP_ID: _o, ...rest } = FULL_ENV;
+  const dev = await run('write-env.sh', { ...rest, BUILD_ENVIRONMENT: 'development-build', OUT: join(mkdtempSync(join(tmpdir(), 'env-')), '.env') });
+  assert.notEqual(dev.status, 0);
+  assert.match(dev.stdout, /::error title=development-build config::the development-build environment is missing variables\/secrets: VITE_RP_ID/);
+  assert.doesNotMatch(dev.stdout, /production/);
+  const prod = await run('write-env.sh', { ...FULL_ENV, VITE_RP_NAME: 'a\nb', OUT: join(mkdtempSync(join(tmpdir(), 'env-')), '.env') });
+  assert.match(prod.stdout, /::error title=production-build config::VITE_RP_NAME contains a line break/);
+});
+
 test('write-env: refuses $ (Vite dotenv expansion would rewrite the value) (review L2)', async () => {
   const out = join(mkdtempSync(join(tmpdir(), 'env-')), '.env');
   const r = await run('write-env.sh', { ...FULL_ENV, VITE_RP_NAME: 'Cryo$HOME', OUT: out });

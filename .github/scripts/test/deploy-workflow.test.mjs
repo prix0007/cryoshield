@@ -140,11 +140,39 @@ for (const [file, t] of Object.entries(TARGETS)) {
     const id = file === 'deploy.yml' ? 'tag-check' : 'head-check';
     const steps = wf.jobs.release.steps;
     const idx = (s) => steps.findIndex((x) => x.id === s);
-    assert.ok(idx(id) >= 0 && idx(id) < idx('deploy'), `${id} must run before deploy`);
+    assert.ok(idx(id) >= 0 && idx(id) === idx('deploy') - 1, `${id} must run immediately before deploy (ECC L1)`);
     assert.doesNotMatch(JSON.stringify(steps[idx(id)]), /secrets\./);
     const without = text.replace(`        id: ${id}\n`, '');
     assert.notEqual(without, text);
     expectError(file, without, new RegExp(id));
+  });
+}
+
+for (const [file] of Object.entries(TARGETS)) {
+  const text = real(file);
+  const wf = parse(text);
+
+  test(`${file}: ECC M3: no always()/failure()/cancelled() in a JOB condition, alone or combined`, () => {
+    for (const fn of ['always()', 'failure()', 'cancelled()', '!cancelled()']) {
+      const combined = replaceOnce(text, "    needs: [detect, build]\n    if: needs.detect.outputs.deploy == 'true'\n", `    needs: [detect, build]\n    if: "${fn} && needs.detect.outputs.deploy == 'true'"\n`);
+      expectError(file, combined, /job 'release'.*always\(\), failure\(\) and cancelled\(\)/);
+    }
+    // the step-level exceptions stay: rollback and fail loudly
+    assert.match(String(wf.jobs.release.steps.find((s) => s.id === 'rollback').if), /failure\(\) \|\| cancelled\(\)/);
+    assert.deepEqual(errs(file, text), []);
+  });
+
+  test(`${file}: ECC M3: every job that needs config must require needs.config.outputs.configured == 'true'`, () => {
+    for (const [id, j] of Object.entries(wf.jobs)) {
+      if ([].concat(j.needs ?? []).includes('config')) assert.match(String(j.if), /needs\.config\.outputs\.configured == 'true'/, id);
+    }
+    const unconfigured = replaceOnce(text, "    needs: [detect, config, test]\n    if: needs.detect.outputs.deploy == 'true' && needs.config.outputs.configured == 'true'\n", "    needs: [detect, config, test]\n    if: needs.detect.outputs.deploy == 'true'\n");
+    expectError(file, unconfigured, /job 'build' needs config.*configured == 'true'/);
+  });
+
+  test(`${file}: ECC L1: nothing may sit between the re-check and fly deploy`, () => {
+    const between = replaceOnce(text, '      # Record the live image (rollback target), then deploy.\n', '      - name: Something in between\n        run: echo hi\n      # Record the live image (rollback target), then deploy.\n');
+    expectError(file, between, /immediately before the step with id deploy/);
   });
 }
 

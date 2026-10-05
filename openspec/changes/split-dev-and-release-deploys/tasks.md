@@ -43,8 +43,8 @@
 ## 3. Web deploy code (tests first)
 
 - [x] 3.1 First, write `apps/web/deploy/test/deploy-sh.test.ts`:
-  - `DEPLOY_TARGET=development` maps to `dev.cryoshield.app`, `cryoshield-web-dev`, `fly.dev.toml` and `--noindex`;
-  - the production RP ID on dev is refused;
+  - `DEPLOY_TARGET=development` maps to `cryoshield-web-dev.fly.dev`, `cryoshield-web-dev`, `fly.dev.toml` and `--noindex`;
+  - the production RP ID, or any RP ID under it, on dev is refused;
   - production refuses the dev RP ID;
   - `DEPLOY_HOST` is refused, and so is an unknown target.
 
@@ -102,7 +102,23 @@
 
   Then confirm that a merge deploys dev (with the noindex header), and that `gh release create` deploys production.
 - [x] 6.3 Security review recorded in `design.md` → Security review. It covers:
-  - a threat table: auto-shipped dev code; the Fly-token-path scripts running with a token and no human step; the production token gated only by owner-only `v*` tags; cross-target token use; and the subdomain RP ID (T1);
+  - a threat table: auto-shipped dev code; the Fly-token-path scripts running with a token and no human step; the production token gated only by owner-only `v*` tags; cross-target token use; and the subdomain RP ID (T1, now resolved: dev is on `cryoshield-web-dev.fly.dev`);
   - the compensating controls;
   - the explicit acceptance for dev;
   - the mainnet re-gate criterion.
+
+## 7. ECC review of PR #33 (tests first)
+
+- [x] 7.1 T1: move the dev host and RP ID to `cryoshield-web-dev.fly.dev` (another registrable domain) in `deploy.sh`, `deploy-dev.yml`, `gen-context.mjs`, `fly.dev.toml`, the tests, the docs and this change.
+  - `deploy-sh.test.ts`: dev RP IDs `cryoshield.app`, `dev.cryoshield.app` and `a.b.cryoshield.app` are refused; the dev host is not under `cryoshield.app`.
+  - `gen-context.test.ts`: dev hosts under `cryoshield.app` are refused.
+  - `noindex-container.test.ts`: Host `dev.cryoshield.app` is redirected to the dev host.
+- [x] 7.2 M1: delete `openspec/changes/remove-production-approval-gate/`. This delta REMOVES "Owner approval for production releases" (from `gate-production-deploys`).
+- [x] 7.3 M2: `deploy-dev.yml` never passes `VITE_CF_BEACON_TOKEN`, and the policy forbids the name there. Test in `deploy-targets.test.mjs`.
+- [x] 7.4 M3: the policy rejects job-level `always()`/`failure()`/`cancelled()` (also combined, e.g. `always() && needs.detect.outputs.deploy == 'true'`), and requires `needs.config.outputs.configured == 'true'` on jobs that need `config`. Tests in `deploy-workflow.test.mjs`.
+- [x] 7.5 M4: a MODIFIED delta for `ci-pipeline` "Unconfigured deploys skip without failing": both workflows and `development-build`, with no approval scenario.
+- [x] 7.6 M5: `gen-context.mjs` uses `util.parseArgs({ strict: true })` and an allowlist of the two host/noindex pairs. Tests in `gen-context.test.ts`.
+- [x] 7.7 L1: the dev `head-check` runs immediately before `deploy`; a superseded run exits 0 with a notice, and `deploy`/summary/`smoke` are skipped. The production `tag-check` also runs immediately before `deploy`. The policy enforces both.
+- [x] 7.8 L2: `check-config.sh` with `MISSING_IS_ERROR=true` (production) fails. L3: the org-owner caveat is in `design.md` and `docs/deploy.md`. L4: `fly-toml.test.ts` parses the TOML per table. L5: `deploy-sh.test.ts` drops inherited `DEPLOY_*` and asserts the gen-context call. L6: `write-env.sh` names `BUILD_ENVIRONMENT` in its messages.
+- [x] 7.9 Re-run every suite, `actionlint`, `zizmor`, `shellcheck` and `openspec validate --all --strict`; re-pin the changed dev `head-check` digest.
+- [ ] 7.10 [owner] Delete the DNS records for `dev.cryoshield.app` (its Fly certificate is already removed).

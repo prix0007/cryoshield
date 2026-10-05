@@ -1,6 +1,7 @@
-# Fly.io config for the DEVELOPMENT site https://dev.cryoshield.app (split-dev-and-release-deploys D2).
+# Fly.io config for the DEVELOPMENT site https://cryoshield-web-dev.fly.dev (split-dev-and-release-deploys D2), served on
+# its own fly.dev name: another registrable domain than cryoshield.app (T1). No custom domain (never dev.cryoshield.app).
 # Same image, build and health check as production (fly.toml); only the app differs. Every main commit deploys here
-# (.github/workflows/deploy-dev.yml). The build it serves uses RP ID dev.cryoshield.app and sends noindex headers.
+# (.github/workflows/deploy-dev.yml). The build it serves uses RP ID cryoshield-web-dev.fly.dev and sends noindex headers.
 # No [env], no secrets, no [mounts]: the image only contains the verified static build.
 # Created once: fly apps create cryoshield-web-dev --org cryoshield
 app = "cryoshield-web-dev"

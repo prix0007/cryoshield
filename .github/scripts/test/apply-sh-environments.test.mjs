@@ -1,4 +1,4 @@
-// gate-production-deploys task 3.1, remove-production-approval-gate, split-dev-and-release-deploys: apply.sh --environments
+// gate-production-deploys task 3.1, split-dev-and-release-deploys: apply.sh --environments
 // (production/production-build from main and v* tags; development/development-build from main only; no required reviewer,
 // no admin bypass; the owner is looked up only when an environment names "@owner") and --founder-hardening (Dependabot
 // security updates, SHA-pinned actions).

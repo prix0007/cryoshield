@@ -6,7 +6,8 @@
 #
 # env: HAS_<NAME>=true|false for every required name, computed in the workflow as `${{ vars.X != '' }}` or
 #      `${{ secrets.X != '' }}`: the values themselves never reach this step. SUMMARY (default $GITHUB_STEP_SUMMARY).
-#      BUILD_ENVIRONMENT (default production-build) and WORKFLOW (default deploy.yml) only name things in the warning.
+#      BUILD_ENVIRONMENT (default production-build) and WORKFLOW (default deploy.yml) only name things in the message.
+#      MISSING_IS_ERROR=true (deploy.yml: a release or dispatch is deliberate) turns the skip into a failure (ECC L2).
 # out: configured=true|false to $GITHUB_OUTPUT (and stdout)
 set -euo pipefail
 
@@ -17,6 +18,8 @@ BUILD_ENVIRONMENT="${BUILD_ENVIRONMENT:-production-build}"
 WORKFLOW="${WORKFLOW:-deploy.yml}"
 [[ "$BUILD_ENVIRONMENT" =~ ^[a-z-]+$ ]] || { echo "check-config: invalid BUILD_ENVIRONMENT" >&2; exit 2; }
 [[ "$WORKFLOW" =~ ^[a-z-]+\.yml$ ]] || { echo "check-config: invalid WORKFLOW" >&2; exit 2; }
+MISSING_IS_ERROR="${MISSING_IS_ERROR:-false}"
+[[ "$MISSING_IS_ERROR" =~ ^(true|false)$ ]] || { echo "check-config: MISSING_IS_ERROR must be true or false" >&2; exit 2; }
 
 emit() {
   echo "$1"
@@ -40,6 +43,12 @@ if [ "${#missing[@]}" -eq 0 ]; then
 fi
 
 msg="The ${BUILD_ENVIRONMENT} environment is missing: ${missing[*]}. Nothing was built or deployed; set them up as in docs/deploy.md (First-time setup), then re-run: gh workflow run ${WORKFLOW} (see docs/deploy.md for its inputs)"
+if [ "$MISSING_IS_ERROR" = "true" ]; then
+  echo "::error title=deploy not configured::${msg}"
+  { echo "## Deploy FAILED: not configured"; echo; echo "${msg}"; } >> "$SUMMARY"
+  emit "configured=false"
+  exit 1
+fi
 echo "::warning title=deploy not configured::${msg}"
 {
   echo "## Deploy skipped: not configured"

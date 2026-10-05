@@ -1,6 +1,6 @@
 # Agent account: agents work without admin rights
 
-OpenSpec change `gate-production-deploys` (audit CI-H1). The owner's account `prix0007` is a repository admin. An agent using the owner's `gh` login could change the `main` ruleset, the `production` environment or the repository settings. Agents therefore push and open PRs as a separate **machine user** with the **Write** role. Write cannot change rulesets, environments, secrets or settings, and cannot create `v*` tags (ruleset `release-tags`). Production deploys only from a release the owner publishes (change `split-dev-and-release-deploys`), so **the machine user cannot ship to production**; its merges reach the development site https://dev.cryoshield.app only.
+OpenSpec change `gate-production-deploys` (audit CI-H1). The owner's account `prix0007` is a repository admin. An agent using the owner's `gh` login could change the `main` ruleset, the `production` environment or the repository settings. Agents therefore push and open PRs as a separate **machine user** with the **Write** role. Write cannot change rulesets, environments, secrets or settings, and cannot create `v*` tags (ruleset `release-tags`). Production deploys only from a release the owner publishes (change `split-dev-and-release-deploys`), so **the machine user cannot ship to production**; its merges reach the development site https://cryoshield-web-dev.fly.dev only.
 
 Everything below is done by the founder. Agents never create credentials.
 

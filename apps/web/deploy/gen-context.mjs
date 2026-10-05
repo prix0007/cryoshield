@@ -5,30 +5,36 @@
  *   <out>/Caddyfile   = static server config; CSP derived from the BUILT index.html meta tag + frame-ancestors 'none'.
  *   Every HTML page (landing index.html, app/index.html) must carry the identical meta CSP, because one header
  *   CSP covers every response (redesign-landing-and-app-ui D8).
- * Usage: node deploy/gen-context.mjs --dist dist --out deploy/.build --host cryoshield.app [--noindex]
+ * Usage: node deploy/gen-context.mjs --dist dist --out deploy/.build --host cryoshield.app
+ *        node deploy/gen-context.mjs --dist dist --out deploy/.build --host cryoshield-web-dev.fly.dev --noindex
+ *   Only these two host/noindex pairs are accepted.
  *   --noindex (development site only, split-dev-and-release-deploys D5): every response, errors included, also carries
  *   `X-Robots-Tag: noindex, nofollow`. Nothing else changes: same CSP, same site files (so the same tree hash), and no
  *   robots.txt of its own (the build's robots.txt, if any, is served as is; crawlers must fetch a page to see noindex).
  */
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { parseArgs } from 'node:util';
 import { LANDING_PERMISSIONS_POLICY, SECURITY_HEADERS } from '../vite-plugins/security-headers.ts';
 
-function arg(name) {
-  const i = process.argv.indexOf(`--${name}`);
-  if (i < 0 || !process.argv[i + 1]) throw new Error(`missing --${name}`);
-  return process.argv[i + 1];
+// Strict: unknown flags, positionals or a value-less --host fail instead of being ignored (ECC review M5).
+const { values: args } = parseArgs({
+  strict: true,
+  allowPositionals: false,
+  options: { dist: { type: 'string' }, out: { type: 'string' }, host: { type: 'string' }, noindex: { type: 'boolean', default: false } },
+});
+for (const k of ['dist', 'out', 'host']) if (!args[k]) throw new Error(`missing --${k}`);
+const { dist, out, host, noindex } = args;
+// The ONLY host/noindex pairs (split-dev-and-release-deploys D5, T1): production is indexable; development is
+// noindex and lives on another registrable domain (fly.dev is a public suffix), never cryoshield.app or a subdomain of it.
+const TARGETS = { 'cryoshield.app': false, 'cryoshield-web-dev.fly.dev': true };
+if (host.endsWith('.cryoshield.app')) throw new Error(`host ${host} is a subdomain of cryoshield.app; a dev site there could assert rpId cryoshield.app`);
+if (!Object.hasOwn(TARGETS, host)) throw new Error(`invalid host: ${host} (allowed: ${Object.keys(TARGETS).join(', ')})`);
+if (TARGETS[host] !== noindex) {
+  throw new Error(noindex ? `--noindex is for the development site only, never ${host}` : `${host} is the development site and requires --noindex`);
 }
-
-const dist = arg('dist');
 // /release.json is published by release-manifest.mjs at deploy time only; a build must never ship its own.
 if (existsSync(join(dist, 'release.json'))) throw new Error(`${dist}/release.json must not be part of the build`);
-const out = arg('out');
-const host = arg('host');
-if (!/^(?=.{1,253}$)([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,63}$/.test(host)) throw new Error(`invalid host: ${host}`);
-const noindex = process.argv.includes('--noindex');
-// A noindex Caddyfile must never serve the production host (it would de-list cryoshield.app).
-if (noindex && host === 'cryoshield.app') throw new Error('--noindex is for the development site only, never cryoshield.app');
 const ROBOTS = { 'X-Robots-Tag': 'noindex, nofollow' };
 
 function pageCsp(rel) {

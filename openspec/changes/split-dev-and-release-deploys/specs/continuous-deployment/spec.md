@@ -6,9 +6,9 @@
 **Reason**: `main` now deploys to the development site, not to production (founder request, 2026-10-05).
 **Migration**: See "Deploy main to development after full CI" and "Production releases from published tags".
 
-### Requirement: Automatic production releases
-**Reason**: Production now deploys only from a release published by the owner.
-**Migration**: See "Production releases from published tags".
+### Requirement: Owner approval for production releases
+**Reason**: The owner's per-merge environment approval (`gate-production-deploys`) is replaced by owner-published releases: `main` deploys to development without a human step, and production deploys only from a `v*` release that only the owner can create. The `production` environment therefore has no required reviewer (founder decision, 2026-10-05).
+**Migration**: See "Production releases from published tags" and "Only the owner can trigger production". Re-add the reviewer before the OP Mainnet launch (`design.md` → mainnet re-gate criterion).
 
 ### Requirement: Waiting releases do not pile up
 **Reason**: No deploy waits for an approval any more. The `supersede` job is removed, and concurrency replaces pending releases natively.
@@ -29,32 +29,40 @@
 ## ADDED Requirements
 
 ### Requirement: Deploy main to development after full CI
-Every new commit on `main` SHALL be deployed to the development site within about 15 minutes, whether a person or auto-merge merged it. The development site is `https://dev.cryoshield.app` (Fly app `cryoshield-web-dev`) on OP Sepolia. The full CI MUST first pass on that exact commit. The deployment SHALL need no approval, and MUST NOT start from a pull request or from a ref other than `main`. It SHALL use the GitHub Environments `development-build` (build config) and `development` (Fly token only), both deployable from `main` only.
+Every new commit on `main` SHALL be deployed to the development site within about 15 minutes, whether a person or auto-merge merged it. The development site is `https://cryoshield-web-dev.fly.dev` (Fly app `cryoshield-web-dev`) on OP Sepolia. The full CI MUST first pass on that exact commit. The deployment SHALL need no approval, and MUST NOT start from a pull request or from a ref other than `main`. It SHALL use the GitHub Environments `development-build` (build config) and `development` (Fly token only), both deployable from `main` only.
 
 #### Scenario: Auto-merge reaches dev
 - **WHEN** a pull request is merged by GitHub auto-merge
-- **THEN** within 15 minutes the scheduled run tests the merge commit and deploys it to `https://dev.cryoshield.app`, and production is unchanged
+- **THEN** within 15 minutes the scheduled run tests the merge commit and deploys it to `https://cryoshield-web-dev.fly.dev`, and production is unchanged
 
 #### Scenario: Nothing new
-- **WHEN** `https://dev.cryoshield.app/release.json` already reports `main`'s HEAD commit
+- **WHEN** `https://cryoshield-web-dev.fly.dev/release.json` already reports `main`'s HEAD commit
 - **THEN** the run skips CI and deployment
 
 ### Requirement: Development releases follow main
-A development release SHALL refuse to deploy a commit that is no longer `main`'s HEAD, both when the run starts and right before `fly deploy`. Development and production SHALL use separate concurrency groups, so neither ever cancels or queues behind the other.
+A development release SHALL NOT deploy a commit that is no longer `main`'s HEAD. This is checked when the run starts, and again in the step immediately before `fly deploy`. A superseded release SHALL deploy nothing and end successfully with a notice. Development and production SHALL use separate concurrency groups, so neither ever cancels or queues behind the other.
 
 #### Scenario: Main moves during a dev run
 - **WHEN** commit A's dev release is about to deploy and `main` has moved on to B
-- **THEN** A's release fails without deploying, and B's run deploys B
+- **THEN** A's release deploys nothing and ends green with a "Superseded" notice, and B's run deploys B
 
 ### Requirement: Development site isolation
-The development build SHALL use the WebAuthn RP ID `dev.cryoshield.app`, and MUST NOT use `cryoshield.app`. The deploy script MUST refuse a development build whose configured RP ID differs from `dev.cryoshield.app`, or whose bundle carries another RP ID. Every response from the development host SHALL carry `X-Robots-Tag: noindex, nofollow`; this header is the only indexing control, and the development deploy MUST NOT add a `robots.txt` of its own (a static one would also ship to production). The strict CSP and the other security headers stay unchanged. The development build SHALL carry no analytics beacon.
+The development site SHALL be served from `https://cryoshield-web-dev.fly.dev`, a registrable domain other than `cryoshield.app` (`fly.dev` is a public suffix), and its build SHALL use that host as its WebAuthn RP ID. WebAuthn then cannot assert `rpId` `cryoshield.app` from a development page. No host that is `cryoshield.app` or a subdomain of it SHALL serve the development site. The deploy script and the context generator MUST refuse such a development host, and the deploy script MUST refuse a development build whose configured RP ID is `cryoshield.app` or under it, differs from `cryoshield-web-dev.fly.dev`, or whose bundle carries another RP ID. Every response from the development host SHALL carry `X-Robots-Tag: noindex, nofollow`; this header is the only indexing control, and the development deploy MUST NOT add a `robots.txt` of its own (a static one would also ship to production). The strict CSP and the other security headers stay unchanged. The development build SHALL carry no analytics beacon.
 
 #### Scenario: Production RP ID on dev
-- **WHEN** `development-build` sets `VITE_RP_ID=cryoshield.app`
+- **WHEN** `development-build` sets `VITE_RP_ID=cryoshield.app` or `VITE_RP_ID=dev.cryoshield.app`
 - **THEN** `deploy.sh` refuses the build, and nothing is deployed
 
+#### Scenario: Dev code asks for a production credential
+- **WHEN** code served from `https://cryoshield-web-dev.fly.dev` calls `navigator.credentials.get` with `rpId: 'cryoshield.app'`
+- **THEN** the browser rejects the call, because `cryoshield.app` is not a registrable-domain suffix of the dev origin, and no PRF output for a production vault is produced
+
+#### Scenario: Retired subdomain
+- **WHEN** a request reaches the development app with Host `dev.cryoshield.app`
+- **THEN** it is redirected to `https://cryoshield-web-dev.fly.dev`, and the app is not served on that host
+
 #### Scenario: Dev is crawled
-- **WHEN** a crawler fetches any page of `https://dev.cryoshield.app`
+- **WHEN** a crawler fetches any page of `https://cryoshield-web-dev.fly.dev`
 - **THEN** the response carries `X-Robots-Tag: noindex, nofollow`
 
 ### Requirement: Production releases from published tags

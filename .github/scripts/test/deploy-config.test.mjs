@@ -66,6 +66,16 @@ test('the warning names the build environment and the workflow to re-run (split-
   }
 });
 
+test('ECC L2: MISSING_IS_ERROR=true fails (exit 1, ::error) and still names only the missing keys; complete config passes', () => {
+  const r = run({ ...allTrue(), HAS_VITE_BUNDLER_URL: 'false', MISSING_IS_ERROR: 'true' });
+  assert.equal(r.status, 1);
+  assert.match(r.stdout, /::error title=deploy not configured::The production-build environment is missing: VITE_BUNDLER_URL\./);
+  assert.match(r.summary, /Deploy FAILED: not configured/);
+  assert.equal(r.output.trim(), 'configured=false');
+  assert.equal(run({ ...allTrue(), MISSING_IS_ERROR: 'true' }).status, 0);
+  assert.equal(run({ ...allTrue(), MISSING_IS_ERROR: 'yes' }).status, 2);
+});
+
 // ---- workflow structure (both deploy workflows) ----
 for (const [file, buildEnv] of [['deploy.yml', 'production-build'], ['deploy-dev.yml', 'development-build']]) {
   const deploy = readFileSync(new URL(`../../workflows/${file}`, import.meta.url), 'utf8');
@@ -77,9 +87,11 @@ for (const [file, buildEnv] of [['deploy.yml', 'production-build'], ['deploy-dev
     assert.deepEqual([].concat(job.needs), ['detect']);
     const step = job.steps.find((s) => s.id === 'config');
     assert.match(String(step.run), /check-config\.sh/);
-    const { BUILD_ENVIRONMENT, WORKFLOW, ...env } = step.env;
+    const { BUILD_ENVIRONMENT, WORKFLOW, MISSING_IS_ERROR, ...env } = step.env;
     assert.equal(BUILD_ENVIRONMENT, buildEnv);
     assert.equal(WORKFLOW, file);
+    // ECC L2: a production release or dispatch is deliberate, so missing config FAILS it; dev (polled) warns and skips.
+    assert.equal(MISSING_IS_ERROR, file === 'deploy.yml' ? 'true' : undefined);
     assert.deepEqual(Object.keys(env).sort(), REQUIRED.map((k) => `HAS_${k}`).sort());
     for (const k of REQUIRED) {
       const src = k === 'VITE_BUNDLER_URL' ? 'secrets' : 'vars';

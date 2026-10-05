@@ -94,9 +94,9 @@ jobs:
           BASE_URL: ${{ env.SITE_URL }}
         run: .github/scripts/deploy/release-diff.sh
 
-  # An unconfigured (or partially configured) production-build environment must not fail the run: warn with the
-  # missing NAMES and skip everything after this job. Only presence flags reach the step, never a value
-  # (deploy-skip-when-unconfigured). FLY_API_TOKEN lives in `production` and is checked in the release job.
+  # A release or dispatch is deliberate, so an unconfigured (or partially configured) production-build environment
+  # FAILS the run here, naming what is missing (ECC L2; dev only warns and skips). Only presence flags reach the step,
+  # never a value (deploy-skip-when-unconfigured). FLY_API_TOKEN lives in `production` and is checked in the release job.
   config:
     name: config
     needs: detect
@@ -121,6 +121,7 @@ jobs:
         env:
           BUILD_ENVIRONMENT: production-build
           WORKFLOW: deploy.yml
+          MISSING_IS_ERROR: "true" # a release or dispatch is deliberate: missing config fails the run (ECC L2)
           HAS_VITE_CHAIN_ID: ${{ vars.VITE_CHAIN_ID != '' }}
           HAS_VITE_RPC_URL: ${{ vars.VITE_RPC_URL != '' }}
           HAS_VITE_BUNDLER_URL: ${{ secrets.VITE_BUNDLER_URL != '' }}
@@ -185,6 +186,7 @@ jobs:
           VITE_RP_ID: ${{ vars.VITE_RP_ID }}
           VITE_RP_NAME: ${{ vars.VITE_RP_NAME }}
           VITE_CF_BEACON_TOKEN: ${{ vars.VITE_CF_BEACON_TOKEN }}
+          BUILD_ENVIRONMENT: production-build
         run: .github/scripts/deploy/write-env.sh
       - name: Guarded build (DEPLOY_TARGET=production deploy.sh --build-only)
         id: build
@@ -206,7 +208,7 @@ jobs:
           if-no-files-found: error
           retention-days: 7 # the bundle (and its public bundler key) only needs to outlive the deploy
 
-  # The ONLY job in environment `production`: re-checks the tag, deploys, smoke-tests and, on failure or cancellation
+  # The ONLY job in environment `production`: re-checks the tag right before deploying, deploys, smoke-tests and, on failure or cancellation
   # after `fly deploy` started, rolls back. It holds the Fly token and runs only flyctl, curl, jq, gh and coreutils on
   # the verified build artifact (enforced by workflow-policy.mjs).
   release:
@@ -237,16 +239,6 @@ jobs:
             contracts/deployments
             config/donation.json
           sparse-checkout-cone-mode: false
-      # Not "is this main's HEAD" (main moves on after a tag): the tag must still point at the commit that was tested
-      # and built, and that commit must still be reachable from main.
-      - name: Refuse a release whose tag moved or left main
-        id: tag-check
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          TAG: ${{ needs.detect.outputs.tag }}
-          EXPECT_SHA: ${{ needs.detect.outputs.sha }}
-        run: .github/scripts/deploy/release-ref.sh
       - name: Download the deploy context built without the token
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
@@ -276,6 +268,16 @@ jobs:
           tar -xzf "${RUNNER_TEMP}/flyctl.tar.gz" -C "${RUNNER_TEMP}/fly-bin" flyctl
           ln -sf flyctl "${RUNNER_TEMP}/fly-bin/fly"
           echo "${RUNNER_TEMP}/fly-bin" >> "${GITHUB_PATH}"
+      # Right before fly deploy (ECC L1). Not "is this main's HEAD" (main moves on after a tag): the tag must still point at the commit that was tested
+      # and built, and that commit must still be reachable from main.
+      - name: Refuse a release whose tag moved or left main
+        id: tag-check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ needs.detect.outputs.tag }}
+          EXPECT_SHA: ${{ needs.detect.outputs.sha }}
+        run: .github/scripts/deploy/release-ref.sh
       # Record the live image (rollback target), then deploy.
       - name: Deploy the built context (flyctl only)
         id: deploy

@@ -32,7 +32,7 @@ Already done: a shared IPv4 `66.241.124.125` and a dedicated IPv6 `2a09:8280:1::
 ## 2. Deploy
 
 Normally you don't deploy by hand (change `split-dev-and-release-deploys`; see `docs/deploy.md`):
-- `.github/workflows/deploy-dev.yml` deploys every new `main` commit to the development site https://dev.cryoshield.app (`cryoshield-web-dev`, `fly.dev.toml`);
+- `.github/workflows/deploy-dev.yml` deploys every new `main` commit to the development site https://cryoshield-web-dev.fly.dev (`cryoshield-web-dev`, `fly.dev.toml`);
 - `.github/workflows/deploy.yml` deploys production only from a release the owner publishes.
 
 The manual path below still works, for example while the pipelines are disabled.
@@ -41,10 +41,10 @@ The manual path below still works, for example while the pipelines are disabled.
 
 ```sh
 apps/web/deploy/deploy.sh                              # production: cryoshield.app, cryoshield-web, fly.toml
-DEPLOY_TARGET=development apps/web/deploy/deploy.sh    # development: dev.cryoshield.app, cryoshield-web-dev, fly.dev.toml
+DEPLOY_TARGET=development apps/web/deploy/deploy.sh    # development: cryoshield-web-dev.fly.dev, cryoshield-web-dev, fly.dev.toml
 ```
 
-`DEPLOY_TARGET` fixes the host, which must equal `VITE_RP_ID` in that target's `.env`. A development build refuses the production RP ID `cryoshield.app`, and its Caddyfile sends `X-Robots-Tag: noindex, nofollow` on every response. `DEPLOY_HOST` is no longer accepted.
+`DEPLOY_TARGET` fixes the host, which must equal `VITE_RP_ID` in that target's `.env`. The development host is the Fly app's own `fly.dev` name, a different registrable domain, so dev pages cannot assert `rpId: 'cryoshield.app'`. Never add a `cryoshield.app` custom domain (such as `dev.cryoshield.app`) to `cryoshield-web-dev`. A development build refuses `cryoshield.app` and any subdomain of it, as host or as RP ID, and its Caddyfile sends `X-Robots-Tag: noindex, nofollow` on every response. `DEPLOY_HOST` is no longer accepted.
 
 `deploy.sh` refuses unless:
 1. no `VITE_*` variable is exported (it would override `.env`);

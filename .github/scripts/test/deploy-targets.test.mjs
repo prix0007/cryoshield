@@ -1,6 +1,6 @@
 // split-dev-and-release-deploys: what differs between the two targets.
 //   deploy.yml      production: published v* release or owner dispatch with `tag`; tag reachable from main; no polling.
-//   deploy-dev.yml  development: every main commit (push, 15-minute schedule, dispatch) to https://dev.cryoshield.app.
+//   deploy-dev.yml  development: every main commit (push, 15-minute schedule, dispatch) to https://cryoshield-web-dev.fly.dev.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -110,18 +110,40 @@ test('development: detect compares the dev site with main and counts only failed
   assert.deepEqual(dev.jobs.test.with, { full: true });
 });
 
-test('development: the release refuses a commit that is no longer main HEAD (head-check)', () => {
+test('development: a release that is no longer main HEAD is skipped green with a notice, right before fly deploy (ECC L1)', () => {
   const hc = step(dev, 'release', 'head-check');
   assert.match(String(hc.run), /commits\/main/);
+  assert.match(String(hc.run), /::notice title=Superseded::/);
+  assert.match(String(hc.run), /current=false/);
+  assert.doesNotMatch(String(hc.run), /exit 1|::error/);
   assert.equal(hc.env.GH_TOKEN, '${{ github.token }}');
   assert.deepEqual(dev.jobs.release.needs, ['detect', 'build']);
+  const steps = dev.jobs.release.steps;
+  assert.equal(steps.findIndex((s) => s.id === 'head-check'), steps.findIndex((s) => s.id === 'deploy') - 1);
+  for (const id of ['deploy', 'smoke']) assert.equal(step(dev, 'release', id).if, "steps.head-check.outputs.current == 'true'", id);
+  assert.equal(steps.find((s) => s.name === 'Record the release in the job summary').if, "steps.head-check.outputs.current == 'true'");
+  expectError('deploy-dev.yml', replaceOnce(devText, "        id: deploy\n        if: steps.head-check.outputs.current == 'true'\n", '        id: deploy\n'), /deploy step's condition/);
+  // production fails hard instead (a moved tag is never "superseded"), and its deploy step has no condition
+  assert.equal(step(prod, 'release', 'deploy').if, undefined);
+  const psteps = prod.jobs.release.steps;
+  assert.equal(psteps.findIndex((s) => s.id === 'tag-check'), psteps.findIndex((s) => s.id === 'deploy') - 1);
+});
+
+test('development: never references the analytics beacon token (ECC M2)', () => {
+  assert.doesNotMatch(devText, /VITE_CF_BEACON_TOKEN/);
+  const web = step(dev, 'build', 'web-env');
+  assert.equal(web.env.BUILD_ENVIRONMENT, 'development-build');
+  expectError('deploy-dev.yml', replaceOnce(devText, '          BUILD_ENVIRONMENT: development-build\n        run: .github/scripts/deploy/write-env.sh', '          VITE_CF_BEACON_TOKEN: ${{ vars.VITE_CF_BEACON_TOKEN }}\n          BUILD_ENVIRONMENT: development-build\n        run: .github/scripts/deploy/write-env.sh'), /VITE_CF_BEACON_TOKEN/);
+  // production keeps its optional beacon
+  assert.equal(step(prod, 'build', 'web-env').env.VITE_CF_BEACON_TOKEN, '${{ vars.VITE_CF_BEACON_TOKEN }}');
+  assert.equal(step(prod, 'build', 'web-env').env.BUILD_ENVIRONMENT, 'production-build');
 });
 
 test('development: dev site, dev app and fly.dev.toml; smoke expects noindex; per-commit concurrency', () => {
-  assert.equal(dev.env.SITE_URL, 'https://dev.cryoshield.app');
+  assert.equal(dev.env.SITE_URL, 'https://cryoshield-web-dev.fly.dev');
   assert.equal(dev.env.FLY_APP, 'cryoshield-web-dev');
   assert.equal(dev.env.FLY_CONFIG, 'fly.dev.toml');
-  assert.equal(dev.jobs.release.environment.url, 'https://dev.cryoshield.app');
+  assert.equal(dev.jobs.release.environment.url, 'https://cryoshield-web-dev.fly.dev');
   assert.equal(step(dev, 'release', 'smoke').env.EXPECT_NOINDEX, 'true');
   assert.deepEqual(dev.concurrency, { group: 'deploy-dev-${{ github.sha }}', 'cancel-in-progress': false });
   const sparse = String(dev.jobs.release.steps.find((s) => String(s.uses).startsWith('actions/checkout@')).with['sparse-checkout']);

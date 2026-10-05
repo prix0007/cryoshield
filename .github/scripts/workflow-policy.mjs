@@ -442,6 +442,9 @@ export const DEPLOY_PROFILES = {
     releaseGroup: 'deploy-production',
     // right before fly deploy: the tag still points at the built commit, which is still reachable from main
     recheck: { id: 'tag-check', run: /\.github\/scripts\/deploy\/release-ref\.sh/ },
+    // the tag-check fails the job when the tag moved, so the deploy step needs no condition
+    deployIf: undefined,
+    forbidden: [],
   },
   // Development: every main commit (push for human merges, the schedule for auto-merges, dispatch), no approval.
   'deploy-dev.yml': {
@@ -453,6 +456,10 @@ export const DEPLOY_PROFILES = {
     buildEnv: 'development-build',
     releaseGroup: 'deploy-development',
     recheck: { id: 'head-check', run: /commits\/main/ },
+    // a superseded dev release ends green with a notice (ECC L1), so deploy and smoke run only for main's HEAD
+    deployIf: "steps.head-check.outputs.current == 'true'",
+    // no analytics on dev (ECC M2): the beacon token is never even passed to the dev build
+    forbidden: [/VITE_CF_BEACON_TOKEN/i],
   },
 };
 const DEPLOY_FILES = Object.keys(DEPLOY_PROFILES).join(', ');
@@ -526,11 +533,20 @@ function checkDeploy(file, name, wf, on) {
   if (strings(wf).includes('inherit')) err('secrets: inherit is not allowed');
   if (strings(wf.env).some((s) => /FLY_API_TOKEN/i.test(s)) || usesSecret(wf.env)) err('no secrets (FLY_API_TOKEN or any other) in the workflow-level env');
 
+  for (const re of profile.forbidden) if (strings(wf).some((x) => re.test(x))) err(`${re} must not appear in ${name} (ECC M2: no analytics on dev)`);
+
   for (const [id, job] of Object.entries(isObj(wf.jobs) ? wf.jobs : {})) {
     if (!isObj(job)) continue;
     const needs = [].concat(job.needs ?? []);
     const { conjuncts, topLevelOr } = splitCondition(job.if);
     if (topLevelOr) err(`job '${id}': no top-level || / or in a deploy workflow job condition (ECC review #3; group alternatives in parentheses)`);
+    // ECC M3: a status function in a JOB condition overrides the implicit success() of its needs, so a job would run
+    // after a failed or skipped test/build (e.g. `always() && needs.detect.outputs.deploy == 'true'`). Step-level
+    // failure()/cancelled() (rollback, fail loudly) stay allowed.
+    if (UNCONDITIONAL.test(String(job.if ?? ''))) err(`job '${id}': always(), failure() and cancelled() are not allowed in a deploy job condition (ECC M3)`);
+    if (needs.includes('config') && !conjuncts.includes("needs.config.outputs.configured == 'true'")) {
+      err(`job '${id}' needs config, so its condition must include "needs.config.outputs.configured == 'true'" as a top-level conjunct (ECC M3)`);
+    }
     if (needs.length > 0 && !conjuncts.includes("needs.detect.outputs.deploy == 'true'")) {
       err(`job '${id}' has needs, so its condition must include "needs.detect.outputs.deploy == 'true'" as a top-level conjunct (ECC review #4)`);
     }
@@ -554,8 +570,13 @@ function checkDeploy(file, name, wf, on) {
       const steps = Array.isArray(job.steps) ? job.steps.filter(isObj) : [];
       const at = (sid) => steps.findIndex((s) => s.id === sid);
       const re = steps[at(profile.recheck.id)];
-      if (!re || !profile.recheck.run.test(String(re.run ?? '')) || at(profile.recheck.id) > at('deploy')) {
-        err(`job '${id}' must re-check its commit in a step with id ${profile.recheck.id} (running ${profile.recheck.run}) before the step with id deploy`);
+      if (!re || !profile.recheck.run.test(String(re.run ?? '')) || at(profile.recheck.id) !== at('deploy') - 1) {
+        err(`job '${id}' must re-check its commit in a step with id ${profile.recheck.id} (running ${profile.recheck.run}) immediately before the step with id deploy (ECC L1)`);
+      }
+      if (re && re.if !== undefined) err(`job '${id}': the ${profile.recheck.id} step must run unconditionally`);
+      const dep = steps[at('deploy')];
+      if (dep && norm(dep.if) !== norm(profile.deployIf)) {
+        err(`job '${id}': the deploy step's condition must be ${profile.deployIf === undefined ? 'absent' : `"${profile.deployIf}"`}`);
       }
     }
     if (strings(job.env).some((s) => /FLY_API_TOKEN/i.test(s)) || usesSecret(job.env)) err(`job '${id}': FLY_API_TOKEN or any secret must not be in a job-level env`);

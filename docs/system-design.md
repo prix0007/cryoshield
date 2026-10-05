@@ -142,7 +142,7 @@ sequenceDiagram
 
 ## 5. How code reaches cryoshield.app
 
-Nothing reaches `main` or production without a spec, a pull request and a green `ci-ok`. The `main` ruleset has no bypass actors, so this applies to admins too. Every new commit on `main` is then deployed to the **development** site https://dev.cryoshield.app by `.github/workflows/deploy-dev.yml`, after the full CI passes again on that exact commit. **Production** is deployed by `.github/workflows/deploy.yml` only when the owner publishes a `v*` release of a commit on `main` (runbook: `docs/deploy.md`; change `split-dev-and-release-deploys`). Agents work through a non-admin machine account (`docs/agent-account.md`) that cannot create `v*` tags, so an auto-merged PR reaches `main` and dev, but never production by itself.
+Nothing reaches `main` or production without a spec, a pull request and a green `ci-ok`. The `main` ruleset has no bypass actors, so this applies to admins too. Every new commit on `main` is then deployed to the **development** site https://cryoshield-web-dev.fly.dev by `.github/workflows/deploy-dev.yml`, after the full CI passes again on that exact commit. **Production** is deployed by `.github/workflows/deploy.yml` only when the owner publishes a `v*` release of a commit on `main` (runbook: `docs/deploy.md`; change `split-dev-and-release-deploys`). Agents work through a non-admin machine account (`docs/agent-account.md`) that cannot create `v*` tags, so an auto-merged PR reaches `main` and dev, but never production by itself.
 
 ```mermaid
 flowchart LR
@@ -153,7 +153,7 @@ flowchart LR
   ok["ci-ok<br/>required, strict"]
   main["main<br/>squash only, linear, no force-push"]
   devpipe["deploy-dev.yml<br/>every main commit (push · every 15 min)<br/>full CI · build in development-build"]
-  dev["Fly.io cryoshield-web-dev<br/>dev.cryoshield.app · OP Sepolia<br/>RP ID dev.cryoshield.app · noindex"]
+  dev["Fly.io cryoshield-web-dev<br/>cryoshield-web-dev.fly.dev · OP Sepolia<br/>RP ID cryoshield-web-dev.fly.dev · noindex"]
   release["owner publishes release vX.Y.Z<br/>(only admins can create v* tags)"]
   prodpipe["deploy.yml<br/>tag on main? · full CI on the tag<br/>build in production-build (no Fly token)"]
   prod["Fly.io cryoshield-web<br/>cryoshield.app"]
@@ -180,7 +180,7 @@ flowchart LR
   - Both run the full `ci.yml` on the exact commit, and build with the guarded `deploy.sh --build-only` in a build environment that has no Fly token.
   - Both then run one `release` job in their own token environment: `development` holds a token for `cryoshield-web-dev` only, and `production` one for `cryoshield-web`. The job runs the flyctl-only deploy, the smoke test, and the automatic rollback to the previous image on any failure or cancellation.
   - The two pipelines use separate concurrency groups and never cancel each other.
-  - The dev site uses its own WebAuthn RP ID (`dev.cryoshield.app`), so its vaults are unrelated to production's; see threat T1 in the change's design for why it should move to a separate registrable domain before mainnet.
+  - The dev site is served from `cryoshield-web-dev.fly.dev`, a different registrable domain (`fly.dev` is on the Public Suffix List), with that host as its WebAuthn RP ID. A dev page therefore cannot assert `rpId: 'cryoshield.app'`, so auto-deployed dev code cannot reach production vaults. No host under `cryoshield.app` serves the dev site (`dev.cryoshield.app` is retired).
 
 ## 6. Hosting and headers
 

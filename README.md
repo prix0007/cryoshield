@@ -165,7 +165,7 @@ To change protection, edit those files in a PR and re-run the script after it me
 
 There are two targets (OpenSpec change `split-dev-and-release-deploys`):
 
-- **Development, https://dev.cryoshield.app** (OP Sepolia, its own RP ID `dev.cryoshield.app`, not indexed). Every new commit on `main` is deployed there automatically by `.github/workflows/deploy-dev.yml`.
+- **Development, https://cryoshield-web-dev.fly.dev** (OP Sepolia, not indexed). It is served on its own `fly.dev` name, a different registrable domain from `cryoshield.app`, so its RP ID can never reach production vaults. Every new commit on `main` is deployed there automatically by `.github/workflows/deploy-dev.yml`.
 - **Production, https://cryoshield.app.** It is deployed only when the repository owner publishes a release: `gh release create vX.Y.Z --target main --generate-notes`. `.github/workflows/deploy.yml` then deploys that tag. Only admins can create `v*` tags (ruleset `release-tags`), and the workflow runs only for the owner.
 
 Both pipelines run the same stages:
