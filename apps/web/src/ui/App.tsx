@@ -33,6 +33,10 @@ function Shell() {
   const [screen, setScreen] = useState<Screen>({ name: 'home' });
   // The only place decrypted secrets live. Replaced with null on lock.
   const [session, setSession] = useState<VaultSession | null>(null);
+  // harden-gas-sponsorship: the current (v2) vault and the legacy v1 copies the same key opens. Also decrypted, so they
+  // are dropped on lock exactly like `session`.
+  const [current, setCurrent] = useState<VaultSession | null>(null);
+  const [older, setOlder] = useState<VaultSession[]>([]);
   const [locked, setLocked] = useState(false);
   const [prf, setPrf] = useState<'supported' | 'unsupported' | 'unknown'>('unknown');
   const allowed = rpIdAllowed(svc.host, svc.rpId);
@@ -52,6 +56,8 @@ function Shell() {
 
   const lock = useCallback(() => {
     setSession(null);
+    setCurrent(null);
+    setOlder([]);
     setScreen({ name: 'home' });
     setLocked(true);
   }, []);
@@ -59,6 +65,8 @@ function Shell() {
 
   const onUnlocked = (u: Unlocked) => {
     setSession(u.session);
+    setCurrent(u.session.registry === 'v2' ? u.session : null);
+    setOlder(u.older ?? []);
     setLocked(false);
     setScreen({ name: 'vault', locator: u.locator, fresh: false });
   };
@@ -128,7 +136,19 @@ function Shell() {
             <UnlockFlow onUnlocked={onUnlocked} onCreate={() => setScreen({ name: 'create' })} onCancel={() => setScreen({ name: 'home' })} />
           )}
           {screen.name === 'vault' && session && (
-            <VaultView session={session} locator={screen.locator} freshMirror={screen.fresh} onChange={setSession} onLock={lock} />
+            <VaultView
+              key={`${session.registry}:${session.vaultId}`}
+              session={session}
+              locator={screen.locator}
+              freshMirror={screen.fresh}
+              onChange={(s) => {
+                setSession(s);
+                if (s.registry === 'v2') setCurrent(s);
+              }}
+              onLock={lock}
+              {...(session.registry === 'v2' && older.length > 0 ? { onOpenOlder: () => setSession(older[0]!) } : {})}
+              {...(session.registry !== 'v2' && current ? { onBackToCurrent: () => setSession(current) } : {})}
+            />
           )}
         </ScreenTransition>
       </main>

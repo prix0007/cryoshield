@@ -35,7 +35,7 @@ testnet build. Both need `contracts.vaultRegistryV2` and `contracts.wallets.<the
 | H3 | Unlock with A, then with B (fresh profiles) | one touch each; secrets shown | not run |
 | H4 | Edit with B; add key C with A | "Saved."; C alone unlocks | not run |
 | H5 | Unlock with a key whose vault exists only in VaultRegistry v1 (the old test vault) | it opens; secrets can be shown and copied; no Edit or Add key; the notice "This vault was made with an earlier test version…" | not run |
-| H6 | Re-create the old test vault on v2 with the same keys (task 6.4), then unlock | "This is unusual… choose" lists both; the v2 one has Edit | not run |
+| H6 | Re-create the old test vault on v2 with the same keys (task 6.4), then unlock | the v2 vault opens directly (no picker) with Edit; "Open an older test vault" shows the v1 copy read-only; "Back to your current vault" returns | not run |
 | H7 | Pimlico dashboard: temporarily set the per-sender count to the sender's current count, then edit | "Saving is paused right now…"; nothing sent; unlock still works. Restore the cap | not run |
 | H8 | Recovery tool reads the v1 and the v2 vault | both open | not run |
 | H9 | Record gas and USD per create / edit / add-key in `docs/costs.md` and `contracts/GAS.md`; re-check the D2 per-operation caps | filled | not run |

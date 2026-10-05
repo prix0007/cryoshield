@@ -20,6 +20,10 @@ export function VaultView(props: {
   onChange: (s: VaultSession) => void;
   onLock: () => void;
   freshMirror?: boolean;
+  /** Opens the legacy v1 copy this key also opens (harden-gas-sponsorship). */
+  onOpenOlder?: () => void;
+  /** From a legacy v1 copy, back to the current v2 vault. */
+  onBackToCurrent?: () => void;
 }) {
   const svc = useServices();
   const s = props.session;
@@ -224,6 +228,16 @@ export function VaultView(props: {
               <Btn className="secondary" onClick={() => { setMode('details'); setProgress(null); }}>{S.vault.details}</Btn>
               <Btn className="secondary" onClick={props.onLock}>{S.vault.lock}</Btn>
             </ActionBar>
+            {props.onOpenOlder && (
+              <Btn className="link-button" onClick={props.onOpenOlder}>
+                {S.unlock.olderVault}
+              </Btn>
+            )}
+            {props.onBackToCurrent && (
+              <Btn className="link-button" onClick={props.onBackToCurrent}>
+                {S.vault.backToCurrent}
+              </Btn>
+            )}
           </div>
         )}
 

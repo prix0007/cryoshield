@@ -18,6 +18,8 @@ const PHASE_ORDER: readonly Phase[] = ['ready', 'notFound', 'choices'];
 export interface Unlocked {
   session: VaultSession;
   locator: `0x${string}`;
+  /** Legacy VaultRegistry v1 copies this key also opens (read-only), offered behind a small link. */
+  older?: VaultSession[];
 }
 
 function toSession(m: OpenedVault): VaultSession {
@@ -37,7 +39,7 @@ export function UnlockFlow(props: { onUnlocked: (u: Unlocked) => void; onCreate:
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notFound, setNotFound] = useState(false);
-  const [choices, setChoices] = useState<{ matches: OpenedVault[]; locator: `0x${string}` } | null>(null);
+  const [choices, setChoices] = useState<{ matches: OpenedVault[]; older: OpenedVault[]; locator: `0x${string}` } | null>(null);
   const phase: Phase = choices ? 'choices' : notFound ? 'notFound' : 'ready';
   const dir = useDirection(PHASE_ORDER, phase);
 
@@ -48,9 +50,14 @@ export function UnlockFlow(props: { onUnlocked: (u: Unlocked) => void; onCreate:
     try {
       const r = await unlock({ rpId: svc.rpId }, { reader: svc.reader, ...(svc.credentials ? { credentials: svc.credentials } : {}) });
       const locator = toHex(r.locator);
-      const usable = r.matches;
-      if (usable.length === 1) return finish(usable[0]!, locator);
-      setChoices({ matches: usable, locator });
+      // harden-gas-sponsorship: v2 vaults are current. One v2 vault opens directly, with any v1 copies behind a small
+      // link; the picker is only for several v2 vaults. With no v2 vault, the v1 vaults are the choice.
+      const current = r.matches.filter((m) => m.registry === 'v2');
+      const legacy = r.matches.filter((m) => m.registry !== 'v2');
+      const primary = current.length > 0 ? current : legacy;
+      const older = current.length > 0 ? legacy : [];
+      if (primary.length === 1) return finish(primary[0]!, locator, older);
+      setChoices({ matches: primary, older, locator });
     } catch (e) {
       if (e instanceof UnlockError) setNotFound(true);
       else if (e instanceof KeyError || e instanceof ChainMismatchError) setError(messageFor(e));
@@ -61,12 +68,13 @@ export function UnlockFlow(props: { onUnlocked: (u: Unlocked) => void; onCreate:
     }
   }
 
-  function finish(m: OpenedVault, locator: `0x${string}`) {
+  function finish(m: OpenedVault, locator: `0x${string}`, older: OpenedVault[] = []) {
     if (m.payloadError) {
       setError(m.payloadError === 'UNKNOWN_VERSION' ? S.unlock.newerVersion : S.save.nothingSaved);
       return;
     }
-    props.onUnlocked({ session: toSession(m), locator });
+    const readable = older.filter((o) => !o.payloadError).map(toSession);
+    props.onUnlocked({ session: toSession(m), locator, ...(readable.length > 0 ? { older: readable } : {}) });
   }
 
   return (
@@ -94,12 +102,17 @@ export function UnlockFlow(props: { onUnlocked: (u: Unlocked) => void; onCreate:
             <ul className="plain-list">
               {choices.matches.map((m, i) => (
                 <li key={m.vaultId}>
-                  <Btn className="secondary" onClick={() => finish(m, choices.locator)}>
+                  <Btn className="secondary" onClick={() => finish(m, choices.locator, choices.older)}>
                     {S.unlock.vaultChoice(i, m.version)}
                   </Btn>
                 </li>
               ))}
             </ul>
+            {choices.older.length > 0 && (
+              <Btn className="link-button" onClick={() => finish(choices.older[0]!, choices.locator)}>
+                {S.unlock.olderVault}
+              </Btn>
+            )}
           </div>
         )}
         {!notFound && !choices && (

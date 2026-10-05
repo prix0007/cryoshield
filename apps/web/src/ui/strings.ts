@@ -105,6 +105,7 @@ export const S = {
     several: 'This key opens more than one vault. Choose which one to open:',
     severalWarning:
       'This is unusual. Each of these vaults was created with this key. If you don’t recognise one, open the other, and keep using that one.',
+    olderVault: 'Open an older test vault',
     vaultChoice: (i: number, version: number) => `Vault ${i + 1} (saved ${version} time${version === 1 ? '' : 's'})`,
     networkError: 'We couldn’t reach the network. Check your connection and try again.',
     unconfirmed: 'We couldn’t confirm the latest version of your vault, so we didn’t open it. Check your connection and try again.',
@@ -129,6 +130,7 @@ export const S = {
     locked: 'Your vault is locked.',
     empty: 'Your vault has no secrets yet. Use “Edit secrets” to add one.',
     surface: 'Your vault',
+    backToCurrent: 'Back to your current vault',
     legacyReadOnly:
       'This vault was made with an earlier test version. You can open it and copy your secrets, but not change it. To keep editing, create a new vault and copy your secrets into it.',
   },
