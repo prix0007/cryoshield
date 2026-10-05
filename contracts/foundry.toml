@@ -13,8 +13,19 @@ optimizer = true
 optimizer_runs = 10_000
 auto_detect_solc = false
 
+# Vendored, pruned Coinbase Smart Wallet v1.1.0 and its dependencies (lib/cbsw-v1.1.0/README.md).
+remappings = [
+    "forge-std/=lib/forge-std/src/",
+    "smart-wallet/=lib/cbsw-v1.1.0/src/",
+    "solady/=lib/cbsw-v1.1.0/lib/solady/src/",
+    "account-abstraction/=lib/cbsw-v1.1.0/lib/account-abstraction/contracts/",
+    "webauthn-sol/=lib/cbsw-v1.1.0/lib/webauthn-sol/src/",
+    "FreshCryptoLib/=lib/cbsw-v1.1.0/lib/webauthn-sol/lib/FreshCryptoLib/solidity/src/",
+    "openzeppelin-contracts/=lib/cbsw-v1.1.0/lib/openzeppelin-contracts/",
+]
+
 # The static immutability check (test/Immutability.t.sol) reads the contract source.
-fs_permissions = [{ access = "read", path = "./src" }, { access = "read", path = "./test/fixtures" }, { access = "read", path = "./lib/smart-wallet/src" }]
+fs_permissions = [{ access = "read", path = "./src" }, { access = "read", path = "./test/fixtures" }, { access = "read", path = "./lib/cbsw-v1.1.0/src" }]
 
 [fuzz]
 runs = 1_000
