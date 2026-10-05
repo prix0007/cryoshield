@@ -53,10 +53,14 @@ describe('feedback variants', () => {
     expect(c.animate).toEqual({ scaleX: 0 });
     expect(c.transition).toMatchObject({ duration: CLIPBOARD_CLEAR_MS / 1000, ease: 'linear' });
   });
-  it('collapse animates height for disclosures and list items', () => {
-    expect(collapse.initial).toMatchObject({ height: 0, opacity: 0 });
-    expect(collapse.animate).toMatchObject({ height: 'auto', opacity: 1 });
-    expect(collapse.exit).toMatchObject({ height: 0, opacity: 0 });
+  it('collapse reveals without ever changing layout (fix-floating-bar-focus): clip + opacity in, instant out', () => {
+    // A layout-changing tween (height) keeps moving content AFTER a field gets focus, which can push a correctly
+    // scrolled field under the floating action bar (WCAG 2.4.11). Only paint properties may animate.
+    const LAYOUT = ['height', 'width', 'margin', 'padding', 'top', 'bottom', 'maxHeight', 'minHeight'];
+    for (const v of [collapse.initial, collapse.animate]) expect(Object.keys(v).filter((k) => LAYOUT.includes(k))).toEqual([]);
+    expect(collapse.initial).toMatchObject({ opacity: 0, clipPath: 'inset(0 0 100% 0)' });
+    expect(collapse.animate).toMatchObject({ opacity: 1, clipPath: 'inset(0 0 0% 0)' });
+    expect(collapse).not.toHaveProperty('exit'); // removal is immediate: nothing below shifts later
   });
   it('waiting pulse is bounded (under 5 s, WCAG 2.2.2); reduced is a static ring', () => {
     const t = pulse(false).transition as { duration: number; repeat: number };

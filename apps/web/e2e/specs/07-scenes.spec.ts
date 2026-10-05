@@ -25,7 +25,17 @@ async function scrollScene(page: Page, id: string, f: number) {
     },
     [id, f] as const,
   );
-  await page.waitForTimeout(250);
+  // fix-floating-bar-focus audit: no fixed sleep. Wait until the scene's scroll-driven progress (--p, written on an
+  // animation frame by Motion's scroll()) has caught up with this position, then measure.
+  await page.waitForFunction(
+    ([id, f]) => {
+      const stage = document.querySelector<HTMLElement>(`#${id} .scene-stage`);
+      if (!stage?.classList.contains('live')) return false;
+      const p = Number(stage.style.getPropertyValue('--p'));
+      return Number.isFinite(p) && Math.abs(p - (f as number)) < 0.05;
+    },
+    [id, f] as const,
+  );
 }
 
 function watchErrors(page: Page) {
@@ -168,15 +178,19 @@ for (const width of [1280, 390]) {
         const t = document.querySelector<HTMLElement>('#timeline .scene-track')!;
         window.scrollTo({ top: t.getBoundingClientRect().top + scrollY + Math.max(0, t.offsetHeight - innerHeight) * f, behavior: 'instant' });
       }, f);
-      await page.waitForTimeout(200);
-      const r = await page.evaluate(() => {
-        const svg = document.querySelector('#timeline svg')!.getBoundingClientRect();
-        return [...document.querySelectorAll('#timeline .tl-end')].map((el) => {
-          const b = el.getBoundingClientRect();
-          return { text: el.textContent, inside: b.left >= svg.left - 0.5 && b.right <= svg.right + 0.5 && b.top >= svg.top - 0.5 && b.bottom <= svg.bottom + 0.5 };
-        });
-      });
-      expect(r).toEqual([{ text: '2026', inside: true }, { text: '2126', inside: true }]);
+      // fix-floating-bar-focus audit: no fixed sleep. The scene is driven by scroll() on animation frames, so poll the
+      // real geometry until it holds (it must, once the frame for this scroll position has run).
+      await expect
+        .poll(() =>
+          page.evaluate(() => {
+            const svg = document.querySelector('#timeline svg')!.getBoundingClientRect();
+            return [...document.querySelectorAll('#timeline .tl-end')].map((el) => {
+              const b = el.getBoundingClientRect();
+              return { text: el.textContent, inside: b.left >= svg.left - 0.5 && b.right <= svg.right + 0.5 && b.top >= svg.top - 0.5 && b.bottom <= svg.bottom + 0.5 };
+            });
+          }),
+        )
+        .toEqual([{ text: '2026', inside: true }, { text: '2126', inside: true }]);
     }
   });
 }

@@ -5,8 +5,28 @@
 :root {
   color-scheme: light dark;
 }
+/* fix-floating-bar-focus (WCAG 2.4.11): focus scrolling keeps a field clear of the floating action bar. The padding is
+   the bar's real footprint: its sticky offset, border, vertical padding and rows of 44px targets, plus a gap. On phones
+   the buttons stack one per row, so the row count follows the number of buttons (:has). No layout-changing animation
+   runs after focus (see Collapse), so what the browser scrolls clear stays clear. */
 html {
-  scroll-padding-bottom: calc(var(--bar-h) + var(--space-xl));
+  --bar-rows: 1;
+  --bar-footprint: calc(
+    var(--space-md) + 2px + 2 * var(--space-sm) + var(--bar-rows) * var(--target) + (var(--bar-rows) - 1) * var(--space-sm) +
+      var(--space-md)
+  );
+  scroll-padding-bottom: var(--bar-footprint);
+}
+@media (max-width: 419px) {
+  html:has(.action-bar > :nth-child(2)) {
+    --bar-rows: 2;
+  }
+  html:has(.action-bar > :nth-child(3)) {
+    --bar-rows: 3;
+  }
+  html:has(.action-bar > :nth-child(4)) {
+    --bar-rows: 4;
+  }
 }
 body {
   background: var(--app-bg);

@@ -77,11 +77,13 @@ export function countdown(ms: number): OneShot {
   return { initial: { scaleX: 1 }, animate: { scaleX: 0 }, transition: { duration: ms / 1000, ease: 'linear' } };
 }
 
-/** Height + opacity for disclosures and list items (enter/exit; `layout` needs domMax, see design D2). */
+/** Disclosures and list items: a top-down clip reveal + fade on enter, instant removal (never a layout tween). */
 export const collapse = {
-  initial: { height: 0, opacity: 0 },
-  animate: { height: 'auto', opacity: 1 },
-  exit: { height: 0, opacity: 0 },
+  // fix-floating-bar-focus: paint-only reveal. The element takes its full height at once (no height tween), so
+  // nothing below it moves after the user has focused (and the browser has scrolled to) a field. Removal is immediate
+  // for the same reason: no exit animation.
+  initial: { opacity: 0, clipPath: 'inset(0 0 100% 0)' },
+  animate: { opacity: 1, clipPath: 'inset(0 0 0% 0)' },
   transition: { duration: 0.22, ease: EASE },
 } as const;
 
