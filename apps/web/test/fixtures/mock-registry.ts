@@ -4,7 +4,8 @@
  * locatorLength, getVaults reverting above 32 ids.
  */
 import { custom, decodeFunctionData, encodeErrorResult, encodeFunctionResult, type Abi, type Hex } from 'viem';
-import { registryV1Abi, config } from 'virtual:cryoshield-config';
+import { config } from 'virtual:cryoshield-config';
+import registryV1Abi from '../../../../contracts/abi/VaultRegistry.json';
 import { registryV2Abi } from '../../src/chain/contracts';
 
 export interface StoredVault {

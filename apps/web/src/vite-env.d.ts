@@ -13,6 +13,5 @@ declare module 'virtual:cryoshield-config' {
       wallet: { factory: `0x${string}`; implementation: `0x${string}` };
     }
   >;
-  /** VaultRegistry v1 ABI (empty when v1 is absent). */
-  export const registryV1Abi: readonly unknown[];
+
 }

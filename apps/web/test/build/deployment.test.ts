@@ -12,7 +12,7 @@ import { keccak256, sha256, toHex, type Abi } from 'viem';
 import { describe, expect, it } from 'vitest';
 import { assertAbiCovers, loadDeployment } from '../../vite-plugins/deployment';
 
-import { registryV2Abi, smartWalletAbi, walletFactoryAbi } from '../../src/chain/contracts';
+import { registryV1Abi, registryV2Abi, smartWalletAbi, walletFactoryAbi } from '../../src/chain/contracts';
 
 const V1 = '0xB43f58cF17e64B603aE5588a1DD17E96a0849e44';
 const V2 = '0x00000000000000000000000000000000000000a2';
@@ -35,7 +35,7 @@ interface Opts {
 function contracts(o: Opts = {}) {
   const chainId = o.chainId ?? 11155420;
   const abis = {
-    v1: o.abis?.v1 ?? '[{"type":"function","name":"x","inputs":[],"outputs":[],"stateMutability":"view"}]',
+    v1: o.abis?.v1 ?? json(registryV1Abi),
     v2: o.abis?.v2 ?? json(registryV2Abi),
     wallet: o.abis?.wallet ?? json(smartWalletAbi),
     factory: o.abis?.factory ?? json(walletFactoryAbi),
@@ -74,7 +74,7 @@ describe('loadDeployment: registries', () => {
   it('reads v1 (legacy) and v2 with their deploy blocks', () => {
     const d = loadDeployment(contracts(), 11155420, 'cryoshield.app');
     expect(d.v1).toMatchObject({ address: V1, deployBlock: 7 });
-    expect(d.v1!.abi).toHaveLength(1);
+    expect(d.v1!.abi).toHaveLength(registryV1Abi.length);
     expect([d.v2.address.toLowerCase(), d.v2.deployBlock]).toEqual([V2, 9]);
   });
 
@@ -103,6 +103,11 @@ describe('loadDeployment: registries', () => {
     const dir1 = contracts();
     writeFileSync(join(dir1, 'abi', 'VaultRegistry.json'), '[]');
     expect(() => loadDeployment(dir1, 11155420, 'cryoshield.app')).toThrow(/VaultRegistry ABI drift/);
+  });
+
+  it('fails when the exported v1 ABI lacks a read the app makes (interface drift)', () => {
+    const noGetVault = registryV1Abi.filter((i) => i.type !== 'function' || i.name !== 'getVault');
+    expect(() => loadDeployment(contracts({ abis: { v1: json(noGetVault) } }), 11155420, 'cryoshield.app')).toThrow(/getVault/);
   });
 
   it('fails when the exported v2 ABI lacks a fragment the app uses (interface drift)', () => {

@@ -11,11 +11,11 @@
  * it never falls back to v1.
  */
 import { createPublicClient, http, type Abi, type Hex, type Transport } from 'viem';
-import { config, registryV1Abi } from '../config';
+import { config } from '../config';
 import type { Candidate, RegistryVersion } from '../vault/adapter';
 import { fromHex } from '../lib/bytes';
 import { ensureChain } from './guard';
-import { GET_VAULTS_MAX, PAGE_SIZE, registryV2Abi } from './contracts';
+import { GET_VAULTS_MAX, PAGE_SIZE, registryV1Abi, registryV2Abi } from './contracts';
 
 export const MAX_BLOB_BYTES = 1024;
 /** v1 capped each locator at 16 entries. */
@@ -56,7 +56,7 @@ export function createRegistryReader(transport: Transport = defaultTransport()) 
   const target = (r: RegistryVersion): { address: Hex; abi: Abi; deployBlock: number } => {
     if (r === 'v2') return { address: v2.address, abi: registryV2Abi as Abi, deployBlock: v2.deployBlock };
     if (!v1) throw new Error('VaultRegistry v1 is not deployed on this chain');
-    return { address: v1.address, abi: registryV1Abi, deployBlock: v1.deployBlock };
+    return { address: v1.address, abi: registryV1Abi as Abi, deployBlock: v1.deployBlock };
   };
 
   /** Every v2 vaultId under a locator, in insertion order (no cap; pages of PAGE_SIZE). */

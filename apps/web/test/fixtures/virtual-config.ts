@@ -39,4 +39,5 @@ export const config = Object.freeze({
     implementation: wallet?.implementation ?? ('0x00000000000000000000000000000000000000e1' as const),
   },
 });
-export const registryV1Abi = abi;
+/** Test-only: the full exported v1 ABI (the app itself embeds only its typed read fragments). */
+export const registryV1AbiFull = abi;

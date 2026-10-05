@@ -240,7 +240,8 @@ function keccak256Hex(s: string): Hex {
 
 /** A direct (unsponsored) VaultRegistry v1 create from an impersonated EOA: how legacy testnet vaults exist. */
 async function writeV1(from: Hex, vaultId: Hex, blob: Uint8Array, locators: readonly Hex[]) {
-  const { config, registryV1Abi } = await import('virtual:cryoshield-config');
+  const { config } = await import('virtual:cryoshield-config');
+  const registryV1Abi = (await import('../../../contracts/abi/VaultRegistry.json')).default;
   const t = createTestClient({ chain: anvilChain, transport: rpc, mode: 'anvil' });
   const w = createWalletClient({ chain: anvilChain, transport: rpc });
   await t.impersonateAccount({ address: from });

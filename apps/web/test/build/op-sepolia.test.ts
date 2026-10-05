@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { keccak256, sha256, toHex } from 'viem';
-import { registryV2Abi, smartWalletAbi, walletFactoryAbi } from '../../src/chain/contracts';
+import { registryV1Abi, registryV2Abi, smartWalletAbi, walletFactoryAbi } from '../../src/chain/contracts';
 import { parseEnv } from '../../src/config/schema';
 import { loadDeployment } from '../../vite-plugins/deployment';
 import { cryoshield } from '../../vite-plugins/cryoshield';
@@ -27,7 +27,7 @@ function contractsWithoutOpSepolia() {
   const dir = mkdtempSync(join(tmpdir(), 'cs-op-'));
   mkdirSync(join(dir, 'abi'));
   mkdirSync(join(dir, 'deployments'));
-  writeFileSync(join(dir, 'abi', 'VaultRegistry.json'), '[]');
+  writeFileSync(join(dir, 'abi', 'VaultRegistry.json'), JSON.stringify(registryV1Abi));
   writeFileSync(join(dir, 'abi', 'VaultRegistryV2.json'), JSON.stringify(registryV2Abi));
   writeFileSync(join(dir, 'abi', 'CryoShieldSmartWallet.json'), JSON.stringify(smartWalletAbi));
   writeFileSync(join(dir, 'abi', 'CryoShieldSmartWalletFactory.json'), JSON.stringify(walletFactoryAbi));

@@ -30,6 +30,16 @@ export const registryV2Abi = parseAbi([
   'error TooManyIds(uint256 count)',
 ]);
 
+/**
+ * VaultRegistry v1 (legacy, read-only, never on OP Mainnet): only the reads the app makes. Typed fragments instead of
+ * the whole exported ABI keep the /app bundle small; the build checks them against contracts/abi/VaultRegistry.json.
+ */
+export const registryV1Abi = parseAbi([
+  'function resolveLocator(bytes32 locator) view returns (bytes32[])',
+  'function getVault(bytes32 vaultId) view returns (address, bytes, uint32)',
+  'event LocatorAdded(bytes32 indexed vaultId, bytes32 indexed locator)',
+]);
+
 /** Largest page `resolveLocator` returns (the registry clamps `count` to this). */
 export const PAGE_SIZE = 256;
 /** Most ids one `getVaults` call accepts (it reverts above this, so clients batch). */

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { encodeFunctionData, type Hex } from 'viem';
-import { registryV1Abi, config } from 'virtual:cryoshield-config';
+import { config } from 'virtual:cryoshield-config';
+import registryV1Abi from '../../../../contracts/abi/VaultRegistry.json';
 import { registryV2Abi } from '../../src/chain/contracts';
 import { assertSponsorableCalls, assertSponsorableCallData, smartWalletAbi, PolicyError } from '../../src/account/policy';
 

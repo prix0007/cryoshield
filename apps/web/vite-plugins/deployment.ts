@@ -15,7 +15,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { getAddress, isAddress, keccak256, sha256, toHex, type Abi, type AbiParameter } from 'viem';
-import { registryV2Abi, smartWalletAbi, walletFactoryAbi } from '../src/chain/contracts.ts';
+import { registryV1Abi, registryV2Abi, smartWalletAbi, walletFactoryAbi } from '../src/chain/contracts.ts';
 
 type Address = `0x${string}`;
 
@@ -108,6 +108,7 @@ export function loadDeployment(contractsDir: string, chainId: number, rpId: stri
     const addr = address(recordPath, 'address', rec.address);
     const deployBlock = block(recordPath, 'deployBlock', rec.deployBlock);
     checkHash('VaultRegistry', recordPath, rec.abiHash, abi);
+    assertAbiCovers(registryV1Abi, abi.abi, 'VaultRegistry.json');
     v1 = { address: addr, deployBlock, txHash: String(rec.txHash ?? ''), abiHash: abi.hash, abi: abi.abi };
   }
 

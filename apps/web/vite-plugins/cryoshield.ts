@@ -33,10 +33,7 @@ export function cryoshield(env: Record<string, string | undefined>, contractsDir
         registryV2: { address: deployment.v2.address, deployBlock: deployment.v2.deployBlock },
         wallet: { factory: deployment.wallet.factory, implementation: deployment.wallet.implementation },
       };
-      return [
-        `export const config = Object.freeze(${JSON.stringify(runtime)});`,
-        `export const registryV1Abi = ${JSON.stringify(deployment.v1?.abi ?? [])};`,
-      ].join('\n');
+      return `export const config = Object.freeze(${JSON.stringify(runtime)});`;
     },
     transformIndexHtml: {
       order: 'post',
