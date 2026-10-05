@@ -1,4 +1,5 @@
-# zizmor configuration (OpenSpec changes add-ci, adopt-ecc-review-and-auto-merge, add-continuous-deploy).
+# zizmor configuration (OpenSpec changes add-ci, adopt-ecc-review-and-auto-merge, add-continuous-deploy,
+# split-dev-and-release-deploys).
 # Run: uvx zizmor==1.30.1 --offline --persona=pedantic --config .github/zizmor.yml .github
 rules:
   unpinned-uses:
@@ -14,10 +15,12 @@ rules:
     ignore:
       - ecc-review.yml:31
       - auto-merge.yml:19
-  # Accepted finding 2: deploy.yml's reusable-CI call uses `./.github/workflows/ci.yml` because the CI-pinned
-  # actionlint 1.7.12 rejects GitHub's newer `$/` self-repository syntax (rhysd/actionlint#711). Pinned to
-  # file:line (add-continuous-deploy D4); workflow-policy.mjs requires it to be exactly that call line (ECC #8).
+  # Accepted finding 2: each deploy workflow's reusable-CI call (deploy.yml for production, deploy-dev.yml for
+  # development; split-dev-and-release-deploys) uses `./.github/workflows/ci.yml` because the CI-pinned actionlint
+  # 1.7.12 rejects GitHub's newer `$/` self-repository syntax (rhysd/actionlint#711). Pinned to file:line
+  # (add-continuous-deploy D4); workflow-policy.mjs requires exactly those call lines, once per file (ECC #8).
   # Drop it once actionlint supports `$/`.
   self-repository:
     ignore:
-      - deploy.yml:127
+      - deploy.yml:141
+      - deploy-dev.yml:131

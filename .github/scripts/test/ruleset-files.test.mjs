@@ -52,3 +52,30 @@ test('repo merge settings allow squash only, titled from the PR, with auto-merge
   assert.equal(s.squash_merge_commit_title, 'PR_TITLE');
   assert.equal(s.delete_branch_on_merge, true);
 });
+
+// ---- split-dev-and-release-deploys: owner-only release tags, and the four deploy environments ----
+test('release-tags: tag ruleset on refs/tags/v*, blocks create/update/delete, admin role is the only bypass', () => {
+  const t = load('release-tags.json');
+  assert.equal(t.name, 'release-tags');
+  assert.equal(t.target, 'tag');
+  assert.equal(t.enforcement, 'active');
+  assert.deepEqual(t.conditions.ref_name, { include: ['refs/tags/v*'], exclude: [] });
+  assert.deepEqual(t.rules.map((r) => r.type).sort(), ['creation', 'deletion', 'update']);
+  // RepositoryRole 5 = admin. No Write/Maintain role, no team, no app, no deploy key.
+  assert.deepEqual(t.bypass_actors, [{ actor_id: 5, actor_type: 'RepositoryRole', bypass_mode: 'always' }]);
+});
+
+test('environments: production/production-build deploy ONLY from v* tags (ECC HIGH: no branch, not even main); development/development-build from main only; no reviewers, no admin bypass', () => {
+  const envs = Object.fromEntries(load('environments.json').map((e) => [e.name, e]));
+  assert.deepEqual(Object.keys(envs).sort(), ['development', 'development-build', 'production', 'production-build']);
+  for (const e of Object.values(envs)) {
+    assert.deepEqual(e.required_reviewers, [], e.name);
+    assert.equal(e.can_admins_bypass, false, e.name);
+    assert.equal(e.wait_timer, 0, e.name);
+    assert.deepEqual(e.branches, e.name.startsWith('production') ? [] : ['main'], e.name);
+  }
+  assert.deepEqual(envs.production.tags, ['v*']);
+  assert.deepEqual(envs['production-build'].tags, ['v*']);
+  assert.deepEqual(envs.development.tags ?? [], []);
+  assert.deepEqual(envs['development-build'].tags ?? [], []);
+});

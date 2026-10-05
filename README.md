@@ -94,7 +94,7 @@ The gate scripts live in `.github/scripts` and are tested with `npm ci --ignore-
 
 ## Contributing / PR workflow
 
-`main` is protected by the ruleset in `.github/rulesets/main.json`. Every change, including the maintainer's, goes through a pull request. The step-by-step flow for agents and humans is in [`CLAUDE.md`](CLAUDE.md) → "Change flow (one PR per change)". AI agents work through a non-admin machine account ([`docs/agent-account.md`](docs/agent-account.md)), so they cannot change protection or approve releases.
+`main` is protected by the ruleset in `.github/rulesets/main.json`. Every change, including the maintainer's, goes through a pull request. The step-by-step flow for agents and humans is in [`CLAUDE.md`](CLAUDE.md) → "Change flow (one PR per change)". AI agents work through a non-admin machine account ([`docs/agent-account.md`](docs/agent-account.md)), so they cannot change protection, environments or secrets.
 
 1. **OpenSpec first.** Propose a change under `openspec/changes/<name>/` before writing code (see above).
    - A PR that touches code or CI configuration (`apps/`, `packages/`, `contracts/src/`, `tools/recover/src/`, `.github/`, `scripts/`, `.gitleaks.toml`, the root workspace manifests or `contracts/foundry.toml`) must also add or modify something under `openspec/changes/`, archiving included.
@@ -163,15 +163,19 @@ To change protection, edit those files in a PR and re-run the script after it me
 
 ## Deployment
 
-Every new commit on `main` is built and tested automatically by `.github/workflows/deploy.yml`, and goes live at https://cryoshield.app once the owner approves the release:
+There are two targets (OpenSpec change `split-dev-and-release-deploys`):
 
-1. **detect:** compare `https://cryoshield.app/release.json` with the `main` HEAD, and skip if they are equal.
+- **Development, https://cryoshield-web-dev.fly.dev** (OP Sepolia, not indexed). It is served on its own `fly.dev` name, a different registrable domain from `cryoshield.app`, so its RP ID can never reach production vaults. Every new commit on `main` is deployed there automatically by `.github/workflows/deploy-dev.yml`.
+- **Production, https://cryoshield.app.** It is deployed only when the repository owner publishes a release: `gh release create vX.Y.Z --target main --generate-notes`. `.github/workflows/deploy.yml` then deploys that tag. Only admins can create `v*` tags (ruleset `release-tags`), and the workflow runs only for the owner.
+
+Both pipelines run the same stages:
+
+1. **detect:** the dev pipeline compares `/release.json` with `main`'s HEAD and skips if they are equal. The production pipeline resolves the tag and refuses a commit that is not on `main`.
 2. **test:** run the **full** `ci.yml` on that exact commit.
-3. **build** (no deploy token): run the guarded `apps/web/deploy/deploy.sh --build-only` in the GitHub Environment `production-build`.
-4. **supersede:** cancel older releases that are still waiting for approval.
-5. **release** (GitHub Environment `production`, **owner approval required**, one click): run pinned flyctl on the verified build artifact, then check the routes, headers, registry address and `/release.json`. On failure, roll back to the previous image automatically in the same job.
+3. **build** (no deploy token): run the guarded `DEPLOY_TARGET=<target> apps/web/deploy/deploy.sh --build-only` in the target's build environment (`development-build` or `production-build`).
+4. **release** (Environment `development` or `production`, no manual approval): run pinned flyctl on the verified build artifact, then check the routes, headers (noindex on dev only), registry address and `/release.json`. On failure, roll back to the previous image automatically in the same job.
 
-The pipeline never runs on pull requests. To redeploy by hand, run `gh workflow run deploy.yml -f force=true`. To approve or roll back, see [`docs/deploy.md`](docs/deploy.md), which also covers first-time setup and token rotation.
+Neither pipeline runs on pull requests. To roll production back, run `gh workflow run deploy.yml --ref vX.Y.Z` with an earlier release tag. Production secrets are reachable only from `v*` tags, which only admins can create. To redeploy dev, run `gh workflow run deploy-dev.yml --ref main -f force=true`. See [`docs/deploy.md`](docs/deploy.md) for first-time setup and token rotation.
 
 ## Support the project
 

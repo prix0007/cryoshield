@@ -20,8 +20,9 @@ on:
     # edited/labeled/unlabeled re-run the title and OpenSpec gates. Every job runs on every event, so a
     # later run can never report a partially skipped ci-ok for the same commit.
     types: [opened, synchronize, reopened, edited, labeled, unlabeled]
-  # Reused by deploy.yml to run the FULL CI on the exact main commit it deploys (add-continuous-deploy D4), so PR
-  # CI and deploy CI can never drift. `full: true` forces every area job on, regardless of path filters.
+  # Reused by the deploy workflows to run the FULL CI on the exact commit they deploy (add-continuous-deploy D4), so PR
+  # CI and deploy CI can never drift. `full: true` forces every area job on, regardless of path filters. Every area job
+  # checks out the caller's own commit: deploy.yml runs at the release tag, so that is the tagged commit.
   workflow_call:
     inputs:
       full:

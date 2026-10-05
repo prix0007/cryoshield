@@ -1,6 +1,6 @@
 # Agent account: agents work without admin rights
 
-OpenSpec change `gate-production-deploys` (audit CI-H1). The owner's account `prix0007` is a repository admin. An agent using the owner's `gh` login could change the `main` ruleset, the `production` environment or the repository settings. Agents therefore push and open PRs as a separate **machine user** with the **Write** role. Write cannot change rulesets, environments, secrets or settings, and cannot approve a production release. Only the owner is a required reviewer, and admins cannot bypass that.
+OpenSpec change `gate-production-deploys` (audit CI-H1). The owner's account `prix0007` is a repository admin. An agent using the owner's `gh` login could change the `main` ruleset, the `production` environment or the repository settings. Agents therefore push and open PRs as a separate **machine user** with the **Write** role. Write cannot change rulesets, environments, secrets or settings, and cannot create `v*` tags (ruleset `release-tags`). Production deploys only from a release the owner publishes (change `split-dev-and-release-deploys`), so **the machine user cannot ship to production**; its merges reach the development site https://cryoshield-web-dev.fly.dev only.
 
 Everything below is done by the founder. Agents never create credentials.
 
@@ -46,7 +46,7 @@ After the transfer, the default `--repo` in `.github/rulesets/apply.sh` and the 
 
 A classic token reaches every repository the machine user can access. That is only this one, so keep the account a collaborator nowhere else. The real boundary in both options is the account's **Write role**: rulesets, environments, secrets and settings need Admin whatever scopes the token has.
 
-**Trade-off: no Workflows permission.** Without Workflows (`workflow` scope for a classic token), the token cannot push a commit that changes `.github/workflows/`. CI changes made by agents are then pushed by the owner after reading them, for example by checking out the agent's branch locally and pushing it with the owner's own credentials. This is deliberate: workflow edits can reach secrets, so they are the highest-risk change. If CI changes from agents become routine, you can grant Workflows (read and write). The ruleset, ECC review and the production approval still apply.
+**Trade-off: no Workflows permission.** Without Workflows (`workflow` scope for a classic token), the token cannot push a commit that changes `.github/workflows/`. CI changes made by agents are then pushed by the owner after reading them, for example by checking out the agent's branch locally and pushing it with the owner's own credentials. This is deliberate: workflow edits can reach secrets, so they are the highest-risk change. If CI changes from agents become routine, you can grant Workflows (read and write). The ruleset and ECC review still apply.
 
 ## 3. Configure gh and git on the agent machine
 
@@ -109,15 +109,17 @@ gh secret list --repo prix0007/cryoshield                                 # must
 git push origin HEAD:main                                                 # must be rejected by the ruleset
 ```
 
-Do not probe the rulesets or the environments with a write: a ruleset `PUT` of `main.json` alone would drop the `ecc-review` requirement, and an environment `PUT` without the reviewer list would remove the required reviewer. `apply.sh --environments` (run as the owner) shows whether they are intact.
+Do not probe the rulesets or the environments with a write: a ruleset `PUT` of `main.json` alone would drop the `ecc-review` requirement, and an environment `PUT` could widen its deployment refs. `apply.sh --environments` (run as the owner) shows whether they are intact.
 
 Then, as the owner, confirm that nothing changed: `.github/rulesets/apply.sh --with-ecc-review --environments` must report "in sync".
 
-To see that a release waits for the owner, open the newest Deploy run: its `release` job shows *Waiting for review*, and the machine user has no *Review deployments* button.
+To see that the machine user cannot release, as the machine user: pushing a tag `v0.0.0-probe` must be rejected by the `release-tags` ruleset, and `gh workflow run deploy.yml --ref <existing tag>` must end with its `detect` job **skipped** (the production workflow runs only for the owner). A dispatch on `main` cannot even reach the production environments, which accept only `v*` tags.
 
 **What Write still allows.**
-- **Changing the scripts that the release job runs with the Fly token.** The machine user can open PRs that change `.github/scripts/deploy/`, `apps/web/fly.toml` or the Docker context, and those PRs auto-merge. Before you approve, the Deploy run's `supersede` job summary ("Release review") lists those files as **TOKEN-PATH CHANGED**, with the diff link. Read them before approving.
-- **Cancelling a running Deploy.** A cancel after `fly deploy` started triggers the rollback, so it disrupts a release but cannot deploy anything.
+- **Changing the scripts that the release jobs run with a Fly token.** The machine user can open PRs that change `.github/scripts/deploy/`, `apps/web/fly.toml`, `apps/web/fly.dev.toml` or the Docker context, and those PRs auto-merge.
+  - On **dev**, they then run at once with the dev token. That is an app-scoped deploy token for `cryoshield-web-dev` only, so the worst case is a broken or defaced dev site.
+  - On **production**, they run only when you publish a release. The production run's `detect` summary ("Release review") lists them as **TOKEN-PATH CHANGED**, with the diff link: read them before you release. Use the `hold` label on a PR if you want to look before it merges.
+- **Dispatching or cancelling deploy runs.** A dev dispatch only redeploys `main`. A production dispatch, release or re-run by the machine user is skipped (owner only). A cancel after `fly deploy` started triggers the rollback, so it disrupts a release but cannot deploy anything.
 
 ## Rotation and revocation
 

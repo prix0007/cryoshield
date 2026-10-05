@@ -142,7 +142,7 @@ sequenceDiagram
 
 ## 5. How code reaches cryoshield.app
 
-Nothing reaches `main` or production without a spec, a pull request and a green `ci-ok`. The `main` ruleset has no bypass actors, so this applies to admins too. Every new commit on `main` is then built by `.github/workflows/deploy.yml` after the full CI passes again on that exact commit, and it goes live only after the owner approves the release (runbook: `docs/deploy.md`). Agents work through a non-admin machine account (`docs/agent-account.md`), so an auto-merged PR can reach `main` but never production by itself.
+Nothing reaches `main` or production without a spec, a pull request and a green `ci-ok`. The `main` ruleset has no bypass actors, so this applies to admins too. Every new commit on `main` is then deployed to the **development** site https://cryoshield-web-dev.fly.dev by `.github/workflows/deploy-dev.yml`, after the full CI passes again on that exact commit. **Production** is deployed by `.github/workflows/deploy.yml` only when the owner publishes a `v*` release of a commit on `main` (runbook: `docs/deploy.md`; change `split-dev-and-release-deploys`). Agents work through a non-admin machine account (`docs/agent-account.md`) that cannot create `v*` tags, so an auto-merged PR reaches `main` and dev, but never production by itself.
 
 ```mermaid
 flowchart LR
@@ -152,31 +152,35 @@ flowchart LR
   jobs["Area jobs<br/>contracts · vault-crypto · web · web-e2e<br/>recover · openspec · workflow-lint"]
   ok["ci-ok<br/>required, strict"]
   main["main<br/>squash only, linear, no force-push"]
-  detect["detect<br/>/release.json ≠ main HEAD<br/>(push · every 15 min · manual)"]
-  full["full CI on that commit<br/>ci.yml, every job"]
-  deploy["build: deploy.sh --build-only<br/>env production-build (no Fly token)<br/>clean tree · 2 identical builds · RP ID = host"]
-  approve["owner approval<br/>env production · no admin bypass<br/>older waiting releases superseded"]
-  fly["Fly.io<br/>cryoshield-web"]
-  smoke["release job: flyctl deploy + smoke test<br/>routes · headers · registry · /release.json<br/>auto rollback on failure"]
+  devpipe["deploy-dev.yml<br/>every main commit (push · every 15 min)<br/>full CI · build in development-build"]
+  dev["Fly.io cryoshield-web-dev<br/>cryoshield-web-dev.fly.dev · OP Sepolia<br/>RP ID cryoshield-web-dev.fly.dev · noindex"]
+  release["owner publishes release vX.Y.Z<br/>(only admins can create v* tags)"]
+  prodpipe["deploy.yml<br/>tag on main? · full CI on the tag<br/>build in production-build (no Fly token)"]
+  prod["Fly.io cryoshield-web<br/>cryoshield.app"]
+  smoke["each release job: flyctl deploy + smoke test<br/>routes · headers · registry · /release.json<br/>auto rollback on failure"]
 
   spec --> pr
   pr --> checks --> ok
   pr --> jobs --> ok
-  ok --> main --> detect --> full --> deploy --> approve --> fly --> smoke
+  ok --> main --> devpipe --> dev
+  main --> release --> prodpipe --> prod
+  dev -.- smoke
+  prod -.- smoke
 
   classDef ours fill:#e6f0fa,stroke:#0066cc,color:#0066cc;
-  class fly ours;
+  class dev,prod ours;
 ```
 
 - **Security review.** Every change touching crypto, contracts, the paymaster or secret handling ends with a security-review task. The records are in `docs/reviews/` and `apps/web/docs/`.
 - **Pinned toolchain.** All third-party GitHub Actions are pinned by commit SHA. The gitleaks and osv-scanner binaries are pinned by version and checksum. Installs fail on lockfile drift.
 - **Rebuildable deploys.** Every deploy writes `apps/web/deploy/.build/release-manifest.json` with the commit and a deterministic tree hash, so anyone can rebuild the site and compare it with what Fly serves. The site also serves the commit, tree hash and public config at `https://cryoshield.app/release.json` (not part of the tree hash), so anyone can see which commit is live.
-- **Continuous deployment, owner-approved releases.** `deploy.yml` runs on every push to `main`, every 15 minutes (merges made by auto-merge start no push workflow), and on demand. It skips when `/release.json` already shows the `main` HEAD. It then:
-  - runs the full `ci.yml` on that commit;
-  - builds with the guarded `deploy.sh --build-only` in the Environment `production-build` (build config, no Fly token);
-  - supersedes older releases still waiting for approval;
-  - runs one `release` job in the Environment `production`, the only place the Fly token lives. It waits for the owner's approval; admins cannot bypass it, and the agents' account cannot approve. One approval covers the flyctl-only deploy, the smoke test, and the automatic rollback to the previous image on any failure or cancellation.
-  - Waiting releases never pile up: concurrency is per commit at the workflow level, and `deploy-production` is held by the release job, which concurrency never cancels.
+- **Continuous deployment to dev, owner releases to production.**
+  - `deploy-dev.yml` runs on every push to `main`, every 15 minutes (merges made by auto-merge start no push workflow), and on demand. It skips when the dev site's `/release.json` already shows the `main` HEAD.
+  - `deploy.yml` runs only for a release the owner publishes (or the owner's redeploy of a tag). It refuses a tag that is not on `main`.
+  - Both run the full `ci.yml` on the exact commit, and build with the guarded `deploy.sh --build-only` in a build environment that has no Fly token.
+  - Both then run one `release` job in their own token environment: `development` holds a token for `cryoshield-web-dev` only, and `production` one for `cryoshield-web`. The job runs the flyctl-only deploy, the smoke test, and the automatic rollback to the previous image on any failure or cancellation.
+  - The two pipelines use separate concurrency groups and never cancel each other.
+  - The dev site is served from `cryoshield-web-dev.fly.dev`, a different registrable domain (`fly.dev` is on the Public Suffix List), with that host as its WebAuthn RP ID. A dev page therefore cannot assert `rpId: 'cryoshield.app'`, so auto-deployed dev code cannot reach production vaults. No host under `cryoshield.app` serves the dev site (`dev.cryoshield.app` is retired).
 
 ## 6. Hosting and headers
 

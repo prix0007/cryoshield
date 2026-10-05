@@ -1,16 +1,25 @@
 #!/usr/bin/env bash
-# Is the production build configured? (OpenSpec change deploy-skip-when-unconfigured.)
-# An unconfigured or partially configured `production-build` environment must not turn main red: this warns, names
+# Is the build configured? (OpenSpec changes deploy-skip-when-unconfigured, split-dev-and-release-deploys.)
+# An unconfigured or partially configured build environment (production-build or development-build) must not turn the
+# run red: this warns, names
 # what is missing, and outputs configured=false so the rest of the Deploy pipeline is skipped (the run succeeds).
 #
 # env: HAS_<NAME>=true|false for every required name, computed in the workflow as `${{ vars.X != '' }}` or
 #      `${{ secrets.X != '' }}`: the values themselves never reach this step. SUMMARY (default $GITHUB_STEP_SUMMARY).
+#      BUILD_ENVIRONMENT (default production-build) and WORKFLOW (default deploy.yml) only name things in the message.
+#      MISSING_IS_ERROR=true (deploy.yml: a release or dispatch is deliberate) turns the skip into a failure (ECC L2).
 # out: configured=true|false to $GITHUB_OUTPUT (and stdout)
 set -euo pipefail
 
 # Must equal REQUIRED in write-env.sh (asserted by test/deploy-config.test.mjs).
 REQUIRED=(VITE_CHAIN_ID VITE_RPC_URL VITE_BUNDLER_URL VITE_SPONSORSHIP_POLICY_ID VITE_TURBO_UPLOAD_URL VITE_ARWEAVE_GATEWAY_URL VITE_RP_ID VITE_RP_NAME)
 SUMMARY="${SUMMARY:-${GITHUB_STEP_SUMMARY:-/dev/null}}"
+BUILD_ENVIRONMENT="${BUILD_ENVIRONMENT:-production-build}"
+WORKFLOW="${WORKFLOW:-deploy.yml}"
+[[ "$BUILD_ENVIRONMENT" =~ ^[a-z-]+$ ]] || { echo "check-config: invalid BUILD_ENVIRONMENT" >&2; exit 2; }
+[[ "$WORKFLOW" =~ ^[a-z-]+\.yml$ ]] || { echo "check-config: invalid WORKFLOW" >&2; exit 2; }
+MISSING_IS_ERROR="${MISSING_IS_ERROR:-false}"
+[[ "$MISSING_IS_ERROR" =~ ^(true|false)$ ]] || { echo "check-config: MISSING_IS_ERROR must be true or false" >&2; exit 2; }
 
 emit() {
   echo "$1"
@@ -33,7 +42,15 @@ if [ "${#missing[@]}" -eq 0 ]; then
   exit 0
 fi
 
-msg="The production-build environment is missing: ${missing[*]}. Nothing was built or deployed; set them up as in docs/deploy.md (First-time setup), then merge or run: gh workflow run deploy.yml --ref main -f force=true"
+# The exact re-run command per workflow: production runs AT the release tag (no inputs); dev re-runs main with force.
+if [ "$WORKFLOW" = "deploy.yml" ]; then RERUN="gh workflow run deploy.yml --ref vX.Y.Z (the release tag)"; else RERUN="gh workflow run ${WORKFLOW} --ref main -f force=true"; fi
+msg="The ${BUILD_ENVIRONMENT} environment is missing: ${missing[*]}. Nothing was built or deployed; set them up as in docs/deploy.md (First-time setup), then re-run: ${RERUN}"
+if [ "$MISSING_IS_ERROR" = "true" ]; then
+  echo "::error title=deploy not configured::${msg}"
+  { echo "## Deploy FAILED: not configured"; echo; echo "${msg}"; } >> "$SUMMARY"
+  emit "configured=false"
+  exit 1
+fi
 echo "::warning title=deploy not configured::${msg}"
 {
   echo "## Deploy skipped: not configured"

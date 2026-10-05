@@ -31,7 +31,7 @@ The source of truth is `openspec/config.yaml`; the product requirements are in `
 
 `main` is protected by `.github/rulesets/main.json`, admins included. Nothing reaches it except through a pull request.
 
-**Agents act as the machine account.** Agents push branches and open PRs as the non-admin machine user (Write role; `docs/agent-account.md`), never with the owner's admin login. Check with `gh api user --jq .login` before pushing. Agents never change rulesets, environments, secrets or repository settings, and never approve deployments. Changes under `.github/workflows/` are pushed by the owner when the agent token has no Workflows permission.
+**Agents act as the machine account.** Agents push branches and open PRs as the non-admin machine user (Write role; `docs/agent-account.md`), never with the owner's admin login. Check with `gh api user --jq .login` before pushing. Agents never change rulesets, environments, secrets or repository settings, never approve deployments, and never create tags or releases. Changes under `.github/workflows/` are pushed by the owner when the agent token has no Workflows permission.
 
 1. **Branch** from an up-to-date `main` as `<type>/<change-name>`, with type one of `feat`, `fix`, `ci`, `docs` or `chore` (for example `feat/shamir-recovery` or `fix/recover-empty-page`). Use one OpenSpec change or one fix per branch.
 2. **OpenSpec:**
@@ -61,12 +61,10 @@ The source of truth is `openspec/config.yaml`; the product requirements are in `
    - Once on, it merges the moment all required checks are green.
    - Branches do not need to be up to date with `main` (strict mode is off, change `relax-strict-up-to-date`), so a PR keeps auto-merging after another PR lands. Each resulting `main` commit is re-tested by the deploy pipeline before it goes live.
    - **Owner veto:** the `hold` label switches auto-merge off for that PR; remove it to switch it back on. `gh pr merge <n> --disable-auto` also works.
-9. **Deploy (waits for the owner).** After the merge, `.github/workflows/deploy.yml` picks up `main` within about 15 minutes (on push for human merges, on its 15-minute schedule for auto-merges). It runs:
-   - the full CI on the merge commit;
-   - the guarded `deploy.sh --build-only` in environment `production-build`, without the Fly token;
-   - then the `release` job in environment `production`, which **waits for the owner's approval** (Actions → Deploy → Review deployments; `docs/deploy.md` → Approving a release). One approval covers `fly deploy`, the smoke test and any rollback. A newer built commit supersedes an older release that is still waiting.
-
-   A merged PR is therefore not live until the owner approves. Agents report "merged, awaiting release approval" and never approve. Check what is live with `curl -s https://cryoshield.app/release.json`. If the deploy or smoke test fails, it rolls back by itself, the run fails, and that commit is not retried. Fix forward with a new PR, or roll back by hand (`docs/deploy.md` → Rollback).
+9. **Deploy.** There are two targets (change `split-dev-and-release-deploys`; `docs/deploy.md`).
+   - **A merge deploys to development, automatically.** `.github/workflows/deploy-dev.yml` picks up `main` within about 15 minutes (on push for human merges, on its 15-minute schedule for auto-merges). It runs the full CI on the merge commit, the guarded `DEPLOY_TARGET=development deploy.sh --build-only` in `development-build`, and then the `release` job in `development`, which runs `fly deploy`, the smoke test and any rollback with no approval. The target is https://cryoshield-web-dev.fly.dev (OP Sepolia, noindex). Its RP ID is that host, a different registrable domain from `cryoshield.app`. Never serve dev under `cryoshield.app`. Agents report "merged, deploying to dev" and check the run. Check what is live with `curl -s https://cryoshield-web-dev.fly.dev/release.json`. If the deploy or smoke test fails, it rolls back by itself, the run fails, and that commit is not retried; fix forward with a new PR.
+   - **Production needs the owner to publish a release.** https://cryoshield.app is deployed only by `.github/workflows/deploy.yml`, when the repository owner publishes a GitHub Release `vX.Y.Z` on a commit that is on `main` (`gh release create vX.Y.Z --target main --generate-notes`), or dispatches `gh workflow run deploy.yml --ref vX.Y.Z` (at the tag) to redeploy or roll back. The `production` and `production-build` environments accept only `v*` tags, so nothing on `main` or any branch can reach production secrets.
+   - **Agents never create releases or tags,** never dispatch or re-run `deploy.yml`, and never say a change "is live in production" until the owner has released it. The `release-tags` ruleset (admins only), the owner-only gate in `deploy.yml` and the tag-only `production` environments enforce this. A merged PR is "on dev; ships with the next release".
 10. **After the merge,** archive the OpenSpec change (`/opsx:archive`) in a follow-up PR.
 
    Merges made by the workflow token do not trigger `push` workflows on `main`. The deploy pipeline's full CI on the merge commit is the verification of the merged result.

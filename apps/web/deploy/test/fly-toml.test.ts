@@ -1,29 +1,93 @@
 // @vitest-environment node
-/** add-fly-hosting 2.3: fly.toml shape, and nothing secret in it or in the build context rules. */
+/**
+ * add-fly-hosting 2.3, split-dev-and-release-deploys: fly.toml and fly.dev.toml shape, and nothing secret in them or in
+ * the build context rules. The TOML is parsed per section (ECC review L4), so a key is only accepted in its own table.
+ */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const web = join(__dirname, '..', '..');
-const toml = readFileSync(join(web, 'fly.toml'), 'utf8');
-const line = (re: RegExp) => toml.match(re)?.[1];
+
+/** Minimal TOML reader for these flat configs: `[table]` / `[[array-table]]` headers and `key = value` lines.
+ * Keys become "<table>.<key>"; a repeated key or any line it does not understand fails the test. Every table name,
+ * plain or array (`[[mounts]]` too), is collected in TABLES. */
+const TABLES = new WeakMap<object, Set<string>>();
+function parseToml(text: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  const tables = new Set<string>();
+  TABLES.set(out, tables);
+  let table = '';
+  for (const raw of text.split('\n')) {
+    const line = raw.replace(/^([^"#]*("[^"]*"[^"#]*)*)#.*$/, '$1').trim();
+    if (!line) continue;
+    const header = /^\[\[?([A-Za-z0-9_.]+)\]\]?$/.exec(line);
+    if (header) {
+      table = header[1]!;
+      tables.add(table);
+      continue;
+    }
+    const kv = /^([A-Za-z0-9_]+)\s*=\s*(.+)$/.exec(line);
+    if (!kv) throw new Error(`unexpected TOML line: ${raw}`);
+    const key = table ? `${table}.${kv[1]}` : kv[1]!;
+    if (key in out) throw new Error(`duplicate key ${key}`);
+    out[key] = kv[2]!.replace(/^"(.*)"$/, '$1');
+  }
+  return out;
+}
+
+const text = readFileSync(join(web, 'fly.toml'), 'utf8');
+const prod = parseToml(text);
+const devText = readFileSync(join(web, 'fly.dev.toml'), 'utf8');
+const dev = parseToml(devText);
+const tablesOf = (parsed: Record<string, string>) => [...TABLES.get(parsed)!];
+// No [env] (values would ship in the image config) and no [mounts]/[[mounts]] (the image is static, nothing persists).
+const FORBIDDEN_TABLE = /^(env|mounts)(\.|$)/;
+const SHARED = [
+  'build.dockerfile',
+  'http_service.internal_port',
+  'http_service.force_https',
+  'http_service.auto_stop_machines',
+  'http_service.auto_start_machines',
+  'http_service.min_machines_running',
+  'http_service.checks.path',
+  'http_service.checks.method',
+  'vm.size',
+  'vm.memory',
+];
 
 describe('fly.toml', () => {
-  it('has the decided settings', () => {
-    expect(line(/^app = "([^"]+)"/m)).toBe('cryoshield-web');
-    expect(line(/^primary_region = "([^"]+)"/m)).toBe('sin');
-    expect(line(/internal_port = (\d+)/)).toBe('8080');
-    expect(line(/force_https = (\w+)/)).toBe('true');
-    expect(line(/auto_stop_machines = "(\w+)"/)).toBe('suspend'); // fly-scale-to-zero
-    expect(line(/auto_start_machines = (\w+)/)).toBe('true');
-    expect(line(/min_machines_running = (\d+)/)).toBe('0'); // fly-scale-to-zero
-    expect(line(/path = "([^"]+)"/)).toBe('/healthz');
-    expect(line(/dockerfile = "([^"]+)"/)).toBe('deploy/Dockerfile');
+  it('has the decided settings, each in its own table', () => {
+    expect(prod.app).toBe('cryoshield-web');
+    expect(prod.primary_region).toBe('sin');
+    expect(prod['http_service.internal_port']).toBe('8080');
+    expect(prod['http_service.force_https']).toBe('true');
+    expect(prod['http_service.auto_stop_machines']).toBe('suspend'); // fly-scale-to-zero
+    expect(prod['http_service.auto_start_machines']).toBe('true');
+    expect(prod['http_service.min_machines_running']).toBe('0'); // fly-scale-to-zero
+    expect(prod['http_service.checks.path']).toBe('/healthz');
+    expect(prod['build.dockerfile']).toBe('deploy/Dockerfile');
+  });
+
+  it('the parser rejects keys outside their table and repeated keys', () => {
+    expect(parseToml('[build]\npath = "/healthz"\n')['http_service.checks.path']).toBeUndefined();
+    expect(() => parseToml('app = "a"\napp = "b"\n')).toThrow(/duplicate/);
+    // [env], [mounts] and the array form [[mounts]] are all seen as forbidden tables
+    for (const t of ['[env]\nA = "1"\n', '[mounts]\nsource = "x"\n', '[[mounts]]\nsource = "x"\n', '[ env ]\n']) {
+      let tables: string[] = [];
+      try {
+        tables = tablesOf(parseToml(t));
+      } catch {
+        tables = ['env']; // a header the parser refuses is refused too
+      }
+      expect(tables.some((x) => FORBIDDEN_TABLE.test(x)), t).toBe(true);
+    }
   });
 
   it('has no env, secrets, mounts, or secret-looking values', () => {
-    expect(toml).not.toMatch(/^\s*\[(env|mounts)\]/m);
-    expect(toml).not.toMatch(/VITE_|apikey|pim_|sp_[a-z]|secret\s*=|token\s*=|password/i);
+    expect(tablesOf(prod).filter((t) => FORBIDDEN_TABLE.test(t))).toEqual([]);
+    expect(tablesOf(prod)).toContain('http_service.checks');
+    expect(text).not.toMatch(/VITE_|apikey|pim_|sp_[a-z]|secret\s*=|token\s*=|password/i);
   });
 
   it('.dockerignore whitelists only deploy/.build', () => {
@@ -36,5 +100,20 @@ describe('fly.toml', () => {
     expect(df).toMatch(/^FROM caddy:[\w.-]+@sha256:[0-9a-f]{64}$/m);
     expect(df).toMatch(/^USER 65534:65534$/m);
     expect(df).not.toMatch(/^ARG /m);
+  });
+});
+
+describe('fly.dev.toml (split-dev-and-release-deploys)', () => {
+  it('is the development app with the same scale-to-zero, build, health check and VM as production', () => {
+    expect(dev.app).toBe('cryoshield-web-dev');
+    expect(dev.primary_region).toBe('sin');
+    for (const k of SHARED) expect(dev[k], k).toBe(prod[k]);
+    // nothing else differs but the app
+    expect(Object.keys(dev).sort()).toEqual(Object.keys(prod).sort());
+  });
+
+  it('has no env, secrets, mounts, or secret-looking values', () => {
+    expect(tablesOf(dev).filter((t) => FORBIDDEN_TABLE.test(t))).toEqual([]);
+    expect(devText).not.toMatch(/VITE_|apikey|pim_|sp_[a-z]|secret\s*=|token\s*=|password/i);
   });
 });

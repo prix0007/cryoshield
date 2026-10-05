@@ -1,11 +1,12 @@
 [
   {
     "name": "production",
-    "required_reviewers": ["@owner"],
+    "required_reviewers": [],
     "prevent_self_review": false,
     "can_admins_bypass": false,
     "wait_timer": 0,
-    "branches": ["main"]
+    "branches": [],
+    "tags": ["v*"]
   },
   {
     "name": "production-build",
@@ -13,6 +14,25 @@
     "prevent_self_review": false,
     "can_admins_bypass": false,
     "wait_timer": 0,
-    "branches": ["main"]
+    "branches": [],
+    "tags": ["v*"]
+  },
+  {
+    "name": "development",
+    "required_reviewers": [],
+    "prevent_self_review": false,
+    "can_admins_bypass": false,
+    "wait_timer": 0,
+    "branches": ["main"],
+    "tags": []
+  },
+  {
+    "name": "development-build",
+    "required_reviewers": [],
+    "prevent_self_review": false,
+    "can_admins_bypass": false,
+    "wait_timer": 0,
+    "branches": ["main"],
+    "tags": []
   }
 ]

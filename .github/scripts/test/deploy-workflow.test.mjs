@@ -1,13 +1,15 @@
-// add-continuous-deploy: the deploy workflow's restrictions (spec ci-pipeline "Deployment workflow restrictions")
-// and the reusable full CI (spec ci-pipeline "Reusable full CI run"). Mutates the real files.
+// split-dev-and-release-deploys (spec ci-pipeline "Deploy workflow restrictions per target"; earlier:
+// add-continuous-deploy, gate-production-deploys): the restrictions shared by BOTH deploy workflows,
+// deploy.yml (production, owner releases) and deploy-dev.yml (development, every main commit), and the reusable
+// full CI. Mutates the real files.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
-import { checkWorkflow, checkZizmorConfig } from '../workflow-policy.mjs';
+import { checkGithubDir, checkWorkflow, checkZizmorConfig } from '../workflow-policy.mjs';
 
 const real = (name) => readFileSync(new URL(`../../workflows/${name}`, import.meta.url), 'utf8');
-const deploy = real('deploy.yml');
 const ci = real('ci.yml');
 const errs = (file, text) => checkWorkflow(`workflows/${file}`, text);
 const expectError = (file, text, re) => {
@@ -18,137 +20,217 @@ const replaceOnce = (text, from, to) => {
   assert.ok(text.includes(from), `fixture drift: ${JSON.stringify(from)} not found`);
   return text.replace(from, to);
 };
+const envOf = (j) => String((typeof j.environment === 'object' ? j.environment?.name : j.environment) ?? '');
 
-test('the committed deploy.yml and ci.yml pass', () => {
-  assert.deepEqual(errs('deploy.yml', deploy), []);
-  assert.deepEqual(errs('ci.yml', ci), []);
+const TARGETS = {
+  'deploy.yml': { release: 'production', build: 'production-build', other: ['development', 'development-build'], group: 'deploy-production' },
+  'deploy-dev.yml': { release: 'development', build: 'development-build', other: ['production', 'production-build'], group: 'deploy-development' },
+};
+const ALL_ENVS = ['production', 'production-build', 'development', 'development-build'];
+
+test('the committed deploy workflows, ci.yml and the whole .github directory pass the policy', () => {
+  for (const f of [...Object.keys(TARGETS), 'ci.yml']) assert.deepEqual(errs(f, real(f)), [], f);
+  assert.deepEqual(checkGithubDir(fileURLToPath(new URL('../..', import.meta.url))), []);
 });
 
-test('deploy.yml: no pull_request trigger of any kind, push only to main', () => {
-  expectError('deploy.yml', replaceOnce(deploy, 'on:\n  push:\n', 'on:\n  pull_request:\n  push:\n'), /deploy\.yml.*trigger 'pull_request'/);
-  expectError('deploy.yml', replaceOnce(deploy, '    branches: [main]\n', '    branches: [main, "release/*"]\n'), /push.*main/);
-  expectError('deploy.yml', replaceOnce(deploy, 'on:\n  push:\n', 'on:\n  workflow_call:\n  push:\n'), /trigger 'workflow_call'/);
+for (const [file, t] of Object.entries(TARGETS)) {
+  const text = real(file);
+  const wf = parse(text);
+
+  test(`${file}: never a pull_request, pull_request_target or workflow_call trigger`, () => {
+    const firstTrigger = Object.keys(wf.on)[0];
+    for (const bad of ['pull_request', 'pull_request_target', 'workflow_call']) {
+      expectError(file, replaceOnce(text, `on:\n  ${firstTrigger}:`, `on:\n  ${bad}:\n  ${firstTrigger}:`), new RegExp(`trigger '${bad}'|${bad}`));
+    }
+  });
+
+  test(`${file}: only ${t.release} and ${t.build}; the other target's environments and unknown ones are refused`, () => {
+    const envs = Object.values(wf.jobs).map(envOf).filter(Boolean).sort();
+    assert.deepEqual(envs, [t.build, t.build, t.release].sort());
+    for (const other of [...t.other, 'staging']) {
+      expectError(file, replaceOnce(text, `      name: ${t.release}\n`, `      name: ${other}\n`), /environment/);
+      expectError(file, text.replaceAll(`      name: ${t.build} `, `      name: ${other} `), /environment/);
+    }
+  });
+
+  test(`${file}: exactly one ${t.release} job (release); it holds the token; build jobs never do`, () => {
+    const releaseJobs = Object.entries(wf.jobs).filter(([, j]) => envOf(j) === t.release).map(([id]) => id);
+    assert.deepEqual(releaseJobs, ['release']);
+    for (const [id, j] of Object.entries(wf.jobs)) {
+      if (id !== 'release') assert.doesNotMatch(JSON.stringify(j), /FLY_API_TOKEN/, id);
+    }
+    assert.match(JSON.stringify(wf.jobs.release), /FLY_API_TOKEN/);
+    expectError(file, replaceOnce(text, `      name: ${t.build} # build config only`, `      name: ${t.release} # build config only`), /environment|FLY_API_TOKEN|one job/);
+  });
+
+  test(`${file}: FLY_API_TOKEN only in the step env of steps deploy and rollback`, () => {
+    expectError(file, replaceOnce(text, '          VITE_RP_NAME: ${{ vars.VITE_RP_NAME }}\n', '          VITE_RP_NAME: ${{ vars.VITE_RP_NAME }}\n          T: ${{ secrets.FLY_API_TOKEN }}\n'), /FLY_API_TOKEN/);
+    expectError(file, replaceOnce(text, '    permissions:\n      contents: read # checkout, and the', '    env:\n      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}\n    permissions:\n      contents: read # checkout, and the'), /FLY_API_TOKEN/);
+    expectError(file, replaceOnce(text, 'env:\n  NODE_VERSION:', 'env:\n  FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}\n  NODE_VERSION:'), /FLY_API_TOKEN/);
+    expectError(file, replaceOnce(text, '        run: .github/scripts/deploy/rollback.sh\n', '        run: .github/scripts/deploy/rollback.sh "${{ secrets.FLY_API_TOKEN }}"\n'), /FLY_API_TOKEN/);
+  });
+
+  test(`${file}: secrets need the target's environments; exact secret expressions only`, () => {
+    const noEnv = text.replace(/    environment:\n      name: (production|development)\n      url: [^\n]+\n/, '');
+    assert.notEqual(noEnv, text);
+    expectError(file, noEnv, /job 'release'/);
+    const inject = (expr) => replaceOnce(text, '          VITE_RP_NAME: ${{ vars.VITE_RP_NAME }}\n', `          VITE_RP_NAME: \${{ vars.VITE_RP_NAME }}\n          X: \${{ ${expr} }}\n`);
+    expectError(file, inject("secrets[format('FLY_{0}','API_TOKEN')]"), /secret/);
+    expectError(file, inject('toJSON(secrets)'), /secret/);
+    const bundlerElsewhere = replaceOnce(text, '          PREVIOUS_IMAGE: ${{ steps.deploy.outputs.previous_image }}\n', '          PREVIOUS_IMAGE: ${{ steps.deploy.outputs.previous_image }}\n          B: ${{ secrets.VITE_BUNDLER_URL }}\n');
+    expectError(file, bundlerElsewhere, /VITE_BUNDLER_URL/);
+  });
+
+  test(`${file}: never secrets: inherit; concurrency exact and never cancelled; job-level ${t.group}`, () => {
+    expectError(file, replaceOnce(text, '    permissions:\n      contents: read # the called CI', '    secrets: inherit\n    permissions:\n      contents: read # the called CI'), /secrets: inherit/);
+    expectError(file, replaceOnce(text, '  cancel-in-progress: false\n', '  cancel-in-progress: true\n'), /concurrency/);
+    assert.deepEqual(wf.jobs.release.concurrency, { group: t.group, 'cancel-in-progress': false });
+    expectError(file, replaceOnce(text, `      group: ${t.group}\n`, '      group: deploy-${{ github.sha }}\n'), new RegExp(t.group));
+    expectError(file, replaceOnce(text, `      group: ${t.group}\n      cancel-in-progress: false\n`, `      group: ${t.group}\n      cancel-in-progress: true\n`), new RegExp(t.group));
+  });
+
+  test(`${file}: no write scope on any job (the supersede exception is gone)`, () => {
+    expectError(file, replaceOnce(text, '      contents: read # checkout, and the', '      contents: write # checkout, and the'), /write/);
+    expectError(file, replaceOnce(text, '    permissions:\n      contents: read # checkout, and the', '    permissions:\n      actions: write\n      contents: read # checkout, and the'), /actions: write/);
+    assert.equal(wf.jobs.supersede, undefined);
+    for (const [id, j] of Object.entries(wf.jobs)) {
+      for (const level of Object.values(j.permissions ?? {})) assert.notEqual(level, 'write', id);
+    }
+  });
+
+  test(`${file}: the token job runs no build tooling and no third-party action (H1)`, () => {
+    const withBuild = replaceOnce(text, '      - name: Deploy the built context (flyctl only)\n', '      - name: Sneaky install\n        run: pnpm install --frozen-lockfile\n      - name: Deploy the built context (flyctl only)\n');
+    expectError(file, withBuild, /job 'release'.*no node, npm, pnpm/);
+    const withAction = replaceOnce(text, '      - name: Deploy the built context (flyctl only)\n', '      - name: Setup\n        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0\n      - name: Deploy the built context (flyctl only)\n');
+    expectError(file, withAction, /job 'release'.*actions\/setup-node/);
+  });
+
+  test(`${file}: build in ${t.build} runs deploy.sh --build-only for its target; release ships only the artifact`, () => {
+    assert.equal(envOf(wf.jobs.build), t.build);
+    const build = wf.jobs.build.steps.find((s) => s.id === 'build');
+    assert.match(String(build.run), /deploy\.sh --build-only/);
+    assert.equal(build.env?.DEPLOY_TARGET, file === 'deploy.yml' ? 'production' : 'development');
+    assert.ok(wf.jobs.release.steps.some((s) => String(s.uses).startsWith('actions/download-artifact@')));
+  });
+
+  test(`${file}: rollback on failure OR cancellation after fly deploy started, in the same job`, () => {
+    const rollback = wf.jobs.release.steps.find((s) => s.id === 'rollback');
+    assert.match(String(rollback.if), /failure\(\) \|\| cancelled\(\)/);
+    assert.match(String(rollback.if), /steps\.deploy\.outputs\.fly_started == 'true'/);
+    assert.equal(rollback.env.APP, '${{ env.FLY_APP }}');
+    assert.equal(rollback.env.CONFIG, 'apps/web/${{ env.FLY_CONFIG }}');
+  });
+
+  test(`${file}: every job with needs is gated on needs.detect.outputs.deploy; no top-level ||`, () => {
+    const ungated = replaceOnce(text, "    needs: [detect, build]\n    if: needs.detect.outputs.deploy == 'true'\n", '    needs: [detect, build]\n    if: always()\n');
+    expectError(file, ungated, /job 'release'.*needs\.detect\.outputs\.deploy == 'true'/);
+    expectError(file, replaceOnce(text, "    if: needs.detect.outputs.deploy == 'true' && needs.config.outputs.configured == 'true'\n    uses:", "    if: needs.detect.outputs.deploy == 'true' && needs.config.outputs.configured == 'true' || true\n    uses:"), /job 'test'.*\|\|/);
+  });
+
+  test(`${file}: token-job run steps are digest-pinned, no custom shell`, () => {
+    expectError(file, replaceOnce(text, '          fly deploy --config "$FLY_CONFIG" --remote-only --app "$FLY_APP"\n', '          fly deploy --config "$FLY_CONFIG" --remote-only --app "$FLY_APP"\n          true\n'), /digest/);
+    expectError(file, replaceOnce(text, '        id: rollback\n', '        id: rollback\n        shell: bash -e {0}\n'), /shell/);
+  });
+
+  test(`${file}: environment names may not be expressions`, () => {
+    expectError(file, replaceOnce(text, `      name: ${t.release}\n`, `      name: \${{ '${t.release}' }}\n`), /expression/);
+  });
+
+  test(`${file}: the release job re-checks its commit right before fly deploy`, () => {
+    const id = file === 'deploy.yml' ? 'tag-check' : 'head-check';
+    const steps = wf.jobs.release.steps;
+    const idx = (s) => steps.findIndex((x) => x.id === s);
+    assert.ok(idx(id) >= 0 && idx(id) === idx('deploy') - 1, `${id} must run immediately before deploy (ECC L1)`);
+    assert.doesNotMatch(JSON.stringify(steps[idx(id)]), /secrets\./);
+    const without = text.replace(`        id: ${id}\n`, '');
+    assert.notEqual(without, text);
+    expectError(file, without, new RegExp(id));
+  });
+}
+
+for (const [file] of Object.entries(TARGETS)) {
+  const text = real(file);
+  const wf = parse(text);
+
+  test(`${file}: ECC M3: no always()/failure()/cancelled() in a JOB condition, alone or combined`, () => {
+    // case-insensitive, like GitHub's expression functions (ECC M-case)
+    for (const fn of ['always()', 'failure()', 'cancelled()', '!cancelled()', 'ALWAYS()', 'Failure()', 'CANCELLED ()']) {
+      const combined = replaceOnce(text, "    needs: [detect, build]\n    if: needs.detect.outputs.deploy == 'true'\n", `    needs: [detect, build]\n    if: "${fn} && needs.detect.outputs.deploy == 'true'"\n`);
+      expectError(file, combined, /job 'release'.*always\(\), failure\(\) and cancelled\(\)/);
+    }
+    // the step-level exceptions stay: rollback and fail loudly
+    assert.match(String(wf.jobs.release.steps.find((s) => s.id === 'rollback').if), /failure\(\) \|\| cancelled\(\)/);
+    assert.deepEqual(errs(file, text), []);
+  });
+
+  test(`${file}: ECC M3: every job that needs config must require needs.config.outputs.configured == 'true'`, () => {
+    for (const [id, j] of Object.entries(wf.jobs)) {
+      if ([].concat(j.needs ?? []).includes('config')) assert.match(String(j.if), /needs\.config\.outputs\.configured == 'true'/, id);
+    }
+    const unconfigured = replaceOnce(text, "    needs: [detect, config, test]\n    if: needs.detect.outputs.deploy == 'true' && needs.config.outputs.configured == 'true'\n", "    needs: [detect, config, test]\n    if: needs.detect.outputs.deploy == 'true'\n");
+    expectError(file, unconfigured, /job 'build' needs config.*configured == 'true'/);
+  });
+
+  test(`${file}: ECC L1: nothing may sit between the re-check and fly deploy`, () => {
+    const between = replaceOnce(text, '      # Record the live image (rollback target), then deploy.\n', '      - name: Something in between\n        run: echo hi\n      # Record the live image (rollback target), then deploy.\n');
+    expectError(file, between, /immediately before the step with id deploy/);
+  });
+}
+
+test('deploy.yml and deploy-dev.yml never share a concurrency group', () => {
+  const [p, d] = ['deploy.yml', 'deploy-dev.yml'].map((f) => parse(real(f)));
+  assert.equal(p.concurrency, undefined); // production: only the release job's group, behind the owner gate
+  assert.equal(d.concurrency.group, 'deploy-dev-${{ github.sha }}');
+  assert.notEqual(p.jobs.release.concurrency.group, d.jobs.release.concurrency.group);
 });
 
-test('deploy.yml: the first job only runs on refs/heads/main', () => {
-  expectError('deploy.yml', replaceOnce(deploy, "    if: github.ref == 'refs/heads/main'\n", ''), /job 'detect'.*refs\/heads\/main/);
-});
-
-test('deploy.yml: FLY_API_TOKEN only in the step-level env of steps `deploy` and `rollback`', () => {
-  expectError('deploy.yml', replaceOnce(deploy, '          VITE_RP_NAME: ${{ vars.VITE_RP_NAME }}\n', '          VITE_RP_NAME: ${{ vars.VITE_RP_NAME }}\n          T: ${{ secrets.FLY_API_TOKEN }}\n'), /FLY_API_TOKEN/);
-  expectError('deploy.yml', replaceOnce(deploy, '    permissions:\n      contents: read # checkout, and main', '    env:\n      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}\n    permissions:\n      contents: read # checkout, and main'), /FLY_API_TOKEN/);
-  expectError('deploy.yml', replaceOnce(deploy, 'env:\n  NODE_VERSION:', 'env:\n  FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}\n  NODE_VERSION:'), /FLY_API_TOKEN/);
-  expectError('deploy.yml', replaceOnce(deploy, '        run: .github/scripts/deploy/rollback.sh\n', '        run: .github/scripts/deploy/rollback.sh "${{ secrets.FLY_API_TOKEN }}"\n'), /FLY_API_TOKEN/);
-});
-
-test('deploy.yml: jobs using secrets must run in environment production (or production-build for build config)', () => {
-  const noEnv = replaceOnce(deploy, '    environment:\n      name: production\n      url: https://cryoshield.app\n', '');
-  expectError('deploy.yml', noEnv, /job 'release'.*environment production/);
-  expectError('deploy.yml', deploy.replaceAll('      name: production\n', '      name: staging\n'), /environment.*production/);
-});
-
-test('deploy.yml: never secrets: inherit; concurrency deploy-production and never cancelled', () => {
-  expectError('deploy.yml', replaceOnce(deploy, '    with:\n      full: true\n', '    with:\n      full: true\n    secrets: inherit\n'), /secrets/);
-  expectError('deploy.yml', replaceOnce(deploy, '  cancel-in-progress: false\n', '  cancel-in-progress: true\n'), /concurrency/);
-  expectError('deploy.yml', replaceOnce(deploy, '  group: deploy-production\n', '  group: deploy-${{ github.sha }}\n'), /concurrency/);
-});
-
-test('deploy.yml: write scopes are refused like everywhere else', () => {
-  expectError('deploy.yml', replaceOnce(deploy, '      contents: read # read main\'s HEAD and the detect script\n', '      contents: write\n'), /write/);
-});
-
-test('no other workflow may use FLY_API_TOKEN or environment production', () => {
+test('no other workflow may use FLY_API_TOKEN or any of the four deploy environments', () => {
   const withToken = replaceOnce(ci, '      - name: forge build\n', '      - name: forge build\n        env:\n          T: ${{ secrets.FLY_API_TOKEN }}\n');
   expectError('ci.yml', withToken, /FLY_API_TOKEN/);
-  const withEnv = replaceOnce(ci, '  contracts:\n    name: contracts\n', '  contracts:\n    name: contracts\n    environment: production\n');
-  expectError('ci.yml', withEnv, /production/);
-  expectError('nightly.yml', deploy.replace('name: Deploy', 'name: Nightly'), /only deploy\.yml/);
-});
-
-// ---- Security review (add-continuous-deploy) ----
-
-test('H1: jobs holding FLY_API_TOKEN run no build tooling and no third-party code', () => {
-  const tokenJob = parse(deploy).jobs.release;
-  assert.ok(JSON.stringify(tokenJob).includes('FLY_API_TOKEN'));
-  const withBuild = replaceOnce(deploy, '      - name: Deploy the built context (flyctl only)\n', '      - name: Sneaky install\n        run: pnpm install --frozen-lockfile\n      - name: Deploy the built context (flyctl only)\n');
-  expectError('deploy.yml', withBuild, /job 'release'.*no node, npm, pnpm/);
-  const withAction = replaceOnce(deploy, '      - name: Deploy the built context (flyctl only)\n', '      - name: Setup\n        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0\n      - name: Deploy the built context (flyctl only)\n');
-  expectError('deploy.yml', withAction, /job 'release'.*actions\/setup-node/);
-});
-
-test('H1: the build job never sees the Fly token and the deploy job only ships the build artifact', () => {
-  const wf = parse(deploy);
-  assert.doesNotMatch(JSON.stringify(wf.jobs.build), /FLY_API_TOKEN/);
-  assert.match(String(wf.jobs.build.steps.find((s) => s.id === 'build')?.run), /deploy\.sh --build-only/);
-  assert.ok(wf.jobs.release.steps.some((s) => String(s.uses).startsWith('actions/download-artifact@')));
-});
-
-test('M3: environment names are case-insensitive and may not be expressions', () => {
-  expectError('ci.yml', replaceOnce(ci, '  contracts:\n    name: contracts\n', '  contracts:\n    name: contracts\n    environment: Production\n'), /production/i);
+  for (const env of [...ALL_ENVS, 'Production', 'DEVELOPMENT']) {
+    expectError('ci.yml', replaceOnce(ci, '  contracts:\n    name: contracts\n', `  contracts:\n    name: contracts\n    environment: ${env}\n`), /deploy workflows/);
+  }
   expectError('ci.yml', replaceOnce(ci, '  contracts:\n    name: contracts\n', "  contracts:\n    name: contracts\n    environment: \"${{ 'production' }}\"\n"), /expression/);
-  expectError('deploy.yml', deploy.replace('    environment:\n      name: production\n', "    environment:\n      name: ${{ 'production' }}\n"), /expression/);
+  expectError('nightly.yml', real('deploy-dev.yml'), /deploy workflows/);
+  expectError('nightly.yml', real('deploy.yml'), /deploy workflows/);
 });
 
-test('M3: deploy.yml allows only exact secret expressions, each in its own step', () => {
-  const inject = (expr) => replaceOnce(deploy, '          VITE_RP_NAME: ${{ vars.VITE_RP_NAME }}\n', `          VITE_RP_NAME: \${{ vars.VITE_RP_NAME }}\n          X: \${{ ${expr} }}\n`);
-  expectError('deploy.yml', inject("secrets[format('FLY_{0}','API_TOKEN')]"), /secret/);
-  expectError('deploy.yml', inject('toJSON(secrets)'), /secret/);
-  expectError('deploy.yml', inject('secrets.FLY_API_TOKEN'), /FLY_API_TOKEN/);
-  const bundlerElsewhere = replaceOnce(deploy, '          PREVIOUS_IMAGE: ${{ steps.deploy.outputs.previous_image }}\n', '          PREVIOUS_IMAGE: ${{ steps.deploy.outputs.previous_image }}\n          B: ${{ secrets.VITE_BUNDLER_URL }}\n');
-  expectError('deploy.yml', bundlerElsewhere, /VITE_BUNDLER_URL/);
-});
-
-test('M1/L3/ECC #2: rollback also runs when the release failed OR was cancelled after fly deploy started (same job)', () => {
-  const wf = parse(deploy);
-  const rollback = wf.jobs.release.steps.find((s) => s.id === 'rollback');
-  assert.match(String(rollback.if), /failure\(\) \|\| cancelled\(\)/);
-  assert.match(String(rollback.if), /steps\.deploy\.outputs\.fly_started == 'true'/);
-});
-
-test('ECC #1: detect treats ANY failed earlier Deploy run of the commit as previously failed', () => {
-  const detectRun = String(parse(deploy).jobs.detect.steps.find((s) => s.id === 'detect').run);
-  assert.match(detectRun, /--status failure/);
-  assert.doesNotMatch(detectRun, /\.name == "deploy"/);
-});
-
-test('ECC #3: no || or `or` in any deploy.yml job condition', () => {
-  expectError('deploy.yml', replaceOnce(deploy, "    if: github.ref == 'refs/heads/main'\n", "    if: github.ref == 'refs/heads/main' || true\n"), /job 'detect'.*\|\|/);
-  expectError('deploy.yml', replaceOnce(deploy, "    if: needs.detect.outputs.deploy == 'true' && needs.config.outputs.configured == 'true'\n    uses:", "    if: needs.detect.outputs.deploy == 'true' && needs.config.outputs.configured == 'true' || true\n    uses:"), /job 'test'.*\|\|/);
-});
-
-test('ECC #4: every job with needs must be gated on needs.detect.outputs.deploy', () => {
-  const ungated = replaceOnce(deploy, "    needs: [detect, build, supersede]\n    if: needs.detect.outputs.deploy == 'true'\n", "    needs: [detect, build, supersede]\n    if: always()\n");
-  expectError('deploy.yml', ungated, /job 'release'.*needs\.detect\.outputs\.deploy == 'true'/);
-});
-
-test('ECC #7: token-holding jobs: every run step pinned by digest, no custom shell', () => {
-  expectError('deploy.yml', replaceOnce(deploy, '          fly deploy --config fly.toml --remote-only --app cryoshield-web\n', '          fly deploy --config fly.toml --remote-only --app cryoshield-web\n          true\n'), /digest/);
-  expectError('deploy.yml', replaceOnce(deploy, '        id: rollback\n', '        id: rollback\n        shell: bash -e {0}\n'), /shell/);
-});
-
-test('the privileged workflows may not use the Fly token or environment production either', () => {
+test('the privileged workflows may not use the Fly token or any environment either', () => {
   const am = real('auto-merge.yml');
-  expectError('auto-merge.yml', am.replace('    runs-on: ubuntu-24.04\n', '    environment: production\n    runs-on: ubuntu-24.04\n'), /production/);
+  for (const env of ['production', 'development']) {
+    expectError('auto-merge.yml', am.replace('    runs-on: ubuntu-24.04\n', `    environment: ${env}\n    runs-on: ubuntu-24.04\n`), /environment/);
+  }
   expectError('auto-merge.yml', am.replace('      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n', '      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n      T: ${{ secrets.FLY_API_TOKEN }}\n'), /FLY_API_TOKEN/);
 });
 
-test('ci.yml: `full` (workflow_call) forces every area job and workflow-lint on', () => {
+test('ci.yml: `full` forces every area job on; every area job checks out the caller\'s own commit (no `ref` input)', () => {
   const wf = parse(ci);
   assert.equal(wf.on.workflow_call.inputs.full.type, 'boolean');
+  // production runs AT the tag, so its own commit is the tagged one; a ref input is not needed (ECC HIGH, CodeQL)
+  assert.deepEqual(Object.keys(wf.on.workflow_call.inputs), ['full']);
   const forced = Object.entries(wf.jobs).filter(([id]) => !['changes', 'pr-checks', 'ci-ok'].includes(id));
   assert.ok(forced.length >= 7);
-  for (const [id, job] of forced) assert.match(String(job.if), /inputs\.full \|\|/, id);
+  for (const [id, job] of forced) {
+    assert.match(String(job.if), /inputs\.full \|\|/, id);
+    const checkouts = job.steps.filter((s) => String(s.uses).startsWith('actions/checkout@'));
+    assert.ok(checkouts.length >= 1, id);
+    for (const c of checkouts) assert.equal(c.with?.ref, undefined, id);
+  }
   assert.match(String(wf.concurrency.group), /github\.workflow/);
 });
 
-test('zizmor: the only other accepted ignore is self-repository on deploy.yml, pinned to THE reusable-CI line (ECC #8)', () => {
+test('zizmor: self-repository may be ignored once per deploy workflow, pinned to its reusable-CI line', () => {
   const base = 'rules:\n  unpinned-uses:\n    config:\n      policies:\n        "*": hash-pin\n';
-  assert.deepEqual(checkZizmorConfig(`${base}  self-repository:\n    ignore:\n      - deploy.yml:74\n`), []);
-  assert.deepEqual(checkZizmorConfig(`${base}  self-repository:\n    ignore:\n      - deploy.yml:74\n`, { selfRepositoryLine: 74 }), []);
-  assert.match(checkZizmorConfig(`${base}  self-repository:\n    ignore:\n      - deploy.yml:12\n`, { selfRepositoryLine: 74 }).join(), /deploy\.yml:74/);
-  const line = deploy.split('\n').findIndex((l) => /^\s*uses: \.\/\.github\/workflows\/ci\.yml\b/.test(l)) + 1;
-  assert.deepEqual(checkZizmorConfig(readFileSync(new URL('../../zizmor.yml', import.meta.url), 'utf8'), { selfRepositoryLine: line }), []);
+  const both = `${base}  self-repository:\n    ignore:\n      - deploy.yml:74\n      - deploy-dev.yml:80\n`;
+  const lines = { 'deploy.yml': 74, 'deploy-dev.yml': 80 };
+  assert.deepEqual(checkZizmorConfig(both), []);
+  assert.deepEqual(checkZizmorConfig(both, { selfRepositoryLines: lines }), []);
+  assert.match(checkZizmorConfig(both, { selfRepositoryLines: { ...lines, 'deploy.yml': 12 } }).join(), /deploy\.yml:12/);
+  assert.match(checkZizmorConfig(`${base}  self-repository:\n    ignore:\n      - deploy.yml:74\n`, { selfRepositoryLines: lines }).join(), /deploy-dev\.yml:80/);
+  assert.match(checkZizmorConfig(`${base}  self-repository:\n    ignore:\n      - deploy.yml:74\n      - deploy.yml:75\n`).join(), /self-repository/);
   assert.match(checkZizmorConfig(`${base}  self-repository:\n    ignore:\n      - ci.yml:74\n`).join(), /self-repository/);
   assert.match(checkZizmorConfig(`${base}  self-repository:\n    ignore:\n      - deploy.yml\n`).join(), /self-repository/);
-  assert.deepEqual(checkZizmorConfig(readFileSync(new URL('../../zizmor.yml', import.meta.url), 'utf8')), []);
+  const lineOf = (f) => real(f).split('\n').findIndex((l) => /^\s*uses: \.\/\.github\/workflows\/ci\.yml\b/.test(l)) + 1;
+  const zizmor = readFileSync(new URL('../../zizmor.yml', import.meta.url), 'utf8');
+  assert.deepEqual(checkZizmorConfig(zizmor, { selfRepositoryLines: { 'deploy.yml': lineOf('deploy.yml'), 'deploy-dev.yml': lineOf('deploy-dev.yml') } }), []);
 });

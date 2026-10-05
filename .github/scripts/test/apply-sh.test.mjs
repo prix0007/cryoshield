@@ -10,6 +10,11 @@ const applySh = fileURLToPath(new URL('../../rulesets/apply.sh', import.meta.url
 const stub = fileURLToPath(new URL('./fixtures/gh-stub.sh', import.meta.url));
 const committed = JSON.parse(readFileSync(new URL('../../rulesets/main.json', import.meta.url), 'utf8'));
 const settings = JSON.parse(readFileSync(new URL('../../rulesets/repo-settings.json', import.meta.url), 'utf8'));
+const tagsCommitted = JSON.parse(readFileSync(new URL('../../rulesets/release-tags.json', import.meta.url), 'utf8'));
+const TAGS_PATH = fileURLToPath(new URL('../../rulesets/release-tags.json', import.meta.url));
+// What the API returns for the tag ruleset matching release-tags.json (split-dev-and-release-deploys).
+const liveTags = () => ({ id: 8, source: 'prix0007/cryoshield', source_type: 'Repository', ...structuredClone(tagsCommitted), rules: structuredClone(tagsCommitted.rules).reverse(), _links: {} });
+const TAGS_ENTRY = { id: 8, name: 'release-tags', target: 'tag' };
 
 // What the API returns for a ruleset matching the committed one: metadata, defaults, other order.
 const liveMatching = () => ({
@@ -29,10 +34,11 @@ const actionsCommitted = JSON.parse(readFileSync(new URL('../../rulesets/actions
 const MANAGED = JSON.parse(readFileSync(new URL('../../rulesets/labels.json', import.meta.url), 'utf8'));
 const allLabels = () => MANAGED.map((l) => ({ name: l.name }));
 
-function run({ rulesets = [], ruleset = {}, repo = { ...settings, id: 1, private: true }, labels = allLabels(), actions = actionsCommitted, args = [], env = {} }) {
+function run({ rulesets = [], ruleset = {}, tags = liveTags(), repo = { ...settings, id: 1, private: true }, labels = allLabels(), actions = actionsCommitted, args = [], env = {} }) {
   const dir = mkdtempSync(join(tmpdir(), 'apply-sh-'));
   writeFileSync(join(dir, 'actions.json'), JSON.stringify(actions));
-  writeFileSync(join(dir, 'rulesets.json'), JSON.stringify(rulesets));
+  writeFileSync(join(dir, 'rulesets.json'), JSON.stringify(tags ? [...rulesets, TAGS_ENTRY] : rulesets));
+  if (tags) writeFileSync(join(dir, 'ruleset-8.json'), JSON.stringify(tags));
   writeFileSync(join(dir, 'ruleset.json'), JSON.stringify(ruleset));
   writeFileSync(join(dir, 'repo.json'), JSON.stringify(repo));
   writeFileSync(join(dir, 'labels.json'), JSON.stringify(labels));
@@ -190,4 +196,55 @@ test('labels with spaces and regex characters are matched literally and created 
   assert.match(r.writes[0], /-f name=duplicate\? -f color=cfd3d7 -f description=Triage: possibly a duplicate$/);
   const spaced = run({ rulesets: [{ id: 7, name: 'main', target: 'branch' }], ruleset: liveMatching(), labels: allLabels().filter((l) => l.name !== 'good first issue'), args: ['--apply'] });
   assert.match(spaced.writes[0], /-f name=good first issue -f color=7057ff/);
+});
+
+// ---- split-dev-and-release-deploys: the owner-only release tag ruleset (release-tags.json) ----
+const MAIN_IN_SYNC = { rulesets: [{ id: 7, name: 'main', target: 'branch' }], ruleset: liveMatching() };
+
+test('release-tags: a missing tag ruleset is drift in the dry run (exit 3), with no write', () => {
+  const r = run({ ...MAIN_IN_SYNC, tags: null });
+  assert.equal(r.status, 3, r.stderr + r.stdout);
+  assert.match(r.stdout, /ruleset 'release-tags' does not exist/);
+  assert.match(r.stdout, /\+.*"refs\/tags\/v\*"/);
+  assert.match(r.stdout, /ruleset 'main': in sync/);
+  assert.deepEqual(r.writes, []);
+});
+
+test('release-tags: --apply POSTs release-tags.json, then the re-check is in sync', () => {
+  const r = run({ ...MAIN_IN_SYNC, tags: null, args: ['--apply'] });
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.deepEqual(r.writes, [`api -X POST repos/prix0007/cryoshield/rulesets --input ${TAGS_PATH}`]);
+  assert.match(r.stdout, /re-check: in sync/);
+});
+
+test('release-tags: a drifted tag ruleset (extra bypass actor, missing rule) is PUT by its id, never main\'s', () => {
+  for (const mutate of [
+    (t) => t.bypass_actors.push({ actor_id: 2, actor_type: 'RepositoryRole', bypass_mode: 'always' }),
+    (t) => { t.rules = t.rules.filter((x) => x.type !== 'update'); },
+    (t) => { t.conditions.ref_name.include = ['refs/tags/release-*']; },
+  ]) {
+    const live = liveTags();
+    mutate(live);
+    const r = run({ ...MAIN_IN_SYNC, tags: live, args: ['--apply'] });
+    assert.equal(r.status, 0, r.stderr + r.stdout);
+    assert.deepEqual(r.writes, [`api -X PUT repos/prix0007/cryoshield/rulesets/8 --input ${TAGS_PATH}`]);
+  }
+});
+
+test('release-tags: in sync means no write (dry run and apply); a BRANCH ruleset with that name does not count', () => {
+  for (const args of [[], ['--apply']]) {
+    const r = run({ ...MAIN_IN_SYNC, args });
+    assert.equal(r.status, 0, r.stderr + r.stdout);
+    assert.match(r.stdout, /ruleset 'release-tags': in sync/);
+    assert.deepEqual(r.writes, []);
+  }
+  const branchNamed = run({ rulesets: [{ id: 7, name: 'main', target: 'branch' }, { id: 9, name: 'release-tags', target: 'branch' }], ruleset: liveMatching(), tags: null });
+  assert.equal(branchNamed.status, 3);
+  assert.match(branchNamed.stdout, /ruleset 'release-tags' does not exist/);
+});
+
+test('release-tags: --with-ecc-review only changes main, never the tag ruleset', () => {
+  const r = run({ ...MAIN_IN_SYNC, args: ['--with-ecc-review', '--apply'] });
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.deepEqual(r.writes.map((w) => w.split(' --input ')[0]), ['api -X PUT repos/prix0007/cryoshield/rulesets/7']);
 });
