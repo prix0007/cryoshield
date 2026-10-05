@@ -66,6 +66,8 @@ cryoshield-recover --network op-mainnet
 cryoshield-recover --chain-id 10
 # Override the built-in contract address or site name:
 cryoshield-recover --registry 0x0000000000000000000000000000000000000001 --rp-id cryoshield.app
+# Point at a VaultRegistry v2 deployment (and its deployment block, for update history):
+cryoshield-recover --registry-v2 0x0000000000000000000000000000000000000002 --deploy-block-v2 1
 ```
 
 Run `cryoshield-recover --help` for every option.
@@ -104,7 +106,9 @@ The mainnet chain (Arbitrum One or OP Mainnet) is not decided yet.
 - `--chain-id` together with `--network` or `--testnet` must match that preset's chain ID; otherwise the tool exits with a usage error. A preset's built-in registry is never used on another chain.
 - **Custom chains:** a `--chain-id` that matches no preset needs `--rpc`, and should come with `--registry`. Such a chain never gets a built-in registry address.
 
-**Built-in registry addresses** come from the project's deployment records at release time; the tool never reads files at runtime. If a network has no deployment in this release, blockchain lookup is off: the tool says so and points you to `--registry` and `--deploy-block`.
+**Built-in registry addresses** come from the project's deployment records at release time; the tool never reads files at runtime. If a network has no deployment in this release, blockchain lookup is off: the tool says so and points you to `--registry-v2`, `--registry` and their `--deploy-block` options.
+
+**Two registry versions.** New vaults are saved in VaultRegistry v2; vaults saved earlier stay in the original registry (v1), which remains readable forever. The tool looks in v2 first, then v1, and treats what it finds as one list, so you never need to know where your vault is. A network may have only one of them (OP Mainnet has only v2). In v2 anyone can add entries to a key's lookup list, so the tool reads long lists in pages within a time limit; if a list is so long that only part of it is read (the oldest and newest entries), it says so, and `--vault-id` always works.
 
 ### Shamir (M-of-N) vaults
 
@@ -155,6 +159,8 @@ Public servers are untrusted, and a lying or stale server can serve an *older* g
 - it matches the latest on-chain update record that several servers agree on.
 
 Versions reported by a server are never trusted for ranking. If servers disagree and the chain can't settle it, the tool prefers the copy more servers returned and warns you. On an exact tie it asks you to choose, showing only where each copy came from (never the secret). In a non-interactive run it stops with exit code 12.
+
+A vault ID found in both registry versions is settled by v2's on-chain history: v2 IDs are derived from the creator's address and cannot be copied, while anyone can register any ID in v1. A v1 copy that reuses a v2 vault's ID is ignored with a security warning; if v2's history can't be confirmed, no copy of that vault is called current.
 
 Every Arweave search server's answer is kept separately, so one bad server cannot hide the genuine mirror. Searches are paged and time-bounded, and claimed sizes are ignored; downloads are capped at 1 KB anyway.
 

@@ -5,6 +5,11 @@ still decrypts). We query every usable RPC and take the union of vault IDs; AES-
 binding reject forgeries and clones. Against rollback (audit REC-M1, change harden-recovery-network-trust):
 a copy is "current" only with a quorum of distinct RPCs returning it and no disagreement, or when it
 matches the latest event hash that several RPCs agree on. Self-reported versions are never trusted.
+
+Two registry versions (OpenSpec change harden-gas-sponsorship): ``Registries`` reads VaultRegistry v2
+and then v1 on one chain and returns one candidate list. Both share one set of RPC clients, one quorum
+and one deadline. v2 locator lists have no cap, so they are paged (oldest pages first, plus the newest
+pages when a list is longer than the page budget) and blobs are read with ``getVaults`` in batches.
 """
 
 from __future__ import annotations
@@ -37,8 +42,15 @@ _RANGE_WORDS = ("range", "too many", "limit", "exceed", "too large", "block")
 HISTORY_DEADLINE = 60.0
 # An RPC whose head differs from the median of usable RPCs by more than this is refused for history.
 HEAD_TOLERANCE = 5_000
-# resolveLocator/getVault reads share one deadline per Registry run, with clamped request timeouts.
+# resolveLocator/getVault(s) reads share one deadline per run, with clamped request timeouts.
 STATE_DEADLINE = 60.0
+# v2 paging budget per (RPC, locator): at most this many resolveLocator pages of 256 ids. Over budget,
+# the oldest pages are read (stuffing happens after a locator is public, so a vault's own entry is
+# normally early) plus the newest TAIL_PAGES (a locator made public elsewhere, e.g. on v1 or another
+# chain, can be pre-stuffed, which pushes the vault's entry to the end).
+MAX_LOCATOR_PAGES = 32
+TAIL_PAGES = 4
+_DEADLINE_MSG = "state lookup deadline exceeded"
 
 
 _DEFAULT_PORTS = {"https": 443, "http": 80}
@@ -85,6 +97,20 @@ def _hex(b: bytes) -> str:
     return "0x" + b.hex()
 
 
+class Session:
+    """What every registry read in one run shares: the RPC clients (probed once), the warnings, the
+    state and history deadlines and the cached heads. Duplicate URLs count once (REC-M1)."""
+
+    def __init__(self, urls: Sequence[str], chain_id: int, client_factory: ClientFactory = JsonRpcClient):
+        self.chain_id = chain_id
+        self.warnings: list[str] = []
+        self.clients = [client_factory(u) for u in distinct_urls(urls)]
+        self.usable: list[JsonRpcClient] | None = None
+        self.history_deadline: float | None = None
+        self.state_deadline: float | None = None
+        self.heads: list[tuple[JsonRpcClient, int]] | None = None
+
+
 class Registry:
     def __init__(
         self,
@@ -96,21 +122,29 @@ class Registry:
         client_factory: ClientFactory = JsonRpcClient,
         log_chunk: int = DEFAULT_LOG_CHUNK,
         max_log_pages: int = MAX_LOG_PAGES,
+        kind: int = 1,
+        label: str = "",
+        session: Session | None = None,
     ) -> None:
+        if kind not in (1, 2):
+            raise ValueError("registry kind must be 1 or 2")
         self.address = address.lower()
         self.chain_id = chain_id
         self.deploy_block = deploy_block
         self.log_chunk = log_chunk
         self.max_log_pages = max_log_pages
-        self.warnings: list[str] = []
-        # Duplicate URLs count once toward any quorum (REC-M1).
-        self._all = [client_factory(u) for u in distinct_urls(urls)]
-        self._usable: list[JsonRpcClient] | None = None
+        self.kind = kind
+        self.label = label  # shown in a candidate's origin, e.g. "registry v2"
+        self.session = session if session is not None else Session(urls, chain_id, client_factory)
         self._history: dict[bytes, list[tuple[int, bytes]] | None] = {}
-        # One history budget per Registry run (all vault ids, heads and pages), and cached heads.
-        self._deadline: float | None = None
-        self._heads: list[tuple[JsonRpcClient, int]] | None = None
-        self._state_deadline: float | None = None
+
+    @property
+    def warnings(self) -> list[str]:
+        return self.session.warnings
+
+    @property
+    def _all(self) -> list[JsonRpcClient]:
+        return self.session.clients
 
     @property
     def quorum(self) -> int:
@@ -119,7 +153,7 @@ class Registry:
 
     # ------------------------------------------------------------------ connection
     def usable(self) -> list[JsonRpcClient]:
-        if self._usable is None:
+        if self.session.usable is None:
 
             def probe(c: JsonRpcClient) -> JsonRpcClient | None:
                 try:
@@ -135,8 +169,8 @@ class Registry:
                     return None
                 return c
 
-            self._usable = [c for c in self._map(probe, self._all) if c is not None]
-        return self._usable
+            self.session.usable = [c for c in self._map(probe, self._all) if c is not None]
+        return self.session.usable
 
     def _map(self, fn: Callable[[Any], Any], items: Sequence[Any], default: Any = None) -> list[Any]:
         """Run ``fn`` per RPC in parallel. Any unexpected failure of one RPC is contained: it becomes a
@@ -156,12 +190,15 @@ class Registry:
         with ThreadPoolExecutor(max_workers=min(8, len(items))) as ex:
             return list(ex.map(safe, items))
 
+    def _remaining(self) -> float:
+        if self.session.state_deadline is None:
+            self.session.state_deadline = time.monotonic() + STATE_DEADLINE
+        return self.session.state_deadline - time.monotonic()
+
     def _eth_call(self, c: JsonRpcClient, data: bytes) -> bytes:
-        if self._state_deadline is None:
-            self._state_deadline = time.monotonic() + STATE_DEADLINE
-        remaining = self._state_deadline - time.monotonic()
+        remaining = self._remaining()
         if remaining <= 0:
-            raise RpcError("state lookup deadline exceeded")
+            raise RpcError(_DEADLINE_MSG)
         res = c.call("eth_call", [{"to": self.address, "data": _hex(data)}, "latest"], timeout=remaining)
         return hex_to_bytes(res, max_len=c.max_bytes)
 
@@ -172,6 +209,9 @@ class Registry:
         def one(c: JsonRpcClient) -> list[bytes]:
             out: list[bytes] = []
             for loc in locators:
+                if self.kind == 2:
+                    self._resolve_paged(c, loc, out)
+                    continue
                 try:
                     raw = self._eth_call(c, abi.encode_call(abi.SEL_RESOLVE_LOCATOR, loc))
                     out.extend(abi.decode_bytes32_array(raw))
@@ -186,22 +226,92 @@ class Registry:
                     seen.setdefault(vid, None)
         return list(seen)
 
+    def _page_starts(self, length: int) -> tuple[list[int], bool]:
+        """Page start offsets for a v2 list of ``length`` entries, and whether it was truncated."""
+        page = abi.V2_PAGE_SIZE
+        pages = -(-length // page)
+        if pages <= MAX_LOCATOR_PAGES:
+            return [i * page for i in range(pages)], False
+        tail = min(TAIL_PAGES, MAX_LOCATOR_PAGES - 1)
+        head = [i * page for i in range(MAX_LOCATOR_PAGES - tail)]
+        first_tail = max(head[-1] + page, length - tail * page)
+        return head + [first_tail + i * page for i in range(tail)], True
+
+    def _resolve_paged(self, c: JsonRpcClient, loc: bytes, out: list[bytes]) -> None:
+        """v2: locatorLength, then bounded resolveLocator pages. Ids from complete pages are kept even if
+        a later page fails or the deadline passes. A page longer than asked is a lie and is discarded."""
+        page = abi.V2_PAGE_SIZE
+        try:
+            length = abi.decode_uint256(self._eth_call(c, abi.encode_call(abi.SEL_LOCATOR_LENGTH, loc)))
+            starts, truncated = self._page_starts(length)
+            if truncated:
+                self.warnings.append(
+                    f"RPC {c.host}: a key's lookup list holds {length} entries (possibly spam); only part of "
+                    f"it was read (the oldest {MAX_LOCATOR_PAGES - TAIL_PAGES} and newest {TAIL_PAGES} pages). "
+                    "If your vault is not found, recover with --vault-id."
+                )
+            for start in starts:
+                expect = min(page, length - start)
+                ids = abi.decode_bytes32_array(
+                    self._eth_call(c, abi.encode_resolve_page(loc, start, page)), max_entries=page
+                )
+                if len(ids) > expect:
+                    raise abi.AbiError("page longer than requested")
+                out.extend(ids)
+                if len(ids) < expect:
+                    break  # the list ends earlier than the claimed length: nothing more to read
+        except (RpcError, abi.AbiError) as e:
+            self.warnings.append(f"RPC {c.host}: discarded resolveLocator answer ({e})")
+
+    def _fetch_v1(self, c: JsonRpcClient, vault_ids: Sequence[bytes]) -> list[tuple[bytes, bytes, int]]:
+        out: list[tuple[bytes, bytes, int]] = []
+        for vid in vault_ids:
+            try:
+                raw = self._eth_call(c, abi.encode_call(abi.SEL_GET_VAULT, vid))
+                _owner, blob, version = abi.decode_vault(raw)
+            except (RpcError, abi.AbiError) as e:
+                self.warnings.append(f"RPC {c.host}: discarded getVault answer ({e})")
+                if str(e) == _DEADLINE_MSG:
+                    break
+                continue
+            out.append((vid, blob, version))
+        return out
+
+    def _fetch_v2(self, c: JsonRpcClient, vault_ids: Sequence[bytes]) -> list[tuple[bytes, bytes, int]]:
+        """getVaults in batches of at most 32. A batch whose answer exceeds the response cap is halved."""
+        n = abi.V2_MAX_IDS_PER_CALL
+        pending = [list(vault_ids[i : i + n]) for i in range(0, len(vault_ids), n)]
+        out: list[tuple[bytes, bytes, int]] = []
+        while pending:
+            batch = pending.pop(0)
+            try:
+                vaults = abi.decode_vaults(self._eth_call(c, abi.encode_get_vaults(batch)), len(batch))
+            except RpcError as e:
+                if e.too_large and len(batch) > 1:
+                    half = len(batch) // 2
+                    pending[:0] = [batch[:half], batch[half:]]
+                    continue
+                self.warnings.append(f"RPC {c.host}: discarded getVaults answer ({e})")
+                if str(e) == _DEADLINE_MSG:
+                    break
+                continue
+            except abi.AbiError as e:
+                self.warnings.append(f"RPC {c.host}: discarded getVaults answer ({e})")
+                continue
+            out.extend(
+                (vid, blob, version) for vid, (_owner, blob, version) in zip(batch, vaults, strict=True)
+            )
+        return out
+
     def fetch(self, vault_ids: Sequence[bytes]) -> list[Candidate]:
-        """getVault for each id from every usable RPC. Each distinct (vaultId, blob) becomes ONE
-        candidate whose ``support`` is the number of distinct RPCs that returned it."""
+        """Read each id from every usable RPC (v1 getVault, v2 getVaults). Each distinct (vaultId, blob)
+        becomes ONE candidate whose ``support`` is the number of distinct RPCs that returned it."""
+        ids = list(dict.fromkeys(vault_ids))
+        read = self._fetch_v2 if self.kind == 2 else self._fetch_v1
 
         def one(c: JsonRpcClient) -> list[tuple[str, bytes, bytes, int]]:
-            out: list[tuple[str, bytes, bytes, int]] = []
-            for vid in vault_ids:
-                try:
-                    raw = self._eth_call(c, abi.encode_call(abi.SEL_GET_VAULT, vid))
-                    _owner, blob, version = abi.decode_vault(raw)
-                except (RpcError, abi.AbiError) as e:
-                    self.warnings.append(f"RPC {c.host}: discarded getVault answer ({e})")
-                    continue
-                if blob:
-                    out.append((normalize_url(getattr(c, "url", c.host)), vid, blob, version))
-            return out
+            endpoint = normalize_url(getattr(c, "url", c.host))
+            return [(endpoint, vid, blob, version) for vid, blob, version in read(c, ids) if blob]
 
         # Support is counted by normalised endpoint, exactly like the quorum (ECC review, PR #22).
         endpoints: dict[tuple[bytes, bytes], list[str]] = {}
@@ -213,11 +323,12 @@ class Registry:
                     endpoints[key].append(endpoint)
                 versions.setdefault(key, version)  # display only, never used for ranking
         hosts = {k: [urlparse(e).netloc or e for e in v] for k, v in endpoints.items()}
+        prefix = f"{self.label}: " if self.label else ""
         result = [
             Candidate(
                 blob,
                 "chain",
-                ", ".join(hs),
+                prefix + ", ".join(hs),
                 vid,
                 versions[(vid, blob)],
                 Freshness.UNVERIFIABLE,
@@ -279,9 +390,9 @@ class Registry:
         """
         if vault_id in self._history:
             return self._history[vault_id]
-        if self._deadline is None:
-            self._deadline = time.monotonic() + HISTORY_DEADLINE
-        deadline = self._deadline
+        if self.session.history_deadline is None:
+            self.session.history_deadline = time.monotonic() + HISTORY_DEADLINE
+        deadline = self.session.history_deadline
         if time.monotonic() > deadline:
             self.warnings.append(
                 f"history of vault 0x{vault_id.hex()}: lookup deadline exceeded; cannot confirm which "
@@ -333,8 +444,8 @@ class Registry:
         to a common higher head is impossible anyway: op-geth/publicnode reject toBlock beyond their own
         head (security review M1, verified live 2026-10-04).
         """
-        if self._heads is not None:
-            return self._heads
+        if self.session.heads is not None:
+            return self.session.heads
 
         def head(c: JsonRpcClient) -> tuple[JsonRpcClient, int] | None:
             try:
@@ -348,8 +459,8 @@ class Registry:
 
         heads = [h for h in self._map(head, clients) if h is not None]
         if not heads:
-            self._heads = []
-            return self._heads
+            self.session.heads = []
+            return self.session.heads
         ref = int(statistics.median_low(h for _, h in heads))
         plausible: list[tuple[JsonRpcClient, int]] = []
         for c, h in heads:
@@ -360,8 +471,8 @@ class Registry:
                 )
             else:
                 plausible.append((c, h))
-        self._heads = plausible
-        return self._heads
+        self.session.heads = plausible
+        return self.session.heads
 
     def _logs(
         self, c: JsonRpcClient, vault_id: bytes, latest: int, deadline: float
@@ -428,6 +539,131 @@ class Registry:
         if hex_to_bytes(topics[1], max_len=32) != vault_id:
             raise abi.AbiError("log for another vault")
         return abi.decode_log_hash(hex_to_bytes(log.get("data"), max_len=64))
+
+
+class Registries:
+    """VaultRegistry v2 then v1 on one chain, read as one (vault-registry spec: "Registry versions
+    coexist"). Either may be absent: a chain without v1 (OP Mainnet) reads only v2, and a chain without
+    a v2 deployment reads only v1, exactly as before.
+
+    Cross-registry rollback: v1 accepts client-chosen ids, so anyone can register a v2 vault's id in v1
+    with an OLDER genuine blob, which still decrypts (the AAD binds the vaultId, not the registry). v2
+    ids are derived from the creator's address and cannot be planted. So when a vault id has copies in
+    both, the agreed v2 event history decides: v2 history present means v1 copies are planted (ignored);
+    agreed empty v2 history means the "v2" copies are lies (ignored); unverifiable means no copy of that
+    id may be called current, and the normal tie handling asks the user.
+    """
+
+    def __init__(self, v2: Registry | None, v1: Registry | None) -> None:
+        if v2 is None and v1 is None:
+            raise ValueError("at least one registry is needed")
+        if v2 is not None and v1 is not None and v2.session is not v1.session:
+            raise ValueError("both registries must share one session")
+        self.v2 = v2
+        self.v1 = v1
+        self._primary: Registry = v2 if v2 is not None else v1  # type: ignore[assignment]
+        self._v2_only: set[bytes] = set()
+
+    @classmethod
+    def build(
+        cls,
+        urls: Sequence[str],
+        chain_id: int,
+        *,
+        v2: tuple[str, int] | None,
+        v1: tuple[str, int] | None,
+        client_factory: ClientFactory = JsonRpcClient,
+        log_chunk: int = DEFAULT_LOG_CHUNK,
+    ) -> Registries:
+        """``v2``/``v1`` are ``(address, deploy_block)`` or None when the chain has no such registry."""
+        session = Session(urls, chain_id, client_factory)
+        both = v2 is not None and v1 is not None
+
+        def make(spec: tuple[str, int] | None, kind: int) -> Registry | None:
+            if spec is None:
+                return None
+            return Registry(
+                urls,
+                spec[0],
+                chain_id,
+                spec[1],
+                log_chunk=log_chunk,
+                kind=kind,
+                label=f"registry v{kind}" if both else "",
+                session=session,
+            )
+
+        return cls(make(v2, 2), make(v1, 1))
+
+    @property
+    def warnings(self) -> list[str]:
+        return self._primary.warnings
+
+    @property
+    def quorum(self) -> int:
+        return self._primary.quorum
+
+    def usable(self) -> list[JsonRpcClient]:
+        return self._primary.usable()
+
+    def resolve(self, locators: Sequence[bytes]) -> list[bytes]:
+        ids2 = self.v2.resolve(locators) if self.v2 is not None else []
+        ids1 = self.v1.resolve(locators) if self.v1 is not None else []
+        self._v2_only.update(set(ids2) - set(ids1))
+        return list(dict.fromkeys(ids2 + ids1))
+
+    def fetch(self, vault_ids: Sequence[bytes]) -> list[Candidate]:
+        """v2 for every id (batched, cheap); v1 for every id not found ONLY through v2 locators (v1 lists
+        hold at most 16 ids per locator; with --vault-id that is every id)."""
+        c2 = self.v2.fetch(vault_ids) if self.v2 is not None else []
+        v1_ids = [i for i in vault_ids if i not in self._v2_only]
+        c1 = self.v1.fetch(v1_ids) if self.v1 is not None and v1_ids else []
+        self._cross_check(c2, c1)
+        return c2 + c1
+
+    def _cross_check(self, c2: list[Candidate], c1: list[Candidate]) -> None:
+        if self.v2 is None:
+            return
+        both = {c.vault_id for c in c2} & {c.vault_id for c in c1}
+        for vid in both:
+            assert vid is not None
+            in2 = [c for c in c2 if c.vault_id == vid]
+            in1 = [c for c in c1 if c.vault_id == vid]
+            history = self.v2.event_hashes(vid)
+            if history is None:
+                for c in in2 + in1:
+                    if c.freshness in (Freshness.CURRENT, Freshness.VERIFIED):
+                        c.freshness = Freshness.UNVERIFIABLE
+                self.warnings.append(
+                    f"SECURITY: vault 0x{vid.hex()} appears in both registry versions (v2 and the old v1) and "
+                    "its v2 history could not be confirmed, so no copy can be called current. Retry later "
+                    "or use --rpc with a server you trust."
+                )
+            elif history:
+                for c in in1:
+                    c.freshness = Freshness.UNMATCHED
+                self.warnings.append(
+                    f"SECURITY: a copy of vault 0x{vid.hex()} in the old registry (v1) uses the ID of a "
+                    "registry v2 vault; it was ignored (it may be an older copy registered by someone else)."
+                )
+            else:
+                for c in in2:
+                    c.freshness = Freshness.UNMATCHED
+                self.warnings.append(
+                    f"SECURITY: a server returned a registry v2 copy of vault 0x{vid.hex()} that has no "
+                    "on-chain v2 history; it was ignored."
+                )
+
+    def event_hashes(self, vault_id: bytes) -> list[tuple[int, bytes]] | None:
+        """The agreed history of ``vault_id``: v2's if it has one; if v2 agrees it has none, v1's.
+        Unverifiable v2 history makes the answer unverifiable (a v1 history could be a plant)."""
+        if self.v2 is None:
+            assert self.v1 is not None
+            return self.v1.event_hashes(vault_id)
+        h2 = self.v2.event_hashes(vault_id)
+        if h2 is None or h2 or self.v1 is None:
+            return h2
+        return self.v1.event_hashes(vault_id)
 
 
 def classify(blob: bytes, hashes: list[tuple[int, bytes]] | None) -> Freshness:

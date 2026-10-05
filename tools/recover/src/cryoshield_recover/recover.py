@@ -10,8 +10,8 @@ from typing import Protocol
 from .arweave import Arweave, ArweaveTx
 from .authenticator import Assertion, PrfSource
 from .candidates import Candidate, Freshness, ranked
-from .chain import Registry, classify
-from .config import Config
+from .chain import Registries, Registry, classify
+from .config import Config, is_placeholder
 from .derive import derive_locator
 from .errors import ExitCode, RecoveryError, VaultError
 from .format import MAX_BLOB, DecodedVault, decode_blob
@@ -44,20 +44,22 @@ class Result:
     warnings: list[str] = field(default_factory=list)
 
 
-RegistryFactory = Callable[[Config], Registry]
+# A single Registry (tests, legacy callers) or v2-then-v1 Registries; both expose the same reads.
+RegistryFactory = Callable[[Config], "Registry | Registries"]
 ArweaveFactory = Callable[[Config], Arweave]
 
 
-def _default_registry(cfg: Config) -> Registry:
+def _default_registry(cfg: Config) -> Registries:
+    """VaultRegistry v2 then v1, whichever this chain has (harden-gas-sponsorship D9)."""
     from functools import partial
 
     from .rpc import JsonRpcClient
 
-    return Registry(
+    return Registries.build(
         cfg.rpcs,
-        cfg.registry,
         cfg.chain_id,
-        cfg.deploy_block,
+        v2=None if is_placeholder(cfg.registry_v2) else (cfg.registry_v2, cfg.deploy_block_v2),
+        v1=None if is_placeholder(cfg.registry) else (cfg.registry, cfg.deploy_block),
         client_factory=partial(JsonRpcClient, timeout=cfg.timeout),
     )
 
@@ -81,14 +83,14 @@ class Recovery:
         self.ui = ui
         self._registry_factory = registry_factory
         self._arweave_factory = arweave_factory
-        self._registry: Registry | None = None
+        self._registry: Registry | Registries | None = None
         self._arweave: Arweave | None = None
         self.assertions: list[Assertion] = []
         self._notes: list[str] = []
 
     # ------------------------------------------------------------------ sources
     @property
-    def registry(self) -> Registry | None:
+    def registry(self) -> Registry | Registries | None:
         if self._registry is None and self.cfg.chain_configured:
             self._registry = self._registry_factory(self.cfg)
         return self._registry

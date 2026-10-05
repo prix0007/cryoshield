@@ -89,6 +89,27 @@ OWNER = "0x70997970c51812dc3a010c7d01b50e0d17dc79c8"
 # Fakes default to the default testnet (target-op-sepolia).
 TEST_CHAIN_ID = 11155420
 REGISTRY = "0xb43f58cf17e64b603ae5588a1dd17e96a0849e44"
+# A stand-in VaultRegistry v2 address (harden-gas-sponsorship); the fake serves it next to v1.
+REGISTRY_V2 = "0x2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b"
+V2_PAGE_MAX = 256
+V2_GET_VAULTS_MAX = 32
+
+
+def enc_vaults(items: list[tuple[str, bytes, int]]) -> bytes:
+    """ABI-encode ``tuple(address owner, bytes blob, uint32 version)[]`` as the single return value."""
+    tails = [enc_vault(o, b, v) for o, b, v in items]
+    offsets, pos = [], 32 * len(items)
+    for t in tails:
+        offsets.append(word(pos))
+        pos += len(t)
+    return word(32) + word(len(items)) + b"".join(offsets) + b"".join(tails)
+
+
+@dataclass
+class V2Calls:
+    pages: list[tuple[bytes, int, int]] = field(default_factory=list)  # (locator, start, count)
+    batches: list[int] = field(default_factory=list)  # getVaults sizes
+    lengths: int = 0
 
 
 class FakeChain(FakeServer):
@@ -108,6 +129,50 @@ class FakeChain(FakeServer):
         self.range_error_mode = "-32005"  # "http400" | "-32005" | "-32600"
         self.log_ranges: list[int] = []
         self.down = False
+        # VaultRegistry v2 on the same node (served only when ``v2_address`` is set).
+        self.v2_address: str | None = None
+        self.v2_locators: dict[bytes, list[bytes]] = {}
+        self.v2_vaults: dict[bytes, tuple[str, bytes, int]] = {}
+        self.v2_calls = V2Calls()
+        self.v2_length_override: int | None = None  # a lying locatorLength
+        self.v2_page_extra = 0  # a lying resolveLocator page: this many extra ids
+        self.v2_getvaults_drop = 0  # a lying getVaults: this many entries fewer than asked
+
+    def enable_v2(self, address: str = REGISTRY_V2) -> FakeChain:
+        self.v2_address = address
+        return self
+
+    def add_vault_v2(
+        self, vault_id: bytes, blob: bytes, locators: list[bytes], owner: str = OWNER, *, log: bool = True
+    ) -> None:
+        assert self.v2_address is not None
+        self.v2_vaults[vault_id] = (owner, blob, 1)
+        for loc in locators:
+            self.v2_locators.setdefault(loc, []).append(vault_id)
+        if log:
+            self._log(
+                abi.TOPIC_VAULT_CREATED,
+                vault_id,
+                1,
+                blob,
+                extra_topic=bytes(12) + bytes.fromhex(owner[2:]),
+                address=self.v2_address,
+            )
+
+    def update_vault_v2(self, vault_id: bytes, blob: bytes) -> None:
+        assert self.v2_address is not None
+        owner, _, ver = self.v2_vaults[vault_id]
+        self.v2_vaults[vault_id] = (owner, blob, ver + 1)
+        self._log(abi.TOPIC_VAULT_UPDATED, vault_id, ver + 1, blob, address=self.v2_address)
+
+    def stuff_v2(self, locator: bytes, n: int, tag: int = 0) -> list[bytes]:
+        """Append ``n`` junk vaults (each a real vault with an undecodable blob) under ``locator``."""
+        ids = [keccak256(b"junk" + tag.to_bytes(4, "big") + i.to_bytes(8, "big")) for i in range(n)]
+        for i, vid in enumerate(ids):
+            self.add_vault_v2(
+                vid, b"junk" + i.to_bytes(4, "big"), [locator], owner="0x" + "44" * 20, log=False
+            )
+        return ids
 
     # --- state helpers -------------------------------------------------------
     def add_vault(self, vault_id: bytes, blob: bytes, locators: list[bytes], owner: str = OWNER) -> None:
@@ -124,14 +189,20 @@ class FakeChain(FakeServer):
         self._log(abi.TOPIC_VAULT_UPDATED, vault_id, ver + 1, blob)
 
     def _log(
-        self, topic: bytes, vault_id: bytes, version: int, blob: bytes, extra_topic: bytes | None = None
+        self,
+        topic: bytes,
+        vault_id: bytes,
+        version: int,
+        blob: bytes,
+        extra_topic: bytes | None = None,
+        address: str | None = None,
     ) -> None:
         topics = ["0x" + topic.hex(), "0x" + vault_id.hex()]
         if extra_topic:
             topics.append("0x" + extra_topic.hex())
         self.logs.append(
             {
-                "address": self.address,
+                "address": address or self.address,
                 "topics": topics,
                 "data": "0x" + (word(version) + keccak256(blob)).hex(),
                 "blockNumber": hex(10 + len(self.logs)),
@@ -171,8 +242,10 @@ class FakeChain(FakeServer):
             return hex(self.block)
         if method == "eth_call":
             call = params[0]
-            assert call["to"].lower() == self.address
             data = bytes.fromhex(call["data"][2:])
+            if self.v2_address is not None and call["to"].lower() == self.v2_address:
+                return "0x" + self._v2_call(data).hex()
+            assert call["to"].lower() == self.address
             sel, arg = data[:4], data[4:36]
             if self.malicious_abi:
                 return "0x" + (word(32) + word(10**6)).hex()
@@ -194,13 +267,44 @@ class FakeChain(FakeServer):
             return [
                 lg
                 for lg in self.logs
-                if lg["topics"][0] in t0s
+                if lg["address"].lower() == f["address"].lower()
+                and lg["topics"][0] in t0s
                 and lg["topics"][1] == vid
                 and lo
                 <= int(lg["blockNumber"], 16)
                 <= min(hi, self.block)  # a node knows only up to its head
             ]
         raise LookupError(f"method {method} not supported")
+
+    def _v2_call(self, data: bytes) -> bytes:
+        """VaultRegistry v2 views (contracts/abi/VaultRegistryV2.json)."""
+        sel = data[:4]
+        if sel == abi.SEL_LOCATOR_LENGTH:
+            self.v2_calls.lengths += 1
+            n = len([] if self.withhold else self.v2_locators.get(data[4:36], []))
+            return word(n if self.v2_length_override is None else self.v2_length_override)
+        if sel == abi.SEL_RESOLVE_LOCATOR_PAGE:
+            loc = data[4:36]
+            start, count = int.from_bytes(data[36:68], "big"), int.from_bytes(data[68:100], "big")
+            self.v2_calls.pages.append((loc, start, count))
+            ids = [] if self.withhold else self.v2_locators.get(loc, [])
+            page = ids[start : start + min(count, V2_PAGE_MAX)] if start < len(ids) else []
+            if self.v2_page_extra:
+                page = page + [keccak256(b"extra" + bytes([i])) for i in range(self.v2_page_extra)]
+            return enc_bytes32_array(page)
+        if sel == abi.SEL_GET_VAULTS:
+            n = int.from_bytes(data[36:68], "big")
+            self.v2_calls.batches.append(n)
+            if n > V2_GET_VAULTS_MAX:
+                raise LookupError("execution reverted: TooManyIds")
+            ids = [data[68 + 32 * i : 100 + 32 * i] for i in range(n)]
+            empty = ("0x" + "00" * 20, b"", 0)
+            items = [empty if self.withhold else self.v2_vaults.get(i, empty) for i in ids]
+            return enc_vaults(items[: len(items) - self.v2_getvaults_drop])
+        if sel == abi.SEL_GET_VAULT:
+            owner, blob, ver = self.v2_vaults.get(data[4:36], ("0x" + "00" * 20, b"", 0))
+            return enc_vault(owner, blob, ver)
+        raise LookupError("execution reverted")  # v2 has no 1-argument resolveLocator
 
 
 TXID_ALPHABET = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_"

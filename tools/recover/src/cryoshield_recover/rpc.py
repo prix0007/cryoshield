@@ -5,7 +5,7 @@ from __future__ import annotations
 import itertools
 from typing import Any
 
-from .net import NetError, check_url, host_of, post_json
+from .net import NetError, TooLarge, check_url, host_of, post_json
 from .text import sanitize
 
 DEFAULT_TIMEOUT = 10.0
@@ -15,10 +15,18 @@ ALLOWED_METHODS = frozenset({"eth_chainId", "eth_call", "eth_getLogs", "eth_bloc
 
 
 class RpcError(Exception):
-    def __init__(self, message: str, *, code: int | None = None, http_status: int | None = None) -> None:
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: int | None = None,
+        http_status: int | None = None,
+        too_large: bool = False,
+    ) -> None:
         super().__init__(message)
         self.code = code
         self.http_status = http_status
+        self.too_large = too_large  # the answer exceeded our response cap (caller may ask for less)
 
 
 class JsonRpcClient:
@@ -42,7 +50,7 @@ class JsonRpcClient:
                 max_bytes=self.max_bytes,
             )
         except NetError as e:
-            raise RpcError(str(e), http_status=e.http_status) from None
+            raise RpcError(str(e), http_status=e.http_status, too_large=isinstance(e, TooLarge)) from None
         if not isinstance(resp, dict):
             raise RpcError(f"malformed response from {self.host}")
         if resp.get("error") is not None:

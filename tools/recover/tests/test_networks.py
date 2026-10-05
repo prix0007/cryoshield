@@ -181,6 +181,7 @@ def test_op_sepolia_registry_is_the_live_deployment() -> None:
 @pytest.mark.parametrize("name", ["op-mainnet", "arbitrum-one", "arbitrum-sepolia"])
 def test_undeployed_presets_stay_placeholders(name: str) -> None:
     assert is_placeholder(NETWORKS[name].registry)
+    assert is_placeholder(NETWORKS[name].registry_v2)
 
 
 def test_preset_without_deployment_refuses_chain_mode() -> None:
@@ -192,7 +193,7 @@ def test_preset_without_deployment_refuses_chain_mode() -> None:
     )
     text = err.getvalue()
     assert "No VaultRegistry deployment is built in for op-mainnet" in text
-    assert "--registry" in text
+    assert "--registry" in text and "--registry-v2" in text
     assert code == ExitCode.NETWORK_UNAVAILABLE
 
 
@@ -222,12 +223,60 @@ def test_presets_match_presets_json() -> None:
 
 
 def test_built_in_registry_matches_deployment_records() -> None:
-    """Release data is generated from contracts/deployments/<chainId>.json; this guards drift."""
+    """Release data is generated from contracts/deployments/<chainId>.json; this guards drift.
+
+    v1 is the record's top-level address (absent on chains without v1, e.g. OP Mainnet); v2 is
+    contracts.vaultRegistryV2 (deployment-targets spec, change harden-gas-sponsorship)."""
     for p in NETWORKS.values():
         record = DEPLOYMENTS / f"{p.chain_id}.json"
-        if record.exists():
-            data = json.loads(record.read_text())
+        data = json.loads(record.read_text()) if record.exists() else {}
+        if "address" in data:
             assert p.registry.lower() == data["address"].lower(), p.name
             assert p.deploy_block == data["deployBlock"], p.name
         else:
-            assert is_placeholder(p.registry), f"{p.name}: registry without a deployment record"
+            assert is_placeholder(p.registry), f"{p.name}: v1 registry without a deployment record"
+        v2 = (data.get("contracts") or {}).get("vaultRegistryV2")
+        if v2:
+            assert p.registry_v2.lower() == v2["address"].lower(), p.name
+            assert p.deploy_block_v2 == v2["deployBlock"], p.name
+        else:
+            assert is_placeholder(p.registry_v2), f"{p.name}: v2 registry without a deployment record"
+
+
+def test_registry_v2_flags() -> None:
+    c = cfg("--registry-v2", "0x" + "2B" * 20, "--deploy-block-v2", "123")
+    assert c.registry_v2 == "0x" + "2b" * 20 and c.deploy_block_v2 == 123
+    assert c.registry == NETWORKS["op-sepolia"].registry  # v1 untouched
+
+
+def test_registry_v2_flag_rejects_bad_address() -> None:
+    import pytest as _pytest
+
+    from cryoshield_recover.errors import RecoveryError
+
+    with _pytest.raises(RecoveryError) as ei:
+        cfg("--registry-v2", "0x1234")
+    assert ei.value.exit_code == ExitCode.USAGE
+
+
+def test_custom_chain_has_no_built_in_v2_registry() -> None:
+    c = cfg("--chain-id", "777", "--rpc", "https://my-node.example/rpc")
+    assert is_placeholder(c.registry_v2) and not c.has_registry
+
+
+def test_v2_only_chain_is_configured_and_announced() -> None:
+    """OP Mainnet will carry only v2: chain lookup is on with a v2 address and no v1 address."""
+    c = cfg("--network", "op-mainnet", "--registry-v2", "0x" + "2b" * 20)
+    assert is_placeholder(c.registry) and c.chain_configured
+    console, err = term()
+    cli.startup_summary(c, console)
+    text = err.getvalue()
+    assert "lookup is off" not in text
+    assert "registry v2 0x" + "2b" * 20 in text and "registry v1" not in text
+
+
+def test_both_registries_announced() -> None:
+    console, err = term()
+    cli.startup_summary(cfg("--registry-v2", "0x" + "2b" * 20), console)
+    text = err.getvalue()
+    assert "registry v2 0x" + "2b" * 20 in text and "registry v1 0xb43f58cf" in text

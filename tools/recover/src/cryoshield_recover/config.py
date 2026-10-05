@@ -23,13 +23,17 @@ ARWEAVE_GATEWAYS = ("https://arweave.net", "https://ar-io.net")
 class NetworkPreset:
     name: str
     chain_id: int
-    registry: str
+    registry: str  # VaultRegistry v1 (top-level address in the deployment record), or placeholder
     deploy_block: int
     rpcs: tuple[str, ...]
+    # VaultRegistry v2 (contracts.vaultRegistryV2 in the deployment record; change
+    # harden-gas-sponsorship), or placeholder until deployed on this chain.
+    registry_v2: str = PLACEHOLDER_ADDRESS
+    deploy_block_v2: int = 0
 
 
 # Network presets (OpenSpec change target-op-sepolia, design D2). A chain is data, never code.
-# Registry address and deploy block are GENERATED at release from contracts/deployments/<chainId>.json
+# Registry addresses (v1 and v2) and deploy blocks are GENERATED at release from contracts/deployments/<chainId>.json
 # and embedded here; that file is never read at runtime (the binary must work outside the repo). A preset
 # without a deployment record keeps PLACEHOLDER_ADDRESS, which disables chain mode with a clear message.
 # Names and chain IDs must match config/chain-presets.json (parity test).
@@ -146,6 +150,8 @@ class Config:
     chain_id: int = NETWORKS[DEFAULT_NETWORK].chain_id
     registry: str = NETWORKS[DEFAULT_NETWORK].registry
     deploy_block: int = NETWORKS[DEFAULT_NETWORK].deploy_block
+    registry_v2: str = NETWORKS[DEFAULT_NETWORK].registry_v2
+    deploy_block_v2: int = NETWORKS[DEFAULT_NETWORK].deploy_block_v2
     rpcs: list[str] = field(default_factory=lambda: list(NETWORKS[DEFAULT_NETWORK].rpcs))
     arweave_graphql: list[str] = field(default_factory=lambda: list(ARWEAVE_GRAPHQL))
     arweave_gateways: list[str] = field(default_factory=lambda: list(ARWEAVE_GATEWAYS))
@@ -163,8 +169,13 @@ class Config:
     rpcs_user_supplied: bool = False
 
     @property
+    def has_registry(self) -> bool:
+        """At least one VaultRegistry version (v1 or v2) is known for this chain."""
+        return not (is_placeholder(self.registry) and is_placeholder(self.registry_v2))
+
+    @property
     def chain_configured(self) -> bool:
-        return self.use_chain and not self.offline and bool(self.rpcs) and not is_placeholder(self.registry)
+        return self.use_chain and not self.offline and bool(self.rpcs) and self.has_registry
 
     @property
     def arweave_configured(self) -> bool:
