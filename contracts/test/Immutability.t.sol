@@ -4,9 +4,61 @@ pragma solidity 0.8.28;
 import {Test} from "forge-std/Test.sol";
 import {VaultRegistry} from "../src/VaultRegistry.sol";
 
+/// @dev Bytecode and source helpers shared by the v1 and v2 immutability checks.
+abstract contract ImmutabilityHelpers is Test {
+    // ---------------------------------------------------------------------
+    // helpers
+    // ---------------------------------------------------------------------
+
+    /// @dev Solidity appends CBOR metadata followed by its 2-byte big-endian length.
+    function _stripMetadata(bytes memory code) internal pure returns (bytes memory out) {
+        uint256 n = code.length;
+        uint256 metaLen = (uint256(uint8(code[n - 2])) << 8) | uint256(uint8(code[n - 1]));
+        uint256 keep = n - 2 - metaLen;
+        out = new bytes(keep);
+        for (uint256 i; i < keep; ++i) {
+            out[i] = code[i];
+        }
+    }
+
+    function _countOpcode(bytes memory code, uint8 target) internal pure returns (uint256 count) {
+        uint256 i;
+        while (i < code.length) {
+            uint8 op = uint8(code[i]);
+            if (op == target) ++count;
+            if (op >= 0x60 && op <= 0x7f) i += op - 0x5f;
+            ++i;
+        }
+    }
+
+    function _stripComments(bytes memory s) internal pure returns (bytes memory out) {
+        out = new bytes(s.length);
+        uint256 o;
+        uint256 i;
+        while (i < s.length) {
+            if (i + 1 < s.length && s[i] == "/" && s[i + 1] == "/") {
+                while (i < s.length && s[i] != "\n") ++i;
+            } else if (i + 1 < s.length && s[i] == "/" && s[i + 1] == "*") {
+                i += 2;
+                while (i + 1 < s.length && !(s[i] == "*" && s[i + 1] == "/")) ++i;
+                i += 2;
+            } else {
+                out[o++] = s[i++];
+            }
+        }
+        assembly {
+            mstore(out, o)
+        }
+    }
+
+    function _contains(bytes memory hay, bytes memory needle) internal pure returns (bool) {
+        return vm.indexOf(string(hay), string(needle)) != type(uint256).max;
+    }
+}
+
 /// @dev Task 6.1: static checks that the registry has no self-destruct, delegatecall, proxy, external calls
 ///      (so no precompiles such as ArbSys), or privileged role, in either the deployed bytecode or the source.
-contract ImmutabilityTest is Test {
+contract ImmutabilityTest is ImmutabilityHelpers {
     VaultRegistry internal registry;
 
     function setUp() public {
@@ -85,54 +137,5 @@ contract ImmutabilityTest is Test {
         assertFalse(_contains(s, "Proxy"));
         assertTrue(_contains(s, "a"));
         assertTrue(_contains(s, "c"));
-    }
-
-    // ---------------------------------------------------------------------
-    // helpers
-    // ---------------------------------------------------------------------
-
-    /// @dev Solidity appends CBOR metadata followed by its 2-byte big-endian length.
-    function _stripMetadata(bytes memory code) internal pure returns (bytes memory out) {
-        uint256 n = code.length;
-        uint256 metaLen = (uint256(uint8(code[n - 2])) << 8) | uint256(uint8(code[n - 1]));
-        uint256 keep = n - 2 - metaLen;
-        out = new bytes(keep);
-        for (uint256 i; i < keep; ++i) {
-            out[i] = code[i];
-        }
-    }
-
-    function _countOpcode(bytes memory code, uint8 target) internal pure returns (uint256 count) {
-        uint256 i;
-        while (i < code.length) {
-            uint8 op = uint8(code[i]);
-            if (op == target) ++count;
-            if (op >= 0x60 && op <= 0x7f) i += op - 0x5f;
-            ++i;
-        }
-    }
-
-    function _stripComments(bytes memory s) internal pure returns (bytes memory out) {
-        out = new bytes(s.length);
-        uint256 o;
-        uint256 i;
-        while (i < s.length) {
-            if (i + 1 < s.length && s[i] == "/" && s[i + 1] == "/") {
-                while (i < s.length && s[i] != "\n") ++i;
-            } else if (i + 1 < s.length && s[i] == "/" && s[i + 1] == "*") {
-                i += 2;
-                while (i + 1 < s.length && !(s[i] == "*" && s[i + 1] == "/")) ++i;
-                i += 2;
-            } else {
-                out[o++] = s[i++];
-            }
-        }
-        assembly {
-            mstore(out, o)
-        }
-    }
-
-    function _contains(bytes memory hay, bytes memory needle) internal pure returns (bool) {
-        return vm.indexOf(string(hay), string(needle)) != type(uint256).max;
     }
 }

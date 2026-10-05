@@ -14,7 +14,7 @@ optimizer_runs = 10_000
 auto_detect_solc = false
 
 # The static immutability check (test/Immutability.t.sol) reads the contract source.
-fs_permissions = [{ access = "read", path = "./src" }]
+fs_permissions = [{ access = "read", path = "./src" }, { access = "read", path = "./test/fixtures" }, { access = "read", path = "./lib/smart-wallet/src" }]
 
 [fuzz]
 runs = 1_000
