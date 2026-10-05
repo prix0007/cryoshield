@@ -46,8 +46,8 @@ The `abiHash` values are `cast keccak "0x$(xxd -p <file> | tr -d '\n')"`, the sa
 
 | Chain | v1 top-level | `contracts.vaultRegistryV2` | `contracts.wallets` keys |
 |---|---|---|---|
-| anvil (31337) | yes | yes | `localhost` (default for local and E2E builds; override with `RP_IDS`) |
-| OP Sepolia (11155420) | yes (existing) | yes | `cryoshield.app`, `cryoshield-web-dev.fly.dev` |
+| anvil (31337) | yes | yes | `localhost` (local and E2E builds) and `cryoshield.app` (CI `verify-build`); override with `RP_IDS` |
+| OP Sepolia (11155420) | yes (existing, never redeployed) | yes, once the owner broadcasts | `cryoshield.app` (production build), `cryoshield-web-dev.fly.dev` (dev build) |
 | OP Mainnet (10) | **never** | yes, after the mainnet gate | `cryoshield.app` only, after the mainnet gate |
 
 ## ABIs (`contracts/abi/`)
@@ -58,3 +58,11 @@ The `abiHash` values are `cast keccak "0x$(xxd -p <file> | tr -d '\n')"`, the sa
 | `VaultRegistryV2.json` | v2 (all writes; reads v2, then v1) |
 | `CryoShieldSmartWallet.json` | account implementation: the CBSW v1.1 ABI plus `RP_ID_HASH()` and `MAX_OWNERS()` |
 | `CryoShieldSmartWalletFactory.json` | factory: the CBSW v1.1 factory ABI (`createAccount(bytes[],uint256)`, `getAddress(bytes[],uint256)`, `implementation()`, `initCodeHash()`) |
+
+## Writing the record
+
+`script/deploy.sh <preset>` with `BROADCAST=1` (always on anvil) merges the new entries into
+`deployments/<chainId>.json` (existing entries are kept; keys sorted) and prints it. The file is then committed like
+any other change (PR, review). It holds only public data: addresses, blocks, tx hashes and ABI hashes.
+Already-deployed contracts are never adopted silently: if code exists at a predicted address but the record lacks the
+matching entry, the script fails and asks for the record to be restored from the explorer.

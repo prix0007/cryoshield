@@ -58,7 +58,7 @@
 ## 3. VaultRegistry v2 [cry] [sol] [rec]
 
 - [x] 3.1 [cry] Write a failing TypeScript test first, then add `vaultIdDerivation` cases (owner address, salt, `keccak256(abi.encode(owner, salt))`) to `packages/vault-crypto/test-vectors/v1.json`. Rewrite `docs/spec/vault-format-v1.md` §4.1 (and the locator note in §4) so it covers v1 vaults (client-chosen id, retry on "taken") and v2 vaults (registry-derived id, no retry); the blob bytes and version byte are unchanged. List in the PR the tests that encode the old retry text (`apps/web/test/account/writes.test.ts`, `apps/web/test/ui/flows.test.tsx`, `apps/web/test/ui/motion-ui.test.tsx`, `contracts/test/VaultRegistry.t.sol`), to be updated in 5.2. Verify: the vault-crypto tests fail before and pass after.
-- [ ] 3.2 [sol] Write failing tests in `contracts/test/VaultRegistryV2.t.sol`:
+- [x] 3.2 [sol] Write failing tests in `contracts/test/VaultRegistryV2.t.sol`:
   - derivation against the vector;
   - squatting impossible;
   - duplicate derived id reverts;
@@ -68,21 +68,24 @@
   - every kept v1 rule (blob 1–1024 bytes, 2–8 locators, duplicates, zero values, one vault per owner, owner-only update and add, events with `vaultId` indexed).
 
   Verify: the tests fail.
-- [ ] 3.3 [sol] Implement `contracts/src/VaultRegistryV2.sol`. Verify: 3.2 passes, line and branch coverage is 100%, `test/Immutability.t.sol` is extended to v2, and the ABI is exported to `contracts/abi/VaultRegistryV2.json`.
-- [ ] 3.4 [sol] Add fuzz and invariant tests: arbitrary sequences keep every locator list append-only and prefix-preserving with no cap, and the pages concatenate to the full list. Verify: 1,000 fuzz runs and the invariants pass.
-- [ ] 3.5 [sol] Add gas tests for: create 1 KB with 2 locators, update 1 KB, add a locator, a 256-entry page, and `getVaults` of 32 (1 KB blobs; also record the response size). Record them in `contracts/GAS.md`. Verify: `forge snapshot --check`.
-- [ ] 3.6 [rec] Write failing tests in `tools/recover`:
+- [x] 3.3 [sol] Implement `contracts/src/VaultRegistryV2.sol`. Verify: 3.2 passes, line and branch coverage is 100%, `test/Immutability.t.sol` is extended to v2, and the ABI is exported to `contracts/abi/VaultRegistryV2.json`.
+- [x] 3.4 [sol] Add fuzz and invariant tests: arbitrary sequences keep every locator list append-only and prefix-preserving with no cap, and the pages concatenate to the full list. Verify: 1,000 fuzz runs and the invariants pass.
+- [x] 3.5 [sol] Add gas tests for: create 1 KB with 2 locators, update 1 KB, add a locator, a 256-entry page, and `getVaults` of 32 (1 KB blobs; also record the response size). Record them in `contracts/GAS.md`. Verify: `forge snapshot --check`.
+- [x] 3.6 [rec] Write failing tests in `tools/recover`:
   - read v2 then v1 with pagination and `getVaults`;
   - v2 only when there is no v1 record;
-  - a locator with more than 1,000 entries resolves in pages and `getVaults` batches of at most 32, and the right vault opens.
+  - a locator with more than 1,000 entries resolves in pages and `getVaults` batches of at most 32, and the right vault opens;
+  - an id present in both registries uses v2's history; if v2 cannot be confirmed, neither copy is current (design D9).
+
+  Done on `feat/harden-gas-sponsorship-recover` (`e3b716a`), 422 tests passing.
 
   Then implement. Verify: pytest, ruff and `mypy --strict`.
 
 ## 4. CryoShieldSmartWallet and factory [sol] [fe]
 
 - [ ] 4.1 [fe] Spike: can viem `toCoinbaseSmartAccount` (the pinned version) use a custom factory and address derivation? If not, prototype the design D8 local wrapper. Record the result in design.md D8. Verify: a unit test computes the same counterfactual address as `getAddress` on the committed CBSW v1.1 factory fixture bytecode deployed on anvil with a non-Coinbase implementation address (our factory is the same code, so this needs nothing from 4.5). Task 5.1 repeats the check against the real `CryoShieldSmartWalletFactory`.
-- [ ] 4.2 [sol] Add CBSW v1.1 as a pinned dependency (`forge install coinbase/smart-wallet@v1.1.0 --no-git`) and fixtures for the real EntryPoint v0.6. Generate WebAuthn fixtures under `contracts/test/fixtures/webauthn/` with a deterministic script: a P-256 test key; UV=1 valid; UV=0, UP=0, foreign rpIdHash and short-authData negatives, each re-signed. Verify: re-running the generator gives no diff.
-- [ ] 4.3 [sol] Write failing tests in `contracts/test/CryoShieldSmartWallet.t.sol`, one per `smart-account` scenario:
+- [x] 4.2 [sol] Add CBSW v1.1 as a pinned dependency (`forge install coinbase/smart-wallet@v1.1.0 --no-git`) and fixtures for the real EntryPoint v0.6. Generate WebAuthn fixtures under `contracts/test/fixtures/webauthn/` with a deterministic script: a P-256 test key; UV=1 valid; UV=0, UP=0, foreign rpIdHash and short-authData negatives, each re-signed. Verify: re-running the generator gives no diff.
+- [x] 4.3 [sol] Write failing tests in `contracts/test/CryoShieldSmartWallet.t.sol`, one per `smart-account` scenario:
   - UV=0 refused (userOp, `executeWithoutChainIdValidation`, ERC-1271);
   - foreign rpIdHash refused;
   - short authData refused;
@@ -96,14 +99,14 @@
   - the deployer has no power.
 
   Verify: the tests fail.
-- [ ] 4.4 [sol] Write a failing test that traces `validateUserOp` for every fixture and asserts that no ERC-7562 banned opcode appears and that storage access is limited to the account. Verify: the test fails, or is skipped with a reason until 4.5.
-- [ ] 4.5 [sol] Implement `contracts/src/CryoShieldSmartWallet.sol` (the D7 overrides only) and `contracts/src/CryoShieldSmartWalletFactory.sol`. Verify:
+- [x] 4.4 [sol] Write a failing test that traces `validateUserOp` for every fixture and asserts that no ERC-7562 banned opcode appears and that storage access is limited to the account. Verify: the test fails, or is skipped with a reason until 4.5.
+- [x] 4.5 [sol] Implement `contracts/src/CryoShieldSmartWallet.sol` (the D7 overrides only) and `contracts/src/CryoShieldSmartWalletFactory.sol`. Verify:
   - 4.3 and 4.4 pass;
   - the `forge inspect ... storageLayout` diff against CBSW v1.1 is empty (CI check), and a test asserts that the ERC-7201 `MultiOwnableStorage` slot constant equals CBSW v1.1's;
   - coverage of the new code is 100%;
   - the ABIs are exported to `contracts/abi/`.
-- [ ] 4.6 [sol] Add a fuzz test: random authenticatorData flags and rpIdHash bytes are accepted only when UP, UV and the hash all match. Record the gas per validation (old vs new) in `contracts/GAS.md`. Verify: 1,000 runs, and the snapshot check passes.
-- [ ] 4.7 [sol] Write a deploy script (CREATE2, presets) for VaultRegistry v2 and for the wallet implementation and factory per RP ID (RP ID as an argument; the script can deploy several RP IDs in one run). It writes `contracts.vaultRegistryV2` and `contracts.wallets.<rpId>` per the deployment-targets delta, never a v1 entry on chain 10, and extends `script/test-deploy-args.sh`. Verify: an anvil dry run for `cryoshield.app` and `cryoshield-web-dev.fly.dev` writes one record with both wallet entries matching the chain.
+- [x] 4.6 [sol] Add a fuzz test: random authenticatorData flags and rpIdHash bytes are accepted only when UP, UV and the hash all match. Record the gas per validation (old vs new) in `contracts/GAS.md`. Verify: 1,000 runs, and the snapshot check passes.
+- [x] 4.7 [sol] Write a deploy script (CREATE2, presets) for VaultRegistry v2 and for the wallet implementation and factory per RP ID (RP ID as an argument; the script can deploy several RP IDs in one run). It writes `contracts.vaultRegistryV2` and `contracts.wallets.<rpId>` per the deployment-targets delta, never a v1 entry on chain 10, and extends `script/test-deploy-args.sh`. Verify: an anvil dry run for `cryoshield.app` and `cryoshield-web-dev.fly.dev` writes one record with both wallet entries matching the chain.
 
 ## 5. Web app [fe]
 

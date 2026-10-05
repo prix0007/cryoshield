@@ -56,6 +56,38 @@ contract VaultRegistryV2Test is RegistryV2TestBase {
         assertEq(n, 3, "vector case count");
     }
 
+    /// The canonical vectors (packages/vault-crypto/test-vectors/v1.json, `vaultIdDerivation`, unprefixed hex), so the
+    /// registry, the web app and the recovery tool share one source of truth. VAULT_CRYPTO_VECTORS overrides the path.
+    /// Skipped (never silently passed) until the vault-crypto vectors are on this branch; the 3-case mirror in
+    /// test/fixtures/vaultIdDerivation.json is checked above either way.
+    function test_vaultIdDerivation_matchesVaultCryptoVectors() public {
+        string memory path = vm.envOr("VAULT_CRYPTO_VECTORS", string("../packages/vault-crypto/test-vectors/v1.json"));
+        if (!vm.exists(path)) {
+            vm.skip(true, "packages/vault-crypto/test-vectors/v1.json not on this branch yet");
+        }
+        string memory json = vm.readFile(path);
+        if (!json.keyExists(".vaultIdDerivation")) {
+            vm.skip(true, "v1.json has no vaultIdDerivation cases yet");
+        }
+        uint256 n;
+        while (json.keyExists(string.concat(".vaultIdDerivation[", vm.toString(n), "]"))) {
+            string memory p = string.concat(".vaultIdDerivation[", vm.toString(n), "]");
+            address owner = vm.parseAddress(string.concat("0x", json.readString(string.concat(p, ".owner"))));
+            bytes32 salt = vm.parseBytes32(string.concat("0x", json.readString(string.concat(p, ".salt"))));
+            bytes32 want = vm.parseBytes32(string.concat("0x", json.readString(string.concat(p, ".vaultId"))));
+            bytes memory enc = vm.parseBytes(string.concat("0x", json.readString(string.concat(p, ".abiEncoded"))));
+            assertEq(abi.encode(owner, salt), enc, "abiEncoded");
+            assertEq(registry.vaultIdFor(owner, salt), want, json.readString(string.concat(p, ".name")));
+            // Cases may reuse an owner (one vault per owner), so each create runs in its own state snapshot.
+            uint256 snap = vm.snapshotState();
+            bytes32 created = _create(owner, salt, hex"01", _locators(2, vm.toString(n)));
+            assertEq(created, want, "createVault id");
+            vm.revertToState(snap);
+            ++n;
+        }
+        assertGe(n, 3, "vector case count");
+    }
+
     function test_create_vectorOwnerRegistersVectorId() public {
         string memory json = vm.readFile("test/fixtures/vaultIdDerivation.json");
         address owner = json.readAddress(".cases[1].owner");

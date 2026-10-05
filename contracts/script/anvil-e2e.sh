@@ -25,7 +25,7 @@ ADDR="$(jq -r .address "$RECORD")"
 
 CREATE2_DEPLOYER=0x4e59b44847b379578588920cA78FbF26c0B4956C
 SALT="$(cast keccak "cryoshield.vault-registry.v1")"
-INIT_HASH="$(cast keccak "$(forge inspect VaultRegistry bytecode)")"
+INIT_HASH="$(cast keccak "$(FOUNDRY_PROFILE=v1 forge inspect src/VaultRegistry.sol:VaultRegistry bytecode)")"
 # CREATE2: address = last 20 bytes of keccak256(0xff ++ deployer ++ salt ++ keccak256(initCode))
 PREIMAGE="0xff${CREATE2_DEPLOYER#0x}${SALT#0x}${INIT_HASH#0x}"
 PREDICTED="0x$(cast keccak "$PREIMAGE" | tail -c 41)"
@@ -41,7 +41,9 @@ TX="$(jq -r .txHash "$RECORD")"
 echo "ok   deployments/31337.json matches chain (block $(jq -r .deployBlock "$RECORD"), tx $TX)"
 
 # --- 2b. idempotency: re-run is explicit, missing record fails loudly ------------
-script/deploy.sh anvil 2>&1 | grep -q "already deployed at $ADDR (bytecode verified)" || fail "re-run did not report existing deployment"
+RERUN="$(script/deploy.sh anvil 2>&1)"
+grep -q "v1: present at $ADDR (bytecode verified, recorded)" <<<"$RERUN" || fail "re-run did not report existing v1"
+grep -q "vaultRegistryV2 already deployed" <<<"$RERUN" || fail "re-run did not report existing v2"
 mv "$RECORD" "$RECORD.bak"
 if script/deploy.sh anvil >/dev/null 2>&1; then mv "$RECORD.bak" "$RECORD"; fail "missing record did not fail"; fi
 mv "$RECORD.bak" "$RECORD"
@@ -71,4 +73,31 @@ done
 [[ "$(echo "$CANDIDATES" | wc -w | tr -d ' ')" == "2" ]] || fail "expected 2 candidates, got: $CANDIDATES"
 [[ "$FOUND" == "$VAULT_ID" ]] || fail "exact 1024-byte blob not recovered via locator"
 echo "ok   recovered exact 1024-byte 0xA5 blob via cast call using only the locator ($(echo "$CANDIDATES" | wc -w | tr -d ' ') candidates)"
+
+# --- 4. v2 + wallet pairs (harden-gas-sponsorship 4.7) -----------------------
+REG="$(jq -r .contracts.vaultRegistryV2.address "$RECORD")"
+[[ "$REG" == "$(script/deploy.sh --predict-v2 localhost | awk '$1 == "registry" {print $2}')" ]] || fail "v2 address != prediction"
+[[ "$(cast code "$REG" --rpc-url "$RPC_URL")" != "0x" ]] || fail "no code at v2 $REG"
+TX2="$(jq -r .contracts.vaultRegistryV2.txHash "$RECORD")"
+[[ "$(cast receipt "$TX2" blockNumber --rpc-url "$RPC_URL")" == "$(jq -r .contracts.vaultRegistryV2.deployBlock "$RECORD")" ]] || fail "v2 deployBlock mismatch"
+[[ "$(jq -r .contracts.vaultRegistryV2.abiHash "$RECORD")" == "$(cast keccak "0x$(xxd -p abi/VaultRegistryV2.json | tr -d '\n')")" ]] || fail "v2 abiHash mismatch"
+for RPID in localhost cryoshield.app; do
+  F="$(jq -r --arg r "$RPID" '.contracts.wallets[$r].factory' "$RECORD")"
+  I="$(jq -r --arg r "$RPID" '.contracts.wallets[$r].implementation' "$RECORD")"
+  H="$(jq -r --arg r "$RPID" '.contracts.wallets[$r].rpIdHash' "$RECORD")"
+  [[ "$H" == "0x$(printf '%s' "$RPID" | shasum -a 256 | cut -d' ' -f1)" ]] || fail "$RPID rpIdHash != sha256(rpId)"
+  [[ "$(cast call "$F" 'implementation()(address)' --rpc-url "$RPC_URL")" == "$I" ]] || fail "$RPID factory.implementation()"
+  [[ "$(cast call "$I" 'RP_ID_HASH()(bytes32)' --rpc-url "$RPC_URL")" == "$H" ]] || fail "$RPID implementation RP_ID_HASH"
+done
+echo "ok   v2 + wallet pairs (localhost, cryoshield.app) recorded and match the chain"
+
+SALT2="$(cast keccak "e2e-salt")"
+cast send --unlocked --from "$OWNER" --rpc-url "$RPC_URL" "$REG" \
+  "createVault(bytes32,bytes,bytes32[])" "$SALT2" "$BLOB" "[$LOC_A,$LOC_B]" >/dev/null
+V2ID="$(cast call "$REG" "vaultIdFor(address,bytes32)(bytes32)" "$OWNER" "$SALT2" --rpc-url "$RPC_URL")"
+[[ "$(cast call "$REG" "locatorLength(bytes32)(uint256)" "$LOC_A" --rpc-url "$RPC_URL")" == "1" ]] || fail "v2 locatorLength"
+PAGE="$(cast call "$REG" "resolveLocator(bytes32,uint256,uint256)(bytes32[])" "$LOC_A" 0 256 --rpc-url "$RPC_URL" | tr -d '[] ')"
+[[ "$PAGE" == "$V2ID" ]] || fail "v2 page != derived vaultId"
+[[ "$(cast call "$REG" "getVault(bytes32)(address,bytes,uint32)" "$V2ID" --rpc-url "$RPC_URL" | sed -n 2p)" == "$BLOB" ]] || fail "v2 blob"
+echo "ok   v2: derived vaultId, paginated locator read and exact blob via cast call"
 echo "PASS anvil-e2e"

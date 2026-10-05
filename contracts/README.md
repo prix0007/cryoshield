@@ -96,3 +96,51 @@ Custom errors and selectors:
 | `DuplicateLocator(bytes32)` | `0xafc534b1` |
 | `LocatorFull(bytes32)` | `0xcfe5bd5b` |
 | `NotVaultOwner(bytes32,address)` | `0xa395fd86` |
+
+## v2: VaultRegistryV2 and the CryoShield wallet (OpenSpec `harden-gas-sponsorship`)
+
+| Contract | Purpose | ABI |
+|---|---|---|
+| `VaultRegistryV2` | `vaultId = keccak256(abi.encode(msg.sender, salt))` (no squatting, AA-M2); no per-locator cap, paginated `resolveLocator(locator, start, count)` (count clamped to 256), `locatorLength`, `getVaults` (≤ 32 ids) (AA-M1); every other v1 rule kept | [`abi/VaultRegistryV2.json`](abi/VaultRegistryV2.json) |
+| `CryoShieldSmartWallet` | Coinbase Smart Wallet v1.1 subclass: every signature (userOp, replayable path, ERC-1271) needs UP + UV and `rpIdHash == RP_ID_HASH`; P-256 owners only, max 8 (AA-H1 part 2) | [`abi/CryoShieldSmartWallet.json`](abi/CryoShieldSmartWallet.json) |
+| `CryoShieldSmartWalletFactory` | the CBSW v1.1 factory, bound to one RP ID; its constructor deploys the implementation | [`abi/CryoShieldSmartWalletFactory.json`](abi/CryoShieldSmartWalletFactory.json) |
+
+Deployment record format and which entries exist on which chain: [`deployments/README.md`](deployments/README.md).
+CBSW v1.1.0 is vendored and pruned in [`lib/cbsw-v1.1.0/`](lib/cbsw-v1.1.0/README.md).
+
+### Deterministic addresses (same on every chain)
+
+| Contract | Address |
+|---|---|
+| VaultRegistryV2 | `0xA622c92d3D5b54aeA081Cf410224a8A2eCb08cB7` |
+| wallet factory / implementation, `cryoshield.app` | `0x775dc816594262274E78Ae75D97C8EdB0df5DfED` / `0x8aA76FaA6629cA1EA8ccC3F9Edf0E8D98816Acd7` |
+| wallet factory / implementation, `cryoshield-web-dev.fly.dev` | `0x59454AD6Af26BEfF43851356B9Dc95a875C673d3` / `0x8bFfA95505bAbe88d86694a245E7768fa052395c` |
+| wallet factory / implementation, `localhost` | `0x75Bd6e2C371b97D6c0F02D3556f3d9711b2D42fb` / `0xC813DE31caABeE21f4d4DB4CcC3540D73468B63a` |
+
+`script/deploy.sh --predict-v2 "<rpId>[,<rpId>...]"` recomputes them offline. Any source or compiler change moves them.
+
+### Deploy (v1 is never deployed outside anvil; never on OP Mainnet)
+
+`script/deploy.sh <preset>` now also deploys VaultRegistryV2 and one wallet pair per RP ID (`RP_IDS`, defaults:
+anvil `localhost cryoshield.app`, op_sepolia `cryoshield.app cryoshield-web-dev.fly.dev`, op_mainnet `cryoshield.app`).
+On OP Sepolia it verifies the existing v1 (bytecode + record) and never redeploys it. VaultRegistry v1 is built with
+the `v1` Foundry profile so its bytecode (and CREATE2 address `0xB43f…9e44`) stays byte-identical to the deployed one.
+OP Mainnet broadcasts additionally require `CRYOSHIELD_MAINNET_GATE=approved` (task 8.1, founder approval).
+
+```sh
+# OP Sepolia dry run (no keys, nothing sent)
+OP_SEPOLIA_RPC_URL=https://sepolia.optimism.io DEPLOYER_ADDRESS=0x33144f681d83527c0a8f364751a5d2f4505d26bf \
+  script/deploy.sh op_sepolia
+# OP Sepolia broadcast (prompts for the keystore password; writes and prints deployments/11155420.json; verifies
+# every new contract on Blockscout, exit 2 + retry commands if verification fails)
+OP_SEPOLIA_RPC_URL=https://sepolia.optimism.io DEPLOYER_ACCOUNT=cryoshield-deployer BROADCAST=1 \
+  script/deploy.sh op_sepolia
+```
+
+### Extra checks
+
+```sh
+forge test --mc CryoShieldSmartWalletErc7562Test -vvv   # ERC-7562 opcode/storage traces (skipped without -vvv)
+script/check-storage-layout.sh                          # storage layout == CBSW v1.1
+script/anvil-e2e.sh                                     # v1 + v2 + wallet pairs on a throwaway anvil
+```

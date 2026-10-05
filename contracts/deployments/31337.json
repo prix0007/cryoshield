@@ -1,7 +1,35 @@
 {
-  "chainId": 31337,
+  "abiHash": "0x978e16a51813cacf2f723f72db77d1e10c186e489ccf4cca8ec8bb4517cd0a07",
   "address": "0xB43f58cF17e64B603aE5588a1DD17E96a0849e44",
+  "chainId": 31337,
+  "contracts": {
+    "vaultRegistryV2": {
+      "abiHash": "0xacb135ccf895846a59981b20545041660e21942c6108c000d9f1c46f552cb95c",
+      "address": "0xA622c92d3D5b54aeA081Cf410224a8A2eCb08cB7",
+      "deployBlock": 2,
+      "txHash": "0xeacecfe72479a7562d8482875a34b103612986bfae0e721578c4fbca52d9ce09"
+    },
+    "wallets": {
+      "cryoshield.app": {
+        "abiHash": "0x0e5bb9f7e1882471ecae54132e4b32506172c68dba8d7e94574d3a6fe42d72eb",
+        "deployBlock": 4,
+        "factory": "0x775dc816594262274E78Ae75D97C8EdB0df5DfED",
+        "factoryAbiHash": "0x74a8afa9fd58d116006bb501c8a7a50b1e1ace55ae342ad73eac1002f30a3a95",
+        "implementation": "0x8aA76FaA6629cA1EA8ccC3F9Edf0E8D98816Acd7",
+        "rpIdHash": "0xb14ad9e287e85374ad73c3d305858294a7afc28d13b9b924606b7a2d1af03d7f",
+        "txHash": "0xa36141bcd3262f38b03b91c4bf6f32f2a9013b36f1e0dd83d6ae5731741c8299"
+      },
+      "localhost": {
+        "abiHash": "0x0e5bb9f7e1882471ecae54132e4b32506172c68dba8d7e94574d3a6fe42d72eb",
+        "deployBlock": 3,
+        "factory": "0x75Bd6e2C371b97D6c0F02D3556f3d9711b2D42fb",
+        "factoryAbiHash": "0x74a8afa9fd58d116006bb501c8a7a50b1e1ace55ae342ad73eac1002f30a3a95",
+        "implementation": "0xC813DE31caABeE21f4d4DB4CcC3540D73468B63a",
+        "rpIdHash": "0x49960de5880e8c687434170f6476605b8fe4aeb9a28632c7995cf3ba831d9763",
+        "txHash": "0x74cc8e225dc7c6d7c0d7af905a0485a6e8020bc436cd8937446b27911457f11e"
+      }
+    }
+  },
   "deployBlock": 1,
-  "txHash": "0x02aa4899a0e64d598831eff9733586e48137dfd2c6fcb48de4a82b58de060fc5",
-  "abiHash": "0x978e16a51813cacf2f723f72db77d1e10c186e489ccf4cca8ec8bb4517cd0a07"
+  "txHash": "0x02aa4899a0e64d598831eff9733586e48137dfd2c6fcb48de4a82b58de060fc5"
 }

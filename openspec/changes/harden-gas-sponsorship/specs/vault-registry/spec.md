@@ -81,6 +81,10 @@ VaultRegistry v2 SHALL be a new immutable deployment. VaultRegistry v1 SHALL rem
 - **WHEN** a key whose vault exists only in v1 is used to unlock, in the app or in the recovery tool, on a chain configured with both registries
 - **THEN** the client finds and opens it from v1
 
+#### Scenario: Same vaultId in v1 and v2
+- **WHEN** a vaultId resolved for a locator exists in both v2 and v1 (for example, someone registered a v2 vault's id in v1 with an older copy of its blob)
+- **THEN** the web app and the recovery tool treat v2's blob and history as current, and when v2 cannot be confirmed they treat neither copy as current rather than falling back to v1's
+
 #### Scenario: New vault goes to v2
 - **WHEN** a user creates a vault on a chain configured with both registries
 - **THEN** the create call targets v2 only
