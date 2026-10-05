@@ -95,6 +95,26 @@ F. legit open ok: true
 
 The script used only the built `@cryoshield/vault-crypto` and `@noble/ciphers` (to unwrap the data key with a known PRF, standing in for an attacker who captured it). It is not part of the repository.
 
+## Deployed contract: OP Sepolia `0xB43f58cF17e64B603aE5588a1DD17E96a0849e44`
+
+Checked on 2026-10-05 without network access to the chain (the review environment's egress policy denies every OP Sepolia RPC and explorer host), so the live state could not be read. What could be established from the repository alone:
+
+| Check | Result |
+|---|---|
+| Deployment record vs source | `contracts/broadcast/Deploy.s.sol/11155420/run-latest.json` (tx `0xb36085…0759`, block 49568053, status 1, CREATE2 via `0x4e59…956C`, salt `keccak256("cryoshield.vault-registry.v1")`) carries 3,845 bytes of init code. A fresh build of the current `VaultRegistry.sol` with the pinned solc 0.8.28 (`7893614a`), optimizer 10,000 runs, EVM `cancun`, produces **byte-identical** init code. Runtime code: 3,817 bytes, keccak `0x6895351e…43d2`. |
+| Source drift since deploy | None: `git log 3c4a8cc..HEAD -- contracts/src/VaultRegistry.sol contracts/foundry.toml` is empty. The deployed bytecode is this source. The October audit additionally recorded a Blockscout full match and a Sourcify exact match for the live address. |
+| Test suite | `forge test`: 52 passed (unit, fuzz 1,000 runs, invariants 256×200, bytecode and source immutability checks). `forge snapshot --mc GasTest --check`: unchanged. |
+| Privilege | No owner, admin, proxy, pause, selfdestruct, delegatecall or external call. `test_deployerHasNoSpecialPower` and `invariant_deployerOwnsNothing` hold. Nothing on chain can read, alter or delete a blob except its owner account's `updateVault`, which only replaces (history stays in calldata and events). |
+| Confidentiality role | The registry stores and returns opaque bytes and never parses them, so it has no bearing on the decryption question beyond publishing the data in §1. |
+
+Static review of the contract found **no new issue**. The known ones stand, all availability or cost, none confidentiality:
+- **Locator stuffing** (AA-M1): anyone can append up to 16 vaultIds under any locator, with sponsored gas; a victim's key then needs a fresh credential. Registry v2 before mainnet.
+- **vaultId squatting** (AA-M2): the preflight `eth_call` shows the chosen vaultId to the RPC provider before the signed userOp is sent. Griefing only, since the blob is bound to its vaultId.
+- **Arbitrary 1 KB blobs under any locator**: the registry validates size only, so a squatter can store any bytes, and with the paymaster policy as it is (AA-M3) CryoShield may pay for them. Clients skip blobs that fail to decode or authenticate.
+- **Overwrite by a key holder** (AA-H1 path): an account owner can replace the blob with anything; the chain history and the recovery tool's event walk keep every earlier version readable.
+
+**Still to do once an RPC is reachable** (one script, read-only): walk `VaultCreated`, `VaultUpdated` and `LocatorAdded` from block 49568053; count vaults, versions and blob sizes; decode every blob with `decodeVault` and flag any that fail, carry an unexpected `rpId`, or whose entry count differs from the vault's `LocatorAdded` count; list locators with more than one vaultId (squatting) or at the cap of 16 (stuffing); confirm every owner is a Coinbase Smart Wallet v1.1 whose owner index order matches the blob's entry order; and compare `eth_getCode` with the keccak above.
+
 ## Suggested follow-up changes
 
 1. `docs`: F1 guidance (system design, spec §9, supported devices, app copy), F5 and F6 notes.
