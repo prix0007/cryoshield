@@ -25,7 +25,7 @@ for (const scheme of ['light', 'dark'] as const) {
     });
     page.on('pageerror', (e) => problems.push(e.message));
     await page.goto('/devices');
-    await expect(page).toHaveTitle('Supported devices · CryoShield');
+    await expect(page).toHaveTitle('YubiKey & Security Keys for Encrypted Backup · CryoShield');
     await expect(page.getByRole('heading', { level: 1, name: 'Supported devices' })).toBeVisible();
     for (const h of ['Requirements a key must meet', 'Why phone and laptop passkeys are refused', 'Keys', 'Browsers', 'Recovery tool requirements', 'How to check your key', 'Report your device']) {
       await expect(page.getByRole('heading', { level: 2, name: h, exact: true })).toBeVisible();

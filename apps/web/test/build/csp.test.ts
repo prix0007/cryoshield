@@ -26,6 +26,21 @@ describe('CSP', () => {
     expect(() => injectCsp('<html><head></head><body><script>alert(1)</script></body></html>', origins)).toThrow(/inline/);
   });
 
+  it('accepts only an attribute-exact JSON-LD data block and leaves the CSP unchanged (improve-landing-seo D6)', () => {
+    const ld = '<script type="application/ld+json">{"@type":"Thing"}</script>';
+    const html = injectCsp(`<html><head><meta charset="utf-8" />${ld}</head><body></body></html>`, origins);
+    expect(html).toContain(ld);
+    expect(html).toContain(`content="${buildCsp(origins)}"`);
+    for (const bad of [
+      '<script type="application/json">{}</script>',
+      '<script type="application/ld+json" onload="x()">{}</script>',
+      '<script type="application/ld+json">x()</script>',
+      '<script type="application/ld+json">{"a":"</b>"}</script>',
+    ]) {
+      expect(() => injectCsp(`<html><head>${bad}</head></html>`, origins), bad).toThrow(/inline|JSON-LD/);
+    }
+  });
+
   it('emits _headers with frame-ancestors (header-only directive)', () => {
     const h = headersFile(origins, origins);
     expect(h).toContain("frame-ancestors 'none'");

@@ -17,7 +17,8 @@
     "test:int": "vitest run -c vitest.int.config.ts",
     "stack": "node e2e/stack/stack.ts",
     "test:deploy": "vitest run -c deploy/vitest.config.ts",
-    "icons": "node scripts/build-icons.mjs"
+    "icons": "node scripts/build-icons.mjs",
+    "og-image": "node scripts/build-og-image.mjs"
   },
   "dependencies": {
     "@cryoshield/vault-crypto": "workspace:*",

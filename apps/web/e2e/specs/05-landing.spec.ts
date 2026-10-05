@@ -12,7 +12,7 @@ async function axe(page: Page, label: string) {
 
 test('renders the hero and the required disclosures; axe-clean at desktop and phone widths', async ({ page }) => {
   await page.goto(LANDING);
-  await expect(page.getByRole('heading', { level: 1, name: 'Backups that outlive the drive.' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: 'Seed phrase backups that outlive the drive.' })).toBeVisible();
   await expect(page.getByText('runs on OP Sepolia, a test network, and has not been independently audited', { exact: false })).toBeVisible();
   await expect(page.getByText('If you lose every key, nobody can open the vault', { exact: false })).toBeVisible();
   await axe(page, 'landing 1280');

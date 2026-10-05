@@ -1,0 +1,5 @@
+# https://cryoshield.app: the public pages are for search; /app/ is the vault application (also noindex).
+User-agent: *
+Allow: /
+Disallow: /app/
+Sitemap: https://cryoshield.app/sitemap.xml

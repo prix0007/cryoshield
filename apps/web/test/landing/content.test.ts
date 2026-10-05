@@ -15,7 +15,8 @@ describe('landing structure', () => {
   it('has exactly one h1, the hero headline', () => {
     const h1 = doc.querySelectorAll('h1');
     expect(h1).toHaveLength(1);
-    expect(h1[0]!.textContent?.trim()).toBe('Backups that outlive the drive.');
+    expect(h1[0]!.textContent?.trim()).toBe('Seed phrase backups that outlive the drive.');
+    expect(h1[0]!.getAttribute('aria-label')).toBe('Seed phrase backups that outlive the drive.');
   });
 
   it('starts with a skip link to #main and has header/nav, main and footer landmarks', () => {
@@ -41,8 +42,8 @@ describe('landing structure', () => {
       'Survives us too.',
       'Built for decades.',
       'Free to use.',
-      'Back it up once.',
-      'Questions, answered.',
+      'Back up your seed phrase once.',
+      'Backup questions, answered.',
     ]);
   });
 
@@ -146,7 +147,24 @@ describe('honest copy', () => {
       /unbreakable/i,
       /never lose/i,
     ];
-    for (const b of banned) expect(text, String(b)).not.toMatch(b);
+    // improve-landing-seo (spec "Honest drama"): "forever" only as the user's own question and its negating answer.
+    const head = `${doc.title} ${doc.querySelector('meta[name="description"]')?.getAttribute('content') ?? ''}`;
+    const allowed = (t: string) => t.replace('How do I back up my seed phrase forever?', '').replace('No backup lasts forever', '');
+    for (const b of banned) {
+      expect(allowed(text), String(b)).not.toMatch(b);
+      expect(head, String(b)).not.toMatch(b);
+    }
+    expect(text.match(/forever/gi)).toHaveLength(2);
+  });
+
+  it('answers "forever" honestly: the chain and Arweave dependency, a working key, the testnet', () => {
+    const d = [...doc.querySelectorAll('#faq details')].find((x) => x.querySelector('summary')?.textContent === 'How do I back up my seed phrase forever?')!;
+    const a = (d.querySelector('p')?.textContent ?? '').replace(/\s+/g, ' ');
+    expect(a).toMatch(/^No backup lasts forever/);
+    expect(a).toMatch(/blockchain/);
+    expect(a).toMatch(/Arweave/);
+    expect(a).toMatch(/at least one of your keys/);
+    expect(a).toMatch(/testnet/i);
   });
 
   it('uses no Apple names or marks', () => {
@@ -189,5 +207,44 @@ describe('"Only you can read it." comparison (landing-only-you-can-read 1.1)', (
   it('never claims the data stays on the device, and names no competitor', () => {
     expect(t).not.toMatch(/stays on your device|never leaves your device|remains on your device/i);
     expect(t).not.toMatch(/\b(Google|Drive|iCloud|Dropbox|OneDrive|Box|1Password|LastPass|Bitwarden|Dashlane|Keeper|Proton|Ledger|Trezor)\b/);
+  });
+});
+
+describe('search keywords and FAQ (improve-landing-seo)', () => {
+  const questions = [...doc.querySelectorAll('#faq details > summary')].map((q) => q.textContent?.trim());
+
+  it('the FAQ is visible disclosures under an h2 and asks the questions people search for', () => {
+    expect(doc.querySelector('#faq > h2')).not.toBeNull();
+    for (const q of [
+      'How do I back up my seed phrase forever?',
+      'Where should I store 2FA backup codes?',
+      'What happens if I lose my YubiKey?',
+      'Can CryoShield read my secrets?',
+      'What if CryoShield disappears?',
+    ]) expect(questions).toContain(q);
+    for (const d of doc.querySelectorAll('#faq details')) {
+      expect(d.querySelector(':scope > summary')).not.toBeNull();
+      expect(d.querySelectorAll(':scope > p')).toHaveLength(1);
+    }
+    expect(doc.querySelector('#faq-lose > summary')?.textContent).toBe('What happens if I lose my YubiKey?');
+  });
+
+  it('title and description name the keywords within the limits', () => {
+    const desc = doc.querySelector('meta[name="description"]')?.getAttribute('content') ?? '';
+    expect(doc.title.length).toBeLessThanOrEqual(60);
+    expect(doc.title).toMatch(/Backup/);
+    expect(doc.title).toMatch(/Seed Phrase/i);
+    expect(doc.title).toMatch(/2FA/);
+    expect(desc.length).toBeGreaterThanOrEqual(150);
+    expect(desc.length).toBeLessThanOrEqual(160);
+    expect(desc).toMatch(/seed phrase/i);
+    expect(desc).toMatch(/2FA backup codes/);
+  });
+
+  it('the hero and the final call to action carry the main keywords in visible text', () => {
+    const hero = (doc.querySelector('#hero')?.textContent ?? '').replace(/\s+/g, ' ');
+    expect(hero).toMatch(/seed phrase/i);
+    expect(hero).toMatch(/2FA backup codes/);
+    expect(doc.querySelector('#start h2')?.textContent).toMatch(/seed phrase/);
   });
 });

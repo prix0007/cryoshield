@@ -146,7 +146,7 @@ describe('served by the container', () => {
     const app = await get('/app/');
     expect(app.status).toBe(200);
     expect(app.body).toContain('<div id="root">');
-    expect(landing.body).toContain('Backups that outlive the drive.');
+    expect(landing.body).toContain('Seed phrase backups that outlive the drive.');
     expect(app.headers['content-security-policy']).toBe(`${metaCsp(app.body)}; frame-ancestors 'none'`);
     expect(app.headers['content-security-policy']).not.toBe(landing.headers['content-security-policy']);
     expect(app.body).not.toMatch(/cloudflareinsights|cf-beacon/);
@@ -229,6 +229,10 @@ describe('served by the container', () => {
     ['/favicon.svg', /^image\/svg\+xml$/],
     ['/apple-touch-icon.png', /^image\/png$/],
     ['/site.webmanifest', /^application\/manifest\+json$/],
+    // improve-landing-seo: crawl files and the share image.
+    ['/robots.txt', /^text\/plain$/],
+    ['/sitemap.xml', /^(application|text)\/xml$/],
+    ['/og-image.png', /^image\/png$/],
   ])('%s is served with the right content type and every security header (add-brand-icon 1.2)', async (p, type) => {
     const r = await get(p);
     expect(r.status).toBe(200);

@@ -29,3 +29,29 @@ export function connectSrcViolations(csp, expected) {
   for (const t of have) if (!want.has(t)) out.push(`connect-src has unexpected ${t}`);
   return out;
 }
+
+/**
+ * improve-landing-seo D6: the one inline <script> the site allows is a JSON-LD *data block*, which browsers never
+ * execute (so script-src and Trusted Types are unaffected). Only the attribute-exact opening tag below counts, and its
+ * body must be JSON with no "<" (so it can't close early or smuggle markup). Valid blocks are removed from the returned
+ * HTML; anything else is left in place for the caller's inline-script check, and a malformed block is also an error.
+ */
+export const JSON_LD_OPEN = '<script type="application/ld+json">';
+export function stripJsonLd(html) {
+  const blocks = [];
+  const errors = [];
+  const out = html.replace(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g, (whole, body) => {
+    if (body.includes('<')) {
+      errors.push('JSON-LD block contains "<"');
+      return whole;
+    }
+    try {
+      blocks.push(JSON.parse(body));
+    } catch {
+      errors.push('JSON-LD block is not valid JSON');
+      return whole;
+    }
+    return '';
+  });
+  return { html: out, blocks, errors };
+}

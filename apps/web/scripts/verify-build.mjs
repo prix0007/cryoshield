@@ -24,7 +24,7 @@ import { checkNoPlaceholders, unlistedStorageApis } from './legal-check.mjs';
 import { checkSecurityTxt } from './securitytxt-check.mjs';
 import { analyticsLeaks, landingCspDiff, policyDrift } from './analytics-check.mjs';
 import { donationViolations, validateDonation } from './donation-check.mjs';
-import { connectSrcViolations } from './csp-check.mjs';
+import { connectSrcViolations, stripJsonLd } from './csp-check.mjs';
 
 const root = new URL('..', import.meta.url).pathname;
 const storageInventory = JSON.parse(readFileSync(join(root, 'legal', 'storage-inventory.json'), 'utf8'));
@@ -119,10 +119,16 @@ for (const page of pages) {
   const o = checkOrigins(csp, originsInventory);
   if (o.missing.length) fail(`[${label}] ${name}: origin(s) not in docs/compliance/origins.json: ${o.missing.join(', ')}`);
   if (name === 'index.html') for (const l of o.listed) console.log(`info [${label}] origin ${l.origin} -> inventory row ${l.row} (${l.role})`);
-  if (/<script(?![^>]*\bsrc=)[^>]*>/.test(h)) fail(`inline script in ${name}`);
+  // improve-landing-seo D6: a JSON-LD data block (attribute-exact, JSON body without "<") is never executed; it is the
+  // only inline <script> allowed, and only on the landing page.
+  const ld = stripJsonLd(h);
+  if (ld.errors.length) fail(`[${label}] ${name}: ${ld.errors.join('; ')}`);
+  if (ld.blocks.length && name !== 'index.html') fail(`[${label}] ${name}: JSON-LD is only expected on the landing page`);
+  if (/<script(?![^>]*\bsrc=)[^>]*>/i.test(ld.html)) fail(`inline script in ${name}`);
   if (/\sstyle=|<style[\s>]/i.test(h)) fail(`inline style in ${name}`);
   // Only the integrity-pinned beacon, inert in its <template> on the landing page, may name another origin.
-  let rest = h.replace(/<a\s[^>]*>/g, '');
+  // improve-landing-seo D7: the canonical link names the production URL; it is not a fetched resource.
+  let rest = h.replace(/<a\s[^>]*>/g, '').replace(/<link rel="canonical" href="https:\/\/cryoshield\.app\/[a-z]*">/g, '');
   if (name === 'index.html') {
     const tpl = rest.match(/<template id="cf-beacon" data-host="[^"]+"><script defer src="([^"]+)" integrity="([^"]+)" crossorigin="anonymous" data-cf-beacon="[^"]+"><\/script><\/template>/);
     if (tpl) {
@@ -183,6 +189,15 @@ if (!all.includes(stxt)) fail(`[${label}] missing .well-known/security.txt`);
 const stxtErrors = checkSecurityTxt(readFileSync(stxt, 'utf8'));
 if (stxtErrors.length) fail(`[${label}] ${stxtErrors.join('; ')}`);
 console.log(`ok   [${label}] security.txt valid (Expires within 365 days)`);
+// improve-landing-seo D9/D10: crawl files for production; the app is noindex and never in the sitemap.
+for (const f of ['robots.txt', 'sitemap.xml', 'og-image.png']) if (!all.includes(join(dist, f))) fail(`[${label}] missing ${f}`);
+const robots = readFileSync(join(dist, 'robots.txt'), 'utf8');
+if (!/^Disallow: \/app\/$/m.test(robots) || /^Disallow:\s*\/\s*$/m.test(robots) || !robots.includes('Sitemap: https://cryoshield.app/sitemap.xml')) {
+  fail(`[${label}] robots.txt must disallow only /app/ and name the sitemap`);
+}
+if (readFileSync(join(dist, 'sitemap.xml'), 'utf8').includes('/app')) fail(`[${label}] sitemap.xml lists /app`);
+if (!/<meta name="robots" content="noindex"/.test(readFileSync(join(dist, 'app', 'index.html'), 'utf8'))) fail(`[${label}] app/index.html is not noindex`);
+console.log(`ok   [${label}] robots.txt, sitemap.xml and og-image.png present; /app/ noindex`);
 if (!readFileSync(join(dist, '_headers'), 'utf8').includes("frame-ancestors 'none'")) fail('_headers lacks frame-ancestors');
 console.log(`ok   [${label}] strict CSP in ${pages.length} pages (app CSP everywhere but the landing document) and _headers`);
 landingBudget(label);

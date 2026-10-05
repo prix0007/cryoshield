@@ -5,7 +5,7 @@
  * missing origin or an unexpected extra token fails.
  */
 import { describe, expect, it } from 'vitest';
-import { connectSrcViolations, directives } from '../../scripts/csp-check.mjs';
+import { connectSrcViolations, directives, stripJsonLd } from '../../scripts/csp-check.mjs';
 
 const EXPECTED = ["'self'", 'https://rpc.verify.invalid', 'https://bundler.verify.invalid', 'https://upload.ardrive.io', 'https://arweave.net', 'https://turbo-gateway.com'];
 const csp = (connect: string) => `default-src 'none'; script-src 'self'; connect-src ${connect}; img-src 'self' data:`;
@@ -44,5 +44,38 @@ describe('connectSrcViolations', () => {
   });
   it('the origin text elsewhere in the page cannot satisfy the check (only the directive counts)', () => {
     expect(connectSrcViolations(csp("'self'") + '; report-uri https://rpc.verify.invalid', EXPECTED).join()).toMatch(/missing https:\/\/rpc/);
+  });
+});
+
+/** improve-landing-seo D6: the only inline script allowed is an attribute-exact, JSON-only ld+json data block. */
+describe('stripJsonLd', () => {
+  const LD = '<script type="application/ld+json">{"@context":"https://schema.org","@type":"Thing","name":"a \\u003c b"}</script>';
+  const inline = /<script(?![^>]*\bsrc=)[^>]*>/i;
+
+  it('removes a valid ld+json data block and reports nothing', () => {
+    const r = stripJsonLd(`<head>${LD}</head>`);
+    expect(r.errors).toEqual([]);
+    expect(r.blocks).toEqual([{ '@context': 'https://schema.org', '@type': 'Thing', name: 'a < b' }]);
+    expect(r.html).toBe('<head></head>');
+    expect(r.html).not.toMatch(inline);
+  });
+
+  it.each([
+    ['a plain inline script', '<script>alert(1)</script>'],
+    ['application/json', '<script type="application/json">{}</script>'],
+    ['text/javascript', '<script type="text/javascript">{}</script>'],
+    ['an extra attribute', '<script type="application/ld+json" onload="alert(1)">{}</script>'],
+    ['upper-case tag', '<SCRIPT type="application/ld+json">{}</SCRIPT>'],
+  ])('leaves %s in place for the inline-script check', (_n, s) => {
+    expect(stripJsonLd(s).html).toMatch(inline);
+  });
+
+  it.each([
+    ['a non-JSON body', '<script type="application/ld+json">alert(1)</script>'],
+    ['a body containing "<"', '<script type="application/ld+json">{"a":"<b>"}</script>'],
+  ])('rejects an ld+json block with %s', (_n, s) => {
+    const r = stripJsonLd(s);
+    expect(r.errors.length).toBe(1);
+    expect(r.html).toMatch(inline);
   });
 });
