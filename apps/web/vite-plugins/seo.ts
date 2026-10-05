@@ -42,7 +42,8 @@ export const decode = (s: string) => s.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+\d*);/g
   return ENTITIES[e.toLowerCase()] ?? m;
 });
 const escapeAttr = (s: string) => s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-const text = (html: string) => decode(html.replace(/<[^>]*>/g, '')).replace(/\s+/g, ' ').trim();
+// Plain text only: any '<' or '>' left after decoding entities is dropped, so the result can never form markup.
+const text = (html: string) => decode(html.replace(/<[^>]*>/g, '')).replace(/[<>]/g, '').replace(/\s+/g, ' ').trim();
 
 const isNoindex = (html: string) => /<meta name="robots" content="[^"]*\bnoindex\b[^"]*"\s*\/?>/i.test(html);
 
