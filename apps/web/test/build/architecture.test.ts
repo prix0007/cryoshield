@@ -49,7 +49,7 @@ describe('/architecture page', () => {
     expect(h).not.toMatch(/\sstyle=|<style[\s>]|<script|="var\(/i);
     const csp = (p: string) => html(p).match(/<meta http-equiv="Content-Security-Policy" content="([^"]+)">/)?.[1];
     expect(csp('architecture/index.html')).toBe(csp('app/index.html'));
-    for (const m of h.matchAll(/<(?:link|img|source|iframe)[^>]+(?:href|src)="([^"]+)"/g)) expect(m[1]).toMatch(/^(\/|data:)/);
+    for (const m of h.matchAll(/<(?:link(?! rel="canonical")|img|source|iframe)[^>]+(?:href|src)="([^"]+)"/g)) expect(m[1]).toMatch(/^(\/|data:)/);
   });
 
   it('freshness guard: live values equal the deployment record and the config', () => {

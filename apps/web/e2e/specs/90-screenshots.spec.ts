@@ -125,7 +125,7 @@ test('brand icon (add-brand-icon 2.3): tab mock in light and dark, icon at 16, 3
     const ink = scheme === 'dark' ? '#e8eaed' : '#1f1f1f';
     await showMock(page, `<!doctype html><html><body style="margin:0;background:${bar};font:13px system-ui;color:${ink}">
       <div style="display:flex;gap:2px;padding:10px 10px 0">
-        ${['CryoShield · Backups that outlive the drive', 'Your vault · CryoShield', 'Privacy policy · CryoShield']
+        ${['Permanent Backup for Seed Phrases & 2FA Codes · CryoShield', 'Your vault · CryoShield', 'Privacy policy · CryoShield']
           .map((t, i) => `<div style="display:flex;align-items:center;gap:8px;width:190px;height:34px;padding:0 12px;border-radius:8px 8px 0 0;background:${i === 1 ? tab : 'transparent'}"><img src="/favicon.svg" width="16" height="16" alt=""><span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${t}</span></div>`)
           .join('')}
       </div><div style="height:60px;background:${tab}"></div></body></html>`);

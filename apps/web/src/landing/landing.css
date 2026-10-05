@@ -219,7 +219,13 @@
     animation-delay: 0.18s;
   }
   .hero-title .w:nth-child(5) {
-    animation-delay: 0.26s;
+    animation-delay: 0.24s;
+  }
+  .hero-title .w:nth-child(6) {
+    animation-delay: 0.3s;
+  }
+  .hero-title .w:nth-child(7) {
+    animation-delay: 0.36s;
   }
   .hero-key {
     animation: dock 1.5s cubic-bezier(0.2, 0.8, 0.2, 1) 0.2s both;

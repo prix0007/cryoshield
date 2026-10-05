@@ -10,8 +10,8 @@
     <link rel="manifest" href="/site.webmanifest" />
     <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)" />
-    <meta name="description" content="CryoShield keeps seed phrases and recovery codes sealed in your browser and unlocked only by your own security keys. Testnet preview, not yet audited." />
-    <title>CryoShield · Backups that outlive the drive</title>
+    <meta name="description" content="Back up seed phrases and 2FA backup codes on-chain, sealed in your browser and opened only by your YubiKey or other security key. Free, open source, testnet." />
+    <title>Permanent Backup for Seed Phrases &amp; 2FA Codes · CryoShield</title>
     <script type="module" src="/src/landing/main.ts"></script>
   </head>
   <body class="landing">
@@ -75,8 +75,8 @@
             </g>
           </svg>
         </div>
-        <h1 id="hero-title" class="hero-title" aria-label="Backups that outlive the drive."><span class="w">Backups</span> <span class="w">that</span> <span class="w">outlive</span> <span class="w">the</span> <span class="w w-accent">drive.</span></h1>
-        <p class="tile-lead hero-lead">Seed phrases and recovery codes, sealed in your browser and unlocked only by the security keys you hold.</p>
+        <h1 id="hero-title" class="hero-title" aria-label="Seed phrase backups that outlive the drive."><span class="w">Seed</span> <span class="w">phrase</span> <span class="w">backups</span> <span class="w">that</span> <span class="w">outlive</span> <span class="w">the</span> <span class="w w-accent">drive.</span></h1>
+        <p class="tile-lead hero-lead">Back up seed phrases and 2FA backup codes once: sealed in your browser, stored on-chain, and unlocked only by the security keys you hold.</p>
         <p class="ctas">
           <a class="pill pill-primary pill-large magnetic" href="/app/">Open the app</a>
           <a class="pill pill-secondary pill-large magnetic" href="#how">How it works</a>
@@ -378,7 +378,7 @@
 
       <!-- FINAL CTA -->
       <section id="start" class="tile tile-black final-cta" aria-labelledby="start-title">
-        <h2 id="start-title" class="final-title">Back it up once.</h2>
+        <h2 id="start-title" class="final-title">Back up your seed phrase once.</h2>
         <p class="tile-lead">Two security keys, one tap, and your seed phrase or recovery codes are sealed, stored, and yours alone.</p>
         <p class="ctas">
           <a class="pill pill-primary pill-large magnetic" href="/app/">Open the app</a>
@@ -389,8 +389,16 @@
 
       <!-- FAQ -->
       <section id="faq" class="tile tile-light faq" aria-labelledby="faq-title">
-        <h2 id="faq-title" class="tile-title">Questions, answered.</h2>
+        <h2 id="faq-title" class="tile-title">Backup questions, answered.</h2>
         <div class="faq-list">
+          <details>
+            <summary>How do I back up my seed phrase forever?</summary>
+            <p>No backup lasts forever, but you can make yours outlive any one drive or sheet of paper. CryoShield seals your seed phrase in your browser, stores it on a public blockchain, and copies it to Arweave’s permanent archive. It stays readable as long as the blockchain or the Arweave copy exists and at least one of your keys still works. CryoShield is a testnet preview, so keep your existing backup too.</p>
+          </details>
+          <details>
+            <summary>Where should I store 2FA backup codes?</summary>
+            <p>Somewhere that survives a lost phone or a dead laptop, and that only you can open. A CryoShield vault holds about 1 KB of text, enough for the 2FA backup codes of many accounts, and only your security keys can open it. While CryoShield is a testnet preview, keep a printed copy somewhere safe as well.</p>
+          </details>
           <details>
             <summary>What do I need?</summary>
             <p>Two FIDO2 security keys that support the PRF extension (hmac-secret) and can be set to always ask for their PIN, such as a YubiKey 5 with firmware 5.2 or newer, and a recent version of Chrome, Edge or Firefox. The app checks your browser before you start. <a href="/devices">See supported devices</a>.</p>
@@ -400,12 +408,16 @@
             <p>No. Your secrets are encrypted in your browser with a key that only your security keys can produce. CryoShield has no backend; this website only serves the app’s files, and never receives your secrets or your keys.</p>
           </details>
           <details id="faq-lose">
-            <summary>What if I lose a key?</summary>
-            <p>Open your vault with any other enrolled key, then use “Add a key” to set up a replacement. That’s why you need at least two.</p>
+            <summary>What happens if I lose my YubiKey?</summary>
+            <p>Your vault is still safe. Open it with any other enrolled security key, then use “Add a key” to set up a replacement. That’s why you need at least two.</p>
           </details>
           <details>
             <summary>What if I lose all my keys?</summary>
             <p>Then nobody can open the vault: not you, not CryoShield, not the recovery tool. This is the cost of a backup that only you control.</p>
+          </details>
+          <details>
+            <summary>What if CryoShield disappears?</summary>
+            <p>Your vault stays on the public blockchain and on Arweave. The open-source <a href="https://github.com/prix0007/cryoshield/tree/main/tools/recover#readme" rel="noopener noreferrer">desktop recovery tool</a> can open it with your key, without this website.</p>
           </details>
           <details>
             <summary>Is it safe to use today?</summary>
@@ -414,10 +426,6 @@
           <details>
             <summary>How much can I store?</summary>
             <p>About 1 KB of text: plenty for seed phrases, 2FA backup codes and recovery codes, but not for files.</p>
-          </details>
-          <details>
-            <summary>What happens if CryoShield shuts down?</summary>
-            <p>Your vault stays on the public blockchain and on Arweave. The open-source <a href="https://github.com/prix0007/cryoshield/tree/main/tools/recover#readme" rel="noopener noreferrer">desktop recovery tool</a> can open it with your key without this website.</p>
           </details>
         </div>
       </section>

@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630" font-family="Inter, sans-serif">
+  <!-- CryoShield share card (improve-landing-seo D8), 1200x630. The brand tile (add-brand-icon) and the landing hero
+       type on a white canvas: one accent (Action Blue), Ink text, no gradients, no shadows. Rendered to
+       public/og-image.png by scripts/build-og-image.mjs with the self-hosted Inter; no external references. -->
+  <rect width="1200" height="630" fill="#ffffff"/>
+  <g transform="translate(80 72)">
+    <rect width="88" height="88" rx="20" fill="#0066cc"/>
+    <g transform="translate(44 44) scale(2.82) translate(-12 -12)">
+      <path fill="#ffffff" d="M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5l-8-3Z"/>
+      <path fill="none" stroke="#0066cc" stroke-width="2" stroke-linecap="round" d="M12 7v10M7.7 9.5l8.6 5M7.7 14.5l8.6-5"/>
+    </g>
+    <text x="112" y="58" font-size="36" font-weight="600" letter-spacing="-0.6" fill="#1d1d1f">CryoShield</text>
+  </g>
+  <g transform="translate(906 94)">
+    <rect width="214" height="44" rx="22" fill="#f5f5f7" stroke="#e0e0e0" stroke-width="1"/>
+    <text x="107" y="29" font-size="19" font-weight="600" text-anchor="middle" fill="#333333">Testnet preview</text>
+  </g>
+  <text font-size="80" font-weight="600" letter-spacing="-2.6" fill="#1d1d1f">
+    <tspan x="76" y="318">Seed phrase backups</tspan>
+    <tspan x="76" y="408">that outlive the <tspan fill="#0066cc">drive.</tspan></tspan>
+  </text>
+  <text x="80" y="484" font-size="29" font-weight="400" letter-spacing="-0.3" fill="#333333">Seed phrases and 2FA backup codes, sealed by the security keys you hold.</text>
+  <text x="80" y="562" font-size="22" font-weight="400" fill="#7a7a7a">cryoshield.app · Free and open source · Not yet audited</text>
+</svg>

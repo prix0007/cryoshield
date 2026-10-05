@@ -112,10 +112,10 @@ describe('/devices page (built)', () => {
   it('is emitted at devices/index.html with the rendered Markdown, the app CSP, no script and no third-party resource', () => {
     const h = html('devices/index.html');
     expect(doc('devices/index.html').querySelector('main h1')?.textContent).toBe('Supported devices');
-    expect(doc('devices/index.html').title).toBe('Supported devices · CryoShield');
+    expect(doc('devices/index.html').title).toBe('YubiKey & Security Keys for Encrypted Backup · CryoShield');
     expect(h).not.toMatch(/<script/i);
     expect(h).not.toMatch(/cloudflareinsights|cf-beacon/);
-    for (const m of h.matchAll(/<(?:link|img|source|iframe)[^>]+(?:href|src)="([^"]+)"/g)) expect(m[1]).toMatch(/^(\/|data:)/);
+    for (const m of h.matchAll(/<(?:link(?! rel="canonical")|img|source|iframe)[^>]+(?:href|src)="([^"]+)"/g)) expect(m[1]).toMatch(/^(\/|data:)/);
     expect(metaCsp('devices/index.html')).toBe(metaCsp('app/index.html'));
   });
 

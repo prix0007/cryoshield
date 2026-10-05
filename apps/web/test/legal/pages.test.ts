@@ -126,7 +126,9 @@ describe('legal pages', () => {
     for (const p of LEGAL) {
       const html = readFileSync(join(out, p), 'utf8');
       expect(html, p).not.toMatch(/<script/i);
-      for (const m of html.matchAll(/<(?:link|img|source|iframe)[^>]+(?:href|src)="([^"]+)"/g)) expect(m[1], p).toMatch(/^(\/|data:)/);
+      for (const m of html.matchAll(/<(?:link(?! rel="canonical")|img|source|iframe)[^>]+(?:href|src)="([^"]+)"/g)) expect(m[1], p).toMatch(/^(\/|data:)/);
+      // improve-landing-seo D7: the one absolute href, the canonical link, names the production origin only.
+      expect([...html.matchAll(/<link rel="canonical" href="([^"]+)">/g)].map((m) => m[1]), p).toEqual([`https://cryoshield.app/${p.split('/')[0]}`]);
       expect(metaCsp(p), p).toBe(metaCsp('app/index.html'));
     }
   });

@@ -1,4 +1,4 @@
-// @vitest-environment node
+// jsdom environment (improve-landing-seo): the SEO checks parse the built pages with DOMParser.
 /**
  * redesign-landing-and-app-ui 2.1 (spec landing-page "Landing at the root, app at /app/",
  * "Same security headers and CSP on every page"): a real build emits two pages with the identical strict CSP;
@@ -9,6 +9,8 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { stripJsonLd } from '../../scripts/csp-check.mjs';
+import { PUBLIC_PAGES, SITE } from '../../vite-plugins/seo';
 
 const web = join(__dirname, '..', '..');
 let out = '';
@@ -41,7 +43,8 @@ describe('two pages', () => {
     expect(metaCsp(b)[0]).toBe(metaCsp(a)[0]!.replace(/(connect-src [^;]*)/, '$1 https://turbo-gateway.com'));
     expect(metaCsp(a)[0]).not.toMatch(/unsafe-inline|unsafe-eval/);
     expect(metaCsp(a)[0]).toContain("trusted-types 'none'");
-    for (const h of [a, b]) {
+    // improve-landing-seo D6: the only inline script is the landing page's JSON-LD data block.
+    for (const h of [stripJsonLd(a).html, b]) {
       expect(h).not.toMatch(/<script(?![^>]*\bsrc=)[^>]*>/i);
       expect(h).not.toMatch(/\sstyle=|<style[\s>]/i);
       for (const s of scripts(h)) expect(s).toMatch(/^\/assets\//);
@@ -54,7 +57,7 @@ describe('two pages', () => {
     expect(landingJs).not.toMatch(/react\.element|react-dom|viem|rpId:/);
     expect(appJs).toMatch(/rpId:/);
     // The hero headline is in the HTML itself (LCP needs no JS).
-    expect(html('index.html')).toContain('Backups that outlive the drive.');
+    expect(html('index.html')).toContain('Seed phrase backups that outlive the drive.');
   });
 
   it('every emitted font is a same-origin hashed asset', () => {
@@ -79,5 +82,72 @@ describe('brand icon on every page (add-brand-icon 1.2)', () => {
     for (const f of ['favicon.svg', 'favicon.ico', 'apple-touch-icon.png', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png', 'site.webmanifest']) {
       expect(existsSync(join(out, f)), f).toBe(true);
     }
+  });
+});
+
+/** improve-landing-seo (spec landing-page "Search metadata on public pages" and following). */
+describe('search metadata in the built pages', () => {
+  const file = (path: string) => (path === '/' ? 'index.html' : `${path.slice(1)}/index.html`);
+  const dom = (p: string) => new DOMParser().parseFromString(html(p), 'text/html');
+  const meta = (d: Document, sel: string) => [...d.querySelectorAll(sel)].map((m) => m.getAttribute('content'));
+
+  it.each(PUBLIC_PAGES.map((p) => [p.path]))('%s has one title, description and canonical, and matching OG and Twitter tags', (path) => {
+    const d = dom(file(path));
+    expect(d.querySelectorAll('head > title')).toHaveLength(1); // (an inline SVG may carry its own <title>)
+    const title = d.title;
+    expect(title.length).toBeGreaterThan(0);
+    expect(title.length).toBeLessThanOrEqual(60);
+    const [desc] = meta(d, 'meta[name="description"]');
+    expect(meta(d, 'meta[name="description"]')).toHaveLength(1);
+    expect(desc!.length).toBeGreaterThanOrEqual(150);
+    expect(desc!.length).toBeLessThanOrEqual(160);
+    const canon = [...d.querySelectorAll('link[rel="canonical"]')].map((l) => l.getAttribute('href'));
+    expect(canon).toEqual([`${SITE}${path}`]);
+    expect(meta(d, 'meta[property="og:title"]')).toEqual([title]);
+    expect(meta(d, 'meta[property="og:description"]')).toEqual([desc]);
+    expect(meta(d, 'meta[property="og:url"]')).toEqual([`${SITE}${path}`]);
+    expect(meta(d, 'meta[property="og:type"]')).toEqual(['website']);
+    expect(meta(d, 'meta[property="og:image"]')).toEqual([`${SITE}/og-image.png`]);
+    expect(meta(d, 'meta[property="og:image:width"]')).toEqual(['1200']);
+    expect(meta(d, 'meta[property="og:image:height"]')).toEqual(['630']);
+    expect(meta(d, 'meta[name="twitter:card"]')).toEqual(['summary_large_image']);
+    expect(meta(d, 'meta[name="twitter:title"]')).toEqual([title]);
+    expect(meta(d, 'meta[name="twitter:description"]')).toEqual([desc]);
+    expect(meta(d, 'meta[name="robots"]')).toEqual([]);
+  });
+
+  it('the landing JSON-LD parses, has the three types, and its FAQ equals the visible FAQ', () => {
+    const { blocks, errors } = stripJsonLd(html('index.html'));
+    expect(errors).toEqual([]);
+    expect(blocks).toHaveLength(1);
+    const graph = (blocks[0] as { '@graph': Record<string, unknown>[] })['@graph'];
+    expect(graph.map((n) => n['@type'])).toEqual(['Organization', 'SoftwareApplication', 'FAQPage']);
+    const faq = (graph[2]!.mainEntity as { '@type': string; name: string; acceptedAnswer: { '@type': string; text: string } }[]);
+    const visible = [...dom('index.html').querySelectorAll('#faq details')].map((d) => [
+      d.querySelector('summary')!.textContent!.replace(/\s+/g, ' ').trim(),
+      d.querySelector('p')!.textContent!.replace(/\s+/g, ' ').trim(),
+    ]);
+    expect(visible.length).toBeGreaterThanOrEqual(5);
+    expect(faq.map((q) => [q.name, q.acceptedAnswer.text])).toEqual(visible);
+    for (const q of faq) expect([q['@type'], q.acceptedAnswer['@type']]).toEqual(['Question', 'Answer']);
+  });
+
+  it('no other page carries a script element for structured data', () => {
+    for (const p of [...PUBLIC_PAGES.map((x) => file(x.path)), 'app/index.html'].filter((f) => f !== 'index.html')) {
+      expect(html(p), p).not.toContain('application/ld+json');
+    }
+  });
+
+  it('robots.txt, sitemap.xml and og-image.png are in the build output; /app/ is noindex and not in the sitemap', () => {
+    for (const f of ['robots.txt', 'sitemap.xml', 'og-image.png']) expect(existsSync(join(out, f)), f).toBe(true);
+    expect(html('robots.txt')).toContain('Disallow: /app/');
+    expect(html('robots.txt')).toContain(`Sitemap: ${SITE}/sitemap.xml`);
+    const sm = new DOMParser().parseFromString(html('sitemap.xml'), 'application/xml');
+    expect(sm.querySelector('parsererror')).toBeNull();
+    expect([...sm.getElementsByTagName('loc')].map((l) => l.textContent)).toEqual(PUBLIC_PAGES.map((p) => `${SITE}${p.path}`));
+    expect(html('sitemap.xml')).not.toContain('/app');
+    const app = dom('app/index.html');
+    expect(meta(app, 'meta[name="robots"]')).toEqual(['noindex']);
+    expect(app.querySelector('link[rel="canonical"]')).toBeNull();
   });
 });

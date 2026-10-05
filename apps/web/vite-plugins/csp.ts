@@ -5,6 +5,7 @@
  * (frame-ancestors only works as a real header).
  */
 import { LANDING_PERMISSIONS_POLICY, SECURITY_HEADERS } from './security-headers.ts';
+import { stripJsonLd } from '../scripts/csp-check.mjs';
 
 /** Extra sources allowed only on the landing document (add-privacy-preserving-analytics D3). */
 export interface CspExtras {
@@ -30,7 +31,10 @@ export function buildCsp(connectOrigins: readonly string[], extras: CspExtras = 
 }
 
 export function injectCsp(html: string, connectOrigins: readonly string[], extras: CspExtras = {}): string {
-  if (/<script(?![^>]*\bsrc=)[^>]*>/i.test(html)) {
+  // improve-landing-seo D6: a JSON-LD data block is never executed; it is the only inline <script> allowed.
+  const ld = stripJsonLd(html);
+  if (ld.errors.length) throw new Error(`index.html has an invalid JSON-LD block (${ld.errors.join('; ')}); the CSP forbids inline scripts`);
+  if (/<script(?![^>]*\bsrc=)[^>]*>/i.test(ld.html)) {
     throw new Error('index.html contains an inline <script>; the CSP forbids inline scripts');
   }
   if (/\sstyle=|<style[\s>]/i.test(html)) {
