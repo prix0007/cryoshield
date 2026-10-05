@@ -182,6 +182,15 @@ test('detect: different commit, 404, invalid JSON, bad commit field, or unreacha
   assert.match(r.output, /^deploy=true$/m);
 });
 
+test('detect: reports whether a site is live (live=true only for a valid /release.json commit) (deploy-skip-when-unconfigured)', async () => {
+  site = { ...healthySite(), release: { status: 200, body: JSON.stringify({ commit: OTHER }) } };
+  assert.match((await run('detect.sh', { TARGET_SHA: SHA })).output, /^live=true$/m);
+  for (const release of [{ status: 404, body: '' }, { status: 200, body: JSON.stringify({ commit: 'zz' }) }]) {
+    site = { ...healthySite(), release };
+    assert.match((await run('detect.sh', { TARGET_SHA: SHA })).output, /^live=false$/m, JSON.stringify(release));
+  }
+});
+
 test('detect: a run whose commit is no longer main HEAD is superseded (deploy=false), even when forced', async () => {
   site = { ...healthySite(), release: { status: 404, body: '' } };
   for (const FORCE of ['false', 'true']) {

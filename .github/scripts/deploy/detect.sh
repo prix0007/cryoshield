@@ -5,7 +5,7 @@
 #
 # env: TARGET_SHA (40-hex, required), BASE_URL (default https://cryoshield.app), FORCE (true|false),
 #      MAIN_SHA (current main HEAD; a different value means superseded), PREVIOUSLY_FAILED (true|false)
-# out: deploy=true|false to $GITHUB_OUTPUT (and stdout)
+# out: deploy=true|false, and (when the site was checked) live=true|false, to $GITHUB_OUTPUT (and stdout)
 set -euo pipefail
 
 BASE_URL="${BASE_URL:-https://cryoshield.app}"
@@ -48,6 +48,8 @@ if body="$(curl -fsS --max-time 20 --retry 2 --retry-delay 2 "$BASE_URL/release.
 fi
 [[ "$live" =~ ^[0-9a-f]{40}$ ]] || live=""
 
+# Whether a site is live at all: check-config.sh fails (instead of skipping) when config goes missing after go-live.
+if [ -n "$live" ]; then emit "live=true"; else emit "live=false"; fi
 if [ "$live" = "$TARGET_SHA" ]; then
   echo "detect: $BASE_URL already serves $TARGET_SHA; nothing to deploy"
   emit "deploy=false"

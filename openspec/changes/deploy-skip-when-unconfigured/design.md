@@ -30,7 +30,29 @@ Runs that already failed before this change only affect their own commit. Mergin
 
 The token is only readable inside the approved `production` job, so it can't be checked earlier without an approval. `previous-image.sh` runs first after approval, and now fails with a clear `deploy not configured` error before any flyctl call. No release-job run step changed, so the digest pins are unchanged.
 
+### 6. A live site with missing config: louder warning, still no failure
+
+The security review (MEDIUM) suggested failing when config goes missing after go-live, so that a lost variable can't silently stop releases, security fixes included. But the site *is* live today: `/release.json` serves `d1b1dfc`, deployed outside the pipeline, while `production-build` has never been configured. Failing in that state would keep `main` red, which is exactly what this change fixes.
+
+So `detect` now outputs `live`, and the warning then says "A release is live, but NEW COMMITS ARE NOT BEING RELEASED". **Follow-up:** once the founder has configured `production-build`, a later change can turn this case into a failure.
+
 ## Risks / Trade-offs
 
 - While unconfigured, each run shows a warning annotation but no failure. Someone who doesn't look at warnings may not notice that nothing deploys. `docs/deploy.md` and the job summary say so.
 - `vars.X != ''` treats a whitespace-only value as present. `write-env.sh` still rejects bad values in `build`, which fails loudly, and that is correct for a real misconfiguration.
+
+## Security review (task 4.1)
+
+**Reviewer:** the security-reviewer agent, read-only, 2026-10-05. **Verdict: APPROVE.**
+
+The reviewer confirmed:
+- no secret value reaches the config step (it gets only `true`/`false`);
+- the policy exception is tight: `&& secrets.X`, `format()`, `toJSON(secrets)`, `== 'guess'`, `secrets['X']`, two expressions in one value, other step ids and environment `production` are all refused;
+- the skip path can't deploy without CI and can't hide a broken check (a malformed flag exits 2);
+- skipped runs are not counted as failed, so retries work.
+
+| # | Finding | Resolution |
+|---|---|---|
+| MEDIUM | Config deleted after go-live stops releases while every run stays green. | Partly addressed: `detect` outputs `live`, and the warning then says new commits are NOT being released. A hard failure is deferred until `production-build` is configured, since the site is live today and failing would keep `main` red (decision 6). |
+| LOW (pre-existing) | `exprsOf` ended an expression at the first `}}`, even inside a quoted string, so `${{ 'a}}' != '' \|\| secrets.X }}` slipped past every secret check. | New quote-aware `exprMatches`, used by all four scanners. Regression tests cover `deploy.yml` and a PR-triggered workflow. |
+| LOW | The bypass variants had no regression tests. | Added as negative tests in `deploy-config.test.mjs`. |

@@ -58,6 +58,7 @@ jobs:
       actions: read # earlier Deploy runs of this commit (do not retry a failed run every 15 minutes)
     outputs:
       deploy: ${{ steps.detect.outputs.deploy }}
+      live: ${{ steps.detect.outputs.live }}
       sha: ${{ github.sha }}
     steps:
       - name: Checkout (deploy scripts only)
@@ -110,6 +111,7 @@ jobs:
       - name: Check the production build configuration (names only)
         id: config
         env:
+          LIVE: ${{ needs.detect.outputs.live }}
           HAS_VITE_CHAIN_ID: ${{ vars.VITE_CHAIN_ID != '' }}
           HAS_VITE_RPC_URL: ${{ vars.VITE_RPC_URL != '' }}
           HAS_VITE_BUNDLER_URL: ${{ secrets.VITE_BUNDLER_URL != '' }}

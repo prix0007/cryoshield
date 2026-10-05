@@ -104,11 +104,30 @@ const UNCONDITIONAL = /\b(always|failure|cancelled)\s*\(/;
 const norm = (s) => String(s ?? '').replace(/\s+/g, ' ').trim();
 // Full-line shell comments only; anything after code on a line is still checked (fails closed).
 const withoutComments = (run) => String(run).split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
+// `${{ ... }}` expressions in a string, as [whole, body] pairs. Quote-aware: a `}}` inside a single-quoted string
+// literal (where '' escapes a quote) does not end the expression, so `${{ 'a}}' || secrets.X }}` is one expression
+// (deploy-skip-when-unconfigured, security review LOW). An unterminated expression runs to the end of the string.
+export function exprMatches(s) {
+  const out = [];
+  const text = String(s);
+  let i = text.indexOf('${{');
+  while (i >= 0) {
+    let j = i + 3;
+    let quoted = false;
+    for (; j < text.length; j++) {
+      if (text[j] === "'") quoted = !quoted;
+      else if (!quoted && text.startsWith('}}', j)) break;
+    }
+    out.push([text.slice(i, j + 2), text.slice(i + 3, j)]);
+    i = text.indexOf('${{', j + 2);
+  }
+  return out;
+}
 const hasSecret = (node) =>
-  strings(node).some((s) => [...s.matchAll(/\$\{\{([\s\S]*?)\}\}/g)].some((m) => /\bsecrets\b/i.test(m[1])));
+  strings(node).some((s) => exprMatches(s).some((m) => /\bsecrets\b/i.test(m[1])));
 const onlyGithubToken = (node) =>
   strings(node).every((s) =>
-    [...s.matchAll(/\$\{\{([\s\S]*?)\}\}/g)].every((m) => !/\bsecrets\b/i.test(m[1]) || /^\s*secrets\.GITHUB_TOKEN\s*$/.test(m[1])),
+    exprMatches(s).every((m) => !/\bsecrets\b/i.test(m[1]) || /^\s*secrets\.GITHUB_TOKEN\s*$/.test(m[1])),
   );
 export const runDigest = (run) => createHash('sha256').update(String(run)).digest('hex');
 const ENV_REF = /^\$\{\{\s*env\.([A-Z0-9_]+)\s*\}\}$/;
@@ -400,7 +419,7 @@ export function checkWorkflow(file, text) {
   if (on.includes('pull_request') || [...FORBIDDEN_TRIGGERS, ...PRIVILEGED_TRIGGERS].some((t) => on.includes(t))) {
     // Any use of the secrets context inside an expression, whatever the case or form (secrets.X, secrets['X'],
     // toJSON(secrets), SECRETS.X), plus `secrets: inherit` (security review MEDIUM-3).
-    const exprs = strings(wf).flatMap((s) => [...s.matchAll(/\$\{\{([\s\S]*?)\}\}/g)].map((m) => m[1]));
+    const exprs = strings(wf).flatMap((s) => exprMatches(s).map((m) => m[1]));
     const hits = [...exprs.filter((e) => /\bsecrets\b/i.test(e)), ...strings(wf).filter((s) => s === 'inherit')];
     if (hits.length) errors.push(`${file}: secrets must not be referenced in a PR-triggered workflow (${hits.length} reference(s))`);
   }
@@ -437,7 +456,7 @@ const DEPLOY_SECRET_PRESENCE = { config: ['VITE_BUNDLER_URL'] };
 // Jobs holding the Fly token run no build tooling or third-party code (review H1).
 const TOKEN_JOB_ACTIONS = [/^actions\/checkout@[0-9a-f]{40}$/, /^actions\/download-artifact@[0-9a-f]{40}$/];
 const BUILD_TOOLING = /(^|[\s;&|(`!/])(node|npm|npx|pnpm|yarn|bunx?|deno|vite|tsx|python3?|pip3?|uvx?|make|docker)\b/m;
-const exprsOf = (node) => strings(node).flatMap((s) => [...s.matchAll(/\$\{\{([\s\S]*?)\}\}/g)].map((m) => m[1]));
+const exprsOf = (node) => strings(node).flatMap((s) => exprMatches(s).map((m) => m[1]));
 const usesSecret = (node, re = /\bsecrets\b/i) => exprsOf(node).some((e) => re.test(e) && !/^\s*secrets\.GITHUB_TOKEN\s*$/i.test(e));
 
 // Split a job condition into its top-level `&&` conjuncts (parentheses respected) and report any top-level `||`/`or`,

@@ -50,6 +50,18 @@ test('partially configured (only the bundler secret missing): also skips with a 
   assert.doesNotMatch(r.stdout, /VITE_RP_ID/);
 });
 
+test('security review MEDIUM: config missing while a site is live says new commits are NOT released (still no failure: design D6)', () => {
+  const r = run({ ...allTrue(), HAS_VITE_RP_ID: 'false', LIVE: 'true' });
+  assert.equal(r.status, 0);
+  assert.equal(r.output.trim(), 'configured=false');
+  assert.match(r.stdout, /::warning title=deploy not configured::A release is live, but NEW COMMITS ARE NOT BEING RELEASED[^\n]*VITE_RP_ID/);
+  assert.match(r.summary, /NEW COMMITS ARE NOT BEING RELEASED/);
+  assert.doesNotMatch(run({ ...allTrue(), HAS_VITE_RP_ID: 'false', LIVE: 'false' }).stdout, /NOT BEING RELEASED/);
+  assert.equal(run({ ...allTrue(), HAS_VITE_RP_ID: 'false', LIVE: 'false' }).status, 0);
+  assert.equal(run({ ...allTrue(), HAS_VITE_RP_ID: 'false', LIVE: '' }).status, 0);
+  assert.equal(run({ ...allTrue(), LIVE: 'maybe' }).status, 2);
+});
+
 test('a missing or malformed HAS_* flag is a workflow bug: fail loudly instead of skipping forever', () => {
   const { HAS_VITE_RP_ID, ...rest } = allTrue();
   assert.equal(run(rest).status, 2);
@@ -64,7 +76,8 @@ test('config job: production-build, before the full CI, presence flags only (nev
   const step = job.steps.find((s) => s.id === 'config');
   assert.match(String(step.run), /check-config\.sh/);
   const env = step.env;
-  assert.deepEqual(Object.keys(env).sort(), REQUIRED.map((k) => `HAS_${k}`).sort());
+  assert.deepEqual(Object.keys(env).sort(), ['LIVE', ...REQUIRED.map((k) => `HAS_${k}`)].sort());
+  assert.equal(env.LIVE, '${{ needs.detect.outputs.live }}');
   for (const k of REQUIRED) {
     const src = k === 'VITE_BUNDLER_URL' ? 'secrets' : 'vars';
     assert.equal(env[`HAS_${k}`], `\${{ ${src}.${k} != '' }}`, k);
@@ -93,4 +106,32 @@ test('policy: the bundler secret may appear only as a presence check in the conf
 test('detect counts only failed runs as "previously failed": a skipped (unconfigured) run concludes success', () => {
   const detectRun = String(wf.jobs.detect.steps.find((s) => s.id === 'detect').run);
   assert.match(detectRun, /--status failure/);
+});
+
+test('security review LOW: secret-expression variants are refused (presence form only, config step only, production-build only)', () => {
+  const line = "HAS_VITE_BUNDLER_URL: ${{ secrets.VITE_BUNDLER_URL != '' }}";
+  assert.ok(deploy.includes(line));
+  for (const variant of [
+    "HAS_VITE_BUNDLER_URL: ${{ secrets.VITE_BUNDLER_URL != '' && secrets.VITE_BUNDLER_URL }}",
+    "HAS_VITE_BUNDLER_URL: ${{ format('{0}', secrets.VITE_BUNDLER_URL) != '' }}",
+    "HAS_VITE_BUNDLER_URL: ${{ toJSON(secrets) != '' }}",
+    "HAS_VITE_BUNDLER_URL: ${{ secrets.VITE_BUNDLER_URL == 'guess' }}",
+    "HAS_VITE_BUNDLER_URL: ${{ secrets['VITE_BUNDLER_URL'] != '' }}",
+    "HAS_VITE_BUNDLER_URL: ${{ secrets.VITE_BUNDLER_URL != '' }}${{ secrets.VITE_BUNDLER_URL }}",
+    // A `}}` inside a quoted string must not end the expression early (pre-existing scanner bug).
+    "HAS_VITE_BUNDLER_URL: ${{ 'a}}' != '' || secrets.VITE_BUNDLER_URL }}",
+  ]) {
+    const e = checkWorkflow('workflows/deploy.yml', deploy.replace(line, variant));
+    assert.ok(e.some((m) => /secret/i.test(m)), variant);
+  }
+  const otherStep = deploy.replace('        id: config\n', '        id: probe\n');
+  assert.notEqual(otherStep, deploy);
+  assert.ok(checkWorkflow('workflows/deploy.yml', otherStep).some((m) => /VITE_BUNDLER_URL/.test(m)));
+});
+
+test('security review LOW: a quoted }} cannot smuggle a secret past the scanner in any workflow', () => {
+  const ci = readFileSync(new URL('../../workflows/ci.yml', import.meta.url), 'utf8');
+  const bad = ci.replace('\nenv:\n', "\nenv:\n  X: ${{ 'a}}' != '' || secrets.SOME_SECRET }}\n");
+  assert.notEqual(bad, ci);
+  assert.ok(checkWorkflow('workflows/ci.yml', bad).some((m) => /secret/i.test(m)), 'quoted }} must not hide a secret');
 });
