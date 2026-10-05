@@ -42,8 +42,17 @@ export const decode = (s: string) => s.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+\d*);/g
   return ENTITIES[e.toLowerCase()] ?? m;
 });
 const escapeAttr = (s: string) => s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-// Plain text only: any '<' or '>' left after decoding entities is dropped, so the result can never form markup.
-const text = (html: string) => decode(html.replace(/<[^>]*>/g, '')).replace(/[<>]/g, '').replace(/\s+/g, ' ').trim();
+// Plain text only: tags are stripped to a fixed point before and after decoding entities, then any stray '<' or '>'
+// is dropped, so the result can never form markup.
+const stripTags = (html: string) => {
+  let out = html;
+  for (let prev = ''; prev !== out; ) {
+    prev = out;
+    out = out.replace(/<[^>]*>/g, '');
+  }
+  return out.replace(/[<>]/g, '');
+};
+const text = (html: string) => stripTags(decode(stripTags(html))).replace(/\s+/g, ' ').trim();
 
 const isNoindex = (html: string) => /<meta name="robots" content="[^"]*\bnoindex\b[^"]*"\s*\/?>/i.test(html);
 
