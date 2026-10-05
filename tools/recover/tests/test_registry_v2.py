@@ -440,14 +440,24 @@ def _derivation_cases() -> list[dict[str, Any]]:
     return list(vectors.load().get("vaultIdDerivation", []))
 
 
-@pytest.mark.skipif(not _derivation_cases(), reason="vaultIdDerivation vector not added yet (task 3.1)")
+def _hex(s: str) -> bytes:
+    return bytes.fromhex(s.removeprefix("0x"))
+
+
+def test_vault_id_derivation_vector_present() -> None:
+    """The pinned v1.json carries the v2 derivation cases (task 3.1); never skipped silently."""
+    assert len(_derivation_cases()) >= 1
+
+
 @pytest.mark.parametrize("case", _derivation_cases(), ids=lambda c: str(c.get("name", "case")))
 def test_vault_id_derivation_vector(case: dict[str, Any]) -> None:
     """keccak256(abi.encode(owner, salt)): an independent check of the shared vector (design D9)."""
-    owner = bytes.fromhex(case["owner"].removeprefix("0x"))
-    salt = h(case["salt"].removeprefix("0x"))
+    owner, salt = _hex(case["owner"]), _hex(case["salt"])
     assert len(owner) == 20 and len(salt) == 32
-    assert keccak256(bytes(12) + owner + salt) == h(case["vaultId"].removeprefix("0x"))
+    encoded = bytes(12) + owner + salt
+    if "abiEncoded" in case:
+        assert encoded == _hex(case["abiEncoded"])
+    assert keccak256(encoded) == _hex(case["vaultId"])
 
 
 def test_full_size_batch_splits_under_the_response_cap() -> None:
