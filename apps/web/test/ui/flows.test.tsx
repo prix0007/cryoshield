@@ -199,6 +199,20 @@ void openVault;
 void act;
 void waitFor;
 
+describe('harden-gas-sponsorship: v2 is authoritative', () => {
+  it('when v2 can’t be confirmed, unlock opens nothing and says it couldn’t confirm the latest version', async () => {
+    const u = userEvent.setup();
+    const { RegistryUnconfirmedError } = await import('../../src/chain/registry');
+    vi.spyOn(unlockMod, 'unlock').mockRejectedValue(new RegistryUnconfirmedError('v2 down'));
+    renderApp();
+    await u.click(screen.getByRole('button', { name: 'Unlock my vault' }));
+    await u.click(screen.getByRole('button', { name: 'Unlock with my key' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('We couldn’t confirm the latest version of your vault');
+    expect(screen.queryByRole('heading', { name: 'Your vault', exact: true } as never)).toBeNull();
+    expect(screen.queryByText('We couldn’t find a vault for this key.')).toBeNull();
+  });
+});
+
 describe('harden-gas-sponsorship: a VaultRegistry v1 vault opens read-only', () => {
   it('shows and copies secrets, offers details and download, but no Edit or Add key, with a plain notice', async () => {
     const u = userEvent.setup();

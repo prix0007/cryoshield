@@ -26,11 +26,17 @@ describe('gas (6.6)', () => {
     const reader = createRegistryReader(rpc);
     const sponsor = createSponsor(client);
     const items = [{ label: 'Seed', secret: 'x'.repeat(480) }];
-    const vid = ('0x' + 'a1'.repeat(32)) as Hex;
-    const { blob, locators } = await createVaultBlob({ vaultId: vid, rpId: 'localhost', keys: [{ credId: a.credId, prf: await f.prfFor(a.credId, locatorSalt()) }, { credId: b.credId, prf: await f.prfFor(b.credId, locatorSalt()) }], items });
+    const keyPrfs = [{ credId: a.credId, prf: await f.prfFor(a.credId, locatorSalt()) }, { credId: b.credId, prf: await f.prfFor(b.credId, locatorSalt()) }];
+    const { deriveLocator } = await import('@cryoshield/vault-crypto');
     f.use(0);
-    const acct = await newVaultAccount({ client, owners: [a, b], signerIndex: 0, expectedLocator: locators[0]!, credentials: f.credentials });
-    const created = await createVaultOnChain({ account: acct, build: async () => ({ blob, locators: locators.map(toHex) }) }, { client, sponsor, reader, randomId: () => vid });
+    const acct = await newVaultAccount({ client, owners: [a, b], signerIndex: 0, expectedLocator: deriveLocator(keyPrfs[0]!.prf), credentials: f.credentials });
+    let blob = new Uint8Array();
+    let locators: Uint8Array[] = [];
+    const created = await createVaultOnChain(
+      { account: acct, build: async (vaultId) => ((({ blob, locators } = await createVaultBlob({ vaultId, rpId: 'localhost', keys: keyPrfs.map((k) => ({ ...k, prf: k.prf.slice() })), items }))), { blob, locators: locators.map(toHex) }) },
+      { client, sponsor, reader },
+    );
+    const vid = created.vaultId;
     const edited = await editVaultBlob(blob, await f.prfFor(a.credId, locatorSalt()), vid, items);
     const acct2 = await existingVaultAccount({ client, address: created.owner, entryIndex: 0, credId: a.credId, expectedLocator: locators[0]!, credentials: f.credentials });
     const up = await updateVaultOnChain({ account: acct2, vaultId: created.vaultId, blob: edited }, { client, sponsor, reader });

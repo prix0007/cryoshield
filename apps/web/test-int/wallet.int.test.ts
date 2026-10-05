@@ -79,3 +79,36 @@ describe('4.1: viem CBSW encoding with a custom factory (design D8)', () => {
     expect(await client.readContract({ address: account.address, abi: owners, functionName: 'ownerAtIndex', args: [2n] })).toBe(c.publicKey);
   });
 });
+
+describe('5.1: the real CryoShieldSmartWalletFactory (contracts.wallets.localhost)', () => {
+  it('newVaultAccount’s address equals the factory’s getAddress; the account deploys there and signs with UV required', async () => {
+    const { config } = await import('virtual:cryoshield-config');
+    const { newVaultAccount } = await import('../src/account/account');
+    const client = makePublicClient(rpc);
+    const f = new FakeAuthenticators();
+    f.addKey();
+    f.addKey();
+    f.addKey();
+    f.use(0);
+    const a = await enrollKey({ rpId: 'localhost', rpName: 'x', label: 'a', exclude: [] }, f.credentials);
+    f.use(1);
+    const b = await enrollKey({ rpId: 'localhost', rpName: 'x', label: 'b', exclude: [a.credId] }, f.credentials);
+    f.use(2);
+    const c = await enrollKey({ rpId: 'localhost', rpName: 'x', label: 'c', exclude: [] }, f.credentials);
+    f.use(0);
+    const expectedLocator = deriveLocator(await f.prfFor(a.credId, locatorSalt()));
+    const account = await newVaultAccount({ client, owners: [a, b], signerIndex: 0, expectedLocator, credentials: f.credentials });
+    const viaFactory = await client.readContract({ address: config.wallet.factory, abi: walletFactoryAbi, functionName: 'getAddress', args: [[a.publicKey, b.publicKey], 0n] });
+    expect(account.address).toBe(viaFactory);
+    const x = `0x${c.publicKey.slice(2, 66)}` as Hex;
+    const y = `0x${c.publicKey.slice(66)}` as Hex;
+    const r = await createSponsor(client).send(account, [
+      { to: account.address, value: 0n, data: encodeFunctionData({ abi: smartWalletAbi, functionName: 'addOwnerPublicKey', args: [x, y] }) },
+    ]);
+    expect(r.success).toBe(true);
+    const impl = await client.getStorageAt({ address: account.address, slot: IMPL_SLOT });
+    expect(getAddress(`0x${impl!.slice(26)}`)).toBe(getAddress(config.wallet.implementation));
+    const sign = f.calls.filter((call) => call.kind === 'get').at(-1)!;
+    expect((sign.options as { publicKey: PublicKeyCredentialRequestOptions }).publicKey.userVerification).toBe('required');
+  });
+});

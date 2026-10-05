@@ -51,6 +51,6 @@ describe('chain ID guard against a real node on the wrong chain', () => {
 
   it('the correctly configured node passes', async () => {
     const r = createRegistryReader(http('http://127.0.0.1:8545'));
-    expect(await r.resolveLocator(('0x' + '12'.repeat(32)) as `0x${string}`)).toEqual([]);
+    expect(await r.candidatesFor(('0x' + '12'.repeat(32)) as `0x${string}`)).toEqual([]);
   });
 });

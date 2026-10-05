@@ -50,7 +50,8 @@ export const smartWalletAbi = parseAbi([
   'function execute(address target, uint256 value, bytes data) payable',
   'function executeBatch((address target, uint256 value, bytes data)[] calls) payable',
   'function addOwnerPublicKey(bytes32 x, bytes32 y)',
-  'function addOwnerAddress(address owner)',
+  // CryoShieldSmartWallet: always reverts (P-256 owners only), hence pure. Only encoded to test the allowlist refuses it.
+  'function addOwnerAddress(address owner) pure',
   'function removeOwnerAtIndex(uint256 index, bytes owner)',
   'function ownerAtIndex(uint256 index) view returns (bytes)',
   'function nextOwnerIndex() view returns (uint256)',

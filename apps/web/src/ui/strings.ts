@@ -107,6 +107,7 @@ export const S = {
       'This is unusual. Each of these vaults was created with this key. If you don’t recognise one, open the other, and keep using that one.',
     vaultChoice: (i: number, version: number) => `Vault ${i + 1} (saved ${version} time${version === 1 ? '' : 's'})`,
     networkError: 'We couldn’t reach the network. Check your connection and try again.',
+    unconfirmed: 'We couldn’t confirm the latest version of your vault, so we didn’t open it. Check your connection and try again.',
   },
 
   vault: {

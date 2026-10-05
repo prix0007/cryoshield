@@ -4,6 +4,11 @@
  * harden-gas-sponsorship (spec vault-registry "Registry versions coexist"): reads query VaultRegistry v2 (paged
  * `resolveLocator`, batched `getVaults`), then the legacy v1 where the chain has one, and treat the candidates as one
  * list. Writes go to v2 only (src/account/writes.ts).
+ *
+ * v2 is authoritative per vaultId. v1 accepts caller-chosen ids, so anyone can register a v2 vault's id in v1 with a
+ * stale, still-decryptable copy. Every v1 id is therefore checked against v2: if v2 has it, the v1 copy is ignored.
+ * If v2 can't be confirmed (an RPC error, or v2 contradicting itself), the read fails with RegistryUnconfirmedError;
+ * it never falls back to v1.
  */
 import { createPublicClient, http, type Abi, type Hex, type Transport } from 'viem';
 import { config, registryV1Abi } from '../config';
@@ -30,6 +35,11 @@ export function defaultTransport(): Transport {
   return http(config.rpcUrl, { timeout: 15_000, retryCount: 2 });
 }
 
+export class RegistryUnconfirmedError extends Error {
+  override name = 'RegistryUnconfirmedError';
+}
+
+const lower = (id: Hex) => id.toLowerCase();
 const unique = (ids: readonly Hex[]) => [...new Map(ids.map((id) => [id.toLowerCase(), id])).values()];
 
 function candidate(registry: RegistryVersion, vaultId: Hex, owner: Hex, blob: Hex, version: number | bigint): Candidate | null {
@@ -72,8 +82,12 @@ export function createRegistryReader(transport: Transport = defaultTransport()) 
     return ids.slice(0, V1_LOCATOR_CAP);
   }
 
-  /** v2 candidates in batches of at most GET_VAULTS_MAX ids (the registry reverts above that). */
-  async function vaultsV2(ids: readonly Hex[]): Promise<Candidate[]> {
+  /**
+   * v2 records in batches of at most GET_VAULTS_MAX ids (the registry reverts above that). `listed`: the ids came from
+   * v2's own index, so each must have a valid record. Otherwise (checking v1 ids), an empty record means "not in v2".
+   * Anything v2 can't answer consistently is RegistryUnconfirmedError.
+   */
+  async function vaultsV2(ids: readonly Hex[], listed: boolean): Promise<Candidate[]> {
     const out: Candidate[] = [];
     for (let i = 0; i < ids.length; i += GET_VAULTS_MAX) {
       const batch = ids.slice(i, i + GET_VAULTS_MAX);
@@ -82,13 +96,26 @@ export function createRegistryReader(transport: Transport = defaultTransport()) 
         blob: Hex;
         version: number;
       }[];
+      if (rows.length !== batch.length) throw new RegistryUnconfirmedError('VaultRegistry v2 returned a different number of vaults');
       rows.forEach((r, j) => {
+        const absent = r.owner === ZERO;
+        if (absent && !listed) return;
         const c = candidate('v2', batch[j]!, r.owner, r.blob, r.version);
-        if (c) out.push(c);
+        if (!c) throw new RegistryUnconfirmedError('VaultRegistry v2 lists a vault it has no valid record for');
+        out.push(c);
       });
     }
     return out;
   }
+
+  const confirmV2 = async <T>(f: () => Promise<T>): Promise<T> => {
+    try {
+      return await f();
+    } catch (e) {
+      if (e instanceof RegistryUnconfirmedError) throw e;
+      throw new RegistryUnconfirmedError('VaultRegistry v2 could not be read', { cause: e });
+    }
+  };
 
   async function getVault(vaultId: Hex, registry: RegistryVersion = 'v2'): Promise<Candidate | null> {
     await ready();
@@ -97,13 +124,22 @@ export function createRegistryReader(transport: Transport = defaultTransport()) 
     return candidate(registry, vaultId, owner, blob, version);
   }
 
-  /** v2 is queried first, then v1; the list is oldest first (v1 entries predate every v2 entry). */
+  /**
+   * v2 is queried first, then v1; the list is oldest first (v1 entries predate every v2 entry). A v1 id that v2 also
+   * has yields v2's record only (authoritative), whichever locator v2 lists it under.
+   */
   async function candidatesFor(locator: Hex): Promise<Candidate[]> {
     await ready();
-    const fromV2 = await vaultsV2(unique(await resolveV2(locator)));
+    const idsV2 = await confirmV2(async () => unique(await resolveV2(locator)));
+    const fromV2 = await confirmV2(() => vaultsV2(idsV2, true));
     const idsV1 = unique(await resolveV1(locator));
-    const fromV1 = (await Promise.all(idsV1.map((id) => getVault(id, 'v1')))).filter((c): c is Candidate => c !== null);
-    return [...fromV1, ...fromV2];
+    const known = new Set(idsV2.map(lower));
+    const unseen = idsV1.filter((id) => !known.has(lower(id)));
+    const shadowed = await confirmV2(() => vaultsV2(unseen, false));
+    const inV2 = new Set(shadowed.map((c) => lower(c.vaultId)));
+    const v1Only = unseen.filter((id) => !inV2.has(lower(id)));
+    const fromV1 = (await Promise.all(v1Only.map((id) => getVault(id, 'v1')))).filter((c): c is Candidate => c !== null);
+    return [...fromV1, ...shadowed, ...fromV2];
   }
 
   /** The v2 vault an account owns (zero if none). Accounts never write to v1. */

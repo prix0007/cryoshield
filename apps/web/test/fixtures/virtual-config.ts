@@ -8,7 +8,8 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import abi from '../../../../contracts/abi/VaultRegistry.json';
 
-const record = JSON.parse(readFileSync(join(__dirname, '..', '..', '..', '..', 'contracts', 'deployments', '31337.json'), 'utf8')) as {
+const contractsDir = process.env.CRYOSHIELD_CONTRACTS_DIR ?? join(__dirname, '..', '..', '..', '..', 'contracts');
+const record = JSON.parse(readFileSync(join(contractsDir, 'deployments', '31337.json'), 'utf8')) as {
   address?: `0x${string}`;
   deployBlock?: number;
   contracts?: {

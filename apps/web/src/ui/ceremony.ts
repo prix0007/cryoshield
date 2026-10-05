@@ -11,6 +11,7 @@ const TITLES: [string, readonly (string | undefined)[]][] = [
   ['Request cancelled', [S.keyErrors.CANCELLED, S.enrollCancelled]],
   ['Saving is paused', [S.save.paused, S.save.pausedCreate]],
   ['Can’t reach the network', [S.unlock.networkError]],
+  ['Couldn’t confirm the latest version', [S.unlock.unconfirmed]],
   ['Wrong network', [S.wrongNetwork]],
   ['Site set up incorrectly', [S.misconfigured, S.keyErrors.MISCONFIGURED]],
   ['Setup needs your keys again', [S.create.idleReset]],

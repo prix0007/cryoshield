@@ -3,8 +3,10 @@
  *   anvil (chain 31337)
  *   + canonical EntryPoint v0.6 / SenderCreator / Coinbase Smart Wallet v1.1 runtime code (anvil_setCode, from
  *     e2e/fixtures/chain-fixtures.json, read from OP Sepolia; byte-identical on Arbitrum)
- *   + VaultRegistry deployed exactly as contracts/script/deploy.sh does (CREATE2, same salt -> same address as
- *     contracts/deployments/31337.json)
+ *   + VaultRegistry v1 deployed exactly as contracts/script/deploy.sh does (CREATE2, same salt -> same address as
+ *     contracts/deployments/31337.json): legacy reads
+ *   + VaultRegistry v2 and the CryoShield wallet factory (+ implementation) for RP ID "localhost", deployed exactly
+ *     as contracts/script/DeployV2.s.sol does (harden-gas-sponsorship), checked against the same record
  *   + E2EPaymaster (accept-all, deposited in the EntryPoint)
  *   + a minimal dev bundler (ERC-4337 + ERC-7677 + pimlico_getUserOperationGasPrice JSON-RPC) on :4337.
  *
@@ -25,6 +27,7 @@ import {
   decodeErrorResult,
   decodeEventLog,
   decodeFunctionData,
+  encodeAbiParameters,
   encodeDeployData,
   encodeFunctionData,
   getAddress,
@@ -33,6 +36,7 @@ import {
   keccak256,
   parseAbi,
   parseEther,
+  sha256,
   toFunctionSelector,
   toHex,
   type Hex,
@@ -42,7 +46,10 @@ import { entryPoint06Abi } from 'viem/account-abstraction';
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = join(here, '..', '..', '..', '..');
 const fixtures = JSON.parse(readFileSync(join(here, '..', 'fixtures', 'chain-fixtures.json'), 'utf8'));
-const deployment = JSON.parse(readFileSync(join(repo, 'contracts', 'deployments', '31337.json'), 'utf8'));
+// The record may come from CRYOSHIELD_CONTRACTS_DIR (as for the Vite build); compiled artifacts always from the repo.
+const contractsDir = process.env.CRYOSHIELD_CONTRACTS_DIR ?? join(repo, 'contracts');
+const deployment = JSON.parse(readFileSync(join(contractsDir, 'deployments', '31337.json'), 'utf8'));
+export const RP_ID = 'localhost';
 
 export const ANVIL_PORT = 8545;
 export const BUNDLER_PORT = 4337;
@@ -88,7 +95,21 @@ async function send(tx: { from: Hex; to?: Hex; data?: Hex; value?: bigint; gas?:
   return receipt;
 }
 
-export async function setupContracts(): Promise<{ registry: Hex; paymaster: Hex }> {
+function bytecodeOf(name: string): Hex {
+  return JSON.parse(readFileSync(join(repo, 'contracts', 'out', `${name}.sol`, `${name}.json`), 'utf8')).bytecode.object as Hex;
+}
+
+/** CREATE2 through the canonical deployer, skipped when the code is already there (like the deploy scripts). */
+async function create2(salt: Hex, initCode: Hex, expected: string, what: string): Promise<Hex> {
+  const at = getContractAddress({ from: CREATE2_DEPLOYER, salt, bytecode: initCode, opcode: 'CREATE2' });
+  if (at.toLowerCase() !== expected.toLowerCase()) {
+    throw new Error(`${what} CREATE2 address ${at} != contracts/deployments/31337.json ${expected}; rebuild contracts (forge build) or redeploy the record`);
+  }
+  if (!(await pub.getCode({ address: at }))) await send({ from: DEPLOYER, to: CREATE2_DEPLOYER, data: concat([salt, initCode]), gas: 15_000_000n });
+  return at;
+}
+
+export async function setupContracts(): Promise<{ registry: Hex; registryV1: Hex; factory: Hex; paymaster: Hex }> {
   for (const k of ['entryPoint06', 'senderCreator06', 'cbswFactory11', 'cbswImplementation11']) {
     const f = fixtures[k];
     if (keccak256(f.code) !== f.codeHash) throw new Error(`fixture ${k} hash mismatch`);
@@ -111,6 +132,16 @@ export async function setupContracts(): Promise<{ registry: Hex; paymaster: Hex 
     await send({ from: DEPLOYER, to: CREATE2_DEPLOYER, data: concat([salt, initCode]), gas: 5_000_000n });
   }
 
+  // VaultRegistry v2 and the wallet pair for RP ID "localhost": identical to contracts/script/DeployV2.s.sol.
+  const v2 = deployment.contracts?.vaultRegistryV2;
+  const wallet = deployment.contracts?.wallets?.[RP_ID];
+  if (!v2 || !wallet) throw new Error(`contracts/deployments/31337.json has no contracts.vaultRegistryV2 / contracts.wallets.${RP_ID}: run contracts/script/deploy.sh for anvil`);
+  const registryV2 = await create2(keccak256(toHex('cryoshield.vault-registry.v2')), bytecodeOf('VaultRegistryV2'), v2.address, 'VaultRegistryV2');
+  const factoryInit = concat([bytecodeOf('CryoShieldSmartWalletFactory'), encodeAbiParameters([{ type: 'bytes32' }], [sha256(toHex(RP_ID), 'hex')])]) as Hex;
+  const factory = await create2(keccak256(toHex('cryoshield.wallet-factory.v1')), factoryInit, wallet.factory, 'CryoShieldSmartWalletFactory');
+  const impl = await pub.readContract({ address: factory, abi: parseAbi(['function implementation() view returns (address)']), functionName: 'implementation' });
+  if (impl.toLowerCase() !== String(wallet.implementation).toLowerCase()) throw new Error(`wallet implementation ${impl} != record ${wallet.implementation}`);
+
   const pmReceipt = await send({
     from: DEPLOYER,
     data: encodeDeployData({
@@ -127,7 +158,7 @@ export async function setupContracts(): Promise<{ registry: Hex; paymaster: Hex 
     data: encodeFunctionData({ abi: entryPoint06Abi, functionName: 'depositTo', args: [paymaster] }),
     value: parseEther('100'),
   });
-  return { registry, paymaster };
+  return { registry: registryV2, registryV1: registry, factory, paymaster };
 }
 
 // --- dev bundler -------------------------------------------------------------------------------------------
@@ -338,7 +369,10 @@ export function startBundler(registry: Hex, paymaster: Hex, port = BUNDLER_PORT)
 export interface Stack {
   anvil: ChildProcess;
   server: Server;
+  /** VaultRegistry v2 (all writes). */
   registry: Hex;
+  registryV1: Hex;
+  factory: Hex;
   paymaster: Hex;
   stop(): Promise<void>;
 }
@@ -348,13 +382,15 @@ export async function startStack(): Promise<Stack> {
     stdio: 'ignore',
   });
   await waitForRpc(RPC);
-  const { registry, paymaster } = await setupContracts();
+  const { registry, registryV1, factory, paymaster } = await setupContracts();
   const { server } = startBundler(registry, paymaster);
   await waitForRpc(`http://127.0.0.1:${BUNDLER_PORT}`);
   return {
     anvil,
     server,
     registry,
+    registryV1,
+    factory,
     paymaster,
     async stop() {
       server.close();
@@ -366,6 +402,6 @@ export async function startStack(): Promise<Stack> {
 // Standalone: `node e2e/stack/stack.ts` keeps the stack running for manual testing with `pnpm dev`.
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const s = await startStack();
-  console.log(`anvil ${RPC}, dev bundler http://127.0.0.1:${BUNDLER_PORT}, registry ${s.registry}, paymaster ${s.paymaster}`);
+  console.log(`anvil ${RPC}, dev bundler http://127.0.0.1:${BUNDLER_PORT}, registry v2 ${s.registry}, v1 ${s.registryV1}, factory ${s.factory}, paymaster ${s.paymaster}`);
   process.on('SIGINT', () => void s.stop().then(() => process.exit(0)));
 }

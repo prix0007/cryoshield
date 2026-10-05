@@ -3,6 +3,7 @@ import { decodeVault } from '@cryoshield/vault-crypto';
 import { unlock, UnlockError, type OpenedVault } from '../chain/unlock';
 import { KeyError } from '../webauthn';
 import { ChainMismatchError } from '../chain/guard';
+import { RegistryUnconfirmedError } from '../chain/registry';
 import { toHex } from '../lib/bytes';
 import { KeyPrompt, Notice, StepHeading } from './components';
 import { messageFor, type VaultSession } from './operations';
@@ -53,6 +54,7 @@ export function UnlockFlow(props: { onUnlocked: (u: Unlocked) => void; onCreate:
     } catch (e) {
       if (e instanceof UnlockError) setNotFound(true);
       else if (e instanceof KeyError || e instanceof ChainMismatchError) setError(messageFor(e));
+      else if (e instanceof RegistryUnconfirmedError) setError(S.unlock.unconfirmed);
       else setError(S.unlock.networkError);
     } finally {
       setBusy(false);

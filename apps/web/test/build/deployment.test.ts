@@ -168,3 +168,13 @@ describe('assertAbiCovers', () => {
     expect(() => assertAbiCovers(registryV2Abi, unindexed as Abi, 'x')).toThrow(/LocatorAdded/);
   });
 });
+
+describe('the committed records', () => {
+  it('contracts/deployments/31337.json has v1, v2 and the "localhost" wallet pair (local and E2E builds)', () => {
+    const dir = process.env.CRYOSHIELD_CONTRACTS_DIR ?? join(__dirname, '../../../../contracts');
+    const d = loadDeployment(dir, 31337, 'localhost');
+    expect(d.v1?.address).toMatch(/^0x[0-9a-fA-F]{40}$/);
+    expect(d.v2.address).toMatch(/^0x[0-9a-fA-F]{40}$/);
+    expect(d.wallet.factory).toMatch(/^0x[0-9a-fA-F]{40}$/);
+  });
+});
