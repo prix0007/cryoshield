@@ -78,7 +78,6 @@ def test_v2_selectors() -> None:
     assert abi.V2_MAX_IDS_PER_CALL == V2_GET_VAULTS_MAX == 32
 
 
-@pytest.mark.skipif(not ABI_V2.exists(), reason="contracts/abi/VaultRegistryV2.json not in this checkout yet")
 def test_v2_selectors_match_exported_abi() -> None:
     """The hand-written codec must match the ABI the contracts export (never edited here)."""
     items = {x["name"]: x for x in json.loads(ABI_V2.read_text()) if x["type"] in ("function", "event")}
@@ -227,11 +226,11 @@ def test_stuffed_locator_over_1000_entries_pages_and_batches() -> None:
         calls = c.v2_calls
     assert bytes(res.secret) == SECRET and res.candidate.vault_id == VID
     assert calls.pages and all(count <= 256 for _, _, count in calls.pages)
-    assert max(len([p for p in calls.pages if p[0] == LOC_A]), 0) == 5  # 1,201 entries -> 5 pages
+    assert len([p for p in calls.pages if p[0] == LOC_A]) == 5  # 1,201 entries -> 5 pages
     assert calls.batches and max(calls.batches) <= 32
 
 
-def test_paging_is_bounded_against_a_lying_length(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_paging_is_bounded_against_a_lying_length() -> None:
     """A hostile locatorLength (2**200) cannot make us page forever: bounded pages, a warning."""
     with FakeChain() as c:
         c.enable_v2()
@@ -274,14 +273,15 @@ def test_head_and_tail_pages_when_over_budget(monkeypatch: pytest.MonkeyPatch) -
     assert any("only part" in w for w in reg.warnings)
 
 
-def test_page_with_too_many_ids_is_discarded() -> None:
+def test_page_extra_ids_beyond_the_length_are_ignored() -> None:
+    """A page with more ids than the length allows is truncated (review #6); a page over 256 ids is a
+    lie and is discarded (test_page_decode_allows_256_not_257)."""
     with FakeChain() as c:
         c.enable_v2()
         c.add_vault_v2(VID, BLOB, [LOC_A])
         c.v2_page_extra = 3
         reg = registries(c, v1=False)
-        assert reg.resolve([LOC_A]) == []
-    assert any("resolveLocator" in w for w in reg.warnings)
+        assert reg.resolve([LOC_A]) == [VID]
 
 
 def test_get_vaults_wrong_count_is_discarded() -> None:
@@ -351,7 +351,7 @@ def test_old_blob_planted_in_v1_under_a_v2_id_is_demoted() -> None:
         cands = reg.fetch(reg.resolve([LOC_A, LOC_B]))
     by_src = {("v2" in x.origin): x for x in cands if x.vault_id == VID}
     assert by_src[True].blob == new and by_src[True].freshness is Freshness.CURRENT
-    assert by_src[False].blob == BLOB and by_src[False].freshness is Freshness.UNMATCHED
+    assert by_src[False].blob == BLOB and by_src[False].freshness is Freshness.OUTDATED
     assert any("SECURITY" in w and "v1" in w for w in reg.warnings)
 
 
@@ -460,9 +460,8 @@ def test_vault_id_derivation_vector(case: dict[str, Any]) -> None:
     assert keccak256(encoded) == _hex(case["vaultId"])
 
 
-def test_full_size_batch_splits_under_the_response_cap() -> None:
-    """32 x 1 KB blobs (~76 KB of hex) exceed the 64 KiB RPC response cap: the batch is halved, the cap
-    stays, and every vault is still read."""
+def test_full_size_batch_fits_in_one_call() -> None:
+    """LOW (review #8): 32 x 1 KB blobs (~76 KB of hex) fit getVaults' own response cap: no wasted call."""
     with FakeChain() as c:
         c.enable_v2()
         ids = [keccak256(b"big" + bytes([i])) for i in range(40)]
@@ -472,7 +471,7 @@ def test_full_size_batch_splits_under_the_response_cap() -> None:
         cands = reg.fetch(reg.resolve([LOC_A]))
         batches = c.v2_calls.batches
     assert len(cands) == 40
-    assert max(batches) == 32 and 16 in batches
+    assert batches == [32, 8]
 
 
 def test_recreated_v2_vault_opens_before_the_old_v1_vault() -> None:
@@ -502,3 +501,171 @@ def test_recreated_v2_vault_opens_before_the_old_v1_vault() -> None:
         c.add_vault_v2(v2_id, v2_blob, [LOC_A, LOC_B])
         assert bytes(run(cfg_v2(c)).secret) == b"new"
         assert bytes(run(cfg_v2(c, vault_id=VID)).secret) == SECRET
+
+
+# ------------------------------------------------------------------ PR #40 review fixes
+def _plant_setup(c: FakeChain) -> bytes:
+    """A genuine v2 vault updated to ``new``, and its OLD blob planted in v1 under the same id."""
+    new = h(UPDATE["expectedBlob"])
+    c.enable_v2()
+    c.add_vault_v2(VID, BLOB, [LOC_A, LOC_B])
+    c.update_vault_v2(VID, new)
+    c.add_vault(VID, BLOB, [LOC_A, LOC_B], owner="0x" + "66" * 20)
+    return new
+
+
+def test_v1_plant_is_not_current_when_the_v2_read_fails() -> None:
+    """HIGH (review #1): v2 getVaults fails, so only the v1 plant is fetched; v2's agreed history still
+    exposes it as an older version, never CURRENT."""
+    with FakeChain() as c:
+        _plant_setup(c)
+        c.v2_getvaults_error = True
+        reg = registries(c)
+        cands = reg.fetch(reg.resolve([LOC_A, LOC_B]))
+    (plant,) = [x for x in cands if x.vault_id == VID]
+    assert plant.blob == BLOB and plant.freshness is Freshness.OUTDATED
+    assert any("SECURITY" in w and "v1" in w for w in reg.warnings)
+
+
+def test_v1_plant_is_unverifiable_when_v2_read_and_history_fail() -> None:
+    with FakeChain() as c:
+        _plant_setup(c)
+        c.v2_getvaults_error = True
+        c.logs_error = True
+        reg = registries(c)
+        cands = reg.fetch(reg.resolve([LOC_A, LOC_B]))
+    (plant,) = [x for x in cands if x.vault_id == VID]
+    assert plant.freshness is Freshness.UNVERIFIABLE
+    assert any("SECURITY" in w and "could not be confirmed" in w for w in reg.warnings)
+
+
+def test_v1_plant_with_v2_withheld_warns_end_to_end() -> None:
+    """The user is told the copy is older; it is never presented as current."""
+    with FakeChain() as c:
+        _plant_setup(c)
+        c.v2_getvaults_error = True
+        res = run(cfg_v2(c))
+    assert res.candidate.freshness is Freshness.OUTDATED
+
+
+def test_legacy_v1_vault_keeps_its_classification() -> None:
+    """Agreed-empty v2 history: a genuine v1-only vault stays CURRENT."""
+    with FakeChain() as c:
+        c.enable_v2()
+        c.add_vault(VID, BLOB, [LOC_A, LOC_B])
+        reg = registries(c)
+        (cand,) = reg.fetch(reg.resolve([LOC_A, LOC_B]))
+    assert cand.freshness is Freshness.CURRENT
+
+
+def test_unverifiable_cross_registry_copies_force_a_choice() -> None:
+    """MEDIUM (review #4): with v2 history unconfirmed, support must not silently pick the v1 plant;
+    the user chooses (non-interactive runs stop with AMBIGUOUS)."""
+    with FakeChain() as a, FakeChain() as b:
+        _plant_setup(a)
+        b.enable_v2()  # b withholds the v2 vault but serves the v1 plant: plant support 2, v2 copy 1
+        b.add_vault(VID, BLOB, [LOC_A, LOC_B], owner="0x" + "66" * 20)
+        a.logs_error = b.logs_error = True
+        cfg = cfg_v2(a)
+        cfg.rpcs = [a.url, b.url]
+        ui = RecUI()
+        prf = FakePrfSource([PhysicalKey.named("A", "B")], ui=ui)
+        with pytest.raises(RecoveryError) as ei:
+            Recovery(cfg, prf, ui).run()
+    assert ei.value.exit_code == ExitCode.AMBIGUOUS
+    assert ui.choices and len(ui.choices[0]) == 2
+
+
+def test_slow_spamming_rpc_cannot_starve_the_honest_one(monkeypatch: pytest.MonkeyPatch) -> None:
+    """HIGH (review #2): a slow RPC claiming a huge list and serving junk pages next to an honest RPC.
+    resolve has its own budget (and a per-RPC, per-locator cap), so fetch still has time."""
+    monkeypatch.setattr(chain_mod, "RESOLVE_DEADLINE", 2.0)
+    monkeypatch.setattr(chain_mod, "LOCATOR_BUDGET", 0.8)
+    monkeypatch.setattr(chain_mod, "STATE_DEADLINE", 3.0)
+    with FakeChain() as slow, FakeChain() as honest:
+        slow.enable_v2()
+        slow.v2_spam_pages = True
+        slow.v2_length_override = 10**6
+        slow.v2_delay = 0.3
+        honest.enable_v2()
+        honest.add_vault_v2(VID, BLOB, [LOC_A, LOC_B])
+        cfg = cfg_v2(honest, v1=False)
+        cfg.rpcs = [slow.url, honest.url]
+        res = run(cfg)
+    assert bytes(res.secret) == SECRET and res.candidate.vault_id == VID
+
+
+def test_resolve_orders_ids_by_support_then_position() -> None:
+    """MEDIUM (review #3): a spamming first RPC cannot bury the honest id behind thousands of junk ids."""
+    with FakeChain() as spam, FakeChain() as honest:
+        spam.enable_v2()
+        spam.v2_spam_pages = True
+        spam.v2_length_override = 256 * 4
+        honest.enable_v2()
+        honest.stuff_v2(LOC_A, 3, tag=7)
+        honest.add_vault_v2(VID, BLOB, [LOC_A])
+        reg = registries(spam, honest, v1=False)
+        ids = reg.resolve([LOC_A])
+    assert VID in ids[:8]  # interleaved by position, not appended after 1,024 junk ids
+
+
+def test_resolved_ids_are_capped_with_a_warning(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(chain_mod, "MAX_RESOLVED_IDS", 100)
+    with FakeChain() as spam, FakeChain() as honest:
+        spam.enable_v2()
+        spam.v2_spam_pages = True
+        spam.v2_length_override = 256 * 4
+        honest.enable_v2()
+        honest.add_vault_v2(VID, BLOB, [LOC_A])
+        reg = registries(spam, honest, v1=False)
+        ids = reg.resolve([LOC_A])
+    assert len(ids) == 100 and VID in ids[:2]  # interleaved: survives the cap despite 1,024 junk ids
+    assert any("--vault-id" in w for w in reg.warnings)
+
+
+def test_list_growing_between_length_and_pages_keeps_the_page() -> None:
+    """LOW (review #6): entries appended after locatorLength must not discard the last page."""
+    with FakeChain() as c:
+        c.enable_v2()
+        c.stuff_v2(LOC_A, 299, tag=8)
+        c.add_vault_v2(VID, BLOB, [LOC_A])  # entry 300, on the second page
+        c.v2_grow_after_length = 10
+        reg = registries(c, v1=False)
+        ids = reg.resolve([LOC_A])
+    assert VID in ids and len(ids) == 300
+
+
+def test_transient_batch_error_is_retried_split() -> None:
+    """LOW (review #7): a non-size getVaults error splits and retries instead of dropping 32 ids."""
+    with FakeChain() as c:
+        c.enable_v2()
+        c.stuff_v2(LOC_A, 40, tag=9)
+        c.add_vault_v2(VID, BLOB, [LOC_A])
+        c.v2_getvaults_fail_once = 1
+        reg = registries(c, v1=False)
+        cands = reg.fetch(reg.resolve([LOC_A]))
+    assert len(cands) == 41
+
+
+def test_split_still_works_when_an_answer_exceeds_the_cap(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(chain_mod, "GET_VAULTS_MAX_RESPONSE", 64 * 1024)
+    with FakeChain() as c:
+        c.enable_v2()
+        for i in range(32):
+            c.add_vault_v2(keccak256(b"big" + bytes([i])), bytes([i]) * 1024, [LOC_A], log=False)
+        reg = registries(c, v1=False)
+        cands = reg.fetch(reg.resolve([LOC_A]))
+        batches = c.v2_calls.batches
+    assert len(cands) == 32 and batches[:3] == [32, 16, 16]
+
+
+def test_persistently_failing_rpc_is_not_retried_forever() -> None:
+    with FakeChain() as c:
+        c.enable_v2()
+        c.stuff_v2(LOC_A, 256, tag=10)
+        c.v2_getvaults_error = True
+        reg = registries(c, v1=False)
+        assert reg.fetch(reg.resolve([LOC_A])) == []
+        calls = len(c.v2_calls.batches)
+    assert calls <= chain_mod.MAX_BATCH_FAILURES + 1
+    assert any("keeps failing" in w for w in reg.warnings)

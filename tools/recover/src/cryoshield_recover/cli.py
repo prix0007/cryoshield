@@ -341,7 +341,7 @@ def _report(result: Result, ui: Console) -> None:
     notes = {
         Freshness.OUTDATED: "This is an OLDER version of your vault; a newer one exists on-chain.",
         Freshness.UNVERIFIABLE: "Could not confirm that this is the latest version of your vault (no agreed on-chain record).",
-        Freshness.UNMATCHED: "This Arweave copy does not match any on-chain version record; it may be outdated.",
+        Freshness.UNMATCHED: "This copy does not match any on-chain version record; it may be outdated.",
     }
     if c.freshness in notes:
         ui.warn(notes[c.freshness])

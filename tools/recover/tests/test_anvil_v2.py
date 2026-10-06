@@ -2,9 +2,9 @@
 
 Deploys the real VaultRegistry (v1) and VaultRegistryV2 to anvil, checks the registry's sender-derived
 vaultId against an independent local derivation, stuffs a key's locator past one page, and recovers
-through the real CLI with both registries configured. Skipped when Foundry is missing or when this
-checkout does not contain ``contracts/src/VaultRegistryV2.sol`` yet (``CRYOSHIELD_CONTRACTS_DIR`` may
-point at another checkout of ``contracts/``).
+through the real CLI with both registries configured. Skipped only when Foundry is missing (CI's
+recover job installs it, so these run there); ``CRYOSHIELD_CONTRACTS_DIR`` may point at another
+checkout of ``contracts/``.
 """
 
 from __future__ import annotations
@@ -21,7 +21,6 @@ from support.vectors import REPO_ROOT, h
 from test_anvil_e2e import (
     DEPLOYER,
     OWNER,
-    UPDATE,
     V2,
     _create_vault_calldata,
     _key,
@@ -42,10 +41,6 @@ CONTRACTS = Path(os.environ.get("CRYOSHIELD_CONTRACTS_DIR", REPO_ROOT / "contrac
 pytestmark = [
     pytest.mark.anvil,
     pytest.mark.skipif(not (shutil.which("anvil") and shutil.which("forge")), reason="Foundry not installed"),
-    pytest.mark.skipif(
-        not (CONTRACTS / "src" / "VaultRegistryV2.sol").exists(),
-        reason="contracts/src/VaultRegistryV2.sol not in this checkout yet",
-    ),
 ]
 
 LOC_A = h(BY_NAME["A"]["locator"])
@@ -146,4 +141,3 @@ def test_old_v1_vault_still_opens_by_id(anvil: str, deployed: dict[str, object])
     code = _main([*_args(anvil, deployed), "--vault-id", V1_VAULT_ID.hex()], console, _key("A"))
     assert code == ExitCode.OK, err.getvalue()
     assert h(V2["secret"]).decode() in out.getvalue()
-    assert UPDATE  # imported for parity with the v1 e2e module (vector loaded)

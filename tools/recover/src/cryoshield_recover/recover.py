@@ -308,6 +308,8 @@ class Recovery:
             for r in rivals
             if r.rank == chosen.rank
             or (r.freshness == chosen.freshness and "arweave" in (r.source, chosen.source))
+            or r.contested
+            or chosen.contested
         ]
         if not tied:
             self._notes.append(

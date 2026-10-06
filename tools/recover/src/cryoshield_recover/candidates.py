@@ -36,6 +36,9 @@ class Candidate:
     height: int | None = None
     # Distinct sources (RPCs, or GraphQL servers) that returned exactly this (vaultId, blob).
     support: int = 1
+    # Copies of this vault id disagree in a way the chain could not settle (v1 vs v2 with unconfirmed v2
+    # history): ranking must not decide between them; the user chooses (harden-gas-sponsorship D9).
+    contested: bool = False
 
     @property
     def rank(self) -> tuple[int, int, int]:

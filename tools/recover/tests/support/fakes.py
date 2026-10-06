@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import threading
+import time
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
@@ -137,6 +138,11 @@ class FakeChain(FakeServer):
         self.v2_length_override: int | None = None  # a lying locatorLength
         self.v2_page_extra = 0  # a lying resolveLocator page: this many extra ids
         self.v2_getvaults_drop = 0  # a lying getVaults: this many entries fewer than asked
+        self.v2_getvaults_error = False  # getVaults fails (outage, or an RPC withholding v2)
+        self.v2_getvaults_fail_once = 0  # the next N getVaults calls fail transiently
+        self.v2_spam_pages = False  # every page is 256 junk ids (a hostile RPC)
+        self.v2_delay = 0.0  # seconds to sleep before answering any v2 call (a slow RPC)
+        self.v2_grow_after_length = 0  # entries appended between locatorLength and the pages
 
     def enable_v2(self, address: str = REGISTRY_V2) -> FakeChain:
         self.v2_address = address
@@ -279,14 +285,23 @@ class FakeChain(FakeServer):
     def _v2_call(self, data: bytes) -> bytes:
         """VaultRegistry v2 views (contracts/abi/VaultRegistryV2.json)."""
         sel = data[:4]
+        if self.v2_delay:
+            time.sleep(self.v2_delay)
         if sel == abi.SEL_LOCATOR_LENGTH:
             self.v2_calls.lengths += 1
             n = len([] if self.withhold else self.v2_locators.get(data[4:36], []))
+            if self.v2_grow_after_length:
+                self.stuff_v2(data[4:36], self.v2_grow_after_length, tag=99)
+                self.v2_grow_after_length = 0
             return word(n if self.v2_length_override is None else self.v2_length_override)
         if sel == abi.SEL_RESOLVE_LOCATOR_PAGE:
             loc = data[4:36]
             start, count = int.from_bytes(data[36:68], "big"), int.from_bytes(data[68:100], "big")
             self.v2_calls.pages.append((loc, start, count))
+            if self.v2_spam_pages:
+                return enc_bytes32_array(
+                    [keccak256(b"spam" + start.to_bytes(32, "big") + bytes([i])) for i in range(256)]
+                )
             ids = [] if self.withhold else self.v2_locators.get(loc, [])
             page = ids[start : start + min(count, V2_PAGE_MAX)] if start < len(ids) else []
             if self.v2_page_extra:
@@ -295,6 +310,11 @@ class FakeChain(FakeServer):
         if sel == abi.SEL_GET_VAULTS:
             n = int.from_bytes(data[36:68], "big")
             self.v2_calls.batches.append(n)
+            if self.v2_getvaults_error:
+                raise LookupError("internal error")
+            if self.v2_getvaults_fail_once:
+                self.v2_getvaults_fail_once -= 1
+                raise LookupError("temporary failure")
             if n > V2_GET_VAULTS_MAX:
                 raise LookupError("execution reverted: TooManyIds")
             ids = [data[68 + 32 * i : 100 + 32 * i] for i in range(n)]

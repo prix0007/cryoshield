@@ -37,8 +37,11 @@ class JsonRpcClient:
         self.max_bytes = max_bytes
         self._ids = itertools.count(1)
 
-    def call(self, method: str, params: list[Any], timeout: float | None = None) -> Any:
-        """One JSON-RPC request. ``timeout`` may only SHORTEN the client's timeout (deadline clamping)."""
+    def call(
+        self, method: str, params: list[Any], timeout: float | None = None, *, max_bytes: int | None = None
+    ) -> Any:
+        """One JSON-RPC request. ``timeout`` may only SHORTEN the client's timeout (deadline clamping).
+        ``max_bytes`` sets this request's response cap (default: the client's)."""
         if method not in ALLOWED_METHODS:
             raise ValueError(f"method {method} not allowed")
         req_id = next(self._ids)
@@ -47,7 +50,7 @@ class JsonRpcClient:
                 self.url,
                 {"jsonrpc": "2.0", "id": req_id, "method": method, "params": params},
                 timeout=self.timeout if timeout is None else max(0.001, min(self.timeout, timeout)),
-                max_bytes=self.max_bytes,
+                max_bytes=self.max_bytes if max_bytes is None else max_bytes,
             )
         except NetError as e:
             raise RpcError(str(e), http_status=e.http_status, too_large=isinstance(e, TooLarge)) from None

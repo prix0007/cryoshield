@@ -272,6 +272,25 @@ Recorded assumptions and deviations from the plan text; none changes a spec requ
 - **OP Mainnet guard.** `deploy.sh` refuses to broadcast to op_mainnet unless `CRYOSHIELD_MAINNET_GATE=approved` (task 8.1).
 - **vaultIdDerivation source of truth.** The Foundry test reads every case from `packages/vault-crypto/test-vectors/v1.json` when the crypto branch's vectors are present (all 10 pass against `b6bc1c0`), and reports SKIPPED otherwise. `contracts/test/fixtures/vaultIdDerivation.json` mirrors the first 3 cases and is always checked.
 
+## Implementation notes (recovery tool, 2026-10-07)
+
+Fixes from the ECC review of PR #40; none changes a spec requirement, both enforce existing ones.
+
+- **A v1 copy is checked against v2 even when v2 returned nothing (HIGH).** Before, the cross-registry rule (D9, "Same id in both registries") ran only for ids with copies from both registries, so a failed or withheld v2 read let a v1 plant be called current. Now every v1 copy is checked against v2's agreed event history:
+  - history present: the v1 copy is classified against it (an old blob is OUTDATED, anything else UNMATCHED), with a security warning;
+  - history agreed empty: v1's own classification stands, so legacy v1-only vaults are unchanged;
+  - history unverifiable: no copy is current. When both registries hold copies, they are marked *contested* and the user must choose; ranking by server count never decides, because a v1 plant can be served by every honest RPC.
+  - Cost: one v2 history lookup per v1 vault id found, within the existing history deadline.
+- **One slow or spamming RPC cannot starve the reads (HIGH).** Before, `resolveLocator` paging and `getVault(s)` shared one 60 s clock, so one slow RPC could spend it during resolve. Now:
+  - resolve has its own budget (30 s), and each (RPC, locator) gets at most 10 s of it;
+  - the fetch budget (60 s) starts at the first fetch;
+  - resolved ids are ranked by how many RPCs reported them, then by position in each RPC's list (interleaved), and capped at 4,096 per registry with a warning pointing to `--vault-id`.
+- **Smaller fixes (advisories).**
+  - A page longer than the length read earlier (the list grew) is truncated, not discarded.
+  - A failed `getVaults` batch is halved and retried, until 6 consecutive failures from that RPC.
+  - `getVaults` answers may be up to 128 KiB (32 × 1 KB blobs as hex), so a full batch is one call; other calls keep the 64 KiB cap.
+- **Anvil v2 tests** now skip only when Foundry is missing; CI's `recover` job installs Foundry, so they always run there.
+
 ## Open questions
 
 None are blocking. The R1 items marked UNVERIFIED are confirmations for the founder (task 1.1), not design choices.
