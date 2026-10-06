@@ -375,6 +375,13 @@ jobs:
       - name: Build contracts (the local chain stack deploys contracts/out)
         run: forge build
         working-directory: contracts
+      # VaultRegistry v1 is deployed at a CREATE2 address that commits to its exact bytecode; only the `v1` Foundry
+      # profile reproduces it (contracts/foundry.toml). The local chain stack deploys v1 from contracts/out-v1.
+      - name: Build VaultRegistry v1 (v1 profile, contracts/out-v1)
+        run: forge build
+        working-directory: contracts
+        env:
+          FOUNDRY_PROFILE: v1
       # @cryoshield/vault-crypto resolves types from dist/ (gitignored), so build it before typechecking the web app.
       - name: Build workspace dependency vault-crypto
         run: pnpm --filter @cryoshield/vault-crypto build
@@ -419,6 +426,13 @@ jobs:
       - name: Build contracts (the local chain stack deploys contracts/out)
         run: forge build
         working-directory: contracts
+      # VaultRegistry v1 is deployed at a CREATE2 address that commits to its exact bytecode; only the `v1` Foundry
+      # profile reproduces it (contracts/foundry.toml). The local chain stack deploys v1 from contracts/out-v1.
+      - name: Build VaultRegistry v1 (v1 profile, contracts/out-v1)
+        run: forge build
+        working-directory: contracts
+        env:
+          FOUNDRY_PROFILE: v1
       - name: Install Playwright Chromium
         run: pnpm --filter @cryoshield/web exec playwright install --with-deps chromium
       - name: Playwright E2E (Chromium, anvil stack, virtual authenticators)
