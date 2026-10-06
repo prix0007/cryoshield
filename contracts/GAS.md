@@ -35,3 +35,30 @@ but it varies with L1 blob fees and is **not measured here**. Task 8.2 (the Sepo
 Paymaster policy input: sponsored cost per new vault is about 913k L2 gas plus the L1 data component. That is well
 under the PRD's ≤ $1 per vault target on Arbitrum. Hosting the same contract on L1 would cost about $3–30 per create.
 These figures are for direct calls. ERC-4337 adds EntryPoint and account-validation overhead on top.
+
+## VaultRegistryV2 (harden-gas-sponsorship 3.5)
+
+Same method (isolated, full transaction gas). Snapshot: `snapshots/VaultRegistryV2.json` (`test/GasV2.t.sol`).
+
+| Operation | Gas |
+|---|---:|
+| `createVault`, 1024-byte blob, 2 new locators | **959,763** |
+| `updateVault`, 1024-byte blob | **213,559** |
+| `addLocators`, 1 new locator | **97,626** (v1: 74,667; the per-vault duplicate set costs one extra slot) |
+| `resolveLocator`, 256-entry page (eth_call) | 733,712 |
+| `getVaults`, 32 ids × 1 KB (eth_call) | 2,427,354, about 36 KB response; within public RPC eth_call gas caps |
+
+Registration cost no longer depends on how long a locator's list is (`test_appendCostIndependentOfListLength`).
+
+## CryoShieldSmartWallet validation (harden-gas-sponsorship 4.6)
+
+`validateUserOp` with one WebAuthn signature, measured with the software P-256 fallback (no RIP-7212 precompile in the
+test EVM; on OP chains the precompile is used, about 3,450 gas, so both figures drop by roughly 200k):
+
+| Account | Gas |
+|---|---:|
+| CryoShieldSmartWallet (our build: solc 0.8.28, 10,000 runs) | 221,950 |
+| Coinbase Smart Wallet v1.1 (Coinbase's deployed bytecode) | 301,116 |
+
+The extra checks (length, rpIdHash comparison, UV bit) cost well under 1k gas; the difference above comes from the
+different compiler settings of the two builds. Snapshot: `snapshots/CryoShieldSmartWallet.json`.

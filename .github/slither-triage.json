@@ -6,5 +6,21 @@
     "confidence": "High",
     "description": "VaultRegistry._locatorIndex (src/VaultRegistry.sol#46) is never initialized. It is used in:\n\t- VaultRegistry.resolveLocator(bytes32) (src/VaultRegistry.sol#113-115)\n\t- VaultRegistry._appendLocators(bytes32,bytes32[]) (src/VaultRegistry.sol#134-147)",
     "triage": "False positive. Triaged in openspec/changes/add-vault-registry-contract/design.md, section 'Static analysis (Slither)': _locatorIndex is a mapping written through a storage reference; an unset key reads as an empty array by design. Slither matches this entry by id, so any edit to the flagged code changes the id and the finding must be re-triaged."
+  },
+  {
+    "id": "4d4ae2b9bf932102388b853e1abec8888f44e8802b4e64dd6640fab5915c7dbc",
+    "check": "naming-convention",
+    "impact": "Informational",
+    "confidence": "High",
+    "description": "Variable CryoShieldSmartWalletFactory.RP_ID_HASH (src/CryoShieldSmartWalletFactory.sol#15) is not in mixedCase\n",
+    "triage": "Accepted (style, not a defect): RP_ID_HASH is an immutable, and the Solidity style guide names constants and immutables in SCREAMING_SNAKE_CASE (as CBSW does for its own constants). Renaming it is impossible without a source change, and contracts/src is frozen: the OP Sepolia deployment is live at CREATE2 addresses that commit to this exact bytecode (contracts/deployments/11155420.json), and any source edit changes the metadata hash and therefore the addresses. Triaged in openspec/changes/harden-gas-sponsorship/design.md (Implementation notes). Slither matches this entry by id; any edit to the flagged code changes the id and requires re-triage."
+  },
+  {
+    "id": "7856308d9cf0f9b85078b058bce60722ed482aa68e4060bb1f3edd2b58f70bba",
+    "check": "naming-convention",
+    "impact": "Informational",
+    "confidence": "High",
+    "description": "Variable CryoShieldSmartWallet.RP_ID_HASH (src/CryoShieldSmartWallet.sol#27) is not in mixedCase\n",
+    "triage": "Accepted (style, not a defect): RP_ID_HASH is an immutable, and the Solidity style guide names constants and immutables in SCREAMING_SNAKE_CASE (as CBSW does for its own constants). Renaming it is impossible without a source change, and contracts/src is frozen: the OP Sepolia deployment is live at CREATE2 addresses that commit to this exact bytecode (contracts/deployments/11155420.json), and any source edit changes the metadata hash and therefore the addresses. Triaged in openspec/changes/harden-gas-sponsorship/design.md (Implementation notes). Slither matches this entry by id; any edit to the flagged code changes the id and requires re-triage."
   }
 ]

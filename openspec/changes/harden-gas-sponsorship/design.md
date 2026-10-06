@@ -188,7 +188,7 @@ The founder checks this during the weekly dashboard review (runbook). There is n
 **D9. VaultRegistry v2** (AA-M1, AA-M2; kept from the first plan, unchanged in substance).
 - `createVault(bytes32 salt, bytes blob, bytes32[] locators) returns (bytes32 vaultId)`, with `vaultId = keccak256(abi.encode(msg.sender, salt))`.
   - The client computes the same id from the counterfactual account address before encrypting, because the vaultId is in the AAD.
-  - **Test vector:** `packages/vault-crypto/test-vectors/v1.json` gains `vaultIdDerivation` cases (owner, salt, vaultId), checked by the TypeScript, Python and Solidity tests.
+  - **Test vector:** `packages/vault-crypto/test-vectors/v1.json` gains `vaultIdDerivation` cases (owner, salt, vaultId), checked by the TypeScript (web, vault-crypto) and Solidity tests. The recovery tool's Python tests also check the vector, **as a test-only cross-check**: the recovery tool never derives vaultIds for lookups, it reads them from the registry (`resolveLocator`/`getVaults`).
 - **No per-locator cap:**
   - `locatorLength(locator)`;
   - `resolveLocator(locator, start, count)`, with `count` clamped to 256;
@@ -201,6 +201,11 @@ The founder checks this during the weekly dashboard review (runbook). There is n
   - no admin, no proxy, a deterministic CREATE2 address.
 - **Stuffing cost:** each junk entry costs the attacker a whole vault (one owner address per entry), and sponsored stuffing is bounded by D2's global cap. The victim's entry never moves, so stuffing only lengthens a paginated scan.
 - **Coexistence:** writers use only v2. Readers query v2, then v1, and treat the candidates as one list. v1 is **never deployed to OP Mainnet**.
+- **Same id in both registries (security decision, recovery engineer, 2026-10-06).** v1 accepts caller-chosen vaultIds, so anyone can register a v2 vault's id in v1 with an older copy of its blob, which still decrypts (the vaultId binding holds) but is stale.
+  - **Rule:** when a vaultId exists in both registries, **v2's on-chain history is authoritative**: the current blob is v2's.
+  - If v2 cannot be confirmed (for example, the v2 read fails or the RPCs disagree), **neither copy counts as current**: the client shows no "current" version rather than falling back to v1's.
+  - This applies to the web app and the recovery tool alike (vault-registry delta, "Same vaultId in v1 and v2").
+  - Implemented in the recovery tool on `feat/harden-gas-sponsorship-recover` (`e3b716a`).
 - **Published format text:** `docs/spec/vault-format-v1.md` §4.1 (and the locator note in §4) still says the client chooses the vaultId and retries on "taken". Task 3.1 rewrites it to cover v1 vaults (client-chosen id) and v2 vaults (registry-derived id, no retry). Only the text changes; the blob bytes and the version byte do not.
 
 ## Data flows
@@ -241,6 +246,21 @@ The founder checks this during the weekly dashboard review (runbook). There is n
 - **[Unaudited subclass]** → the diff is small (two overrides plus owner guards) on top of audited CBSW v1.1. It gets a full Foundry suite against the real EntryPoint v0.6 bytecode, a storage-layout diff, a fuzz test and a security review.
 - **[Pimlico's simulation rejects our factory or implementation]** → it uses the same opcodes, storage and precompiles as CBSW v1.1. Task 6.2 proves it on OP Sepolia early.
 - **[v1 remains with its 16-entry cap]** → testnet only; mainnet never sees v1.
+
+## Implementation notes (contracts, 2026-10-06)
+
+Recorded assumptions and deviations from the plan text; none changes a spec requirement.
+
+- **Vendored CBSW.** `forge install coinbase/smart-wallet@v1.1.0 --no-git`, pruned to the import closure (`contracts/lib/cbsw-v1.1.0/`, with upstream commits in its README). One line is patched: `CoinbaseSmartWallet.sol` pins `pragma solidity 0.8.23`, which cannot target the project's pinned solc 0.8.28/cancun, so it is relaxed to `^0.8.23`. No code changes. Our accounts run our own compiled bytecode; legacy-upgrade tests run Coinbase's real deployed v1.1 bytecode.
+- **Factory deploys the implementation.** The `CryoShieldSmartWalletFactory` constructor creates the implementation (CREATE2, salt 0), so each RP ID's pair is one transaction and one record entry (`txHash`). The factory's runtime code is CBSW v1.1's.
+- **VaultRegistry v1 build profile.** Adding the CBSW remappings changes solc metadata, which would change v1's bytecode and CREATE2 address. A `v1` Foundry profile reproduces the original build byte-for-byte; `deploy.sh` uses it for v1 (address stays `0xB43f…9e44`).
+- **WebAuthn fixtures** (task 4.2) are generated in-test and deterministically with `vm.signP256` (`test/WalletBase.t.sol`), not as a JSON directory plus generator script. Each negative fixture is re-signed, so only the tested property differs.
+- **ERC-7562 trace tests** (task 4.4) need forge's tracer: run `forge test --mc CryoShieldSmartWalletErc7562Test -vvv`. Under a plain `forge test` they report SKIPPED. They stub `0x100` with a one-instruction RIP-7212 stand-in, because the software P-256 trace is too large; real verification is covered by the functional tests.
+- **31337 record** carries wallet pairs for `localhost` (local/E2E builds) and `cryoshield.app` (CI `verify-build`).
+- **Slither `naming-convention` on `RP_ID_HASH`** (wallet and factory): triaged as accepted in `.github/slither-triage.json`, by finding id. SCREAMING_SNAKE_CASE is the Solidity style guide's convention for immutables, and `contracts/src` is frozen because the OP Sepolia deployment is live at CREATE2 addresses that commit to this bytecode.
+- **v1 artifact for the local chain stack.** CI and local runs build VaultRegistry v1 with `FOUNDRY_PROFILE=v1 forge build` (output `contracts/out-v1`), and `apps/web/e2e/stack/stack.ts` deploys v1 from there, so the anvil address matches `deployments/31337.json`.
+- **OP Mainnet guard.** `deploy.sh` refuses to broadcast to op_mainnet unless `CRYOSHIELD_MAINNET_GATE=approved` (task 8.1).
+- **vaultIdDerivation source of truth.** The Foundry test reads every case from `packages/vault-crypto/test-vectors/v1.json` when the crypto branch's vectors are present (all 10 pass against `b6bc1c0`), and reports SKIPPED otherwise. `contracts/test/fixtures/vaultIdDerivation.json` mirrors the first 3 cases and is always checked.
 
 ## Open questions
 

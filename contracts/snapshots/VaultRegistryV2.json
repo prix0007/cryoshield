@@ -1,0 +1,7 @@
+{
+  "addLocators_1": "96922",
+  "createVault_1024B_2locators": "957198",
+  "getVaults_32x1024B": "2407103",
+  "resolveLocator_page256": "656597",
+  "updateVault_1024B": "212084"
+}

@@ -1,0 +1,20 @@
+{
+  "description": "VaultRegistry v2 vaultId derivation: vaultId = keccak256(abi.encode(address owner, bytes32 salt)). Values computed with `cast keccak $(cast abi-encode 'f(address,bytes32)' owner salt)`. Mirror of the vaultIdDerivation cases for packages/vault-crypto/test-vectors/v1.json (harden-gas-sponsorship task 3.1).",
+  "cases": [
+    {
+      "owner": "0x1111111111111111111111111111111111111111",
+      "salt": "0x2222222222222222222222222222222222222222222222222222222222222222",
+      "vaultId": "0xf4f69ba108f6504dc58f181a5b843d353a4b9b2ec8149a50e0822656df2c3a8c"
+    },
+    {
+      "owner": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+      "salt": "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "vaultId": "0x723077b8a1b173adc35e5f0e7e3662fd1208212cb629f9c128551ea7168da722"
+    },
+    {
+      "owner": "0xB43f58cF17e64B603aE5588a1DD17E96a0849e44",
+      "salt": "0x8f2b6c1d0e9a7b3c5d4e6f708192a3b4c5d6e7f8091a2b3c4d5e6f7081920a1b",
+      "vaultId": "0xaa0abe208eb145cc7100e181fed5d087806944cb5a77983fa5cef2a7d082118a"
+    }
+  ]
+}

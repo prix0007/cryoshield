@@ -8,7 +8,7 @@ pnpm --filter @cryoshield/web verify-build  # reproducible build + bundle/CSP ch
 pnpm --filter @cryoshield/web stack         # keep the local chain stack running for `pnpm dev`
 ```
 
-Prerequisites: Foundry (`anvil`, `forge`) on PATH, `contracts/` built (`forge build`), Playwright Chromium
+Prerequisites: Foundry (`anvil`, `forge`) on PATH, `contracts/` built (`forge build`, plus `FOUNDRY_PROFILE=v1 forge build` for VaultRegistry v1 in `contracts/out-v1`), Playwright Chromium
 (`pnpm exec playwright install chromium`). Everything runs offline.
 
 ## Local chain stack (`e2e/stack/stack.ts`)

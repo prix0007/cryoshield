@@ -54,12 +54,33 @@ for spec in "op_mainnet 10 OP_MAINNET_RPC_URL https://explorer.optimism.io/api/"
   "arbitrum_sepolia 421614 ARBITRUM_SEPOLIA_RPC_URL https://arbitrum-sepolia.blockscout.com/api/" \
   "arbitrum_one 42161 ARBITRUM_ONE_RPC_URL https://arbitrum.blockscout.com/api/"; do
   set -- $spec
-  out="$(plan BROADCAST=1 DEPLOYER_ACCOUNT=a "$3=http://rpc.invalid" "$DEPLOY" "$1" 2>&1)"; rc=$?
+  out="$(plan BROADCAST=1 DEPLOYER_ACCOUNT=a RP_IDS=cryoshield.app CRYOSHIELD_MAINNET_GATE=approved "$3=http://rpc.invalid" "$DEPLOY" "$1" 2>&1)"; rc=$?
   check "$1 plan succeeds" test "$rc" -eq 0
   check "$1 chainId=$2" grep -q "chainId=$2" <<<"$out"
   check "$1 verifier blockscout $4" grep -q -- "verify-args: --verifier blockscout --verifier-url $4$" <<<"$out"
 done
 check "no OP preset uses a redirecting blockscout.com host" bash -c '! "$1" --list-presets | grep -q "optimism.*blockscout.com"' _ "$DEPLOY"
+
+# --- harden-gas-sponsorship: RP IDs, v1 policy, mainnet gate ---------------------------------------
+out="$(plan DEPLOYER_ADDRESS=0x000000000000000000000000000000000000dEaD OP_SEPOLIA_RPC_URL=x "$DEPLOY" op_sepolia 2>&1)"
+check "op_sepolia default RP IDs are prod + dev" grep -q "^rpIds=cryoshield.app,cryoshield-web-dev.fly.dev$" <<<"$out"
+check "op_sepolia keeps v1 (never redeploys)" grep -q "^v1=keep$" <<<"$out"
+out="$(plan RPC_URL=x "$DEPLOY" anvil 2>&1)"
+check "anvil default RP IDs are localhost + cryoshield.app" grep -q "^rpIds=localhost,cryoshield.app$" <<<"$out"
+check "anvil deploys v1" grep -q "^v1=deploy$" <<<"$out"
+out="$(plan DEPLOYER_ADDRESS=0x000000000000000000000000000000000000dEaD OP_MAINNET_RPC_URL=x "$DEPLOY" op_mainnet 2>&1)"
+check "op_mainnet never deploys v1" grep -q "^v1=none$" <<<"$out"
+check "op_mainnet default RP ID is cryoshield.app only" grep -q "^rpIds=cryoshield.app$" <<<"$out"
+out="$(plan BROADCAST=1 DEPLOYER_ACCOUNT=a OP_MAINNET_RPC_URL=x "$DEPLOY" op_mainnet 2>&1)"; rc=$?
+check "op_mainnet broadcast refused without the gate" test "$rc" -ne 0
+check "op_mainnet gate message" grep -q "CRYOSHIELD_MAINNET_GATE" <<<"$out"
+out="$(plan RP_IDS="https://cryoshield.app" RPC_URL=x "$DEPLOY" anvil 2>&1)"; rc=$?
+check "invalid RP ID refused" test "$rc" -ne 0
+out="$(plan DEPLOYER_ADDRESS=0x000000000000000000000000000000000000dEaD ARBITRUM_ONE_RPC_URL=x "$DEPLOY" arbitrum_one 2>&1)"; rc=$?
+check "preset without default RP IDs requires RP_IDS" test "$rc" -ne 0
+pred="$(run "$DEPLOY" --predict-v2 "cryoshield.app,cryoshield-web-dev.fly.dev" 2>/dev/null)"
+check "predict-v2 lists registry + 2 wallet pairs" test "$(grep -c . <<<"$pred")" -eq 3
+check "wallet pairs differ per RP ID" test "$(awk '$1 == "wallet" {print $3}' <<<"$pred" | sort -u | wc -l | tr -d ' ')" -eq 2
 
 # --- refusals ------------------------------------------------------------------------------------
 for n in op_sepolia op_mainnet arbitrum_sepolia arbitrum_one; do

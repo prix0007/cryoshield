@@ -98,13 +98,14 @@ export async function setupContracts(): Promise<{ registry: Hex; paymaster: Hex 
     await test.setCode({ address: CREATE2_DEPLOYER, bytecode: CREATE2_DEPLOYER_CODE });
   }
 
-  // VaultRegistry: identical CREATE2 deploy to contracts/script/deploy.sh (read-only use of contracts/out).
-  const artifact = JSON.parse(readFileSync(join(repo, 'contracts', 'out', 'VaultRegistry.sol', 'VaultRegistry.json'), 'utf8'));
+  // VaultRegistry: identical CREATE2 deploy to contracts/script/deploy.sh (read-only use of contracts/out-v1). v1 comes
+  // from the `v1` Foundry profile (FOUNDRY_PROFILE=v1 forge build), the only build byte-identical to the deployed v1.
+  const artifact = JSON.parse(readFileSync(join(repo, 'contracts', 'out-v1', 'VaultRegistry.sol', 'VaultRegistry.json'), 'utf8'));
   const salt = keccak256(toHex('cryoshield.vault-registry.v1'));
   const initCode = artifact.bytecode.object as Hex;
   const registry = getContractAddress({ from: CREATE2_DEPLOYER, salt, bytecode: initCode, opcode: 'CREATE2' });
   if (registry.toLowerCase() !== String(deployment.address).toLowerCase()) {
-    throw new Error(`registry CREATE2 address ${registry} != contracts/deployments/31337.json ${deployment.address}; rebuild contracts (forge build)`);
+    throw new Error(`registry CREATE2 address ${registry} != contracts/deployments/31337.json ${deployment.address}; rebuild v1 (cd contracts && FOUNDRY_PROFILE=v1 forge build)`);
   }
   if (!(await pub.getCode({ address: registry }))) {
     await send({ from: DEPLOYER, to: CREATE2_DEPLOYER, data: concat([salt, initCode]), gas: 5_000_000n });

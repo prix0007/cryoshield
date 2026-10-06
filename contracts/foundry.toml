@@ -13,8 +13,19 @@ optimizer = true
 optimizer_runs = 10_000
 auto_detect_solc = false
 
+# Vendored, pruned Coinbase Smart Wallet v1.1.0 and its dependencies (lib/cbsw-v1.1.0/README.md).
+remappings = [
+    "forge-std/=lib/forge-std/src/",
+    "smart-wallet/=lib/cbsw-v1.1.0/src/",
+    "solady/=lib/cbsw-v1.1.0/lib/solady/src/",
+    "account-abstraction/=lib/cbsw-v1.1.0/lib/account-abstraction/contracts/",
+    "webauthn-sol/=lib/cbsw-v1.1.0/lib/webauthn-sol/src/",
+    "FreshCryptoLib/=lib/cbsw-v1.1.0/lib/webauthn-sol/lib/FreshCryptoLib/solidity/src/",
+    "openzeppelin-contracts/=lib/cbsw-v1.1.0/lib/openzeppelin-contracts/",
+]
+
 # The static immutability check (test/Immutability.t.sol) reads the contract source.
-fs_permissions = [{ access = "read", path = "./src" }]
+fs_permissions = [{ access = "read", path = "./src" }, { access = "read", path = "./test/fixtures" }, { access = "read", path = "./lib/cbsw-v1.1.0/src" }, { access = "read", path = "../packages/vault-crypto/test-vectors" }]
 
 [fuzz]
 runs = 1_000
@@ -45,3 +56,14 @@ arbitrum_one = "${ARBITRUM_ONE_RPC_URL}"
 
 # Explorer verification is keyless Blockscout (script/deploy.sh passes --verifier blockscout --verifier-url per preset).
 # No [etherscan] table: the pinned forge 1.1.0 cannot use Etherscan V2 (post-MVP, after a forge bump).
+
+# VaultRegistry v1 is deployed (OP Sepolia 0xB43f58cF17e64B603aE5588a1DD17E96a0849e44) and its CREATE2 address commits to
+# its exact bytecode, including the solc metadata hash, which covers the remappings. This profile reproduces the
+# original v1 build (only the forge-std remapping, no CBSW sources) so script/deploy.sh can predict, verify and (on
+# anvil) deploy v1 byte-for-byte. Never use it for anything but VaultRegistry v1.
+[profile.v1]
+out = "out-v1"
+cache_path = "cache-v1"
+auto_detect_remappings = false
+remappings = ["forge-std/=lib/forge-std/src/"]
+skip = ["src/CryoShield*.sol", "src/*VaultRegistryV2.sol", "test/**", "script/DeployV2.s.sol"]
