@@ -22,8 +22,10 @@
 #
 # Covers: rulesets main.json (branch) and release-tags.json (tag: only admins may create, move or delete v* tags,
 # so only the owner can cut a production release; split-dev-and-release-deploys), each by name and target, repo merge settings (repo-settings.json, incl. auto-merge), Actions
-# workflow permissions (actions-permissions.json: read-only token, Actions may not approve PRs), and the
-# managed labels (labels.json); with the flags above, the environments and the founder hardening.
+# workflow permissions (actions-permissions.json: read-only token, Actions may not approve PRs), the fork PR workflow
+# approval policy (fork-pr-approval.json: every external contributor's fork PR waits for a maintainer's "Approve and
+# run"; gate-external-pr-automation), and the managed labels (labels.json); with the flags above, the environments and
+# the founder hardening.
 # Idempotent: when the live state matches, no write call is made. Requires an admin `gh auth login`.
 # Diff legend: "-" = live on GitHub, "+" = committed here.
 set -euo pipefail
@@ -59,6 +61,7 @@ TAG_RULESET_FILE="$HERE/release-tags.json"
 ECC_CHECK="$HERE/ecc-review-check.json"
 SETTINGS="$HERE/repo-settings.json"
 ACTIONS="$HERE/actions-permissions.json"
+FORK_APPROVAL="$HERE/fork-pr-approval.json"
 NORMALIZE="$HERE/../scripts/ruleset-normalize.mjs"
 # Managed labels: name, color, description (labels.json; names may contain spaces and '?').
 LABELS_FILE="$HERE/labels.json"
@@ -150,6 +153,20 @@ sync_actions() {
     if [ "$APPLY" -eq 1 ]; then
       "$GH" api -X PUT "repos/$REPO/actions/permissions/workflow" --input "$ACTIONS" > /dev/null
       echo "actions workflow permissions: updated"
+    fi
+  fi
+  return 0
+}
+
+# Fork PR workflow approval (gate-external-pr-automation): all_external_contributors. A failed read aborts (set -e),
+# so an API error never reads as "in sync".
+sync_fork_approval() {
+  "$GH" api "repos/$REPO/actions/permissions/fork-pr-contributor-approval" > "$TMP/live-fork-approval.json"
+  if ! show_diff "$FORK_APPROVAL" "$TMP/live-fork-approval.json" "fork PR workflow approval"; then
+    drift=1
+    if [ "$APPLY" -eq 1 ]; then
+      "$GH" api -X PUT "repos/$REPO/actions/permissions/fork-pr-contributor-approval" --input "$FORK_APPROVAL" > /dev/null
+      echo "fork PR workflow approval: updated (every external contributor's fork PR needs approval to run workflows)"
     fi
   fi
   return 0
@@ -331,6 +348,7 @@ sync_all() {
   sync_ruleset "$TAG_RULESET_FILE"
   sync_settings
   sync_actions
+  sync_fork_approval
   sync_labels
   sync_environments
   sync_hardening

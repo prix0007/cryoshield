@@ -1,5 +1,8 @@
 # Code owners (OpenSpec change adopt-pr-workflow). The ruleset does not require code-owner review
 # (single maintainer; GitHub forbids self-approval), so this routes review requests and documents ownership.
+# Non-owner PRs are gated instead by the trusted-author gate (gate-external-pr-automation): ecc-review waits for the
+# owner's "/ecc-review <head sha>" and auto-merge stays off, so the owner merges them by hand. The trusted list itself
+# (.github/trusted-authors.json) is covered by /.github/ below.
 *                     @prix0007
 
 # Security-relevant paths, listed explicitly so a future second maintainer can be added per area.

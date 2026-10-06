@@ -13,8 +13,8 @@ rules:
   # permissions) are enforced by .github/scripts/workflow-policy.mjs, which allows no other ignore here.
   dangerous-triggers:
     ignore:
-      - ecc-review.yml:31
-      - auto-merge.yml:19
+      - ecc-review.yml:37
+      - auto-merge.yml:24
   # Accepted finding 2: each deploy workflow's reusable-CI call (deploy.yml for production, deploy-dev.yml for
   # development; split-dev-and-release-deploys) uses `./.github/workflows/ci.yml` because the CI-pinned actionlint
   # 1.7.12 rejects GitHub's newer `$/` self-repository syntax (rhysd/actionlint#711). Pinned to file:line

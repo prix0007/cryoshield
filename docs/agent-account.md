@@ -14,6 +14,16 @@ Everything below is done by the founder. Agents never create credentials.
    ```
 
 3. Accept the invitation while logged in as the machine user (`https://github.com/prix0007/cryoshield/invitations`).
+4. **Add it to the trusted authors** (OpenSpec change `gate-external-pr-automation`). Until you do, its PRs are treated like any outside author's: the `ecc-review` check fails with "Awaiting owner approval" until you comment `/ecc-review <head sha>` on each push, and auto-merge stays off. Open the PR yourself, as the owner, adding the login to `.github/trusted-authors.json`:
+
+   ```json
+   ["prix0007", "cryoshield-agent"]
+   ```
+
+   The workflows read the list from `main`, so it takes effect when that PR merges. The workflow policy accepts only GitHub user logins in it: no bots, no wildcards, at most 20 entries.
+   - A listed login gains nothing without the Write role you grant in step 2: forks are never trusted.
+   - To withdraw trust, remove the login from the list, as well as removing the collaborator.
+   - The agents never edit this file themselves.
 
 ## 2. Give it a token
 
@@ -115,7 +125,7 @@ Then, as the owner, confirm that nothing changed: `.github/rulesets/apply.sh --w
 
 To see that the machine user cannot release, as the machine user: pushing a tag `v0.0.0-probe` must be rejected by the `release-tags` ruleset, and `gh workflow run deploy.yml --ref <existing tag>` must end with its `detect` job **skipped** (the production workflow runs only for the owner). A dispatch on `main` cannot even reach the production environments, which accept only `v*` tags.
 
-**What Write still allows.**
+**What Write still allows** (once the machine user is in `.github/trusted-authors.json`).
 - **Changing the scripts that the release jobs run with a Fly token.** The machine user can open PRs that change `.github/scripts/deploy/`, `apps/web/fly.toml`, `apps/web/fly.dev.toml` or the Docker context, and those PRs auto-merge.
   - On **dev**, they then run at once with the dev token. That is an app-scoped deploy token for `cryoshield-web-dev` only, so the worst case is a broken or defaced dev site.
   - On **production**, they run only when you publish a release. The production run's `detect` summary ("Release review") lists them as **TOKEN-PATH CHANGED**, with the diff link: read them before you release. Use the `hold` label on a PR if you want to look before it merges.
@@ -125,4 +135,4 @@ To see that the machine user cannot release, as the machine user: pushing a tag 
 
 - Rotate the token before it expires. Create the new one, update the keychain entry, then delete the old one.
 - If the token may have leaked, delete it at once (machine user → Settings → Developer settings), then check the machine user's security log (Settings → Security log), the organization audit log under option A, and the repository's recent branches, PRs and Deploy runs.
-- To remove all agent access: `gh api -X DELETE repos/prix0007/cryoshield/collaborators/cryoshield-agent`.
+- To remove all agent access: `gh api -X DELETE repos/prix0007/cryoshield/collaborators/cryoshield-agent`, and remove the login from `.github/trusted-authors.json` in a PR.

@@ -33,6 +33,8 @@ The source of truth is `openspec/config.yaml`; the product requirements are in `
 
 **Agents act as the machine account.** Agents push branches and open PRs as the non-admin machine user (Write role; `docs/agent-account.md`), never with the owner's admin login. Check with `gh api user --jq .login` before pushing. Agents never change rulesets, environments, secrets or repository settings, never approve deployments, and never create tags or releases. Changes under `.github/workflows/` are pushed by the owner when the agent token has no Workflows permission.
 
+**Only trusted authors get automation** (OpenSpec change `gate-external-pr-automation`). A trusted author is the repository owner, or a login listed in `.github/trusted-authors.json` on `main`. Only trusted authors' PRs get the automatic ECC review (step 5) and auto-merge (step 8). The PR author **and** the account that pushed must both be trusted. Everyone else, including Dependabot and the machine account until the owner lists it, waits for the owner's `/ecc-review <head sha>`, and the owner merges by hand. Fork PRs also need the owner's "Approve and run" before any workflow runs. Agents never edit `.github/trusted-authors.json`.
+
 1. **Branch** from an up-to-date `main` as `<type>/<change-name>`, with type one of `feat`, `fix`, `ci`, `docs` or `chore` (for example `feat/shamir-recovery` or `fix/recover-empty-page`). Use one OpenSpec change or one fix per branch.
 2. **OpenSpec:**
    - propose the change (`/opsx:propose`), or continue an approved one;
@@ -43,7 +45,19 @@ The source of truth is `openspec/config.yaml`; the product requirements are in `
    - `openspec validate --all --strict` must be green;
    - when touching CI, also run `npm test --prefix .github/scripts`.
 4. **Open the PR** with `gh pr create`, using `.github/pull_request_template.md`. Fill in the OpenSpec change, tasks covered, verification, security review (or N/A) and screenshots for UI. The PR title is a Conventional Commit and becomes the squash commit.
-5. **ECC review runs automatically.** `.github/workflows/ecc-review.yml` runs on `pull_request_target`, so it always comes from `main` and a PR cannot weaken its own gate. It:
+5. **ECC review runs automatically for trusted authors.** `.github/workflows/ecc-review.yml` runs on `pull_request_target`, so it always comes from `main` and a PR cannot weaken its own gate.
+
+   For a PR by anyone else, the required `ecc-review` check **fails at once** with "Awaiting owner approval", before any credential, checkout or model is used. The same happens when an untrusted account pushes to a trusted author's PR. The owner reads the PR and comments `/ecc-review <sha>`, with at least 7 characters of the head commit.
+
+The gate accepts only an owner comment that:
+- is unedited;
+- was made after the push that started the run;
+- names that commit;
+- is one per re-run.
+
+So each new push needs a new approval, and an approval is also the owner's acceptance of that commit for merging. A failed check is used rather than a skipped one, because a skipped required check would count as passing.
+
+   Once it runs, the review:
    - picks the ECC reviewers from the changed paths;
    - checks the PR against its OpenSpec change and these rules;
    - verifies each finding;
@@ -53,10 +67,10 @@ The source of truth is `openspec/config.yaml`; the product requirements are in `
 6. **Fix and ask for a re-review.**
    - Fix every blocking finding in new commits, and advisory ones where cheap.
    - Reply to each finding on the PR saying what changed, then push. Every push re-runs the review.
-   - The owner can comment `/ecc-review` (as the first word) to re-run it without a push.
+   - The owner can comment `/ecc-review` (as the first word) to re-run it without a push. For a non-trusted author, the approval is `/ecc-review <head sha>`.
    - Repeat until no blocking findings remain.
 7. **Watch the PR while it is open.** Check for new reviews and owner comments, and treat owner comments like findings: fix, push, reply. Mark your own PR comments with `<!-- claude-pr-flow -->` so they are never mistaken for the owner's.
-8. **Auto-merge.** `.github/workflows/auto-merge.yml` turns on GitHub auto-merge (squash, delete branch) for every same-repo, non-draft, non-Dependabot PR into `main`.
+8. **Auto-merge.** `.github/workflows/auto-merge.yml` turns on GitHub auto-merge (squash, delete branch) for every same-repo, non-draft PR into `main` **by a trusted author**. For any other author (Dependabot included) it switches auto-merge off, and the owner merges after review. An `/ecc-review` approval never turns auto-merge on.
    - It does so only while `ecc-review` is a required check (`apply.sh --with-ecc-review --apply`). Until then, the maintainer merges by hand after the review.
    - Once on, it merges the moment all required checks are green.
    - Branches do not need to be up to date with `main` (strict mode is off, change `relax-strict-up-to-date`), so a PR keeps auto-merging after another PR lands. Each resulting `main` commit is re-tested by the deploy pipeline before it goes live.

@@ -108,14 +108,17 @@ The gate scripts live in `.github/scripts` and are tested with `npm ci --ignore-
    - verification (the tests you ran);
    - a security-review link, or N/A;
    - screenshots for UI changes.
-5. **Automatic ECC review** (`.github/workflows/ecc-review.yml`):
-   - every push to a same-repo, non-draft PR gets one review from the ECC reviewer agents chosen by path;
+5. **ECC review** (`.github/workflows/ecc-review.yml`):
+   - it runs **automatically only for trusted authors**: the repository owner, or a login in [`.github/trusted-authors.json`](.github/trusted-authors.json) on `main` (OpenSpec change `gate-external-pr-automation`);
+   - for anyone else (Dependabot included), or when an untrusted account pushes to a trusted PR, the `ecc-review` check fails at once with "Awaiting owner approval". The owner reads the PR and comments `/ecc-review <head sha>` (7 or more characters) to run the review for that commit. Every new push, and every re-run, needs a new approval;
+   - each review comes from the ECC reviewer agents chosen by path, once per approved push;
    - it posts *request changes* on CRITICAL/HIGH findings, *comment* otherwise;
    - push fixes to re-run it, or, as the owner, comment `/ecc-review`;
-   - fork PRs are refused;
+   - fork PRs are refused. To take a fork contribution, the owner reads it and re-pushes its commits to a branch in this repository;
    - it needs `CLAUDE_CODE_OAUTH_TOKEN` (from `claude setup-token`) or `ANTHROPIC_API_KEY`, as both an Actions secret and a Dependabot secret.
 6. **Auto-merge** (`.github/workflows/auto-merge.yml`):
-   - every same-repo, non-draft, non-Dependabot PR squash-merges by itself once all required checks pass;
+   - every same-repo, non-draft PR **by a trusted author** squash-merges by itself once all required checks pass;
+   - PRs by anyone else (Dependabot included) are never auto-merged: the owner merges them by hand after review;
    - it is active only while `ecc-review` is a required check;
    - the `hold` label is the owner's veto.
 7. **Merge rules:**
@@ -123,8 +126,10 @@ The gate scripts live in `.github/scripts` and are tested with `npm ci --ignore-
    - all conversations must be resolved;
    - squash merge only, so history stays linear;
    - force-pushes to `main` and deleting it are blocked;
-   - no approval is required, since the single maintainer cannot approve their own PRs;
+   - no approval is required, since the single maintainer cannot approve their own PRs. `.github/CODEOWNERS` still requests the owner on every PR, and the trusted-author gate above stands in for code-owner approval;
    - nobody can bypass these rules.
+
+8. **Fork PRs** need a maintainer's "Approve and run" before *any* workflow runs, whatever the contributor's history. The repository's fork-PR approval policy is `all_external_contributors` (`.github/rulesets/fork-pr-approval.json`, applied by `apply.sh`). Fork runs of `ci.yml` never get secrets.
 
 Secret-scan exceptions are in `.gitleaks.toml` (public test vectors only). Vulnerability exceptions are in `.github/osv-scanner.toml`; each needs a reason and expires within 90 days. Changing either one needs a security review.
 
@@ -139,6 +144,7 @@ The script syncs:
 - the `main` ruleset;
 - the repository merge settings in `.github/rulesets/repo-settings.json` (squash only, PR title as the commit title, delete the branch on merge);
 - the Actions workflow permissions in `.github/rulesets/actions-permissions.json` (read-only default token; Actions may not approve PRs);
+- the fork-PR workflow approval policy in `.github/rulesets/fork-pr-approval.json` (`all_external_contributors`: every fork PR waits for approval);
 - the managed labels in `.github/rulesets/labels.json`;
 - auto-merge, enabled in the repository settings;
 - with `--environments`: the deploy environments in `.github/rulesets/environments.json` (`production`: the owner as required reviewer, no admin bypass, `main` only; `production-build`: `main` only);
