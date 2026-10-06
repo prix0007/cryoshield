@@ -37,8 +37,8 @@ Review:
 
 ## Review
 
-- ECC review runs automatically on every push (`ecc-review` check); pushing fixes re-runs it, and a comment starting with `/ecc-review` from the owner re-runs it on demand. Reply to each finding with what changed.
-- **Auto-merges** (squash, via the `auto-merge` workflow) into `main` once every required check passes (`ci-ok`, plus `ecc-review` once enabled). Add the `hold` label to stop it.
+- ECC review runs automatically on every push **for trusted authors** (the owner, or a login in `.github/trusted-authors.json`); pushing fixes re-runs it, and a comment starting with `/ecc-review` from the owner re-runs it on demand. For any other author the `ecc-review` check fails with "Awaiting owner approval" until the owner comments `/ecc-review <head sha>` for that commit. Reply to each finding with what changed.
+- **Auto-merges** (squash, via the `auto-merge` workflow) into `main` once every required check passes (`ci-ok`, plus `ecc-review` once enabled), for trusted authors only; the owner merges other PRs by hand. Add the `hold` label to stop it.
 
 ## Checklist
 

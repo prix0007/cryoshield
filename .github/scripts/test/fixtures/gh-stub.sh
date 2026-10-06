@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Test double for `gh api` used by test/apply-sh*.test.mjs. Logs every call to $GH_LOG and answers from
 # fixture files in $STUB_DIR: rulesets.json (list), ruleset-<id>.json (detail; ruleset.json for any id without its own
-# file, i.e. main = 7), repo.json, labels.json, actions.json,
+# file, i.e. main = 7), repo.json, labels.json, actions.json, fork-approval.json (fork PR contributor approval),
 # user.json, env-<name>.json + policies-<name>.json (environments), actions-perms.json, asf.json
 # (automated-security-fixes) and the marker file va.on (vulnerability alerts enabled). A missing env-*, asf.json
 # or va.on answers HTTP 404 like GitHub.
@@ -48,6 +48,7 @@ if [ "$method" != "GET" ]; then
       "PUT repos/"*/rulesets/*)
         if [ -f "$STUB_DIR/ruleset-${path##*/}.json" ]; then cp "$input" "$STUB_DIR/ruleset-${path##*/}.json"; else cp "$input" "$STUB_DIR/ruleset.json"; fi ;;
       "PUT repos/"*/actions/permissions/workflow) cp "$input" "$STUB_DIR/actions.json" ;;
+      "PUT repos/"*/actions/permissions/fork-pr-contributor-approval) cp "$input" "$STUB_DIR/fork-approval.json" ;;
       "PUT repos/"*/actions/permissions) cp "$input" "$STUB_DIR/actions-perms.json" ;;
       "PUT repos/"*/vulnerability-alerts) : > "$STUB_DIR/va.on" ;;
       "PUT repos/"*/automated-security-fixes) echo '{"enabled": true, "paused": false}' > "$STUB_DIR/asf.json" ;;
@@ -96,6 +97,7 @@ case "$path" in
     [ -f "$body" ] || body="$STUB_DIR/ruleset.json" ;;
   repos/*/labels*) body="$STUB_DIR/labels.json" ;;
   repos/*/actions/permissions/workflow) body="$STUB_DIR/actions.json" ;;
+  repos/*/actions/permissions/fork-pr-contributor-approval) body="$STUB_DIR/fork-approval.json" ;;
   repos/*/actions/permissions) body="$STUB_DIR/actions-perms.json" ;;
   repos/*/vulnerability-alerts) [ -f "$STUB_DIR/va.on" ] || not_found; exit 0 ;;
   repos/*/automated-security-fixes) body="$STUB_DIR/asf.json" ;;

@@ -126,7 +126,7 @@ test('M1: fork refusal cannot be defeated by continue-on-error, always(), a fake
   const refusal = '        if: github.event.pull_request.head.repo.full_name != github.repository\n';
   expectError('ecc-review.yml', replaceOnce(ecc, refusal, `${refusal}        continue-on-error: true\n`), /continue-on-error/);
   expectError('ecc-review.yml', replaceOnce(ecc, '      - name: Check out the PR head into pr/ (read only)\n', '      - name: Check out the PR head into pr/ (read only)\n        if: always()\n'), /always\(\)/);
-  expectError('ecc-review.yml', replaceOnce(ecc, '          exit 1\n\n      - name: Require a Claude credential', '          echo "exit 1"\n\n      - name: Require a Claude credential'), /refuse fork/);
+  expectError('ecc-review.yml', replaceOnce(ecc, 'from a branch in this repo."\n          exit 1\n', 'from a branch in this repo."\n          echo "exit 1"\n'), /refuse fork/);
   expectError('auto-merge.yml', replaceOnce(am, '      && github.event.pull_request.head.repo.full_name == github.repository\n', '      && github.event.pull_request.head.repo.full_name == github.repository || true\n'), /\|\|/);
   expectError('ecc-review.yml', replaceOnce(ecc, "      && github.event.comment.author_association == 'OWNER'\n", "      && github.event.comment.author_association == 'OWNER' || true\n"), /\|\|/);
   expectError('ecc-review.yml', replaceOnce(ecc, "    timeout-minutes: 5\n", "    timeout-minutes: 5\n    continue-on-error: true\n"), /continue-on-error/);

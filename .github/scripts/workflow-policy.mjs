@@ -14,6 +14,9 @@
 //           job with its own never-cancelled group and a re-check before `deploy`, FLY_API_TOKEN only in the step env of
 //           steps `deploy`/`rollback` of that job, no write scopes, digest-pinned token-job run steps. No other workflow
 //           may use FLY_API_TOKEN or any deploy environment. zizmor: self-repository once per deploy workflow:<line>.
+//   author gate: (gate-external-pr-automation) ecc-review and auto-merge run automatically only for trusted authors
+//           (repository owner, or .github/trusted-authors.json read from the default branch): an exact, unconditional
+//           gate step at a fixed position (authorGate below), and a valid trusted-authors.json.
 //   zizmor: SHA pinning (via that hash-pin policy), persist-credentials (artipacked), template injection, etc.
 //
 // CLI: node workflow-policy.mjs [<.github dir>]   (default: .github)  exit 0 ok, 1 violations.
@@ -55,6 +58,19 @@ const NOT_PR_ISSUE = '!github.event.issue.pull_request';
 const NOT_BOT_SENDER = "github.event.sender.type != 'Bot'";
 const NOT_ACTIONS_ISSUE = "github.event.issue.user.login != 'github-actions[bot]'";
 
+// Trusted-author gate (gate-external-pr-automation D1-D4, D8). Only the repository owner and the logins in
+// .github/trusted-authors.json (read by the gate from the default branch, never from the PR) get the automatic ECC review
+// and auto-merge. The gate's inputs come only through env; its script is digest-pinned like every privileged run step.
+export const ECC_GATE_STEP = "Require a trusted author or the owner's /ecc-review approval";
+export const AUTO_MERGE_GATE_STEP = 'Require a trusted author (the owner merges other PRs by hand)';
+const GATE_AUTHOR = '${{ github.event.pull_request.user.login }}';
+const GATE_OWNER = '${{ github.repository_owner }}';
+// The pusher/labeler: trust needs both the PR author and the sender (security review H2).
+const GATE_SENDER = '${{ github.event.sender.login }}';
+const GATE_DEFAULT_BRANCH = '${{ github.event.repository.default_branch }}';
+export const TRUSTED_AUTHORS_FILE = 'trusted-authors.json';
+const TRUSTED_GUARD = "steps.author.outputs.trusted == 'true'";
+
 export const PRIVILEGED = {
   'ecc-review.yml': {
     triggers: ['pull_request_target', 'issue_comment'],
@@ -68,6 +84,22 @@ export const PRIVILEGED = {
     headPath: 'pr',
     requiredRunLines: [HOOKS_OFF_LINE],
     agent: { allowedTools: REVIEW_ALLOWED_TOOLS, disallowedTools: ECC_DISALLOWED_TOOLS, allowNonWriteUsers: false },
+    // Step 2, right after the fork refusal: before the credential check, every checkout and the model. Fails (exit 1)
+    // unless the author is trusted or the owner commented /ecc-review after this run's event (never skipped).
+    authorGate: {
+      job: 'review',
+      step: ECC_GATE_STEP,
+      index: 1,
+      env: {
+        AUTHOR: GATE_AUTHOR,
+        SENDER: GATE_SENDER,
+        OWNER: GATE_OWNER,
+        PR_UPDATED_AT: '${{ github.event.pull_request.updated_at }}',
+        DEFAULT_BRANCH: GATE_DEFAULT_BRANCH,
+        GH_TOKEN: '${{ secrets.GITHUB_TOKEN }}',
+      },
+      failClosed: true,
+    },
   },
   'auto-merge.yml': {
     triggers: ['pull_request_target'],
@@ -75,6 +107,15 @@ export const PRIVILEGED = {
     conditions: { 'auto-merge': [NOT_DRAFT, SAME_REPO, DEFAULT_BASE, NOT_DEPENDABOT] },
     headCheckout: false,
     requiredRunLines: [],
+    // Step 1 (id author) writes trusted=true|false; every later step runs only when it is true.
+    authorGate: {
+      job: 'auto-merge',
+      step: AUTO_MERGE_GATE_STEP,
+      index: 0,
+      id: 'author',
+      env: { AUTHOR: GATE_AUTHOR, SENDER: GATE_SENDER, OWNER: GATE_OWNER, DEFAULT_BRANCH: GATE_DEFAULT_BRANCH },
+      guardLaterSteps: TRUSTED_GUARD,
+    },
   },
   // Issue events carry no PR code, so the PR fork guard does not apply; instead every job must exclude PRs and bots,
   // checkouts are of the default branch only (no ref), and only `node .github/scripts/triage.mjs` may run from it.
@@ -289,8 +330,66 @@ function checkPrivileged(file, name, wf, on) {
     }
   }
   for (const key of Object.keys(pinned)) if (!seenSteps.has(key)) err(`privileged-run-steps.json pins '${key}', which no longer exists (remove stale digests)`);
+  if (profile.authorGate) checkAuthorGate(profile.authorGate, wf, err);
   for (const line of profile.requiredRunLines) {
     if (!runText.some((r) => r.split('\n').some((l) => l.trim() === line))) err(`a run step must contain the line: ${line}`);
+  }
+  return errors;
+}
+
+// The trusted-author gate (gate-external-pr-automation D8): exact name, position, id, inputs; no condition; fails closed
+// (ecc-review) or guards every later step (auto-merge).
+function checkAuthorGate(gate, wf, err) {
+  const job = isObj(wf.jobs) ? wf.jobs[gate.job] : undefined;
+  const steps = isObj(job) && Array.isArray(job.steps) ? job.steps : [];
+  const where = `job '${gate.job}': trusted-author gate '${gate.step}'`;
+  const idx = steps.findIndex((s) => isObj(s) && s.name === gate.step);
+  if (idx < 0) {
+    err(`${where} is missing (ECC review and auto-merge run automatically only for trusted authors)`);
+    return;
+  }
+  const step = steps[idx];
+  if (idx !== gate.index) err(`${where} must be step ${gate.index + 1} (before any credential, checkout or model step), found step ${idx + 1}`);
+  if (step.if !== undefined) err(`${where} must not have an if: (it must never be skipped)`);
+  if (step.uses !== undefined || typeof step.run !== 'string') err(`${where} must be a run step`);
+  if (step['working-directory'] !== undefined) err(`${where} must not set working-directory`);
+  if (gate.id !== undefined && step.id !== gate.id) err(`${where} must have id: ${gate.id}`);
+  const env = isObj(step.env) ? step.env : {};
+  const got = Object.keys(env).sort();
+  const want = Object.keys(gate.env).sort();
+  if (JSON.stringify(got) !== JSON.stringify(want) || want.some((k) => norm(env[k]) !== gate.env[k])) {
+    err(`${where}: env must be exactly ${JSON.stringify(gate.env)} (inputs only through env), found ${JSON.stringify(env)}`);
+  }
+  if (gate.failClosed && !String(step.run ?? '').split('\n').some((l) => l.trim() === 'exit 1')) {
+    err(`${where} must fail closed: its run needs an "exit 1" line for untrusted authors`);
+  }
+  if (gate.guardLaterSteps) {
+    for (const later of steps.slice(idx + 1)) {
+      if (isObj(later) && norm(later.if) !== gate.guardLaterSteps) {
+        err(`job '${gate.job}' step '${later.name ?? later.uses ?? '?'}' must have exactly if: ${gate.guardLaterSteps}`);
+      }
+    }
+  }
+}
+
+// GitHub login: 1-39 alphanumerics or single hyphens, not starting or ending with a hyphen. No bots ("[bot]"), no
+// wildcards. Case-insensitively unique; 1 to 20 entries (gate-external-pr-automation D1).
+const LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$/;
+export function checkTrustedAuthors(text) {
+  const file = TRUSTED_AUTHORS_FILE;
+  let list;
+  try {
+    list = JSON.parse(text);
+  } catch (e) {
+    return [`${file}: not valid JSON (${e.message})`];
+  }
+  if (!Array.isArray(list) || list.length < 1 || list.length > 20) return [`${file}: must be a JSON array of 1 to 20 GitHub logins`];
+  const errors = [];
+  const seen = new Set();
+  for (const v of list) {
+    if (typeof v !== 'string' || !LOGIN.test(v)) errors.push(`${file}: ${JSON.stringify(v)} is not a GitHub user login (no bots, no wildcards)`);
+    else if (seen.has(v.toLowerCase())) errors.push(`${file}: duplicate login ${JSON.stringify(v)}`);
+    else seen.add(v.toLowerCase());
   }
   return errors;
 }
@@ -696,6 +795,12 @@ export function checkGithubDir(dir) {
   const wfDir = join(dir, 'workflows');
   const files = existsSync(wfDir) ? readdirSync(wfDir).filter((f) => /\.ya?ml$/.test(f)).sort() : [];
   for (const f of files) errors.push(...checkWorkflow(join('workflows', f), readFileSync(join(wfDir, f), 'utf8')));
+  // The gated workflows read the trusted-author list at run time; it must exist and be valid.
+  if (files.some((f) => PRIVILEGED[f]?.authorGate)) {
+    const trusted = join(dir, TRUSTED_AUTHORS_FILE);
+    if (!existsSync(trusted)) errors.push(`${trusted}: missing (the trusted-author gate of ecc-review.yml and auto-merge.yml reads it)`);
+    else errors.push(...checkTrustedAuthors(readFileSync(trusted, 'utf8')));
+  }
   return errors;
 }
 

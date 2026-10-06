@@ -30,13 +30,17 @@ const liveMatching = () => ({
 });
 
 const actionsCommitted = JSON.parse(readFileSync(new URL('../../rulesets/actions-permissions.json', import.meta.url), 'utf8'));
+// gate-external-pr-automation: the fork PR workflow approval policy (fork-pr-approval.json).
+const FORK_PATH = fileURLToPath(new URL('../../rulesets/fork-pr-approval.json', import.meta.url));
+const forkCommitted = JSON.parse(readFileSync(FORK_PATH, 'utf8'));
 
 const MANAGED = JSON.parse(readFileSync(new URL('../../rulesets/labels.json', import.meta.url), 'utf8'));
 const allLabels = () => MANAGED.map((l) => ({ name: l.name }));
 
-function run({ rulesets = [], ruleset = {}, tags = liveTags(), repo = { ...settings, id: 1, private: true }, labels = allLabels(), actions = actionsCommitted, args = [], env = {} }) {
+function run({ rulesets = [], ruleset = {}, tags = liveTags(), repo = { ...settings, id: 1, private: true }, labels = allLabels(), actions = actionsCommitted, forkApproval = forkCommitted, args = [], env = {} }) {
   const dir = mkdtempSync(join(tmpdir(), 'apply-sh-'));
   writeFileSync(join(dir, 'actions.json'), JSON.stringify(actions));
+  if (forkApproval) writeFileSync(join(dir, 'fork-approval.json'), JSON.stringify(forkApproval));
   writeFileSync(join(dir, 'rulesets.json'), JSON.stringify(tags ? [...rulesets, TAGS_ENTRY] : rulesets));
   if (tags) writeFileSync(join(dir, 'ruleset-8.json'), JSON.stringify(tags));
   writeFileSync(join(dir, 'ruleset.json'), JSON.stringify(ruleset));
@@ -247,4 +251,44 @@ test('release-tags: --with-ecc-review only changes main, never the tag ruleset',
   const r = run({ ...MAIN_IN_SYNC, args: ['--with-ecc-review', '--apply'] });
   assert.equal(r.status, 0, r.stderr + r.stdout);
   assert.deepEqual(r.writes.map((w) => w.split(' --input ')[0]), ['api -X PUT repos/prix0007/cryoshield/rulesets/7']);
+});
+
+// ---- gate-external-pr-automation: fork PR workflow approval for all external contributors ----
+
+test('fork approval: the committed policy is all_external_contributors', () => {
+  assert.deepEqual(forkCommitted, { approval_policy: 'all_external_contributors' });
+});
+
+test('fork approval: drift is shown in the dry run (exit 3) with no write', () => {
+  const r = run({ ...MAIN_IN_SYNC, forkApproval: { approval_policy: 'first_time_contributors' } });
+  assert.equal(r.status, 3, r.stderr + r.stdout);
+  assert.match(r.stdout, /-.*"approval_policy": "first_time_contributors"/);
+  assert.match(r.stdout, /\+.*"approval_policy": "all_external_contributors"/);
+  assert.ok(r.calls.includes('api repos/prix0007/cryoshield/actions/permissions/fork-pr-contributor-approval'), r.calls.join('\n'));
+  assert.deepEqual(r.writes, []);
+});
+
+test('fork approval: --apply PUTs fork-pr-approval.json, then the re-check is in sync', () => {
+  const r = run({ ...MAIN_IN_SYNC, forkApproval: { approval_policy: 'first_time_contributors_new_to_github' }, args: ['--apply'] });
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.deepEqual(r.writes, [`api -X PUT repos/prix0007/cryoshield/actions/permissions/fork-pr-contributor-approval --input ${FORK_PATH}`]);
+  assert.match(r.stdout, /fork PR workflow approval: updated/);
+  assert.match(r.stdout, /re-check: in sync/);
+});
+
+test('fork approval: in sync means no write (dry run and apply)', () => {
+  for (const args of [[], ['--apply']]) {
+    const r = run({ ...MAIN_IN_SYNC, args });
+    assert.equal(r.status, 0, r.stderr + r.stdout);
+    assert.match(r.stdout, /fork PR workflow approval: in sync/);
+    assert.deepEqual(r.writes, []);
+  }
+});
+
+test('fork approval: a failed read aborts instead of reading as in sync', () => {
+  const r = run({ ...MAIN_IN_SYNC, env: { STUB_FAIL_READS_PATH: 'fork-pr-contributor-approval' } });
+  assert.notEqual(r.status, 0);
+  assert.notEqual(r.status, 3);
+  assert.doesNotMatch(r.stdout, /fork PR workflow approval: in sync/);
+  assert.deepEqual(r.writes, []);
 });

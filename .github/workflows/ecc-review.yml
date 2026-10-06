@@ -2,6 +2,12 @@ name: ecc-review
 # Automatic ECC review on every pull request (OpenSpec change adopt-ecc-review-and-auto-merge;
 # CLAUDE.md -> "Change flow"). Adapted from outlai's workflow with every safeguard kept.
 #
+# Automatic only for trusted authors (OpenSpec change gate-external-pr-automation): the repository owner, or a login
+# in .github/trusted-authors.json on the default branch. For anyone else (Dependabot included) the check FAILS in its
+# second step, before the credential, any checkout or the model, with "Awaiting owner approval"; the owner reviews the
+# PR and comments "/ecc-review <head sha>", which re-runs this run and lets it through for that commit only. The same
+# holds when a non-trusted account pushes to a trusted author's PR.
+#
 # `ecc-review` runs the ECC reviewer agents chosen from what the PR touches, verifies each finding, and a
 # workflow step (not the agent) posts ONE review as github-actions[bot]: REQUEST_CHANGES when a CRITICAL/HIGH
 # finding stands, COMMENT otherwise. Every push re-runs it; pushing fixes is the re-review request. The job
@@ -13,7 +19,7 @@ name: ecc-review
 # therefore not post, approve, comment or call the API; at worst it distorts its own review.
 #
 # `rerun` handles a "/ecc-review" comment from the repository owner by re-running the PR's own review run, so
-# the result lands on the PR. It holds no Claude credential and checks out nothing, and refuses runs created
+# the result lands on the PR (and, for a non-trusted author, approves that run). It holds no Claude credential and checks out nothing, and refuses runs created
 # before the current ecc-review.yml (a re-run replays the original workflow file).
 #
 # Supply chain: actions pinned to commits (versions in the trailing comments); the ECC plugin is checked out at
@@ -70,6 +76,54 @@ jobs:
         if: github.event.pull_request.head.repo.full_name != github.repository
         run: |
           echo "::error::Fork PRs are not reviewed automatically; a maintainer must review and re-open from a branch in this repo."
+          exit 1
+
+      # Trusted authors only (gate-external-pr-automation D1-D4). Both the PR author and the event sender (the pusher)
+      # must be the owner or listed in .github/trusted-authors.json, read from the default branch via the API (never from
+      # the PR). Otherwise the owner approves ONE head commit by commenting "/ecc-review <sha>"; the comment must be
+      # unedited, newer than this run's event, and there must be one per re-run attempt. Fails closed (never skipped: a
+      # skipped required check would count as passing).
+      - name: Require a trusted author or the owner's /ecc-review approval
+        env:
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+          SENDER: ${{ github.event.sender.login }}
+          OWNER: ${{ github.repository_owner }}
+          PR_UPDATED_AT: ${{ github.event.pull_request.updated_at }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          : "${PR_UPDATED_AT:?}" "${HEAD_SHA:?}" "${GITHUB_RUN_ATTEMPT:?}"
+          author=$(tr '[:upper:]' '[:lower:]' <<<"$AUTHOR")
+          sender=$(tr '[:upper:]' '[:lower:]' <<<"$SENDER")
+          owner=$(tr '[:upper:]' '[:lower:]' <<<"$OWNER")
+          head=$(tr '[:upper:]' '[:lower:]' <<<"$HEAD_SHA")
+          if [ "$author" = "$owner" ] && [ "$sender" = "$owner" ]; then
+            echo "@$AUTHOR is the repository owner: reviewing automatically."
+            exit 0
+          fi
+          trusted=$(gh api -H 'Accept: application/vnd.github.raw+json' \
+            "repos/$GITHUB_REPOSITORY/contents/.github/trusted-authors.json?ref=$DEFAULT_BRANCH" \
+            | jq --arg a "$author" --arg s "$sender" --arg o "$owner" \
+              'if type == "array" and all(.[]; type == "string")
+               then (map(ascii_downcase) + [$o]) as $t | all($a, $s; IN($t[]))
+               else error("trusted-authors.json must be an array of logins") end')
+          if [ "$trusted" = "true" ]; then
+            echo "@$AUTHOR (pushed by @$SENDER) is trusted (.github/trusted-authors.json on $DEFAULT_BRANCH): reviewing automatically."
+            exit 0
+          fi
+          approvals=$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR/comments?since=$PR_UPDATED_AT&per_page=100" \
+            | jq -s --arg o "$owner" --arg t "$PR_UPDATED_AT" --arg h "$head" \
+              '[.[][] | select((.user.login // "" | ascii_downcase) == $o and .author_association == "OWNER"
+                               and .created_at > $t and .updated_at == .created_at)
+                      | (.body // "") | capture("\\A/ecc-review[ \\t]+(?<s>[0-9a-fA-F]{7,40})(\\s|$)") | .s | ascii_downcase
+                      | select($h[0:length] == .)] | length')
+          needed=$(( GITHUB_RUN_ATTEMPT > 1 ? GITHUB_RUN_ATTEMPT - 1 : 1 ))
+          if [ "$approvals" -ge "$needed" ]; then
+            echo "The repository owner approved ${HEAD_SHA:0:12} with /ecc-review: reviewing @$AUTHOR's PR."
+            exit 0
+          fi
+          echo "::error title=Awaiting owner approval::@$AUTHOR (pushed by @$SENDER) is not a trusted author, so the ECC review (which uses the Claude credential) does not run automatically. The repository owner reviews the PR and comments /ecc-review ${HEAD_SHA:0:12} to run it for this commit; each new push or re-run needs a new approval."
           exit 1
 
       - name: Require a Claude credential

@@ -17,6 +17,7 @@ const committed = readJson('main.json');
 const tagsCommitted = readJson('release-tags.json');
 const settings = readJson('repo-settings.json');
 const actionsCommitted = readJson('actions-permissions.json');
+const forkCommitted = readJson('fork-pr-approval.json');
 const labels = readJson('labels.json').map((l) => ({ name: l.name }));
 const OWNER_ID = 30095502;
 
@@ -63,6 +64,7 @@ function run({ envs = {}, user = { id: OWNER_ID, login: 'prix0007', type: 'User'
   const dir = mkdtempSync(join(tmpdir(), 'apply-env-'));
   const w = (f, v) => writeFileSync(join(dir, f), JSON.stringify(v));
   w('actions.json', actionsCommitted);
+  w('fork-approval.json', forkCommitted);
   w('rulesets.json', [{ id: 7, name: 'main', target: 'branch' }, { id: 8, name: 'release-tags', target: 'tag' }]);
   w('ruleset.json', liveRuleset());
   w('ruleset-8.json', { id: 8, ...structuredClone(tagsCommitted) });
