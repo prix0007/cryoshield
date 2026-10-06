@@ -16,7 +16,7 @@ VECTORS_PATH = Path(
 
 # Pinned SHA-256 of v1.json. Changing the vectors must be a deliberate act: update this pin
 # only after re-reading docs/spec/vault-format-v1.md and the vector diff.
-PINNED_SHA256 = "67c790c973dd304a04ba64f6c36b5cda724fb1bbc0b94d1b5afb0ecb6b994d18"
+PINNED_SHA256 = "f9a9ee670d5c83663281c3184d237888255eee79ef5944d0f214c2b31b611bad"
 
 
 def h(s: str | None) -> bytes:
