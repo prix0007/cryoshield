@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { concat, decodeFunctionData, encodeErrorResult, encodeFunctionResult, keccak256, pad, type Hex } from 'viem';
+import { concat, decodeFunctionData, encodeErrorResult, encodeFunctionResult, getAddress, keccak256, pad, type Hex } from 'viem';
 import { config } from 'virtual:cryoshield-config';
 import { createVaultOnChain, registryError, updateVaultOnChain, WriteError } from '../../src/account/writes';
 import { deriveVaultIdV2, registryV2Abi } from '../../src/chain/contracts';
@@ -95,8 +95,10 @@ describe('harden-gas-sponsorship 5.2: salt-based create on VaultRegistry v2', ()
     return (v.vaultIdDerivation as { cases?: { owner: Hex; salt: Hex; vaultId: Hex }[] } | { owner: Hex; salt: Hex; vaultId: Hex }[] | undefined) ?? null;
   })();
   const cases = vectors ? (Array.isArray(vectors) ? vectors : (vectors.cases ?? [])) : [];
+  // The vector file stores hex without 0x (the v1.json convention); accept either.
+  const hex = (h: string) => (`0x${h.replace(/^0x/i, '').toLowerCase()}`) as Hex;
   it.skipIf(cases.length === 0)('matches every vaultIdDerivation vector (packages/vault-crypto task 3.1)', () => {
-    for (const c of cases) expect(deriveVaultIdV2(c.owner, c.salt)).toBe(c.vaultId.toLowerCase());
+    for (const c of cases) expect(deriveVaultIdV2(getAddress(hex(c.owner)), hex(c.salt))).toBe(hex(c.vaultId));
   });
 
   it('builds once under the derived id, sends createVault(salt, blob, locators) to v2, and never retries', async () => {
