@@ -178,6 +178,14 @@ def test_op_sepolia_registry_is_the_live_deployment() -> None:
     assert cfg().registry == p.registry and cfg().deploy_block == p.deploy_block
 
 
+def test_op_sepolia_registry_v2_is_the_live_deployment() -> None:
+    """VaultRegistry v2 on OP Sepolia (contracts/deployments/11155420.json, contracts.vaultRegistryV2)."""
+    p = NETWORKS["op-sepolia"]
+    assert p.registry_v2 == "0xa622c92d3d5b54aea081cf410224a8a2ecb08cb7"
+    assert p.deploy_block_v2 == 49755277
+    assert cfg().registry_v2 == p.registry_v2 and cfg().deploy_block_v2 == p.deploy_block_v2
+
+
 @pytest.mark.parametrize("name", ["op-mainnet", "arbitrum-one", "arbitrum-sepolia"])
 def test_undeployed_presets_stay_placeholders(name: str) -> None:
     assert is_placeholder(NETWORKS[name].registry)

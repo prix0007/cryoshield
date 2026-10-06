@@ -45,6 +45,9 @@ NETWORKS = {
         registry="0xb43f58cf17e64b603ae5588a1dd17e96a0849e44",
         deploy_block=1,
         rpcs=("http://127.0.0.1:8545",),
+        # contracts.vaultRegistryV2 in contracts/deployments/31337.json (same CREATE2 address as OP Sepolia).
+        registry_v2="0xa622c92d3d5b54aea081cf410224a8a2ecb08cb7",
+        deploy_block_v2=2,
     ),
     "op-sepolia": NetworkPreset(
         name="op-sepolia",
@@ -52,6 +55,9 @@ NETWORKS = {
         # From contracts/deployments/11155420.json (tx 0xb3608598…0759; source verified on Blockscout).
         registry="0xb43f58cf17e64b603ae5588a1dd17e96a0849e44",
         deploy_block=49568053,
+        # contracts.vaultRegistryV2 in contracts/deployments/11155420.json (tx 0x34728ea3…3d02).
+        registry_v2="0xa622c92d3d5b54aea081cf410224a8a2ecb08cb7",
+        deploy_block_v2=49755277,
         # Verified to answer eth_chainId = 11155420 on 2026-10-02 (omniatech excluded: HTTP 521).
         rpcs=(
             "https://sepolia.optimism.io",
