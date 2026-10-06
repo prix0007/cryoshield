@@ -261,6 +261,10 @@ All byte strings are **lowercase hex**. Integers are JSON numbers, and `null` me
   ],
   "authenticatorDataCases": [ // assertUserVerified(authenticatorData)
     { "name", "description", "authenticatorData": hex, "expectedError": CODE | null /* null = accepted */ }
+  ],
+  "vaultIdDerivation": [      // VaultRegistry v2: vaultId = keccak256(abi.encode(address owner, bytes32 salt))
+    { "name", "description", "owner": hex /* 20 bytes */, "salt": hex /* 32 bytes */,
+      "abiEncoded": hex /* 0x00 x 12 || owner || salt */, "vaultId": hex }
   ]
 }
 ```
