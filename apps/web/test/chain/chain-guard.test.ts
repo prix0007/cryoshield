@@ -26,7 +26,7 @@ describe('chain ID guard', () => {
   it('refuses every registry read on a mismatch, before any eth_call', async () => {
     const { transport, calls } = rpc(42161); // config expects 31337
     const r = createRegistryReader(transport);
-    await expect(r.resolveLocator(('0x' + '11'.repeat(32)) as `0x${string}`)).rejects.toBeInstanceOf(ChainMismatchError);
+    await expect(r.candidatesFor(('0x' + '11'.repeat(32)) as `0x${string}`)).rejects.toBeInstanceOf(ChainMismatchError);
     await expect(r.getVault(('0x' + '11'.repeat(32)) as `0x${string}`)).rejects.toBeInstanceOf(ChainMismatchError);
     expect(calls).not.toContain('eth_call');
   });
@@ -34,8 +34,8 @@ describe('chain ID guard', () => {
   it('checks eth_chainId once per session when it matches', async () => {
     const { transport, calls } = rpc(31337);
     const r = createRegistryReader(transport);
-    await r.resolveLocator(('0x' + '11'.repeat(32)) as `0x${string}`);
-    await r.resolveLocator(('0x' + '22'.repeat(32)) as `0x${string}`);
+    await r.getVault(('0x' + '11'.repeat(32)) as `0x${string}`);
+    await r.getVault(('0x' + '22'.repeat(32)) as `0x${string}`);
     expect(calls.filter((c) => c === 'eth_chainId')).toHaveLength(1);
     expect(calls.filter((c) => c === 'eth_call')).toHaveLength(2);
   });

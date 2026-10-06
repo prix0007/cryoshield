@@ -5,7 +5,7 @@
  */
 import { deriveLocator } from '@cryoshield/vault-crypto';
 import { evaluatePrf, type CredentialsApi } from '../webauthn';
-import { matchCandidates } from '../vault/adapter';
+import { matchCandidates, type RegistryVersion } from '../vault/adapter';
 import { decodePayload, PayloadError, type SecretItem, type PayloadErrorCode } from '../vault/payload';
 import { toHex, wipe, type Hex } from '../lib/bytes';
 import type { RegistryReader } from './registry';
@@ -27,6 +27,8 @@ export interface OpenedVault {
   payloadError?: PayloadErrorCode;
   /** Unlocking credential's index in the blob (= smart-account owner index). */
   entryIndex: number;
+  /** The registry it was found in ('v1' is legacy and read-only). */
+  registry: RegistryVersion;
 }
 
 export interface UnlockResult {

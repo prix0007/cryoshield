@@ -4,7 +4,8 @@
  *   treeHash = sha256 over the lines "<sha256>  <path>\n" (exactly `shasum -a 256` output) for every served file,
  *              paths relative to the site root, sorted bytewise (LC_ALL=C).
  * Anyone can rebuild the tagged commit with the published config and compare (see deploy/README.md).
- * Never records key values: only chain ID, RP ID, registry record, and connect-src ORIGINS.
+ * Never records key values: only chain ID, RP ID, registry records (v1 legacy, v2), this RP ID's wallet pair, and
+ * connect-src ORIGINS.
  * Usage: node deploy/release-manifest.mjs --site deploy/.build/site --out <file> --commit <sha> --env .env --contracts ../../contracts [--site-release]
  *   --site-release also writes <site>/release.json (served as /release.json; excluded from treeHash).
  *   --caddyfile <path> records the sha256 of the generated Caddyfile (CSP and every response header).
@@ -53,6 +54,10 @@ if (!/^(?=.{1,253}$)([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,63}$/.test(env.VIT
 }
 const chainId = Number(env.VITE_CHAIN_ID);
 const record = JSON.parse(readFileSync(join(arg('contracts'), 'deployments', `${chainId}.json`), 'utf8'));
+// harden-gas-sponsorship: the build already refused a record without these; the manifest names them too.
+const v2 = record.contracts?.vaultRegistryV2;
+const wallet = record.contracts?.wallets?.[env.VITE_RP_ID];
+if (!v2 || !wallet) throw new Error(`deployments/${chainId}.json has no contracts.vaultRegistryV2 or contracts.wallets["${env.VITE_RP_ID}"]`);
 const html = readFileSync(join(site, 'index.html'), 'utf8');
 const csp = html.match(/<meta http-equiv="Content-Security-Policy" content="([^"]+)">/)?.[1] ?? '';
 const connect = (csp.split(';').map((d) => d.trim()).find((d) => d.startsWith('connect-src ')) ?? '')
@@ -71,7 +76,10 @@ const manifest = {
   config: {
     chainId,
     rpId: env.VITE_RP_ID,
-    registry: { address: record.address, deployBlock: record.deployBlock },
+    // VaultRegistry v1 (legacy reads); null where v1 was never deployed (OP Mainnet).
+    registry: record.address ? { address: record.address, deployBlock: record.deployBlock } : null,
+    registryV2: { address: v2.address, deployBlock: v2.deployBlock },
+    wallet: { factory: wallet.factory, implementation: wallet.implementation },
     connectOrigins: connect,
   },
   files,

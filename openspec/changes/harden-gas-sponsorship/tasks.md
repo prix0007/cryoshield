@@ -37,7 +37,7 @@
 
 ## 2. Sponsorship runbook and refusal regression [fe]
 
-- [ ] 2.1 [fe] Rewrite `apps/web/docs/paymaster-policy.md` as the runbook required by the `gas-sponsorship` spec:
+- [x] 2.1 [fe] Rewrite `apps/web/docs/paymaster-policy.md` as the runbook required by the `gas-sponsorship` spec:
   - the settings per environment;
   - the confirmed facts from 1.1;
   - the honest abuse bound (design D4);
@@ -47,13 +47,13 @@
   - the testnet per-sender lockout remedy (design D2).
 
   Remove the old "10 operations / $0.50 per sender" table. Verify: the docs review in 7.1, and every number matches design D2.
-- [ ] 2.2 [fe] Write failing tests in `test/account/writes.test.ts`:
+- [x] 2.2 [fe] Write failing tests in `test/account/writes.test.ts`:
   - `createSponsor` always sends `{ sponsorshipPolicyId }`;
   - an insufficient-balance error and a policy-limit error both map to `SPONSORSHIP_REFUSED` with no user operation sent;
   - in `test/config/` (or the existing config test file), loading the configuration with `VITE_SPONSORSHIP_POLICY_ID` missing or invalid throws a configuration error naming the variable.
 
   Make them pass, with code changes only if a test fails. Verify: `pnpm --filter web test`.
-- [ ] 2.3 [fe] Update `docs/system-design.md` and the threat-model text to the Pimlico-hardened design, and remove any reference to an own paymaster. Verify: the docs review in 7.1.
+- [x] 2.3 [fe] Update `docs/system-design.md` and the threat-model text to the Pimlico-hardened design, and remove any reference to an own paymaster. Verify: the docs review in 7.1.
 
 ## 3. VaultRegistry v2 [cry] [sol] [rec]
 
@@ -83,7 +83,7 @@
 
 ## 4. CryoShieldSmartWallet and factory [sol] [fe]
 
-- [ ] 4.1 [fe] Spike: can viem `toCoinbaseSmartAccount` (the pinned version) use a custom factory and address derivation? If not, prototype the design D8 local wrapper. Record the result in design.md D8. Verify: a unit test computes the same counterfactual address as `getAddress` on the committed CBSW v1.1 factory fixture bytecode deployed on anvil with a non-Coinbase implementation address (our factory is the same code, so this needs nothing from 4.5). Task 5.1 repeats the check against the real `CryoShieldSmartWalletFactory`.
+- [x] 4.1 [fe] Spike: can viem `toCoinbaseSmartAccount` (the pinned version) use a custom factory and address derivation? If not, prototype the design D8 local wrapper. Record the result in design.md D8. Verify: a unit test computes the same counterfactual address as `getAddress` on the committed CBSW v1.1 factory fixture bytecode deployed on anvil with a non-Coinbase implementation address (our factory is the same code, so this needs nothing from 4.5). Task 5.1 repeats the check against the real `CryoShieldSmartWalletFactory`.
 - [x] 4.2 [sol] Add CBSW v1.1 as a pinned dependency (`forge install coinbase/smart-wallet@v1.1.0 --no-git`) and fixtures for the real EntryPoint v0.6. Generate WebAuthn fixtures under `contracts/test/fixtures/webauthn/` with a deterministic script: a P-256 test key; UV=1 valid; UV=0, UP=0, foreign rpIdHash and short-authData negatives, each re-signed. Verify: re-running the generator gives no diff.
 - [x] 4.3 [sol] Write failing tests in `contracts/test/CryoShieldSmartWallet.t.sol`, one per `smart-account` scenario:
   - UV=0 refused (userOp, `executeWithoutChainIdValidation`, ERC-1271);
@@ -110,7 +110,7 @@
 
 ## 5. Web app [fe]
 
-- [ ] 5.1 [fe] Write failing tests:
+- [x] 5.1 [fe] Write failing tests:
   - new accounts use `contracts.wallets[VITE_RP_ID].factory` from the record;
   - a record with entries for both `cryoshield.app` and `cryoshield-web-dev.fly.dev` lets each build select its own;
   - the build fails only when the build's RP ID has no entry;
@@ -119,12 +119,15 @@
 
   Then implement. Verify: unit tests.
 - [ ] 5.2 [fe] Write failing tests for the salt-based create: the client-computed `vaultId` equals the registry's (vector 3.1), and the `VAULT_ID_TAKEN` retry path is removed. Update `policy.ts` to target v2. Verify: unit tests and `test:int` against the local stack.
-- [ ] 5.3 [fe] Write failing tests: reads page v2 then v1 and use `getVaults`, and a v1-only vault still unlocks. Then implement in `src/chain/registry.ts`. Verify: unit tests, `test:int` and `test:e2e`.
+- [x] 5.3 [fe] Write failing tests: reads page v2 then v1 and use `getVaults`, and a v1-only vault still unlocks. Then implement in `src/chain/registry.ts`. Verify: unit tests, `test:int` and `test:e2e`.
 - [ ] 5.4 [ow] Regenerate the presets from the deployment records (`config/chain-presets.json` consumers). Verify: the parity tests in contracts, web and recover pass.
+
+- [ ] 5.5 [fe] Follow-up (overwatcher, 2026-10-06): lazy-load the write stack (viem account abstraction, the Pimlico client, `src/account/*`) on the first save instead of in the initial /app chunk. Verify: `/app` initial JS gzip drops by at least 10 KB in `pnpm --filter @cryoshield/web verify-build`, then lower `APP_BASELINE` in `apps/web/scripts/verify-build.mjs` back by the 2 KB raised for this change; unit, `test:int` and `test:e2e` green.
 
 ## 6. Testnet (OP Sepolia only) [ow] [sol] [fe]
 
 - [ ] 6.1 [ow] Deploy VaultRegistry v2 and the wallet implementation and factory for **both** `cryoshield.app` and `cryoshield-web-dev.fly.dev` to OP Sepolia with `BROADCAST=1`. Verify: `contracts/deployments/11155420.json` has `contracts.vaultRegistryV2` and both `contracts.wallets.<rpId>` entries, Blockscout verification passes, and both the production and the dev builds (`deploy-dev.yml`) succeed.
+  - [x] [fe] Web part (2026-10-07): both builds pass against the real `contracts/deployments/11155420.json` (2ad376c), production mode with stub env values: `VITE_RP_ID=cryoshield.app` (`verify-build`, `VERIFY_CHAIN_ID=11155420`) and `VITE_RP_ID=cryoshield-web-dev.fly.dev` (`vite build --mode production`). Each bundle and `/architecture` carry registry v2 `0xA622…cB7` and only their own RP ID's factory (`0x775d…DfED` / `0x5945…73d3`).
 - [ ] 6.2 [sol] Through the hosted Pimlico OP Sepolia endpoint with the testnet policy, run: a sponsored create via our factory, an edit and an add-key, plus a UV=0 operation that must be refused in simulation. Verify: three included operations with receipts, and the refusal recorded.
 - [ ] 6.3 [fe] Run the hardware checklist (`apps/web/docs/hardware-test.md`) with two real YubiKeys: create, unlock, edit, add-key, the old v1 vault still unlocking, and recovery-tool reads of v1 and v2. Record the measured gas and cost per operation in `contracts/GAS.md` and `apps/web/docs/costs.md`, and re-check the D2 per-operation caps against them. Verify: the checklist is recorded.
 - [ ] 6.4 [ow] Re-create the founder's test vault on v2 under a new account. Verify: it unlocks in the app and in the recovery tool.

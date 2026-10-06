@@ -3,7 +3,7 @@
 How a secret travels from your browser to permanent storage and back, which parts CryoShield runs, and how code reaches production.
 
 > **Status:** OP Sepolia testnet, not independently audited. Mainnet will be OP Mainnet.
-> Last updated 2026-10-03. Normative details live in `openspec/specs/` and `docs/spec/vault-format-v1.md`; this page is the map.
+> Last updated 2026-10-05. Normative details live in `openspec/specs/` and `docs/spec/vault-format-v1.md`; this page is the map.
 
 ## 1. Components and trust boundaries
 
@@ -19,15 +19,16 @@ flowchart LR
 
   subgraph third["Third-party infrastructure"]
     fly["Fly.io · cryoshield.app<br/>static files only, the one thing we run"]
-    pimlico["Pimlico<br/>bundler + paymaster (we pay gas)"]
+    pimlico["Pimlico<br/>bundler + paymaster under our sponsorship policy (we pay gas)"]
     rpc["Public RPCs<br/>2+ must agree for recovery"]
     gw["Arweave gateway / Turbo<br/>free upload ≤105 KiB · GraphQL"]
   end
 
   subgraph public["Public and permanent"]
     ep["EntryPoint v0.6"]
-    sw["Coinbase Smart Wallet v1.1"]
-    reg["VaultRegistry<br/>no admin, no upgrades<br/>blob ≤1 KB · locator → vaultIds"]
+    sw["CryoShield Smart Wallet<br/>CBSW v1.1 code + PIN (UV) and RP ID required"]
+    reg["VaultRegistry v2<br/>no admin, no upgrades<br/>blob ≤1 KB · locator → vaultIds (paged, no cap)"]
+    reg1["VaultRegistry v1 (testnet only)<br/>legacy, read-only"]
     ar["Arweave permaweb<br/>mirror tagged by vaultId + locator"]
   end
 
@@ -39,6 +40,7 @@ flowchart LR
   sw -- "createVault / updateVault" --> reg
   web -- "eth_call" --> rpc
   rpc -- "reads" --> reg
+  rpc -- "legacy reads" --> reg1
   web -- "mirror upload" --> gw
   gw -- "stores" --> ar
   cli <-- "CTAP2 hmac-secret over USB" --> keys
@@ -49,7 +51,8 @@ flowchart LR
   class fly ours;
 ```
 
-- **Writes** go through Pimlico because CryoShield sponsors gas. The client allowlist only lets a sponsored operation call the VaultRegistry (or the account itself, to add an owner) with `value == 0`.
+- **Writes** go through Pimlico because CryoShield sponsors gas, always under our sponsorship policy (limits per sender, per operation and per day; `apps/web/docs/paymaster-policy.md`). CryoShield runs no paymaster, webhook or proxy. The client allowlist only lets a sponsored operation call VaultRegistry v2 (or the account itself, to add an owner) with `value == 0`. If sponsorship is refused, nothing is sent and the app says "Saving is paused"; there is never an unsponsored fallback.
+- **Abuse can only exhaust the gas budget.** A script making fresh accounts is bounded by the policy's daily global cap; a script skipping the policy (if Pimlico allows it) by the prepaid balance, with no overdraft. Neither can read, change or block any vault.
 - **Reads, unlocks and recovery** never touch Pimlico or Fly. The recovery tool talks to the key over USB and reads the chain or Arweave directly, so it keeps working if the website, the domain or the company disappears.
 - **The domain** `cryoshield.app` is the permanent WebAuthn RP ID. Losing control of it would let an attacker prompt users' keys in a browser. It is protected by DNSSEC, a CAA record (Let's Encrypt only), HSTS preload and registrar lock. The desktop tool is unaffected, because it is not bound by browser origin checks.
 
@@ -76,7 +79,8 @@ flowchart LR
 - **One wrap per key.** Every enrolled key wraps its own copy of the data key. Losing one key loses nothing. Losing every key loses the vault, and nobody can reset it.
 - **Clone-proof.** The AAD binds the vault header and the 32-byte `vaultId`. A blob copied under any other vaultId fails to authenticate and is skipped.
 - **UV is mandatory, and the key enforces it via credProtect level 3.** hmac-secret returns different outputs with and without user verification. Without UV, browser and desktop could derive different keys.
-  - Every key is enrolled with credProtect level 3 (`userVerificationRequired`, requested with enforcement and confirmed from the authenticator data). A stolen key will not produce *any* assertion without its PIN, even though credential IDs are public and the smart wallet does not itself require UV or check rpId and origin (audit AA-H1).
+  - Every key is enrolled with credProtect level 3 (`userVerificationRequired`, requested with enforcement and confirmed from the authenticator data). A stolen key will not produce *any* assertion without its PIN, even though credential IDs are public.
+- **The account enforces it too (audit AA-H1).** `CryoShieldSmartWallet` is the Coinbase Smart Wallet v1.1 code with two changes. Every signature it accepts (user operations, the cross-chain owner path, ERC-1271) must carry the UV flag and `sha256(rpId)` of its RP ID, and owners are P-256 keys only, at most 8. New accounts come from our own factory, one per RP ID; there is no admin key.
   - Keys enrolled before this rule must be re-created; that is only the founder's test vault.
   - A contract-level validator that checks UV, rpId and origin is planned, and it is a hard gate for mainnet. It also closes the U2F/CTAP1 path, where a key that accepts a CTAP2 credential ID over U2F could sign without its PIN.
 - **Desktop salt mapping.** CTAP salt = `SHA-256("WebAuthn PRF" || 0x00 || input)`. This lets the browser and the desktop tool derive identical outputs.
@@ -95,17 +99,17 @@ sequenceDiagram
 
   U->>K: Tap key 1, then key 2
   K-->>W: Discoverable credential + PRF output + P-256 public key (each)
-  W->>W: assertUserVerified; random vaultId; encrypt secret; wrap data key per key
+  W->>W: assertUserVerified; account address from our factory; random salt
+  W->>W: vaultId = keccak256(account, salt), checked with the registry; encrypt secret; wrap data key per key
   U->>K: One more tap
   K-->>W: Signature over the userOp
   W->>P: eth_chainId guard, then sponsored userOp
-  P->>C: handleOps → createVault(vaultId, blob, locators)
+  P->>C: handleOps → account checks UV + rpIdHash → createVault(salt, blob, locators)
   W->>A: Upload blob, tags CryoShield-Vault-Id + CryoShield-Locator
   W->>W: Zeroize PRF outputs and keys
 ```
 
-- `LocatorFull`: a front-runner filled the locator. The app enrolls a fresh credential, which gives a new locator.
-- `VaultIdTaken`: the app re-encrypts under a fresh vaultId and asks for one more tap of key 1.
+- **No front-running failures (VaultRegistry v2).** The registry derives the vaultId from the account address, so copying a pending create gives the copier a different id, and locators have no entry cap, so filling one cannot block a registration.
 
 ## 4. Unlock or recover
 
@@ -121,9 +125,9 @@ sequenceDiagram
   U->>K: One tap
   K-->>W: PRF output (UV verified)
   W->>W: Derive locator
-  W->>R: eth_call resolveLocator(locator)
-  R-->>W: Candidate vaultIds (append-only, at most 16)
-  W->>R: getVault(vaultId) for each candidate
+  W->>R: v2: locatorLength, then resolveLocator(locator, start, 256) page by page
+  R-->>W: Candidate vaultIds (append-only, no cap)
+  W->>R: v2 getVaults(≤32 ids) per batch; then v1 resolveLocator + getVault (testnet only)
   alt chain unreachable (CLI)
     W->>A: GraphQL by CryoShield-Locator tag
     A-->>W: Blobs, checked against the latest on-chain event hash when available
@@ -133,6 +137,8 @@ sequenceDiagram
 ```
 
 - No account, no gas and no wallet are needed to read.
+- **v2 is authoritative.** A v1 entry whose vaultId also exists in v2 is ignored (v1 accepts any id, so it could hold a stale copy). If v2 can't be read, nothing opens: the app says it couldn't confirm the latest version, rather than falling back to v1.
+- **Legacy v1 vaults** (OP Sepolia only) open read-only. When a key opens one v2 vault, it opens directly, with v1 copies behind "Open an older test vault".
 - **Web app guard:** the web app checks the RPC's `eth_chainId` before any registry read, and refuses with "wrong network" rather than a misleading "no vault".
 - **Recovery CLI hardening:**
   - hostile JSON from a server is discarded and recovery continues;
@@ -205,12 +211,12 @@ The static site is served by a digest-pinned Caddy image that runs as a non-root
 | Item | Value |
 |---|---|
 | Network | OP Sepolia, chain 11155420 (mainnet: OP Mainnet, not deployed yet) |
-| VaultRegistry | `0xB43f58cF17e64B603aE5588a1DD17E96a0849e44` (same CREATE2 address on every chain) |
-| Deploy block | `49568053` |
-| Smart account | Coinbase Smart Wallet v1.1 on EntryPoint v0.6; P-256 precompile at `0x100` |
+| VaultRegistry v2 | `contracts.vaultRegistryV2` in `contracts/deployments/<chainId>.json` (same CREATE2 address on every chain); the live value is on `/architecture` |
+| VaultRegistry v1 (legacy, read-only, OP Sepolia only) | `0xB43f58cF17e64B603aE5588a1DD17E96a0849e44`, deploy block `49568053`; never deployed to OP Mainnet |
+| Smart account | CryoShield Smart Wallet (CBSW v1.1 code + UV and rpIdHash on every signature) on EntryPoint v0.6, from `contracts.wallets.<rpId>.factory`; P-256 precompile at `0x100` |
 | WebAuthn RP ID | `cryoshield.app` (permanent) |
 | Hosting | Fly app `cryoshield-web`, org `cryoshield`, region `sin`; DNSSEC and CAA on |
-| Vault limits | blob ≤ 1024 bytes · 2–8 keys · 16 vaults per locator |
+| Vault limits | blob ≤ 1024 bytes · 2–8 keys · no per-locator cap (v2; v1 had 16) |
 | Chain presets | `config/chain-presets.json` (anvil, op-sepolia, op-mainnet, arbitrum-sepolia, arbitrum-one) |
 | License | MIT |
 
@@ -219,7 +225,8 @@ The static site is served by a digest-pinned Caddy image that runs as a non-root
 | Topic | File |
 |---|---|
 | Vault binary format and derivations | `docs/spec/vault-format-v1.md`, `openspec/specs/vault-crypto/` |
-| Contract | `contracts/src/VaultRegistry.sol`, `contracts/README.md`, `contracts/GAS.md` |
+| Contracts | `contracts/src/VaultRegistryV2.sol`, `contracts/src/CryoShieldSmartWallet.sol`, `contracts/src/CryoShieldSmartWalletFactory.sol`, `contracts/README.md`, `contracts/GAS.md` |
+| Gas sponsorship runbook | `apps/web/docs/paymaster-policy.md` |
 | Web app, paymaster policy, costs | `apps/web/docs/` |
 | Hosting runbook and DNS hardening | `apps/web/deploy/README.md` |
 | Recovery tool and manual YubiKey test | `tools/recover/README.md`, `tools/recover/docs/manual-yubikey-test.md` |

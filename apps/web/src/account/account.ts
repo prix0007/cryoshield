@@ -1,19 +1,21 @@
 /**
- * Key-owned smart account (spec sponsored-vault-writes "Key-owned smart account"; design D2).
- * Coinbase Smart Wallet v1.1 (EntryPoint v0.6) via viem. Owners are exactly the enrolled keys' P-256 public keys,
+ * Key-owned smart account (spec sponsored-vault-writes "Key-owned smart account"; design D2; spec smart-account).
+ * CryoShieldSmartWallet: Coinbase Smart Wallet v1.1 code that requires UV and our rpIdHash on every signature
+ * (EntryPoint v0.6), created by OUR factory (contracts.wallets[VITE_RP_ID]; never Coinbase's), through the D8 wrapper
+ * over viem's CBSW encoding (wallet.ts). Signing asks for userVerification 'required' and checks the UV flag
+ * (webauthn prfCapturingGetFn). Owners are exactly the enrolled keys' P-256 public keys,
  * in blob credential order, so owner index i == blob entry i. Nothing is stored locally: for an existing vault,
  * the account address is the registry owner and the signer's public key is read back with ownerAtIndex(i).
  */
 import { createPublicClient, type Hex, type PublicClient, type Transport } from 'viem';
-import { toCoinbaseSmartAccount, toWebAuthnAccount, type WebAuthnAccount } from 'viem/account-abstraction';
+import { toWebAuthnAccount, type WebAuthnAccount } from 'viem/account-abstraction';
+import { toCryoShieldSmartAccount } from './wallet';
 import { config } from '../config';
 import { chainOf, defaultTransport } from '../chain/registry';
 import { prfCapturingGetFn, type CredentialsApi } from '../webauthn';
 import { toBase64Url } from '../lib/bytes';
 import { smartWalletAbi } from './policy';
 import { ensureChain } from '../chain/guard';
-
-export const CBSW_VERSION = '1.1' as const;
 
 export function makePublicClient(transport: Transport = defaultTransport()): PublicClient {
   return createPublicClient({ chain: chainOf(), transport }) as PublicClient;
@@ -52,7 +54,7 @@ export async function newVaultAccount(p: {
       ...(p.credentials ? { credentials: p.credentials } : {}),
     }),
   );
-  return toCoinbaseSmartAccount({ client: p.client, owners, ownerIndex: p.signerIndex, version: CBSW_VERSION, nonce: 0n });
+  return toCryoShieldSmartAccount({ client: p.client, factory: config.wallet.factory, owners, ownerIndex: p.signerIndex, nonce: 0n });
 }
 
 export class OwnerMismatchError extends Error {
@@ -87,7 +89,7 @@ export async function existingVaultAccount(p: {
   // owners[] is only used to compute the address/initCode of an undeployed account; this one is deployed and its
   // address is given, so every slot can hold the signer.
   const owners = Array.from({ length: p.entryIndex + 1 }, () => signer);
-  return toCoinbaseSmartAccount({ client: p.client, owners, ownerIndex: p.entryIndex, address: p.address, version: CBSW_VERSION });
+  return toCryoShieldSmartAccount({ client: p.client, factory: config.wallet.factory, owners, ownerIndex: p.entryIndex, address: p.address });
 }
 
 export { createPublicClient };

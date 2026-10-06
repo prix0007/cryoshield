@@ -1,12 +1,20 @@
 /** app-motion-ux 2.1 / D5: write-path progress notifications are real events, in order, and can never break a write. */
 import { describe, expect, it, vi } from 'vitest';
-import type { Hex } from 'viem';
+import { decodeFunctionData, encodeFunctionResult, type Hex } from 'viem';
+import { deriveVaultIdV2, registryV2Abi } from '../../src/chain/contracts';
 import { addKeyOnChain, createVaultOnChain, updateVaultOnChain, type SaveStage } from '../../src/account/writes';
 
 const owner = '0x00000000000000000000000000000000000000aa' as Hex;
 const account = { getAddress: async () => owner } as never;
 const blob = new Uint8Array([1, 2, 3]);
-const okClient = { getChainId: async () => 31337, call: vi.fn(async () => ({ data: '0x' })), readContract: vi.fn(async () => 2n) } as never;
+/** eth_call: answers VaultRegistry v2 vaultIdFor like the registry; everything else succeeds empty. */
+const call = vi.fn(async ({ data }: { data: Hex }) => {
+  const d = decodeFunctionData({ abi: registryV2Abi, data });
+  if (d.functionName !== 'vaultIdFor') return { data: '0x' };
+  const [o, s] = d.args as [Hex, Hex];
+  return { data: encodeFunctionResult({ abi: registryV2Abi, functionName: 'vaultIdFor', result: deriveVaultIdV2(o, s) }) };
+});
+const okClient = { getChainId: async () => 31337, call, readContract: vi.fn(async () => 2n) } as never;
 const reader = (b: Uint8Array) => ({ getVault: async (vaultId: Hex) => ({ vaultId, owner, blob: b, version: 2 }) }) as never;
 const vaultId = ('0x' + '33'.repeat(32)) as Hex;
 
@@ -24,7 +32,7 @@ describe('write progress events (D5)', () => {
     const log: string[] = [];
     await createVaultOnChain(
       { account, build: async () => ({ blob, locators: [] }) },
-      { client: okClient, sponsor: sponsor(), reader: reader(blob), randomId: () => vaultId, onSign: () => void log.push('sign'), onProgress: (s) => void log.push(s) },
+      { client: okClient, sponsor: sponsor(), reader: reader(blob), onSign: () => void log.push('sign'), onProgress: (s) => void log.push(s) },
     );
     expect(log).toEqual(['encrypted', 'sign', 'sponsored', 'sent', 'confirmed']);
   });
@@ -53,7 +61,7 @@ describe('write progress events (D5)', () => {
     const onSign = vi.fn();
     const r = await createVaultOnChain(
       { account, build: async () => ({ blob, locators: [] }) },
-      { client: okClient, sponsor: sponsor(), reader: reader(blob), randomId: () => vaultId, onSign, onProgress: () => { throw new Error('ui bug'); } },
+      { client: okClient, sponsor: sponsor(), reader: reader(blob), onSign, onProgress: () => { throw new Error('ui bug'); } },
     );
     expect(r.version).toBe(2);
     expect(onSign).toHaveBeenCalledTimes(1);

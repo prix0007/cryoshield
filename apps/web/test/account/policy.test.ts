@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { encodeFunctionData, type Hex } from 'viem';
-import { registryAbi, config } from 'virtual:cryoshield-config';
+import { config } from 'virtual:cryoshield-config';
+import registryV1Abi from '../../../../contracts/abi/VaultRegistry.json';
+import { registryV2Abi } from '../../src/chain/contracts';
 import { assertSponsorableCalls, assertSponsorableCallData, smartWalletAbi, PolicyError } from '../../src/account/policy';
 
 const account = '0x00000000000000000000000000000000000000aa' as Hex;
-const reg = config.registry.address;
+const reg = config.registryV2.address;
+const registryAbi = registryV2Abi;
 const vaultId = ('0x' + '01'.repeat(32)) as Hex;
 const create = { to: reg, value: 0n, data: encodeFunctionData({ abi: registryAbi as any, functionName: 'createVault', args: [vaultId, '0x01', [vaultId, vaultId]] }) };
 const update = { to: reg, value: 0n, data: encodeFunctionData({ abi: registryAbi as any, functionName: 'updateVault', args: [vaultId, '0x01'] }) };
@@ -23,6 +26,8 @@ describe('sponsorship allowlist (6.2)', () => {
     ['a self-call other than addOwnerPublicKey', [{ to: account, value: 0n, data: encodeFunctionData({ abi: smartWalletAbi, functionName: 'removeOwnerAtIndex', args: [0n, '0x'] }) }]],
     ['addOwnerAddress (EOA owner)', [{ to: account, value: 0n, data: encodeFunctionData({ abi: smartWalletAbi, functionName: 'addOwnerAddress', args: [account] }) }]],
     ['an empty call list', []],
+    // harden-gas-sponsorship: clients never write to VaultRegistry v1.
+    ['a VaultRegistry v1 write', [{ to: config.registryV1!.address, value: 0n, data: encodeFunctionData({ abi: registryV1Abi as any, functionName: 'updateVault', args: [vaultId, '0x01'] }) }]],
   ])('refuses %s', (_n, calls) => {
     expect(() => assertSponsorableCalls(calls as any, account)).toThrow(PolicyError);
   });

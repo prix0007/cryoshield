@@ -3,7 +3,11 @@
 # continuous-deployment "Smoke test and automatic rollback per target"). Retries the whole suite, so a rolling deploy or
 # a resuming machine can settle.
 #
-# env: EXPECT_SHA (40-hex), REGISTRY_ADDRESS (0x + 40 hex), DONATION_ADDRESS (0x + 40 hex, config/donation.json),
+# env: EXPECT_SHA (40-hex), DONATION_ADDRESS (0x + 40 hex, config/donation.json),
+#      from contracts/deployments/<chain>.json (harden-gas-sponsorship):
+#        REGISTRY_V2_ADDRESS (0x + 40 hex, contracts.vaultRegistryV2.address),
+#        WALLET_FACTORY_ADDRESS (0x + 40 hex, contracts.wallets[<release rpId>].factory),
+#        REGISTRY_ADDRESS (VaultRegistry v1, 0x + 40 hex, or empty where v1 does not exist, e.g. OP Mainnet),
 #      BASE_URL (default https://cryoshield.app),
 #      EXPECT_NOINDEX (true on the development site: every page must send X-Robots-Tag: noindex, nofollow;
 #                      false, the default, on production: no page may send a noindex X-Robots-Tag),
@@ -15,10 +19,14 @@ ATTEMPTS="${SMOKE_ATTEMPTS:-10}"
 SLEEP="${SMOKE_SLEEP:-15}"
 EXPECT_SHA="${EXPECT_SHA:-}"
 REGISTRY_ADDRESS="${REGISTRY_ADDRESS:-}"
+REGISTRY_V2_ADDRESS="${REGISTRY_V2_ADDRESS:-}"
+WALLET_FACTORY_ADDRESS="${WALLET_FACTORY_ADDRESS:-}"
 DONATION_ADDRESS="${DONATION_ADDRESS:-}"
 EXPECT_NOINDEX="${EXPECT_NOINDEX:-false}"
 [[ "$EXPECT_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "smoke: EXPECT_SHA must be a full 40-hex commit" >&2; exit 2; }
-[[ "$REGISTRY_ADDRESS" =~ ^0x[0-9a-fA-F]{40}$ ]] || { echo "smoke: REGISTRY_ADDRESS must be 0x + 40 hex" >&2; exit 2; }
+[ -z "$REGISTRY_ADDRESS" ] || [[ "$REGISTRY_ADDRESS" =~ ^0x[0-9a-fA-F]{40}$ ]] || { echo "smoke: REGISTRY_ADDRESS must be empty or 0x + 40 hex" >&2; exit 2; }
+[[ "$REGISTRY_V2_ADDRESS" =~ ^0x[0-9a-fA-F]{40}$ ]] || { echo "smoke: REGISTRY_V2_ADDRESS must be 0x + 40 hex" >&2; exit 2; }
+[[ "$WALLET_FACTORY_ADDRESS" =~ ^0x[0-9a-fA-F]{40}$ ]] || { echo "smoke: WALLET_FACTORY_ADDRESS must be 0x + 40 hex" >&2; exit 2; }
 [[ "$DONATION_ADDRESS" =~ ^0x[0-9a-fA-F]{40}$ ]] || { echo "smoke: DONATION_ADDRESS must be 0x + 40 hex" >&2; exit 2; }
 [[ "$EXPECT_NOINDEX" =~ ^(true|false)$ ]] || { echo "smoke: EXPECT_NOINDEX must be true or false" >&2; exit 2; }
 
@@ -34,6 +42,11 @@ fetch() { # fetch <path> -> sets status, writes headers/body files
 
 header_has() { # header_has <name> <required substring, lower-case>
   grep -E "^$1:" "$TMP/hl" | grep -qF -- "$2"
+}
+
+lc() { tr 'A-F' 'a-f' <<<"$1"; }
+release_field() { # release_field <jq path> -> lower-case value from the fetched /release.json, or "null"
+  lc "$(jq -r "$1 // \"null\"" "$TMP/b" 2>/dev/null || echo unreadable)"
 }
 
 check_once() {
@@ -59,7 +72,11 @@ check_once() {
         header_has cross-origin-resource-policy "same-origin" || errors+=("$p: cross-origin-resource-policy missing")
         ;;
       /architecture)
-        grep -qiF -- "$REGISTRY_ADDRESS" "$TMP/b" || errors+=("/architecture does not show the registry address $REGISTRY_ADDRESS")
+        grep -qiF -- "$REGISTRY_V2_ADDRESS" "$TMP/b" || errors+=("/architecture does not show the registry v2 address $REGISTRY_V2_ADDRESS")
+        grep -qiF -- "$WALLET_FACTORY_ADDRESS" "$TMP/b" || errors+=("/architecture does not show the wallet factory $WALLET_FACTORY_ADDRESS")
+        if [ -n "$REGISTRY_ADDRESS" ]; then
+          grep -qiF -- "$REGISTRY_ADDRESS" "$TMP/b" || errors+=("/architecture does not show the registry v1 address $REGISTRY_ADDRESS")
+        fi
         ;;
       /support)
         # add-donation: the live page shows exactly the configured donation address (case-sensitive: EIP-55), and
@@ -73,6 +90,17 @@ check_once() {
   fetch /release.json
   live="$(jq -r '.commit // empty' "$TMP/b" 2>/dev/null || true)"
   [ "$status" = "200" ] && [ "$live" = "$EXPECT_SHA" ] || errors+=("/release.json reports ${live:-nothing} (HTTP $status), expected $EXPECT_SHA")
+  # The live build's contracts equal the deployment record (v2 and this RP ID's wallet always; v1 only where it exists).
+  v2="$(release_field .config.registryV2.address)"
+  [ "$v2" = "$(lc "$REGISTRY_V2_ADDRESS")" ] || errors+=("/release.json registry v2 is $v2, expected $REGISTRY_V2_ADDRESS")
+  factory="$(release_field .config.wallet.factory)"
+  [ "$factory" = "$(lc "$WALLET_FACTORY_ADDRESS")" ] || errors+=("/release.json wallet factory is $factory, expected $WALLET_FACTORY_ADDRESS")
+  v1="$(release_field .config.registry.address)"
+  if [ -n "$REGISTRY_ADDRESS" ]; then
+    [ "$v1" = "$(lc "$REGISTRY_ADDRESS")" ] || errors+=("/release.json registry v1 is $v1, expected $REGISTRY_ADDRESS")
+  else
+    [ "$v1" = "null" ] || errors+=("/release.json names a registry v1 ($v1) but the deployment record has none")
+  fi
   [ "${#errors[@]}" -eq 0 ]
 }
 

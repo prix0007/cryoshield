@@ -26,6 +26,15 @@ describe('parseEnv', () => {
     expect(() => parseEnv(env)).toThrow(name);
   });
 
+  it('harden-gas-sponsorship 2.2: a missing or invalid sponsorship policy ID fails naming VITE_SPONSORSHIP_POLICY_ID', () => {
+    for (const bad of ['', '   ', 'sp bad', 'sp_<script>', 'x'.repeat(129)]) {
+      expect(() => parseEnv({ ...good, VITE_SPONSORSHIP_POLICY_ID: bad })).toThrow('VITE_SPONSORSHIP_POLICY_ID');
+    }
+    const { VITE_SPONSORSHIP_POLICY_ID: _omit, ...without } = good;
+    void _omit;
+    expect(() => parseEnv(without)).toThrow('VITE_SPONSORSHIP_POLICY_ID');
+  });
+
   it('rejects a non-numeric chain id', () => {
     expect(() => parseEnv({ ...good, VITE_CHAIN_ID: 'arb' })).toThrow('VITE_CHAIN_ID');
   });

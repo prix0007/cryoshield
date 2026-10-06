@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { SecretItem } from '../vault/payload';
 import { cleanItems, KeyPrompt, Notice, SecretsEditor, StepHeading } from './components';
 import { MirrorLine } from './CreateFlow';
-import { ensureMirror, errorReference, messageFor, mirrorWrite, saveAddKey, saveEdit, type MirrorResult, type VaultSession } from './operations';
+import { ensureMirror, errorReference, isReadOnly, messageFor, mirrorWrite, saveAddKey, saveEdit, type MirrorResult, type VaultSession } from './operations';
 import { useServices } from './services';
 import { S } from './strings';
 import { ActionBar, EmptyState } from './chrome';
@@ -20,9 +20,14 @@ export function VaultView(props: {
   onChange: (s: VaultSession) => void;
   onLock: () => void;
   freshMirror?: boolean;
+  /** Opens the legacy v1 copy this key also opens (harden-gas-sponsorship). */
+  onOpenOlder?: () => void;
+  /** From a legacy v1 copy, back to the current v2 vault. */
+  onBackToCurrent?: () => void;
 }) {
   const svc = useServices();
   const s = props.session;
+  const readOnly = isReadOnly(s);
   const [mode, setMode] = useState<Mode>('view');
   const [shown, setShown] = useState<Set<number>>(new Set());
   const [status, setStatus] = useState<string | null>(null);
@@ -71,10 +76,10 @@ export function VaultView(props: {
   useEffect(() => {
     if (healed.current || props.freshMirror) return;
     healed.current = true;
-    void ensureMirror(svc, { vaultId: s.vaultId, version: s.version, blob: s.blob, locator: props.locator }).then((m) => {
+    void ensureMirror(svc, { vaultId: s.vaultId, version: s.version, blob: s.blob, locator: props.locator, registry: s.registry }).then((m) => {
       if (m.status === 'failed') setMirror(m);
     });
-  }, [svc, s.vaultId, s.version, s.blob, props.locator, props.freshMirror]);
+  }, [svc, s.vaultId, s.version, s.blob, s.registry, props.locator, props.freshMirror]);
 
   function afterWrite(next: VaultSession, extraLocators: `0x${string}`[] = []) {
     props.onChange(next);
@@ -160,13 +165,14 @@ export function VaultView(props: {
       {progress && <SaveProgress reached={progress} {...(mirror && progress.has('confirmed') ? { arweave: mirror.status } : {})} />}
       {mirror && <MirrorLine result={mirror} fastIndexUrl={svc.fastIndexUrl} onRetry={() => {
         setMirror({ status: 'pending' });
-        void mirrorWrite(svc, { vaultId: s.vaultId, version: s.version, blob: s.blob, locators: [props.locator] }).then(setMirror);
+        void mirrorWrite(svc, { vaultId: s.vaultId, version: s.version, blob: s.blob, locators: [props.locator], registry: s.registry }).then(setMirror);
       }} />}
 
       <StepTransition id={mode} dir={dir}>
         {mode === 'view' && (
           <div>
             <OnArrival run={() => (leftView.current ? title.current?.focus() : undefined)} />
+            {readOnly && <Notice kind="info">{S.vault.legacyReadOnly}</Notice>}
             {s.items.length === 0 && <EmptyState>{S.vault.empty}</EmptyState>}
             <ul className="secrets" aria-label={S.vault.title} hidden={s.items.length === 0}>
               <AnimatePresence initial={false}>
@@ -217,11 +223,21 @@ export function VaultView(props: {
               </AnimatePresence>
             </ul>
             <ActionBar>
-              <Btn onClick={() => { setDraft(s.items); setMode('edit'); setStatus(null); setProgress(null); }}>{S.vault.edit}</Btn>
-              <Btn className="secondary" onClick={() => { setMode('addKey'); setStatus(null); setProgress(null); }}>{S.vault.addKey}</Btn>
+              {!readOnly && <Btn onClick={() => { setDraft(s.items); setMode('edit'); setStatus(null); setProgress(null); }}>{S.vault.edit}</Btn>}
+              {!readOnly && <Btn className="secondary" onClick={() => { setMode('addKey'); setStatus(null); setProgress(null); }}>{S.vault.addKey}</Btn>}
               <Btn className="secondary" onClick={() => { setMode('details'); setProgress(null); }}>{S.vault.details}</Btn>
               <Btn className="secondary" onClick={props.onLock}>{S.vault.lock}</Btn>
             </ActionBar>
+            {props.onOpenOlder && (
+              <Btn className="link-button" onClick={props.onOpenOlder}>
+                {S.unlock.olderVault}
+              </Btn>
+            )}
+            {props.onBackToCurrent && (
+              <Btn className="link-button" onClick={props.onBackToCurrent}>
+                {S.vault.backToCurrent}
+              </Btn>
+            )}
           </div>
         )}
 

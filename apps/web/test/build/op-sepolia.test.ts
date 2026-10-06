@@ -4,7 +4,8 @@ import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { keccak256, toHex } from 'viem';
+import { keccak256, sha256, toHex } from 'viem';
+import { registryV1Abi, registryV2Abi, smartWalletAbi, walletFactoryAbi } from '../../src/chain/contracts';
 import { parseEnv } from '../../src/config/schema';
 import { loadDeployment } from '../../vite-plugins/deployment';
 import { cryoshield } from '../../vite-plugins/cryoshield';
@@ -26,14 +27,38 @@ function contractsWithoutOpSepolia() {
   const dir = mkdtempSync(join(tmpdir(), 'cs-op-'));
   mkdirSync(join(dir, 'abi'));
   mkdirSync(join(dir, 'deployments'));
-  writeFileSync(join(dir, 'abi', 'VaultRegistry.json'), '[]');
+  writeFileSync(join(dir, 'abi', 'VaultRegistry.json'), JSON.stringify(registryV1Abi));
+  writeFileSync(join(dir, 'abi', 'VaultRegistryV2.json'), JSON.stringify(registryV2Abi));
+  writeFileSync(join(dir, 'abi', 'CryoShieldSmartWallet.json'), JSON.stringify(smartWalletAbi));
+  writeFileSync(join(dir, 'abi', 'CryoShieldSmartWalletFactory.json'), JSON.stringify(walletFactoryAbi));
   return dir;
+}
+
+const hashOf = (dir: string, f: string) => keccak256(toHex(new Uint8Array(readFileSync(join(dir, 'abi', f)))));
+
+/** A complete harden-gas-sponsorship record: v1 (except on OP Mainnet), v2, and a wallet pair for `rpId`. */
+function writeRecord(dir: string, chainId: number, rpId: string) {
+  const v1 = chainId === 10 ? {} : { address: '0xB43f58cF17e64B603aE5588a1DD17E96a0849e44', deployBlock: 1, txHash: '0x', abiHash: hashOf(dir, 'VaultRegistry.json') };
+  const wallet = {
+    implementation: '0x00000000000000000000000000000000000000e1',
+    factory: '0x00000000000000000000000000000000000000f1',
+    rpIdHash: sha256(toHex(new TextEncoder().encode(rpId))),
+    deployBlock: 1,
+    txHash: '0x',
+    abiHash: hashOf(dir, 'CryoShieldSmartWallet.json'),
+    factoryAbiHash: hashOf(dir, 'CryoShieldSmartWalletFactory.json'),
+  };
+  const contracts = {
+    vaultRegistryV2: { address: '0x00000000000000000000000000000000000000a2', deployBlock: 1, txHash: '0x', abiHash: hashOf(dir, 'VaultRegistryV2.json') },
+    wallets: { [rpId]: wallet },
+  };
+  writeFileSync(join(dir, 'deployments', `${chainId}.json`), JSON.stringify({ chainId, ...v1, contracts }));
 }
 
 describe('3.1 build for a chain without a deployment record', () => {
   it('fails naming contracts/deployments/11155420.json (loader and plugin)', () => {
     const dir = contractsWithoutOpSepolia();
-    expect(() => loadDeployment(dir, 11155420)).toThrow(join('deployments', '11155420.json'));
+    expect(() => loadDeployment(dir, 11155420, 'cryoshield.app')).toThrow(join('deployments', '11155420.json'));
     expect(() => cryoshield({ ...example, VITE_CHAIN_ID: '11155420' }, dir)).toThrow(join('deployments', '11155420.json'));
   });
 });
@@ -63,12 +88,7 @@ describe('3.5 preset parity: chain IDs documented in .env.example == presets.jso
 describe('every preset chain builds when its deployment record exists (Arbitrum stays configurable)', () => {
   it.each(presets.presets.map((p) => p.chainId))('chain %i', (chainId) => {
     const dir = contractsWithoutOpSepolia();
-    const abi = readFileSync(join(dir, 'abi', 'VaultRegistry.json'));
-
-    writeFileSync(
-      join(dir, 'deployments', `${chainId}.json`),
-      JSON.stringify({ chainId, address: '0xB43f58cF17e64B603aE5588a1DD17E96a0849e44', deployBlock: 1, txHash: '0x', abiHash: keccak256(toHex(new Uint8Array(abi))) }),
-    );
+    writeRecord(dir, chainId, example.VITE_RP_ID!);
     const env = { ...example, VITE_CHAIN_ID: String(chainId), VITE_RPC_URL: 'https://rpc.example' };
     const plugin = cryoshield(env, dir) as { load: (id: string) => string };
     expect(plugin.load('\0virtual:cryoshield-config')).toContain(`"chainId":${chainId}`);

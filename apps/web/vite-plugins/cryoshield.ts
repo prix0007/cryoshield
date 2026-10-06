@@ -1,11 +1,12 @@
 /**
- * Build-time wiring: validates VITE_* env (fails the build on any problem), loads the registry deployment record,
- * exposes both through `virtual:cryoshield-config`, and injects the CSP.
+ * Build-time wiring: validates VITE_* env (fails the build on any problem), loads the deployment record (registry v2,
+ * legacy registry v1, and the wallet pair for VITE_RP_ID), exposes both through `virtual:cryoshield-config`, and
+ * injects the CSP.
  */
 import { join } from 'node:path';
 import type { Plugin } from 'vite';
 import { parseEnv } from '../src/config/schema.ts';
-import { loadDeployment } from './deployment.ts';
+import { loadDeployment, type Deployment } from './deployment.ts';
 import { headersFile, injectCsp } from './csp.ts';
 import { analyticsFor, beaconTemplate, landingCspExtras } from './analytics.ts';
 import { LANDING_PERMISSIONS_POLICY, PERMISSIONS_POLICY } from './security-headers.ts';
@@ -18,7 +19,7 @@ export function cryoshield(env: Record<string, string | undefined>, contractsDir
   // Landing-only analytics (never in the virtual config, so the token can't reach the app bundle).
   const analytics = analyticsFor(env, mode, root, config.rpId);
   const landingExtras = analytics ? landingCspExtras(analytics) : {};
-  const deployment = loadDeployment(contractsDir, config.chainId);
+  const deployment = loadDeployment(contractsDir, config.chainId, config.rpId);
   return {
     name: 'cryoshield-config',
     resolveId(id) {
@@ -28,12 +29,11 @@ export function cryoshield(env: Record<string, string | undefined>, contractsDir
       if (id !== RESOLVED_ID) return null;
       const runtime = {
         ...config,
-        registry: { address: deployment.address, deployBlock: deployment.deployBlock, abiHash: deployment.abiHash },
+        registryV1: deployment.v1 ? { address: deployment.v1.address, deployBlock: deployment.v1.deployBlock } : null,
+        registryV2: { address: deployment.v2.address, deployBlock: deployment.v2.deployBlock },
+        wallet: { factory: deployment.wallet.factory, implementation: deployment.wallet.implementation },
       };
-      return [
-        `export const config = Object.freeze(${JSON.stringify(runtime)});`,
-        `export const registryAbi = ${JSON.stringify(deployment.abi)};`,
-      ].join('\n');
+      return `export const config = Object.freeze(${JSON.stringify(runtime)});`;
     },
     transformIndexHtml: {
       order: 'post',
@@ -64,15 +64,17 @@ export function cryoshield(env: Record<string, string | undefined>, contractsDir
 }
 
 const NETWORKS: Record<number, string> = { 11155420: 'OP Sepolia testnet', 10: 'OP Mainnet', 31337: 'local test chain' };
-export function architectureValues(html: string, chainId: number, dep: { address: string; deployBlock: number }, rpId: string): string {
+export function architectureValues(html: string, chainId: number, dep: Pick<Deployment, 'v1' | 'v2' | 'wallet'>, rpId: string): string {
   const network = NETWORKS[chainId];
   if (!network) throw new Error(`add-architecture-page: no network name for chain ${chainId}`);
   return html
     .replaceAll('__CS_NETWORK_UPPER__', network.toUpperCase())
     .replaceAll('__CS_NETWORK__', network)
     .replaceAll('__CS_CHAIN_ID__', String(chainId))
-    .replaceAll('__CS_REGISTRY__', dep.address)
-    .replaceAll('__CS_DEPLOY_BLOCK__', String(dep.deployBlock))
+    .replaceAll('__CS_REGISTRY_V1__', dep.v1 ? `${dep.v1.address} (read-only)` : 'not deployed on this network')
+    .replaceAll('__CS_REGISTRY__', dep.v2.address)
+    .replaceAll('__CS_DEPLOY_BLOCK__', String(dep.v2.deployBlock))
+    .replaceAll('__CS_WALLET_FACTORY__', dep.wallet.factory)
     .replaceAll('__CS_RP_ID__', rpId);
 }
 

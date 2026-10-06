@@ -1,6 +1,5 @@
-import { config as raw, registryAbi as rawAbi } from 'virtual:cryoshield-config';
-import type { Abi } from 'viem';
+import { config as raw } from 'virtual:cryoshield-config';
 
 export const config = raw;
-export const registryAbi = rawAbi as Abi;
+/** Contract interfaces (registry v1 and v2, the wallet and its factory) live in src/chain/contracts.ts. */
 export type RuntimeConfig = typeof raw;

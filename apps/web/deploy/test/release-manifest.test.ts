@@ -24,7 +24,23 @@ function fixture(order: string[]) {
     'VITE_CHAIN_ID=11155420\nVITE_RP_ID=cryoshield.app\nVITE_BUNDLER_URL=https://api.pimlico.io/v2/11155420/rpc?apikey=pim_SECRETISH\nVITE_SPONSORSHIP_POLICY_ID=sp_hidden\n',
   );
   mkdirSync(join(d, 'contracts', 'deployments'), { recursive: true });
-  writeFileSync(join(d, 'contracts', 'deployments', '11155420.json'), JSON.stringify({ chainId: 11155420, address: '0xB43f58cF17e64B603aE5588a1DD17E96a0849e44', deployBlock: 7, txHash: '0x', abiHash: '0xab' }));
+  writeFileSync(
+    join(d, 'contracts', 'deployments', '11155420.json'),
+    JSON.stringify({
+      chainId: 11155420,
+      address: '0xB43f58cF17e64B603aE5588a1DD17E96a0849e44',
+      deployBlock: 7,
+      txHash: '0x',
+      abiHash: '0xab',
+      contracts: {
+        vaultRegistryV2: { address: '0x00000000000000000000000000000000000000a2', deployBlock: 9, txHash: '0x', abiHash: '0xcd' },
+        wallets: {
+          'cryoshield.app': { factory: '0x00000000000000000000000000000000000000f1', implementation: '0x00000000000000000000000000000000000000e1', rpIdHash: '0x', deployBlock: 9, txHash: '0x', abiHash: '0x', factoryAbiHash: '0x' },
+          'cryoshield-web-dev.fly.dev': { factory: '0x00000000000000000000000000000000000000f2', implementation: '0x00000000000000000000000000000000000000e2', rpIdHash: '0x', deployBlock: 9, txHash: '0x', abiHash: '0x', factoryAbiHash: '0x' },
+        },
+      },
+    }),
+  );
   return d;
 }
 const run = (d: string, commit = 'a'.repeat(40)) => {
@@ -59,6 +75,9 @@ describe('release manifest', () => {
       chainId: 11155420,
       rpId: 'cryoshield.app',
       registry: { address: '0xB43f58cF17e64B603aE5588a1DD17E96a0849e44', deployBlock: 7 },
+      // harden-gas-sponsorship: the registry every write targets, and this RP ID's wallet pair (never another's).
+      registryV2: { address: '0x00000000000000000000000000000000000000a2', deployBlock: 9 },
+      wallet: { factory: '0x00000000000000000000000000000000000000f1', implementation: '0x00000000000000000000000000000000000000e1' },
       connectOrigins: ['https://sepolia.optimism.io', 'https://api.pimlico.io', 'https://upload.ardrive.io', 'https://arweave.net'],
     });
     expect(json).not.toMatch(/pim_|apikey|sp_hidden/);

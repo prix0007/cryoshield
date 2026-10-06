@@ -15,7 +15,11 @@ chmodSync(flyStub, 0o755);
 
 const SHA = 'a'.repeat(40);
 const OTHER = 'b'.repeat(40);
-const ADDRESS = '0xB43f58cF17e64B603aE5588a1DD17E96a0849e44';
+const ADDRESS = '0xB43f58cF17e64B603aE5588a1DD17E96a0849e44'; // VaultRegistry v1 (legacy)
+const V2 = '0xA622c92d3D5b54aeA081Cf410224a8A2eCb08cB7'; // VaultRegistry v2 (harden-gas-sponsorship)
+const FACTORY = '0x75Bd6e2C371b97D6c0F02D3556f3d9711b2D42fb'; // wallet factory for the release's RP ID
+const releaseBody = (config = { registry: { address: ADDRESS }, registryV2: { address: V2 }, wallet: { factory: FACTORY } }, commit = SHA) =>
+  JSON.stringify({ name: 'cryoshield-web', commit, treeHash: 'sha256:' + 'c'.repeat(64), config });
 const IMAGE = 'registry.fly.io/cryoshield-web:deployment-01M41Z2MXSZQKZWXR97MSQG02X';
 const GOOD_HEADERS = {
   'content-security-policy': "default-src 'none'; frame-ancestors 'none'",
@@ -30,10 +34,10 @@ const GOOD_HEADERS = {
 // Mutable site state per test.
 let site;
 const healthySite = () => ({
-  release: { status: 200, body: JSON.stringify({ name: 'cryoshield-web', commit: SHA, treeHash: 'sha256:' + 'c'.repeat(64) }) },
+  release: { status: 200, body: releaseBody() },
   status: {},
   headers: { ...GOOD_HEADERS },
-  architecture: `<td class="mono">${ADDRESS.toLowerCase()}</td>`,
+  architecture: `<td class="mono">${V2}</td><td class="mono">${ADDRESS} (read-only)</td><td class="mono">${FACTORY}</td>`,
   support: `<code id="donation-address">${DONATION}</code>`,
   robots: null, // body of /robots.txt (404 when null)
   hits: {},
@@ -268,7 +272,7 @@ test('previous-image: an unexpected ImageRef or a fly error fails', async () => 
 
 // ---- smoke.sh ----
 const DONATION = '0xfb4172e26AC8735C06656f1df14151cFe8441481';
-const smokeEnv = (over = {}) => ({ EXPECT_SHA: SHA, REGISTRY_ADDRESS: ADDRESS, DONATION_ADDRESS: DONATION, SMOKE_ATTEMPTS: '2', ...over });
+const smokeEnv = (over = {}) => ({ EXPECT_SHA: SHA, REGISTRY_ADDRESS: ADDRESS, REGISTRY_V2_ADDRESS: V2, WALLET_FACTORY_ADDRESS: FACTORY, DONATION_ADDRESS: DONATION, SMOKE_ATTEMPTS: '2', ...over });
 
 test('smoke: a healthy release passes', async () => {
   site = healthySite();
@@ -283,7 +287,12 @@ test('smoke: every failure class fails and is named', async () => {
     [{ headers: { ...GOOD_HEADERS, 'x-frame-options': 'SAMEORIGIN' } }, /x-frame-options/i],
     [{ headers: Object.fromEntries(Object.entries(GOOD_HEADERS).filter(([k]) => k !== 'strict-transport-security')) }, /strict-transport-security/i],
     [{ headers: { ...GOOD_HEADERS, 'content-security-policy': "default-src 'none'" } }, /frame-ancestors/],
-    [{ architecture: '<td>0x0000000000000000000000000000000000000000</td>' }, /registry address/],
+    [{ architecture: `<td>${ADDRESS}</td><td>${FACTORY}</td>` }, /registry v2 address/],
+    [{ architecture: `<td>${V2}</td><td>${ADDRESS}</td>` }, /wallet factory/],
+    [{ architecture: `<td>${V2}</td><td>${FACTORY}</td>` }, /registry v1 address/],
+    [{ release: { status: 200, body: releaseBody({ registry: { address: ADDRESS }, registryV2: { address: ADDRESS }, wallet: { factory: FACTORY } }) } }, /release\.json registry v2/],
+    [{ release: { status: 200, body: releaseBody({ registry: { address: ADDRESS }, registryV2: { address: V2 }, wallet: { factory: V2 } }) } }, /release\.json wallet factory/],
+    [{ release: { status: 200, body: releaseBody({ registry: null, registryV2: { address: V2 }, wallet: { factory: FACTORY } }) } }, /release\.json registry v1/],
     [{ release: { status: 200, body: JSON.stringify({ commit: OTHER }) } }, /release\.json.*bbbb/],
     [{ support: `<code>${DONATION.toLowerCase()}</code>` }, /does not show the donation address/],
     [{ support: `<code>${DONATION}</code><code>0x1111111111111111111111111111111111111111</code>` }, /another address/],
@@ -306,7 +315,19 @@ test('smoke: rejects malformed inputs', async () => {
   site = healthySite();
   assert.equal((await run('smoke.sh', smokeEnv({ EXPECT_SHA: 'main' }))).status, 2);
   assert.equal((await run('smoke.sh', smokeEnv({ REGISTRY_ADDRESS: '0x12' }))).status, 2);
+  assert.equal((await run('smoke.sh', smokeEnv({ REGISTRY_V2_ADDRESS: '' }))).status, 2);
+  assert.equal((await run('smoke.sh', smokeEnv({ WALLET_FACTORY_ADDRESS: 'cryoshield.app' }))).status, 2);
   assert.equal((await run('smoke.sh', smokeEnv({ DONATION_ADDRESS: '' }))).status, 2);
+});
+
+test('smoke: harden-gas-sponsorship: v1 is optional (OP Mainnet has none), and then must not be claimed', async () => {
+  site = { ...healthySite(), architecture: `<td>${V2}</td><td>${FACTORY}</td>`, release: { status: 200, body: releaseBody({ registry: null, registryV2: { address: V2 }, wallet: { factory: FACTORY } }) } };
+  const ok = await run('smoke.sh', smokeEnv({ REGISTRY_ADDRESS: '' }));
+  assert.equal(ok.status, 0, ok.stdout + ok.stderr);
+  site = { ...site, release: { status: 200, body: releaseBody() } };
+  const bad = await run('smoke.sh', smokeEnv({ REGISTRY_ADDRESS: '' }));
+  assert.notEqual(bad.status, 0);
+  assert.match(bad.stdout + bad.stderr, /names a registry v1/);
 });
 
 // ---- rollback.sh ----

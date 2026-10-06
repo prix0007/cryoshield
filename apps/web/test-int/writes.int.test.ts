@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { http, type Hex } from 'viem';
+import { createTestClient, createWalletClient, encodeFunctionData as vEncode, http, keccak256 as vKeccak, toHex as vToHexStr, type Hex } from 'viem';
 import { locatorSalt } from '@cryoshield/vault-crypto';
 import { FakeAuthenticators } from '../test/fixtures/fake-webauthn';
 import { enrollKey } from '../src/webauthn';
@@ -94,22 +94,6 @@ describe('sponsored writes against EntryPoint v0.6 + Coinbase Smart Wallet (6.1,
     expect(opened.matches[0]!.items![0]!.label).toBe('Seed');
   });
 
-  it('retries once on VaultIdTaken, then succeeds with a fresh id', async () => {
-    const first = await createOne();
-    const { f, a, b } = await twoKeys();
-    const client = makePublicClient(rpc);
-    const reader = createRegistryReader(rpc);
-    const pa = await f.prfFor(a.credId, locatorSalt());
-    const pb = await f.prfFor(b.credId, locatorSalt());
-    const locators = [deriveLocator(pa), deriveLocator(pb)];
-    const build = buildFor([{ label: 'x', secret: 'y' }], [{ credId: a.credId, prf: pa }, { credId: b.credId, prf: pb }]);
-    f.use(0);
-    const account = await newVaultAccount({ client, owners: [a, b], signerIndex: 0, expectedLocator: locators[0]!, credentials: f.credentials });
-    const ids = [first.res.vaultId, ('0x' + 'ee'.repeat(31) + '01') as Hex];
-    const res = await createVaultOnChain({ account, build }, { client, sponsor: createSponsor(client), reader, randomId: () => ids.shift()! });
-    expect(res.vaultId).toBe('0x' + 'ee'.repeat(31) + '01');
-  });
-
   it('maps paymaster refusal to SPONSORSHIP_REFUSED and never sends unsponsored', async () => {
     const { f, a, b } = await twoKeys();
     const client = makePublicClient(rpc);
@@ -145,7 +129,7 @@ describe('on-chain verification and registry errors', () => {
     expect((await reader.getVault(res.vaultId))!.version).toBe(1);
   });
 
-  it('LocatorFull in preflight surfaces LOCATOR_FULL with the locator, before any signing tap', async () => {
+  it('AA-M1: stuffing a key’s locator (40 junk v2 vaults) cannot block a create; the vault still unlocks', async () => {
     const { f, a, b } = await twoKeys();
     const client = makePublicClient(rpc);
     const reader = createRegistryReader(rpc);
@@ -153,27 +137,25 @@ describe('on-chain verification and registry errors', () => {
     const pb = await f.prfFor(b.credId, locatorSalt());
     const locators = [deriveLocator(pa), deriveLocator(pb)];
     const build = buildFor([{ label: 'x', secret: 'y' }], [{ credId: a.credId, prf: pa }, { credId: b.credId, prf: pb }]);
-    // A front-runner fills key B's locator with 16 junk vaults (16 different owners).
-    const { createTestClient, createWalletClient, encodeFunctionData, keccak256, toHex: vToHex } = await import('viem');
-    const { registryAbi, config } = await import('virtual:cryoshield-config');
-    const chain = { id: 31337, name: 'anvil', nativeCurrency: { name: 'E', symbol: 'E', decimals: 18 }, rpcUrls: { default: { http: ['http://127.0.0.1:8545'] } } } as const;
-    const t = createTestClient({ chain, transport: rpc, mode: 'anvil' });
-    const w = createWalletClient({ chain, transport: rpc });
     const target = toHex(locators[1]!);
-    for (let i = 0; i < 16; i++) {
+    for (let i = 0; i < 40; i++) {
       const from = ('0x' + (0x1000 + i).toString(16).padStart(40, '0')) as Hex;
-      await t.impersonateAccount({ address: from });
-      await t.setBalance({ address: from, value: 10n ** 18n });
-      const id = keccak256(vToHex(`junk-${Date.now()}-${i}`));
-      const h = await w.sendTransaction({ account: from, chain, to: config.registry.address, data: encodeFunctionData({ abi: registryAbi as any, functionName: 'createVault', args: [id, '0xdead', [target, keccak256(id)]] }) } as never);
-      expect((await client.waitForTransactionReceipt({ hash: h })).status).toBe('success');
+      await junkV2(from, target, i);
     }
     f.use(0);
     const account = await newVaultAccount({ client, owners: [a, b], signerIndex: 0, expectedLocator: locators[0]!, credentials: f.credentials });
-    const err = await createVaultOnChain({ account, build }, { client, sponsor: createSponsor(client), reader }).catch((e) => e);
-    expect(err.code).toBe('LOCATOR_FULL');
-    expect(err.detail.locator).toBe(target);
-    expect(f.calls.filter((c) => c.kind === 'get')).toHaveLength(0);
+    const res = await createVaultOnChain({ account, build }, { client, sponsor: createSponsor(client), reader });
+    f.use(1);
+    const opened = await unlock({ rpId: 'localhost' }, { credentials: f.credentials, reader });
+    expect(opened.matches.map((m) => m.vaultId)).toEqual([res.vaultId]);
+    expect(opened.matches[0]!.registry).toBe('v2');
+  });
+
+  it('AA-M2: the vaultId is derived from the account, so a copied salt gives the copier a different id', async () => {
+    const { res } = await createOne();
+    const { deriveVaultIdV2 } = await import('../src/chain/contracts');
+    expect(res.vaultId).not.toBe(deriveVaultIdV2('0x00000000000000000000000000000000000a77ac', ('0x' + '00'.repeat(32)) as Hex));
+    expect((await createRegistryReader(rpc).vaultOf(res.owner)).toLowerCase()).toBe(res.vaultId.toLowerCase());
   });
 });
 
@@ -181,19 +163,21 @@ describe('10.7: vault cloning is neutralised (vaultId bound into the ciphertext)
   it('a byte-identical clone of the victim blob + locators under an attacker vaultId is never offered', async () => {
     const { f, res, reader, client } = await createOne([{ label: 'Seed', secret: 'victim secret' }]);
     const { createTestClient, createWalletClient, encodeFunctionData, keccak256, toHex: vToHex } = await import('viem');
-    const { registryAbi, config } = await import('virtual:cryoshield-config');
+    const { config } = await import('virtual:cryoshield-config');
+    const { deriveVaultIdV2, registryV2Abi } = await import('../src/chain/contracts');
     const chain = { id: 31337, name: 'anvil', nativeCurrency: { name: 'E', symbol: 'E', decimals: 18 }, rpcUrls: { default: { http: ['http://127.0.0.1:8545'] } } } as const;
     const t = createTestClient({ chain, transport: rpc, mode: 'anvil' });
     const w = createWalletClient({ chain, transport: rpc });
     const attacker = '0x00000000000000000000000000000000000a77ac' as Hex;
     await t.impersonateAccount({ address: attacker });
     await t.setBalance({ address: attacker, value: 10n ** 18n });
-    const cloneId = keccak256(vToHex(`clone-${Date.now()}`));
+    const salt = keccak256(vToHex(`clone-${Date.now()}`));
+    const cloneId = deriveVaultIdV2(attacker, salt);
     const cloneTx = await w.sendTransaction({
       account: attacker,
       chain,
-      to: config.registry.address,
-      data: encodeFunctionData({ abi: registryAbi as any, functionName: 'createVault', args: [cloneId, toHex(res.blob), res.locators] }),
+      to: config.registryV2.address,
+      data: encodeFunctionData({ abi: registryV2Abi, functionName: 'createVault', args: [salt, toHex(res.blob), res.locators] }),
     } as never);
     // Wait until the clone is mined and succeeded before asserting on the index.
     const cloneReceipt = await client.waitForTransactionReceipt({ hash: cloneTx });
@@ -211,6 +195,73 @@ describe('10.7: vault cloning is neutralised (vaultId bound into the ciphertext)
     }
   });
 });
+
+describe('harden-gas-sponsorship: legacy VaultRegistry v1 vaults', () => {
+  it('a v1-only vault still unlocks (read-only), and its account is never asked to sign', async () => {
+    const { f, a, b } = await twoKeys();
+    const reader = createRegistryReader(rpc);
+    const pa = await f.prfFor(a.credId, locatorSalt());
+    const pb = await f.prfFor(b.credId, locatorSalt());
+    const vaultId = keccak256Hex(`legacy-${Date.now()}`);
+    const r = await createVaultBlob({ vaultId, rpId: 'localhost', keys: [{ credId: a.credId, prf: pa }, { credId: b.credId, prf: pb }], items: [{ label: 'Old', secret: 'v1 secret' }] });
+    await writeV1('0x00000000000000000000000000000000000b1b1b', vaultId, r.blob, r.locators.map(toHex));
+    f.use(1);
+    const opened = await unlock({ rpId: 'localhost' }, { credentials: f.credentials, reader });
+    expect(opened.matches).toHaveLength(1);
+    expect(opened.matches[0]).toMatchObject({ vaultId, registry: 'v1' });
+    expect(opened.matches[0]!.items![0]!.secret).toBe('v1 secret');
+  });
+
+  it('a stale copy of a v2 vault registered under the same id in v1 is ignored: only the current v2 version opens', async () => {
+    const { f, b, client, reader, sponsor, res } = await createOne([{ label: 'Seed', secret: 'old' }]);
+    const staleBlob = res.blob; // version 1, still decryptable by the keys
+    f.use(1);
+    const opened = await unlock({ rpId: 'localhost' }, { credentials: f.credentials, reader });
+    const prf = await f.prfFor(b.credId, locatorSalt());
+    const newBlob = await editVaultBlob(opened.matches[0]!.blob, prf, res.vaultId, [{ label: 'Seed', secret: 'new' }]);
+    const account = await existingVaultAccount({ client, address: res.owner, entryIndex: 1, credId: b.credId, expectedLocator: opened.locator, credentials: f.credentials });
+    await updateVaultOnChain({ account, vaultId: res.vaultId, blob: newBlob }, { client, sponsor, reader });
+    // Replay: the old blob under the SAME vaultId in v1 (v1 accepts caller-chosen ids), under the victim's locators.
+    await writeV1('0x00000000000000000000000000000000000a77ad', res.vaultId, staleBlob, res.locators);
+    for (const k of [0, 1]) {
+      f.use(k);
+      const again = await unlock({ rpId: 'localhost' }, { credentials: f.credentials, reader });
+      expect(again.matches.map((m) => [m.registry, m.version])).toEqual([['v2', 2]]);
+      expect(again.matches[0]!.items![0]!.secret).toBe('new');
+    }
+  });
+});
+
+const anvilChain = { id: 31337, name: 'anvil', nativeCurrency: { name: 'E', symbol: 'E', decimals: 18 }, rpcUrls: { default: { http: ['http://127.0.0.1:8545'] } } } as const;
+
+function keccak256Hex(s: string): Hex {
+  return vKeccak(vToHexStr(s));
+}
+
+/** A direct (unsponsored) VaultRegistry v1 create from an impersonated EOA: how legacy testnet vaults exist. */
+async function writeV1(from: Hex, vaultId: Hex, blob: Uint8Array, locators: readonly Hex[]) {
+  const { config } = await import('virtual:cryoshield-config');
+  const registryV1Abi = (await import('../../../contracts/abi/VaultRegistry.json')).default;
+  const t = createTestClient({ chain: anvilChain, transport: rpc, mode: 'anvil' });
+  const w = createWalletClient({ chain: anvilChain, transport: rpc });
+  await t.impersonateAccount({ address: from });
+  await t.setBalance({ address: from, value: 10n ** 18n });
+  const h = await w.sendTransaction({ account: from, chain: anvilChain, to: config.registryV1!.address, data: vEncode({ abi: registryV1Abi as never, functionName: 'createVault', args: [vaultId, toHex(blob), locators] }) } as never);
+  expect((await makePublicClient(rpc).waitForTransactionReceipt({ hash: h })).status).toBe('success');
+}
+
+/** A junk VaultRegistry v2 vault from `from` that lists `target` (locator stuffing). */
+async function junkV2(from: Hex, target: Hex, i: number) {
+  const { config } = await import('virtual:cryoshield-config');
+  const { registryV2Abi } = await import('../src/chain/contracts');
+  const t = createTestClient({ chain: anvilChain, transport: rpc, mode: 'anvil' });
+  const w = createWalletClient({ chain: anvilChain, transport: rpc });
+  await t.impersonateAccount({ address: from });
+  await t.setBalance({ address: from, value: 10n ** 18n });
+  const salt = keccak256Hex(`junk-${Date.now()}-${i}`);
+  const h = await w.sendTransaction({ account: from, chain: anvilChain, to: config.registryV2.address, data: vEncode({ abi: registryV2Abi, functionName: 'createVault', args: [salt, '0xdead', [target, vKeccak(salt)]] }) } as never);
+  expect((await makePublicClient(rpc).waitForTransactionReceipt({ hash: h })).status).toBe('success');
+}
 
 function hexToBytes(h: Hex) {
   return Uint8Array.from(Buffer.from(h.slice(2), 'hex'));

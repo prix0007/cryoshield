@@ -16,7 +16,7 @@ const s = {
 };
 
 async function unlocked() {
-  vi.spyOn(unlockMod, 'unlock').mockResolvedValue({ credId: id(1), locator: new Uint8Array(32), matches: [{ ...s, entryIndex: 0 }] });
+  vi.spyOn(unlockMod, 'unlock').mockResolvedValue({ credId: id(1), locator: new Uint8Array(32), matches: [{ ...s, entryIndex: 0, registry: 'v2' as const }] });
   renderApp();
   fireEvent.click(screen.getByRole('button', { name: 'Unlock my vault' }));
   fireEvent.click(screen.getByRole('button', { name: 'Unlock with my key' }));

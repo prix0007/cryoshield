@@ -20,7 +20,7 @@ describe('vault adapter (4.2, bound to vaultId)', () => {
     expect(a.every((x) => x === 0) && b.every((x) => x === 0)).toBe(true);
     for (const [prf, idx] of [[aCopy, 0], [bCopy, 1]] as const) {
       const p = prf.slice();
-      const m = await matchCandidates([{ vaultId: vid(1), blob, owner: OWNER, version: 1 }], p, id(idx + 1));
+      const m = await matchCandidates([{ vaultId: vid(1), blob, owner: OWNER, version: 1, registry: 'v2' as const }], p, id(idx + 1));
       expect(m).toHaveLength(1);
       expect(decodePayload(m[0]!.secret)).toEqual(items);
       expect(m[0]!.entryIndex).toBe(idx);
@@ -33,8 +33,8 @@ describe('vault adapter (4.2, bound to vaultId)', () => {
     const { blob } = await createVaultBlob({ vaultId: vid(1), rpId: 'localhost', keys: [{ credId: id(1), prf: a.slice() }, { credId: id(2), prf: rand() }], items });
     const m = await matchCandidates(
       [
-        { vaultId: vid(1), blob, owner: OWNER, version: 1 },
-        { vaultId: vid(9), blob, owner: '0x00000000000000000000000000000000000000ee', version: 1 }, // attacker clone
+        { vaultId: vid(1), blob, owner: OWNER, version: 1, registry: 'v2' as const },
+        { vaultId: vid(9), blob, owner: '0x00000000000000000000000000000000000000ee', version: 1, registry: 'v2' as const }, // attacker clone
       ],
       a,
       id(1),
@@ -45,7 +45,7 @@ describe('vault adapter (4.2, bound to vaultId)', () => {
   it('10.7: identical (vaultId, blob) candidates collapse to one', async () => {
     const a = rand();
     const { blob } = await createVaultBlob({ vaultId: vid(1), rpId: 'localhost', keys: [{ credId: id(1), prf: a.slice() }, { credId: id(2), prf: rand() }], items });
-    const c = { vaultId: vid(1), blob, owner: OWNER, version: 1 };
+    const c = { vaultId: vid(1), blob, owner: OWNER, version: 1, registry: 'v2' as const };
     expect(await matchCandidates([c, { ...c, blob: blob.slice() }], a, id(1))).toHaveLength(1);
   });
 
@@ -55,9 +55,9 @@ describe('vault adapter (4.2, bound to vaultId)', () => {
     const v2 = await createVaultBlob({ vaultId: vid(3), rpId: 'localhost', keys: [{ credId: id(1), prf: a.slice() }, { credId: id(3), prf: rand() }], items });
     const m = await matchCandidates(
       [
-        { vaultId: vid(1), blob: v1.blob, owner: OWNER, version: 1 },
-        { vaultId: vid(2), blob: new Uint8Array(200).fill(0x43), owner: OWNER, version: 1 },
-        { vaultId: vid(3), blob: v2.blob, owner: OWNER, version: 1 },
+        { vaultId: vid(1), blob: v1.blob, owner: OWNER, version: 1, registry: 'v2' as const },
+        { vaultId: vid(2), blob: new Uint8Array(200).fill(0x43), owner: OWNER, version: 1, registry: 'v2' as const },
+        { vaultId: vid(3), blob: v2.blob, owner: OWNER, version: 1, registry: 'v2' as const },
       ],
       a,
       id(1),
@@ -71,7 +71,7 @@ describe('vault adapter (4.2, bound to vaultId)', () => {
 
   it('passes the vault-crypto squatted-locator vector', async () => {
     const c = vectors.selectCases.find((x) => x.name === 'squatted-locator')! as any;
-    const cands = c.candidates.map((cand: any, i: number) => ({ vaultId: ('0x' + (cand.vaultId ?? '')) as `0x${string}`, blob: fromHex(cand.blob ?? cand), owner: OWNER, version: 1, i }));
+    const cands = c.candidates.map((cand: any, i: number) => ({ vaultId: ('0x' + (cand.vaultId ?? '')) as `0x${string}`, blob: fromHex(cand.blob ?? cand), owner: OWNER, version: 1, registry: 'v2' as const, i }));
     const m = await matchCandidates(cands, fromHex(c.prf), undefined);
     expect(m[0]!.candidate).toBe(cands[c.expectedIndex]);
     expect(Buffer.from(m[0]!.secret).toString('hex')).toBe(c.expectedSecret);
@@ -85,7 +85,7 @@ describe('vault adapter (4.2, bound to vaultId)', () => {
     const edited = await editVaultBlob(blob, aC.slice(), vid(1), [...items, { label: 'Email', secret: 'x' }]);
     const added = await addKeyToBlob(edited, bC.slice(), vid(1), { credId: id(3), prf: cC.slice() });
     expect(decodeVault(added.blob).keyCount).toBe(3);
-    const m = await matchCandidates([{ vaultId: vid(1), blob: added.blob, owner: OWNER, version: 3 }], cC, id(3));
+    const m = await matchCandidates([{ vaultId: vid(1), blob: added.blob, owner: OWNER, version: 3, registry: 'v2' as const }], cC, id(3));
     expect(decodePayload(m[0]!.secret)).toHaveLength(2);
     expect(m[0]!.entryIndex).toBe(2);
   });
