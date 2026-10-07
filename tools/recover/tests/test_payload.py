@@ -157,4 +157,13 @@ def test_v2_writer_refuses_ill_formed_strings_and_bad_names() -> None:
     with pytest.raises(ValueError):
         payload.write(VaultPayload(0, "Work", False, [Item("a", "\udc00")], None))
     with pytest.raises(ValueError):
-        payload.write(VaultPayload(0, "bad‮name", False, [Item("a", "b")], None))
+        payload.write(VaultPayload(0, "bad\u202ename", False, [Item("a", "b")], None))
+
+
+def test_huge_integer_version_is_unknown_like_json_parse() -> None:
+    """parse_int=float: a 5,000-digit v is a number other than 1 or 2 (Infinity in JavaScript), not a
+    Python int-conversion error."""
+    with pytest.raises(PayloadError) as ei:
+        payload.decode(('{"v":' + "9" * 5000 + ',"items":[]}').encode())
+    assert ei.value.code == "UNKNOWN_VERSION"
+    assert payload.decode(bytearray(b'{"v":1,"items":[{"l":"a","s":"b"}]}')).version == 1

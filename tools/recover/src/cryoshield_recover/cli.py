@@ -390,6 +390,18 @@ def _registry_summary(cfg: Config, ui: Console) -> None:
         )
 
 
+def _backslashreplace(ui: Console) -> None:
+    """Never crash printing text the terminal's encoding can't represent (v1 vaults may hold unpaired
+    surrogates, a non-UTF-8 console may lack a character): escape it instead."""
+    for stream in (ui.stdout, ui.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            try:
+                reconfigure(errors="backslashreplace")
+            except (ValueError, OSError):  # pragma: no cover - a stream that can't be reconfigured
+                pass
+
+
 def _configure_logging(verbose: bool, stream: TextIO) -> None:
     """Diagnostics go to our own logger only; only public values are ever logged."""
     logger = logging.getLogger("cryoshield_recover")
@@ -418,6 +430,7 @@ def main(
     if args.version:
         print(f"cryoshield-recover {__version__} (vault format v{', v'.join(map(str, FORMAT_VERSIONS))})")
         return ExitCode.OK
+    _backslashreplace(ui)
     _configure_logging(args.verbose, ui.stderr)
     disable_core_dumps()
     secret = None

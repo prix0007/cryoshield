@@ -179,9 +179,9 @@ def test_disagreement_demotes_stale_blob_in_ranking() -> None:
 
 # ------------------------------------------------------------------ 3. terminal escapes
 def test_sanitize_strips_control_and_escape_sequences() -> None:
-    evil = "ok\x1b]0;pwned\x07\x1b[2J\x9b31m‮evil\x00\x7f\r done"
+    evil = "ok\x1b]0;pwned\x07\x1b[2J\x9b31m\u202eevil\x00\x7f\r done"
     out = sanitize(evil)
-    for bad in ("\x1b", "\x07", "\x9b", "‮", "\x00", "\x7f", "\r"):
+    for bad in ("\x1b", "\x07", "\x9b", "\u202e", "\x00", "\x7f", "\r"):
         assert bad not in out
     assert out.startswith("ok") and out.endswith("done")
     assert sanitize("line1\nline2\tx") == "line1\nline2\tx"

@@ -16,7 +16,7 @@ from __future__ import annotations
 import json
 import math
 from dataclasses import dataclass, field
-from typing import Any, Final, Literal
+from typing import Any, Final, Literal, NoReturn
 
 ErrorCode = Literal["MALFORMED", "UNKNOWN_VERSION"]
 MALFORMED: Final = "MALFORMED"
@@ -113,10 +113,10 @@ def encode(p: VaultPayload) -> bytes:
 
 def write(p: VaultPayload) -> bytes:
     """The minimal-version writer (spec 6, D2): v1 when unnamed, active, unpadded and non-empty; else v2.
-    A v2 payload must be valid (spec 3 and 4); otherwise ValueError, and nothing is written."""
-    if p.name is None and not p.archived and p.pad is None and p.items:
-        return _dumps(_obj(p, 1))
-    out = _dumps(_obj(p, 2))
+    The result must decode (v1 with its lenient rules, v2 strictly); otherwise ValueError, and nothing is
+    written. The recovery tool never writes vaults: this exists for the shared writer vectors and tests."""
+    version = 1 if p.name is None and not p.archived and p.pad is None and p.items else 2
+    out = _dumps(_obj(p, version))
     try:
         decode(out)  # the writer emits only what the strict decoder accepts
     except PayloadError:
@@ -148,7 +148,7 @@ def _depth_ok(text: str) -> bool:
     return True
 
 
-def _no_constants(name: str) -> Any:
+def _no_constants(name: str) -> NoReturn:
     raise ValueError(f"{name} is not JSON")
 
 
@@ -178,7 +178,7 @@ def _v1(obj: dict[str, Any]) -> VaultPayload:
     return VaultPayload(1, None, False, [_item(i, strict=False) for i in items], None)
 
 
-def _v2(obj: dict[str, Any], data: bytes) -> VaultPayload:
+def _v2(obj: dict[str, Any], data: bytes | bytearray) -> VaultPayload:
     if not set(obj) <= {"v", "n", "a", "items", "z"} or "items" not in obj:
         raise PayloadError(MALFORMED, "unexpected or missing v2 members")
     name = obj.get("n")
@@ -199,18 +199,23 @@ def _v2(obj: dict[str, Any], data: bytes) -> VaultPayload:
     return p
 
 
-def decode(data: bytes) -> VaultPayload:
-    """Bytes to a VaultPayload, or PayloadError (MALFORMED / UNKNOWN_VERSION). Never a partial result."""
+def decode(data: bytes | bytearray) -> VaultPayload:
+    """Bytes to a VaultPayload, or PayloadError (MALFORMED / UNKNOWN_VERSION). Never a partial result.
+
+    ``data`` may be the decrypted ``bytearray`` itself: it is read in place, never copied to ``bytes``
+    (the parsed strings are unavoidable copies; see the README's memory-wiping limits)."""
     try:
-        text = bytes(data).decode("utf-8")
+        text = data.decode("utf-8")
     except UnicodeDecodeError:
         raise PayloadError(MALFORMED, "not UTF-8") from None
-    if text.startswith("﻿"):
+    if text.startswith("\ufeff"):
         text = text[1:]  # exactly one, as TextDecoder does
     if not _depth_ok(text):
         raise PayloadError(MALFORMED, "nested too deeply")
     try:
-        obj = json.loads(text, parse_constant=_no_constants)
+        # parse_int=float: integers become IEEE doubles, as in JSON.parse, so a huge v is "a number that
+        # is not 1 or 2" (UNKNOWN_VERSION) instead of hitting Python's int-conversion digit limit.
+        obj = json.loads(text, parse_constant=_no_constants, parse_int=float)
     except (ValueError, RecursionError):
         raise PayloadError(MALFORMED, "not JSON") from None
     if not isinstance(obj, dict) or not _is_number(obj.get("v")):
@@ -221,7 +226,7 @@ def decode(data: bytes) -> VaultPayload:
     if v == 1:
         return _v1(obj)
     if v == 2:
-        return _v2(obj, bytes(data))
+        return _v2(obj, data)
     raise PayloadError(UNKNOWN_VERSION, "unknown version")
 
 

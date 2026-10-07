@@ -136,7 +136,9 @@ def test_chain_preferred_over_arweave(chain: FakeChain, ar: FakeArweave) -> None
     ar.mirror(h(V2["blob"]), vault_id=VID, locators=[LOC["A"]])
     res, _, _ = run(cfg_for(chain, ar), [PhysicalKey.named("A")])
     assert res.candidate.source == "chain"
-    assert not any(r.path == "/graphql" for r in ar.requests), "Arweave is only a fallback"
+    # vault-list-labels-archive (ECC review of c9830c1): Arweave is always searched too, so the list and
+    # the chooser show every vault; ranking still prefers the verified chain copy.
+    assert any(r.path == "/graphql" for r in ar.requests)
 
 
 def test_vault_id_flow_non_discoverable(chain: FakeChain) -> None:

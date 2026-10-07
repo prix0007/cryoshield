@@ -56,10 +56,20 @@ class VaultSummary:
     labels: list[str] = field(default_factory=list)
 
     @property
-    def status(self) -> str:
-        """Public status for the non-interactive AMBIGUOUS message: freshness and archived/active."""
-        state = {"ok": "archived" if self.archived else "active", "locked": "needs more keys"}
-        return f"{self.freshness}, {state.get(self.contents, 'contents not readable')}"
+    def state(self) -> str:
+        """A fixed-width status word, always printed FIRST, so a name can never pass as a status."""
+        if self.contents == "ok":
+            return "ARCHIVED" if self.archived else "ACTIVE"
+        return "LOCKED" if self.contents == "locked" else "UNKNOWN"
+
+    @property
+    def outdated(self) -> bool:
+        """The best copy is not confirmed current, so a newer version may exist."""
+        return self.freshness not in ("current", "verified")
+
+    @property
+    def freshness_text(self) -> str:
+        return self.freshness + (" (may be outdated)" if self.outdated else "")
 
 
 @dataclass
@@ -89,7 +99,7 @@ def summarize(cand: Candidate, d: DecodedVault, secret: bytearray | None) -> Vau
     if secret is None:
         return base
     try:
-        p = payload.decode(bytes(secret))
+        p = payload.decode(secret)  # read in place: no bytes() copy of the decrypted buffer
     except payload.PayloadError as e:
         base.contents = "newer-version" if e.code == payload.UNKNOWN_VERSION else "unreadable"
         return base
@@ -106,16 +116,16 @@ ArweaveFactory = Callable[[Config], Arweave]
 
 
 def _option(index: int, s: VaultSummary) -> str:
-    """One line of the vault chooser: public metadata, names and labels made inert, never a secret."""
-    head = f"Vault {index + 1}: 0x{s.vault_id.hex()[:8]}…{s.vault_id.hex()[-4:]}"
+    """One line of the vault chooser: the status first in a fixed column, then public metadata, and the
+    name last and quoted (made inert), so a name can't pass as a status. Never a label or secret."""
+    head = f"{index + 1:>2}. [{s.state:<8}] 0x{s.vault_id.hex()[:8]}…{s.vault_id.hex()[-4:]}"
     if s.contents == "locked":
-        return f"{head}  needs {s.keys} (Shamir)  status: {s.freshness}"
+        return f"{head}  needs {s.keys} (Shamir), {s.freshness_text}"
     if s.contents != "ok":
         what = "made by a newer CryoShield" if s.contents == "newer-version" else "contents not a vault list"
-        return f"{head}  ({what})  status: {s.freshness}"
-    flag = " [ARCHIVED]" if s.archived else ""
+        return f"{head}  {what}, {s.freshness_text}"
     count = f"{s.items} item{'s' if s.items != 1 else ''}"
-    return f"{head}  {display_name(s.name)}{flag}  {count}  {s.keys}  status: {s.freshness}"
+    return f"{head}  {count}, {s.keys}, {s.freshness_text}  name: {display_name(s.name)}"
 
 
 def _default_registry(cfg: Config) -> Registries:
@@ -149,6 +159,7 @@ class Recovery:
         self.assertions: list[Assertion] = []
         self._notes: list[str] = []
         self._ignored = 0
+        self.incomplete = ""
 
     # ------------------------------------------------------------------ sources
     @property
@@ -173,6 +184,21 @@ class Recovery:
     def _chain_usable(self) -> bool:
         reg = self.registry
         return reg is not None and bool(reg.usable())
+
+    def _incompleteness(self) -> str:
+        """Why the vault list may be incomplete (a source unreachable or cut short), or "" if complete."""
+        reasons = []
+        if self.cfg.chain_configured and not self._chain_usable():
+            reasons.append("no blockchain server could be used")
+        ar = self._arweave
+        if ar is not None and (ar.truncated or ar.warnings):
+            reasons.append("the Arweave search was unreachable or cut short")
+        if not reasons:
+            return ""
+        return (
+            f"This list may be incomplete: {' and '.join(reasons)}. Retry later, or pass --rpc or "
+            "--arweave-graphql with servers you trust."
+        )
 
     def _hashes(self, vault_id: bytes | None) -> list[tuple[int, bytes]] | None:
         if vault_id is None or not self._chain_usable():
@@ -283,8 +309,21 @@ class Recovery:
         """Every vault ID with a copy this key opens, best-ranked copy first (vault-list-labels-archive
         5.1). Within an ID, the first copy that opens in rank order represents it; its rivals are judged
         later by ``_settle``. Copies that don't open (junk, clones, malformed) are only counted."""
-        self._ignored = 0
         groups: dict[bytes, _Group] = {}
+        try:
+            self._open_into(groups, cands)
+        except BaseException:
+            self._wipe_groups(list(groups.values()))  # a cancelled tap or a bug never leaks a secret
+            raise
+        if self.cfg.vault_id is not None:
+            for vid, g in list(groups.items()):
+                if vid != self.cfg.vault_id:
+                    wipe(g.secret)
+                    del groups[vid]
+        log.debug("opened %d vault(s), ignored %d candidate(s)", len(groups), self._ignored)
+        return list(groups.values())
+
+    def _open_into(self, groups: dict[bytes, _Group], cands: list[Candidate]) -> None:
         for cand in ranked(cands):
             vid = cand.vault_id
             if vid is None:
@@ -308,13 +347,6 @@ class Recovery:
                     self._ignored += 1
                 continue
             groups[vid] = _Group(cand, d, secret)
-        if self.cfg.vault_id is not None:
-            for vid, g in list(groups.items()):
-                if vid != self.cfg.vault_id:
-                    wipe(g.secret)
-                    del groups[vid]
-        log.debug("opened %d vault(s), ignored %d candidate(s)", len(groups), self._ignored)
-        return list(groups.values())
 
     @staticmethod
     def _wipe_groups(groups: list[_Group], keep: _Group | None = None) -> None:
@@ -328,12 +360,14 @@ class Recovery:
         summaries = [summarize(g.cand, g.decoded, g.secret) for g in groups]
         options = [_option(i, s) for i, s in enumerate(summaries)]
         self.ui.info(f"\nThis key opens {len(groups)} vaults.")
+        if self.incomplete:
+            self.ui.warn(self.incomplete)
         try:
             index = self.ui.choose("Which vault should be opened?", options)
         except RecoveryError as e:
             if e.exit_code != ExitCode.AMBIGUOUS:
                 raise
-            lines = "\n".join(f"  0x{s.vault_id.hex()}  {s.status}" for s in summaries)
+            lines = "\n".join(f"  0x{s.vault_id.hex()}  {s.freshness_text}" for s in summaries)
             raise RecoveryError(
                 ExitCode.AMBIGUOUS,
                 f"This key opens {len(groups)} vaults:\n{lines}\n"
@@ -341,7 +375,7 @@ class Recovery:
                 "<id> for the one you want.",
             ) from None
         if not 0 <= index < len(groups):
-            raise RecoveryError(ExitCode.CANCELLED, "No vault chosen.")
+            raise RecoveryError(ExitCode.CANCELLED, "Cancelled: no choice made.")
         return groups[index]
 
     def _settle(
@@ -434,7 +468,7 @@ class Recovery:
         )
         index = self.ui.choose("Which copy should be opened?", labels)
         if not 0 <= index < len(options):
-            raise RecoveryError(ExitCode.CANCELLED, "No copy chosen.")
+            raise RecoveryError(ExitCode.CANCELLED, "Cancelled: no choice made.")
         picked = options[index]
         self._notes.append(
             f"You chose copy {index + 1} of vault 0x{vid}; its freshness could not be verified on-chain."
@@ -491,7 +525,9 @@ class Recovery:
         else:
             cand, secret = self._settle(chosen.cand, chosen.secret, cands)
             result = Result(secret, cand, self._ignored)
-        result.summary = summarize(result.candidate, chosen.decoded, result.secret)
+        # Summarise the copy actually opened (_settle may have switched to a rival).
+        decoded = chosen.decoded if result.candidate is chosen.cand else decode_blob(result.candidate.blob)
+        result.summary = summarize(result.candidate, decoded, result.secret)
         return result
 
     def _rp_id_order(self, pairs: list[tuple[Candidate, DecodedVault]]) -> list[str]:
@@ -513,26 +549,41 @@ class Recovery:
         return order[:MAX_RP_IDS]
 
     def _by_rp_ids(self, pairs: list[tuple[Candidate, DecodedVault]]) -> tuple[list[_Group], list[Candidate]]:
+        """--vault-id / --blob-file: try every RP ID (safest first, capped) and keep what each opens, so
+        copies created for another site are never silently skipped (ECC review of c9830c1)."""
         tapped_any = False
-        for rp_id in self._rp_id_order(pairs):
-            group = [(c, d) for c, d in pairs if d.rp_id == rp_id]
-            if rp_id != self.cfg.rp_id:
-                where = {"chain": "on-chain", "file": "your file", "arweave": "an Arweave copy"}[
-                    group[0][0].source
-                ]
-                self.ui.info(
-                    f"The vault copy from {where} was created for the site '{rp_id}'; "
-                    f"trying that instead of '{self.cfg.rp_id}'."
-                )
-            allow = list(dict.fromkeys(e.cred_id for _, d in group for e in d.entries))
-            if not self._tap(rp_id, allow):
-                self.ui.info(f"This key has no credential for '{rp_id}'.")
-                continue
-            tapped_any = True
-            cands = [c for c, _ in group]
-            groups = self._open_all(cands)
-            if groups:
-                return groups, cands
+        merged: dict[bytes, _Group] = {}
+        all_cands: list[Candidate] = []
+        try:
+            for rp_id in self._rp_id_order(pairs):
+                group = [(c, d) for c, d in pairs if d.rp_id == rp_id]
+                if rp_id != self.cfg.rp_id:
+                    where = {"chain": "on-chain", "file": "your file", "arweave": "an Arweave copy"}[
+                        group[0][0].source
+                    ]
+                    self.ui.info(
+                        f"The vault copy from {where} was created for the site '{rp_id}'; "
+                        f"trying that instead of '{self.cfg.rp_id}'."
+                    )
+                allow = list(dict.fromkeys(e.cred_id for _, d in group for e in d.entries))
+                if not self._tap(rp_id, allow):
+                    self.ui.info(f"This key has no credential for '{rp_id}'.")
+                    continue
+                tapped_any = True
+                cands = [c for c, _ in group]
+                all_cands.extend(cands)
+                for g in self._open_all(cands):
+                    vid = g.cand.vault_id or b""
+                    old = merged.get(vid)
+                    if old is None or (old.secret is None and g.secret is not None):
+                        merged[vid] = g
+                    else:
+                        wipe(g.secret)  # this vault already opened from a better-ranked RP group
+        except BaseException:
+            self._wipe_groups(list(merged.values()))
+            raise
+        if merged:
+            return list(merged.values()), all_cands
         if not tapped_any:
             raise RecoveryError(
                 ExitCode.NO_CREDENTIAL, "This key is not enrolled in that vault. Try another enrolled key."
@@ -555,6 +606,8 @@ class Recovery:
         groups: list[_Group] = []
         try:
             groups, _ = self._discover()
+            if self.incomplete:
+                self._notes.append(self.incomplete)
             return [summarize(g.cand, g.decoded, g.secret) for g in groups]
         finally:
             self._wipe_groups(groups)
@@ -564,6 +617,7 @@ class Recovery:
     def _discover(self) -> tuple[list[_Group], list[Candidate]]:
         """Find and open every vault this run can reach; never empty (errors are raised instead)."""
         cfg = self.cfg
+        self._ignored = 0
         if cfg.blob_file is not None or cfg.vault_id is not None:
             if cfg.blob_file is not None:
                 cands = self._from_file()
@@ -596,19 +650,13 @@ class Recovery:
         locators = [derive_locator(a.prf) for a in got]
         log.debug("derived %d locator(s)", len(locators))
 
+        # Chain AND Arweave, always merged before opening: the list and the chooser must show every
+        # vault this key opens, and an Arweave copy may be newer than an outdated chain copy (ECC review
+        # of c9830c1). Ranking then prefers verified chain copies, as before.
         cands = self._chain_by_locators(locators) if self.registry is not None else []
+        cands = cands + self._arweave_by_locators(locators)
+        self.incomplete = self._incompleteness()
         groups = self._open_all(cands) if cands else []
-        if not groups:
-            cands = self._arweave_by_locators(locators)  # chain copies already failed
-            groups = self._open_all(cands) if cands else []
-        elif any(g.cand.freshness in (Freshness.OUTDATED, Freshness.UNMATCHED) for g in groups):
-            # A chain copy is known NOT to be current (e.g. a v1 plant while the v2 read failed): the
-            # current copy may be mirrored on Arweave, so look there too and re-rank everything.
-            ar_cands = self._arweave_by_locators(locators)
-            if ar_cands:
-                self._wipe_groups(groups)
-                cands = cands + ar_cands
-                groups = self._open_all(cands)
         if groups:
             return groups, cands
 
