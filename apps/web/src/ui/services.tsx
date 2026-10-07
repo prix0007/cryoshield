@@ -30,6 +30,10 @@ export interface Services {
   arweaveGatewayUrl: string;
 }
 
+/** Test networks get the testnet + unaudited warning (add-privacy-and-compliance 4.3) and the save-budget hint (D10). */
+const TESTNETS: Record<number, string> = { 11155420: 'OP Sepolia', 421614: 'Arbitrum Sepolia', 11155111: 'Sepolia', 31337: 'a local test chain' };
+export const testnetName = (chainId: number): string | undefined => TESTNETS[chainId];
+
 const Ctx = createContext<Services | null>(null);
 
 export function defaultServices(): Services {

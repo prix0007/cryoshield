@@ -22,7 +22,7 @@ describe('Where your vault is stored: chunk load failure', () => {
     vi.spyOn(unlockMod, 'unlock').mockResolvedValue({
       credId: new Uint8Array(48).fill(1),
       locator: new Uint8Array(32),
-      matches: [{ vaultId: ('0x' + '12'.repeat(32)) as `0x${string}`, owner: ('0x' + '34'.repeat(20)) as `0x${string}`, version: 1, blob: new Uint8Array(400), items: [{ label: 'Seed', secret: 'abandon art' }], entryIndex: 0, registry: 'v2' }],
+      matches: [{ vaultId: ('0x' + '12'.repeat(32)) as `0x${string}`, owner: ('0x' + '34'.repeat(20)) as `0x${string}`, version: 1, blob: new Uint8Array(400), items: [{ label: 'Seed', secret: 'abandon art' }], entryIndex: 0, archived: false, registry: 'v2' }],
     });
     renderApp();
     fireEvent.click(screen.getByRole('button', { name: 'Unlock my vault' }));

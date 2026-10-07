@@ -264,7 +264,12 @@ export function startBundler(registry: Hex, paymaster: Hex, port = BUNDLER_PORT)
         try {
           await pub.call({ account: BUNDLER_EOA, to: ENTRY_POINT, data, gas: 15_000_000n });
         } catch (e) {
-          const raw = (e as { data?: Hex; cause?: { data?: Hex } }).data ?? (e as { cause?: { data?: Hex } }).cause?.data;
+          // The revert data can sit several causes deep in viem's error chain (like a real bundler's simulation error).
+          let raw: Hex | undefined;
+          for (let c: unknown = e, i = 0; c && typeof c === 'object' && !raw && i < 10; c = (c as { cause?: unknown }).cause, i++) {
+            const d = (c as { data?: unknown }).data;
+            if (typeof d === 'string' && d.startsWith('0x')) raw = d as Hex;
+          }
           let reason = 'handleOps reverted';
           if (raw) {
             try {

@@ -69,6 +69,7 @@ describe('the save code fails to load', () => {
           blob: new Uint8Array(400).fill(1),
           items: [{ label: 'Bitcoin seed', secret: 'abandon art' }],
           entryIndex: 0,
+          archived: false,
           registry: 'v2',
         },
       ],

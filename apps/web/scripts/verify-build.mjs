@@ -267,9 +267,19 @@ const gz = (f) => gzipSync(readFileSync(join(dist, f)), { level: 9 }).length;
 // before 216,554 B (e2e) / 216,559 B (production), after 200,242 B / 200,239 B: -16,312 B. The +2 KB above is removed
 // and the baseline lowered by a further 12 KB (whole KB, below the saving, about 2.6 KB of headroom left) so the saving
 // can't be silently spent: 194,689 - 12 KB = 182,401 B.
-const APP_BASELINE = 194_689 - 12 * 1024;
+// vault-list-labels-archive (2026-10-08, ECC review of feat/vlla-web): +1 KB, deliberately. Measured gzip: main 200,311 B
+// (2da09c9) -> 202,980 B (+2,669 B), all of it in the initial chunk on purpose: the payload v2 codec (the decoder must be
+// there to open any vault, ~1 KB), the single vault-list owner in Shell with the unlock routing and Check another key,
+// the vault name heading, Archived notice and Unarchive, the name field at create, the STALE check,
+// the nonce pin at vault open (one raw eth_call, so unlocking still never fetches the write stack), and the retryable
+// chunk fallbacks. The list, the dates, the Edit vault sheet and the name/archive/clear writes are a lazy chunk
+// (VAULT_LIST_MARKERS below). Headroom without this: under 0 B; with it: about 0.9 KB.
+const APP_BASELINE = 194_689 - 12 * 1024 + 1024;
 const APP_ALLOWANCE = 20 * KB;
 const WRITE_STACK_MARKERS = ['eth_sendUserOperation', 'pimlico_getUserOperationGasPrice', 'WalletConfigError'];
+// vault-list-labels-archive 3.1 (design D5): the vault list, the Edit vault sheet, Archive and clear and the dates
+// (chain/history.ts: the VaultCreated topic) are one lazy chunk. Strings that exist only there must never be initial.
+const VAULT_LIST_MARKERS = ['Check another key', 'I understand old versions stay readable', '0xce97d1455c031e2d207f467953389573a1f639ea41eac2279614dea27b5e7322'];
 function appBudget(label) {
   const { initial, lazy } = splitGraph(join('app', 'index.html'));
   const bytes = [...initial].reduce((n, f) => n + gz(f), 0);
@@ -288,6 +298,16 @@ function appBudget(label) {
     if (![...lazy].some((f) => read(f).includes(marker))) fail(`[${label}] write-stack marker "${marker}" is in no lazy /app chunk`);
   }
   console.log(`ok   [${label}] the write stack is only in a lazy /app chunk (${WRITE_STACK_MARKERS.join(', ')})`);
+  const menuChunks = new Set();
+  for (const marker of VAULT_LIST_MARKERS) {
+    const early = [...initial].filter((f) => read(f).includes(marker));
+    if (early.length) fail(`[${label}] vault-list marker "${marker}" is in the initial /app graph: ${early.join(', ')}`);
+    const where = [...lazy].filter((f) => read(f).includes(marker));
+    if (!where.length) fail(`[${label}] vault-list marker "${marker}" is in no lazy /app chunk`);
+    where.forEach((f) => menuChunks.add(f));
+  }
+  if (menuChunks.size !== 1) fail(`[${label}] the vault list is spread over ${menuChunks.size} chunks (expected one): ${[...menuChunks].join(', ')}`);
+  console.log(`ok   [${label}] the vault list and its dates are one lazy /app chunk (${[...menuChunks][0]})`);
   if (bytes > APP_BASELINE + APP_ALLOWANCE) fail(`[${label}] /app initial JS ${bytes} B exceeds baseline + 20 KB (${APP_BASELINE + APP_ALLOWANCE} B)`);
   // The landing bundle stays unchanged: /app's Motion for React never shares a chunk with the landing page
   // (vite-plugins/app-motion-isolation.ts). Only Vite's tiny preload helper is common to both.

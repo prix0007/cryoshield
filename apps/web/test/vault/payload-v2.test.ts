@@ -2,9 +2,7 @@
  * Payload v2 codec against the shared vectors (change vault-list-labels-archive, task 1.2 [fe]).
  * Spec: docs/spec/payload-v2.md. Vectors: docs/spec/payload-vectors.json (task 1.1 [cry]).
  *
- * Written ahead of the codec: each test is `todo` until src/vault/payload.ts exports the
- * function it needs, then it runs (and must pass) automatically. The export names below are a
- * proposal from task 1.1; rename them here if the implementation chooses others.
+ * Hard tests (design review L1): every vector runs against the codec; a missing export fails, it is never skipped.
  *
  *   decodeVaultPayload(bytes): VaultPayload          throws PayloadError('MALFORMED' | 'UNKNOWN_VERSION')
  *   writeVaultPayload(p without version): Uint8Array  minimal version (spec section 6)
@@ -14,7 +12,11 @@
  */
 import { describe, expect, it } from 'vitest';
 import vectorsText from '../../../../docs/spec/payload-vectors.json?raw';
-import * as payload from '../../src/vault/payload';
+import { selectVault } from '@cryoshield/vault-crypto';
+import * as codec from '../../src/vault/payload';
+import { archiveAndClearPayload } from '../../src/vault/payload-clear';
+
+const payload = { ...codec, archiveAndClearPayload };
 
 interface Item {
   label: string;
@@ -32,9 +34,7 @@ interface V2Api {
   writeVaultPayload(p: Omit<VaultPayloadShape, 'version'>): Uint8Array;
   archiveAndClearPayload(previous: Uint8Array, maxPayloadBytes: number): Uint8Array;
 }
-const api = payload as unknown as Partial<V2Api>;
-const has = (k: keyof V2Api): boolean => typeof api[k] === 'function';
-const testIf = (k: keyof V2Api) => (has(k) ? it : it.todo);
+const api: V2Api = payload;
 
 const hex = (s: string): Uint8Array => {
   const out = new Uint8Array(s.length / 2);
@@ -107,12 +107,12 @@ function errorCode(fn: () => unknown): string | null {
     fn();
     return null;
   } catch (e) {
-    expect(e).toBeInstanceOf(payload.PayloadError);
-    return (e as payload.PayloadError).code;
+    expect(e).toBeInstanceOf(codec.PayloadError);
+    return (e as codec.PayloadError).code;
   }
 }
 
-// Not todo: runs today against the deployed v1 decoder. It proves the vectors never make v1 stricter than what
+// Runs against the deployed v1 decoder, kept unchanged. It proves the vectors never make v1 stricter than what
 // ships (design A7, reversed): every v1 positive opens with today's decodePayload, every negative is refused.
 describe('payload vectors vs the deployed v1 decoder (regression)', () => {
   for (const c of vectors.positive.filter((p) => p.decoded.version === 1)) {
@@ -127,15 +127,24 @@ describe('payload vectors vs the deployed v1 decoder (regression)', () => {
   }
 });
 
+describe('payload v2: the codec exports', () => {
+  it('exports every function the vectors need (no skipped tests)', () => {
+    for (const k of ['decodeVaultPayload', 'writeVaultPayload', 'archiveAndClearPayload'] as const) expect(typeof payload[k]).toBe('function');
+  });
+  it('has at least one vector in every section', () => {
+    for (const k of ['positive', 'negative', 'writer', 'archiveClear', 'blobs'] as const) expect(vectors[k].length).toBeGreaterThan(0);
+  });
+});
+
 describe('payload v2: positive vectors', () => {
   for (const c of vectors.positive) {
-    testIf('decodeVaultPayload')(`${c.id} decodes to the listed structure`, () => {
-      expect(toVector(api.decodeVaultPayload!(hex(c.hex)))).toEqual(c.decoded);
+    it(`${c.id} decodes to the listed structure`, () => {
+      expect(toVector(api.decodeVaultPayload(hex(c.hex)))).toEqual(c.decoded);
     });
     // A non-minimal v2 (vector v2-non-minimal) decodes, but the writer would emit v1 for it.
     if (c.decoded.version === writerVersion(c.decoded)) {
-      testIf('writeVaultPayload')(`${c.id} re-encodes to the identical bytes`, () => {
-        expect(toHex(api.writeVaultPayload!(fromVector(c.decoded)))).toBe(c.canonicalHex);
+      it(`${c.id} re-encodes to the identical bytes`, () => {
+        expect(toHex(api.writeVaultPayload(fromVector(c.decoded)))).toBe(c.canonicalHex);
       });
     }
   }
@@ -143,16 +152,16 @@ describe('payload v2: positive vectors', () => {
 
 describe('payload v2: negative vectors', () => {
   for (const c of vectors.negative) {
-    testIf('decodeVaultPayload')(`${c.id} is rejected as ${c.error}`, () => {
-      expect(errorCode(() => api.decodeVaultPayload!(hex(c.hex)))).toBe(c.error);
+    it(`${c.id} is rejected as ${c.error}`, () => {
+      expect(errorCode(() => api.decodeVaultPayload(hex(c.hex)))).toBe(c.error);
     });
   }
 });
 
 describe('payload v2: minimal-version writer', () => {
   for (const c of vectors.writer) {
-    testIf('writeVaultPayload')(`${c.id}`, () => {
-      const out = api.writeVaultPayload!(fromVector({ ...c.input, version: c.expectedVersion }));
+    it(`${c.id}`, () => {
+      const out = api.writeVaultPayload(fromVector({ ...c.input, version: c.expectedVersion }));
       expect(toHex(out)).toBe(c.expectedHex);
     });
   }
@@ -160,18 +169,66 @@ describe('payload v2: minimal-version writer', () => {
 
 describe('payload v2: archive and clear', () => {
   for (const c of vectors.archiveClear) {
-    testIf('archiveAndClearPayload')(`${c.id} (${c.rule})`, () => {
-      const out = api.archiveAndClearPayload!(hex(c.previousHex), c.maxPayloadBytes);
+    it(`${c.id} (${c.rule})`, () => {
+      const out = api.archiveAndClearPayload(hex(c.previousHex), c.maxPayloadBytes);
       expect(toHex(out)).toBe(c.expectedHex);
       expect(out.length).toBe(c.expectedLength);
     });
   }
 });
 
-describe('payload v2: blob vectors carry valid payloads', () => {
+describe('payload v2: blob vectors open and decode', () => {
+  const byId = new Map(vectors.positive.map((p) => [p.id, p]));
   for (const b of vectors.blobs) {
-    testIf('decodeVaultPayload')(`${b.id} payload decodes`, () => {
-      expect(() => api.decodeVaultPayload!(hex(b.payloadHex))).not.toThrow();
+    it(`${b.id} opens with each test key and decodes as ${b.payloadVector}`, async () => {
+      for (const c of b.credentials) {
+        const { secret } = await selectVault([{ vaultId: hex(b.vaultId.replace(/^0x/, "")), blob: hex(b.blob) }], hex(c.prf));
+        expect(toHex(secret)).toBe(b.payloadHex);
+        const want = byId.get(b.payloadVector)?.decoded;
+        if (want) expect(toVector(api.decodeVaultPayload(secret))).toEqual(want);
+        else expect(() => api.decodeVaultPayload(secret)).not.toThrow();
+      }
     });
   }
+  it('archive and clear keeps the blob length (blob-clear-before / blob-clear-after)', () => {
+    const before = vectors.blobs.find((b) => b.id === 'blob-clear-before')!;
+    const after = vectors.blobs.find((b) => b.id === 'blob-clear-after')!;
+    expect(hex(after.blob).length).toBe(hex(before.blob).length);
+  });
+});
+
+describe('payload v2: the writer refuses what a decoder would refuse', () => {
+  const item = { label: 'a', secret: 'b' };
+  it.each([
+    ['an empty name', { name: '', archived: false, items: [item] }],
+    ['a 41-code-point name', { name: 'N'.repeat(41), archived: false, items: [item] }],
+    ['a name with U+202E', { name: 'a\u202eb', archived: false, items: [item] }],
+    ['a name with a newline', { name: 'a\nb', archived: false, items: [item] }],
+    ['a name with LRM', { name: 'a\u200eb', archived: false, items: [item] }],
+    ['a lone surrogate in a v2 secret', { name: 'x', archived: false, items: [{ label: 'a', secret: '\udc00' }] }],
+    ['a pad next to items', { archived: true, items: [item], pad: '0' }],
+    ['a pad that is not zeros', { archived: true, items: [], pad: '01' }],
+    ['a 65-code-point label', { archived: false, items: [{ label: 'x'.repeat(65), secret: 'b' }] }],
+  ])('refuses %s', (_, p) => {
+    expect(errorCode(() => api.writeVaultPayload(p as Omit<VaultPayloadShape, 'version'>))).toBe('MALFORMED');
+  });
+  it('allows ZWJ in a name (emoji sequences)', () => {
+    const out = api.writeVaultPayload({ name: '👨\u200d👩', archived: false, items: [item] });
+    expect(api.decodeVaultPayload(out).name).toBe('👨\u200d👩');
+  });
+  it('a later save with items drops z', () => {
+    const cleared = payload.decodeVaultPayload(api.writeVaultPayload({ name: 'F', archived: true, items: [], pad: '000' }));
+    const next = payload.withItems(cleared, [item]);
+    expect(next.pad).toBeUndefined();
+    expect(new TextDecoder().decode(api.writeVaultPayload(next))).toBe('{"v":2,"n":"F","a":true,"items":[{"l":"a","s":"b"}]}');
+  });
+  it('unarchiving a cleared vault keeps z', () => {
+    const cleared = payload.decodeVaultPayload(api.writeVaultPayload({ name: 'F', archived: true, items: [], pad: '000' }));
+    expect(api.writeVaultPayload({ ...cleared, archived: false }).length).toBe(api.writeVaultPayload(cleared).length - 9);
+    expect(api.decodeVaultPayload(api.writeVaultPayload({ ...cleared, archived: false })).pad).toBe('000');
+  });
+  it('refuses to clear a payload that would not fit', () => {
+    const prev = api.writeVaultPayload({ name: 'N'.repeat(40), archived: false, items: [{ label: '', secret: '' }] });
+    expect(() => api.archiveAndClearPayload(prev, prev.length)).toThrow(payload.PayloadError);
+  });
 });

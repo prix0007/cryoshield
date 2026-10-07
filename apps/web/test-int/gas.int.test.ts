@@ -33,17 +33,17 @@ describe('gas (6.6)', () => {
     let blob = new Uint8Array();
     let locators: Uint8Array[] = [];
     const created = await createVaultOnChain(
-      { account: acct, build: async (vaultId) => ((({ blob, locators } = await createVaultBlob({ vaultId, rpId: 'localhost', keys: keyPrfs.map((k) => ({ ...k, prf: k.prf.slice() })), items }))), { blob, locators: locators.map(toHex) }) },
+      { account: acct, build: async (vaultId) => ((({ blob, locators } = await createVaultBlob({ vaultId, rpId: 'localhost', keys: keyPrfs.map((k) => ({ ...k, prf: k.prf.slice() })), payload: { archived: false, items } }))), { blob, locators: locators.map(toHex) }) },
       { client, sponsor, reader },
     );
     const vid = created.vaultId;
-    const edited = await editVaultBlob(blob, await f.prfFor(a.credId, locatorSalt()), vid, items);
+    const edited = await editVaultBlob(blob, await f.prfFor(a.credId, locatorSalt()), vid, { archived: false, items });
     const acct2 = await existingVaultAccount({ client, address: created.owner, entryIndex: 0, credId: a.credId, expectedLocator: locators[0]!, credentials: f.credentials });
-    const up = await updateVaultOnChain({ account: acct2, vaultId: created.vaultId, blob: edited }, { client, sponsor, reader });
-    const smaller = await editVaultBlob(edited, await f.prfFor(a.credId, locatorSalt()), vid, [{ label: 'Seed', secret: 'x'.repeat(300) }]);
-    const up2 = await updateVaultOnChain({ account: acct2, vaultId: created.vaultId, blob: smaller }, { client, sponsor, reader });
+    const up = await updateVaultOnChain({ account: acct2, vaultId: created.vaultId, blob: edited, base: blob }, { client, sponsor, reader });
+    const smaller = await editVaultBlob(edited, await f.prfFor(a.credId, locatorSalt()), vid, { archived: false, items: [{ label: 'Seed', secret: 'x'.repeat(300) }] });
+    const up2 = await updateVaultOnChain({ account: acct2, vaultId: created.vaultId, blob: smaller, base: edited }, { client, sponsor, reader });
     const added = await addKeyToBlob(smaller, await f.prfFor(a.credId, locatorSalt()), vid, { credId: c.credId, prf: await f.prfFor(c.credId, locatorSalt()) });
-    const ak = await addKeyOnChain({ account: acct2, vaultId: created.vaultId, blob: added.blob, newLocator: toHex(added.locator), newPublicKey: c.publicKey, keyCountBefore: 2 }, { client, sponsor, reader });
+    const ak = await addKeyOnChain({ account: acct2, vaultId: created.vaultId, blob: added.blob, base: smaller, newLocator: toHex(added.locator), newPublicKey: c.publicKey, keyCountBefore: 2 }, { client, sponsor, reader });
     const gas = async (h?: Hex) => (await client.getTransactionReceipt({ hash: h! })).gasUsed;
     const out = { createBlobBytes: blob.length, create: await gas(created.txHash), edit: await gas(up.txHash), editSmaller: await gas(up2.txHash), addKeyBlobBytes: added.blob.length, addKey: await gas(ak.txHash) };
     console.info('GAS', JSON.stringify(out, (_, v) => (typeof v === 'bigint' ? Number(v) : v)));

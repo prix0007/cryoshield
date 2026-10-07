@@ -20,6 +20,8 @@ export type WriteErrorCode =
   | 'OWNER_MISMATCH' // account owners don't line up with the blob's entries (owner index == entry index)
   | 'READ_ONLY' // a legacy VaultRegistry v1 vault: clients never write to v1
   | 'LOAD_FAILED' // the lazily loaded write code could not be fetched (offline, or a redeploy replaced the chunk)
+  | 'NONCE_CONFLICT' // another save from this account was being processed at the same moment (EntryPoint AA25)
+  | 'STALE' // the vault changed on-chain since this session opened it (vault-list-labels-archive D8): nothing signed
   | 'NETWORK';
 
 export class WriteError extends Error {

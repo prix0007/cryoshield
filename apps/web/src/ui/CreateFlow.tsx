@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { wipe } from '../lib/bytes';
-import type { SecretItem } from '../vault/payload';
+import { validName, type SecretItem } from '../vault/payload';
 import type { SaveStage } from '../account/errors';
 import { cleanItems, KeyPrompt, Notice, PermanenceAck, SecretsEditor, StepHeading } from './components';
 import { enrollWithPrf, errorReference, messageFor, mirrorWrite, saveNewVault, type MirrorResult, type PendingKey, type VaultSession } from './operations';
@@ -28,6 +28,10 @@ export function CreateFlow(props: {
   const [error, setError] = useState<string | null>(null);
   const [errorRef, setErrorRef] = useState<string | undefined>(undefined);
   const [items, setItems] = useState<SecretItem[]>([{ label: '', secret: '' }]);
+  // Optional vault name (vault-list-labels-archive): only ever inside the encrypted payload; never in a credential.
+  const [name, setName] = useState('');
+  const nameBad = name !== '' && !validName(name);
+  const nameId = useId();
   const [session, setSession] = useState<VaultSession | null>(null);
   const [mirror, setMirror] = useState<MirrorResult | { status: 'pending' }>({ status: 'pending' });
   // Locators known from creation, reused on Retry (fix-arweave-mirror-status D2).
@@ -48,6 +52,7 @@ export function CreateFlow(props: {
     keysRef.current.forEach((k) => wipe(k.prf));
     setKeys([]);
     setItems([{ label: '', secret: '' }]);
+    setName('');
     setStep('keys');
     setEpoch((n) => n + 1);
     setError(S.create.idleReset);
@@ -91,6 +96,7 @@ export function CreateFlow(props: {
           setReached((prev) => new Set(prev).add(stage));
           if (stage === 'sent') setPrompt(null); // signed and accepted: no more touches for this attempt
         },
+        name === '' ? undefined : name,
       );
       setError(null);
       keys.forEach((k) => wipe(k.prf));
@@ -178,15 +184,32 @@ export function CreateFlow(props: {
         {step === 'secrets' && (
           <div>
             <StepHeading>{S.create.secretsTitle}</StepHeading>
+            <div className="editor">
+              <label htmlFor={nameId}>{S.create.name}</label>
+              <input
+                id={nameId}
+                value={name}
+                autoComplete="off"
+                spellCheck={false}
+                dir="auto"
+                aria-invalid={nameBad || undefined}
+                aria-describedby={`${nameId}-hint`}
+                onChange={(e) => setName(e.target.value)}
+              />
+              <p id={`${nameId}-hint`} className={nameBad ? 'hint meter-over' : 'hint'}>
+                {nameBad ? S.create.nameInvalid : S.create.nameHint}
+              </p>
+            </div>
             <SecretsEditor
               rpId={svc.rpId}
               credIds={keys.map((k) => k.credId)}
               items={items}
+              meta={{ name: nameBad ? undefined : name || undefined, archived: false }}
               onChange={setItems}
               onSave={save}
               busy={busy}
               gate={{
-                ok: ackPermanent && ackAdult,
+                ok: ackPermanent && ackAdult && !nameBad,
                 hintId: 'ack-hint',
                 content: <PermanenceAck permanent={ackPermanent} adult={ackAdult} onPermanent={setAckPermanent} onAdult={setAckAdult} hintId="ack-hint" />,
               }}

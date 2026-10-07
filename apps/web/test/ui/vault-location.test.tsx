@@ -33,11 +33,13 @@ async function openVault(over: Partial<Services> = OP_SEPOLIA, registry: 'v1' | 
   vi.spyOn(unlockMod, 'unlock').mockResolvedValue({
     credId: credId(1),
     locator: LOCATOR,
-    matches: [{ vaultId: VAULT_ID, owner: OWNER, version: 3, blob: new Uint8Array(400), items: [{ label: 'Seed', secret: 'abandon art' }], entryIndex: 0, registry }],
+    matches: [{ vaultId: VAULT_ID, owner: OWNER, version: 3, blob: new Uint8Array(400), items: [{ label: 'Seed', secret: 'abandon art' }], entryIndex: 0, archived: false, registry }],
   });
   const r = renderApp(over);
   fireEvent.click(screen.getByRole('button', { name: 'Unlock my vault' }));
   fireEvent.click(screen.getByRole('button', { name: 'Unlock with my key' }));
+  // vault-list-labels-archive D5: an older test vault on its own is listed, not opened automatically.
+  if (registry === 'v1') fireEvent.click(await screen.findByRole('button', { name: 'Open Unnamed vault' }));
   await screen.findByRole('heading', { name: 'Seed' });
   return r;
 }
@@ -228,14 +230,14 @@ describe('Where your vault is stored (show-vault-onchain-location 1.3)', () => {
     expect(await p.findByRole('link', { name: new RegExp(`^${S.location.arweave}: .*${AR_ID}`) })).toBeInTheDocument();
   });
 
-  it('keeps the Arweave copy across "Open an older test vault" and back', async () => {
+  it('keeps the Arweave copy across opening the older test vault from "All vaults" and back', async () => {
     vi.mocked(ops.ensureMirror).mockResolvedValueOnce({ status: 'saved', itemId: AR_ID }).mockResolvedValue({ status: 'saved' });
     vi.spyOn(unlockMod, 'unlock').mockResolvedValue({
       credId: credId(1),
       locator: LOCATOR,
       matches: [
-        { vaultId: VAULT_ID, owner: OWNER, version: 3, blob: new Uint8Array(400), items: [{ label: 'Seed', secret: 'abandon art' }], entryIndex: 0, registry: 'v2' },
-        { vaultId: ('0x' + '56'.repeat(32)) as `0x${string}`, owner: OWNER, version: 1, blob: new Uint8Array(400), items: [{ label: 'Old', secret: 'x' }], entryIndex: 0, registry: 'v1' },
+        { vaultId: VAULT_ID, owner: OWNER, version: 3, blob: new Uint8Array(400), items: [{ label: 'Seed', secret: 'abandon art' }], entryIndex: 0, archived: false, registry: 'v2' },
+        { vaultId: ('0x' + '56'.repeat(32)) as `0x${string}`, owner: OWNER, version: 1, blob: new Uint8Array(400), items: [{ label: 'Old', secret: 'x' }], entryIndex: 0, archived: false, registry: 'v1' },
       ],
     });
     renderApp(OP_SEPOLIA);
@@ -243,8 +245,13 @@ describe('Where your vault is stored (show-vault-onchain-location 1.3)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Unlock with my key' }));
     await screen.findByRole('heading', { name: 'Seed' });
     await waitFor(() => expect(ops.ensureMirror).toHaveBeenCalledTimes(1));
-    fireEvent.click(screen.getByRole('button', { name: S.unlock.olderVault }));
-    fireEvent.click(await screen.findByRole('button', { name: S.vault.backToCurrent }));
+    fireEvent.click(screen.getByRole('button', { name: S.vault.allVaults(2) }));
+    const older = await screen.findByRole('region', { name: 'Older test vaults' });
+    fireEvent.click(within(older).getByRole('button', { name: 'Open Unnamed vault' }));
+    await screen.findByRole('heading', { name: 'Old' });
+    fireEvent.click(screen.getByRole('button', { name: S.vault.allVaults(2) }));
+    const active = await screen.findByRole('region', { name: 'Active vaults' });
+    fireEvent.click(within(active).getByRole('button', { name: 'Open Unnamed vault' }));
     await screen.findByRole('heading', { name: 'Seed' });
     const p = within(await expand());
     expect(p.getByRole('link', { name: new RegExp(`^${S.location.arweave}: .*${AR_ID}`) })).toBeInTheDocument();
@@ -264,7 +271,7 @@ describe('Where your vault is stored (show-vault-onchain-location 1.3)', () => {
     let uploadDone!: (r: ops.MirrorResult) => void;
     vi.spyOn(ops, 'enrollWithPrf').mockImplementation(async (_s, n) => ({ credId: credId(n), publicKey: ('0x' + 'aa'.repeat(64)) as `0x${string}`, prf: new Uint8Array(32).fill(n) }));
     vi.spyOn(ops, 'saveNewVault').mockResolvedValue({
-      session: { vaultId: VAULT_ID, owner: OWNER, version: 1, blob: new Uint8Array(10), items: [{ label: 'Seed', secret: 'abandon art' }], credIds: [], registry: 'v2' as const, lastSave: { version: 1, txHash: HASH } },
+      session: { vaultId: VAULT_ID, owner: OWNER, version: 1, blob: new Uint8Array(10), items: [{ label: 'Seed', secret: 'abandon art' }], credIds: [], archived: false, registry: 'v2' as const, lastSave: { version: 1, txHash: HASH } },
       locators: [('0x' + '77'.repeat(32)) as `0x${string}`],
     });
     vi.spyOn(ops, 'mirrorWrite').mockReturnValue(new Promise((r) => (uploadDone = r)));

@@ -79,6 +79,17 @@ function mapDomError(e: unknown): never {
   throw e;
 }
 
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/**
+ * vault-list-labels-archive D12: the credential's user.name and displayName, "CryoShield vault \u00b7 Oct 2026 (key 1)".
+ * The creation month only (English, local clock, independent of locale). NEVER the vault name: credential labels are
+ * stored unencrypted on the key and shown by browsers and credential managers.
+ */
+export function credentialLabel(n: number, now: Date = new Date()): string {
+  return `CryoShield vault \u00b7 ${MONTHS[now.getMonth()]} ${now.getFullYear()} (key ${n})`;
+}
+
 /** True when `host` may use `rpId` (exact match or a subdomain). */
 export function rpIdAllowed(host: string, rpId: string): boolean {
   const h = host.toLowerCase();

@@ -7,7 +7,7 @@ import { createRegistryReader } from '../src/chain/registry';
 import { unlock } from '../src/chain/unlock';
 import { addKeyToBlob, createVaultBlob, editVaultBlob } from '../src/vault/adapter';
 import { existingVaultAccount, makePublicClient, newVaultAccount, ownerPublicKeyAt } from '../src/account/account';
-import { addKeyOnChain, createSponsor, createVaultOnChain, updateVaultOnChain, WriteError } from '../src/account/writes';
+import { addKeyOnChain, createSponsor, createVaultOnChain, sponsoredOpsUsed, updateVaultOnChain, WriteError } from '../src/account/writes';
 import { decodeVault, deriveLocator } from '@cryoshield/vault-crypto';
 import { toHex } from '../src/lib/bytes';
 
@@ -31,7 +31,7 @@ async function twoKeys() {
 
 function buildFor(items: { label: string; secret: string }[], keys: { credId: Uint8Array; prf: Uint8Array }[]) {
   return async (vaultId: Hex) => {
-    const r = await createVaultBlob({ vaultId, rpId: 'localhost', keys: keys.map((k) => ({ credId: k.credId, prf: k.prf.slice() })), items });
+    const r = await createVaultBlob({ vaultId, rpId: 'localhost', keys: keys.map((k) => ({ credId: k.credId, prf: k.prf.slice() })), payload: { archived: false, items } });
     return { blob: r.blob, locators: r.locators.map(toHex) };
   };
 }
@@ -67,13 +67,70 @@ describe('sponsored writes against EntryPoint v0.6 + Coinbase Smart Wallet (6.1,
     const m = opened.matches[0]!;
     expect(m.entryIndex).toBe(1);
     const prf = await f.prfFor(b.credId, locatorSalt());
-    const newBlob = await editVaultBlob(m.blob, prf, m.vaultId, [...m.items!, { label: 'Email', secret: 'JBSW' }]);
+    const newBlob = await editVaultBlob(m.blob, prf, m.vaultId, { archived: false, items: [...m.items!, { label: 'Email', secret: 'JBSW' }] });
     const account = await existingVaultAccount({ client, address: m.owner, entryIndex: 1, credId: b.credId, expectedLocator: opened.locator, credentials: f.credentials });
-    const up = await updateVaultOnChain({ account, vaultId: res.vaultId, blob: newBlob }, { client, sponsor, reader });
+    const up = await updateVaultOnChain({ account, vaultId: res.vaultId, blob: newBlob, base: m.blob }, { client, sponsor, reader });
     expect(up.version).toBe(2);
     f.use(0);
     const again = await unlock({ rpId: 'localhost' }, { credentials: f.credentials, reader });
     expect(again.matches[0]!.items!.map((i) => i.label)).toEqual(['Seed', 'Email']);
+  });
+
+  it('vault-list-labels-archive D8: a write based on an older blob is STALE and changes nothing', async () => {
+    const { f, b, client, reader, sponsor, res } = await createOne();
+    f.use(1);
+    const opened = await unlock({ rpId: 'localhost' }, { credentials: f.credentials, reader });
+    const m = opened.matches[0]!;
+    const account = await existingVaultAccount({ client, address: m.owner, entryIndex: 1, credId: b.credId, expectedLocator: opened.locator, credentials: f.credentials });
+    const first = await editVaultBlob(m.blob, await f.prfFor(b.credId, locatorSalt()), m.vaultId, { archived: false, items: [{ label: 'Seed', secret: 'from device 1' }] });
+    await updateVaultOnChain({ account, vaultId: res.vaultId, blob: first, base: m.blob }, { client, sponsor, reader });
+    const second = await editVaultBlob(m.blob, await f.prfFor(b.credId, locatorSalt()), m.vaultId, { archived: false, items: [{ label: 'Seed', secret: 'stale device 2' }] });
+    const gets = f.calls.filter((c) => c.kind === 'get').length;
+    const err = await updateVaultOnChain({ account, vaultId: res.vaultId, blob: second, base: m.blob }, { client, sponsor, reader }).catch((e) => e);
+    expect(err).toBeInstanceOf(WriteError);
+    expect(err.code).toBe('STALE');
+    expect(f.calls.filter((c) => c.kind === 'get')).toHaveLength(gets); // no signing tap
+    expect((await reader.getVault(res.vaultId))!.version).toBe(2);
+  });
+
+  it('vault-list-labels-archive D10: EntryPoint.getNonce(account, 0) counts the create and each edit (nonce key 0)', async () => {
+    const { f, b, client, reader, sponsor, res } = await createOne();
+    expect(await sponsoredOpsUsed(client, res.owner)).toBe(1);
+    f.use(1);
+    const opened = await unlock({ rpId: 'localhost' }, { credentials: f.credentials, reader });
+    const m = opened.matches[0]!;
+    const account = await existingVaultAccount({ client, address: m.owner, entryIndex: 1, credId: b.credId, expectedLocator: opened.locator, credentials: f.credentials });
+    const next = await editVaultBlob(m.blob, await f.prfFor(b.credId, locatorSalt()), m.vaultId, { name: 'Family', archived: false, items: m.items! });
+    await updateVaultOnChain({ account, vaultId: res.vaultId, blob: next, base: m.blob }, { client, sponsor, reader });
+    expect(await sponsoredOpsUsed(client, res.owner)).toBe(2);
+    // The signing path is unchanged: the edit above verified on-chain (UV + rpIdHash); a second edit too.
+    const again = await editVaultBlob(next, await f.prfFor(b.credId, locatorSalt()), m.vaultId, { name: 'Family', archived: true, items: m.items! });
+    await updateVaultOnChain({ account, vaultId: res.vaultId, blob: again, base: next }, { client, sponsor, reader });
+    expect(await sponsoredOpsUsed(client, res.owner)).toBe(3);
+    f.use(0);
+    expect((await unlock({ rpId: 'localhost' }, { credentials: f.credentials, reader })).matches[0]).toMatchObject({ name: 'Family', archived: true, version: 3 });
+  });
+
+  it('review M1, two tabs: B passes its checks, A saves during B\'s signing tap, B fails with NONCE_CONFLICT and A\'s save stands', async () => {
+    const { f, b, client, reader, sponsor, res } = await createOne();
+    f.use(1);
+    const opened = await unlock({ rpId: 'localhost' }, { credentials: f.credentials, reader });
+    const m = opened.matches[0]!;
+    const account = await existingVaultAccount({ client, address: m.owner, entryIndex: 1, credId: b.credId, expectedLocator: opened.locator, credentials: f.credentials });
+    const fromA = await editVaultBlob(m.blob, await f.prfFor(b.credId, locatorSalt()), m.vaultId, { archived: false, items: [{ label: 'Seed', secret: 'tab A' }] });
+    const fromB = await editVaultBlob(m.blob, await f.prfFor(b.credId, locatorSalt()), m.vaultId, { archived: false, items: [{ label: 'Seed', secret: 'tab B' }] });
+    const pinned = await sponsoredOpsUsed(client, m.owner);
+    // Tab B: its pre-write checks pass (same nonce, same blob); while B waits for its signing tap, tab A saves.
+    const err = await updateVaultOnChain(
+      { account, vaultId: res.vaultId, blob: fromB, base: m.blob, nonce: BigInt(pinned) },
+      { client, sponsor, reader, onSign: async () => void (await updateVaultOnChain({ account, vaultId: res.vaultId, blob: fromA, base: m.blob }, { client, sponsor, reader })) },
+    ).catch((e) => e);
+    expect(err).toBeInstanceOf(WriteError);
+    expect(err.code).toBe('NONCE_CONFLICT');
+    const v = (await reader.getVault(res.vaultId))!;
+    expect(v.version).toBe(2);
+    expect(toHex(v.blob)).toBe(toHex(fromA));
+    expect(await sponsoredOpsUsed(client, m.owner)).toBe(pinned + 1);
   });
 
   it('adds key C atomically with one existing key; C alone unlocks; account has 3 owners', async () => {
@@ -85,7 +142,7 @@ describe('sponsored writes against EntryPoint v0.6 + Coinbase Smart Wallet (6.1,
     f.use(0);
     const loc0 = res.locators[0]!;
     const account = await existingVaultAccount({ client, address: res.owner, entryIndex: 0, credId: a.credId, expectedLocator: hexToBytes(loc0), credentials: f.credentials });
-    await addKeyOnChain({ account, vaultId: res.vaultId, blob: added.blob, newLocator: toHex(added.locator), newPublicKey: c.publicKey, keyCountBefore: 2 }, { client, sponsor, reader });
+    await addKeyOnChain({ account, vaultId: res.vaultId, blob: added.blob, base: res.blob, newLocator: toHex(added.locator), newPublicKey: c.publicKey, keyCountBefore: 2 }, { client, sponsor, reader });
     expect(await ownerPublicKeyAt(client, res.owner, 2)).toBe(c.publicKey);
     expect(decodeVault((await reader.getVault(res.vaultId))!.blob).keyCount).toBe(3);
     f.use(ci);
@@ -124,7 +181,7 @@ describe('on-chain verification and registry errors', () => {
     f.use(1);
     // ownerIndex 0 holds A's public key, but key B signs.
     const account = await existingVaultAccount({ client, address: res.owner, entryIndex: 0, credId: b.credId, expectedLocator: locators[1]!, credentials: f.credentials });
-    const err = await updateVaultOnChain({ account, vaultId: res.vaultId, blob: res.blob }, { client, sponsor, reader }).catch((e) => e);
+    const err = await updateVaultOnChain({ account, vaultId: res.vaultId, blob: res.blob, base: res.blob }, { client, sponsor, reader }).catch((e) => e);
     expect(err).toBeInstanceOf(WriteError);
     expect((await reader.getVault(res.vaultId))!.version).toBe(1);
   });
@@ -203,7 +260,7 @@ describe('harden-gas-sponsorship: legacy VaultRegistry v1 vaults', () => {
     const pa = await f.prfFor(a.credId, locatorSalt());
     const pb = await f.prfFor(b.credId, locatorSalt());
     const vaultId = keccak256Hex(`legacy-${Date.now()}`);
-    const r = await createVaultBlob({ vaultId, rpId: 'localhost', keys: [{ credId: a.credId, prf: pa }, { credId: b.credId, prf: pb }], items: [{ label: 'Old', secret: 'v1 secret' }] });
+    const r = await createVaultBlob({ vaultId, rpId: 'localhost', keys: [{ credId: a.credId, prf: pa }, { credId: b.credId, prf: pb }], payload: { archived: false, items: [{ label: 'Old', secret: 'v1 secret' }] } });
     await writeV1('0x00000000000000000000000000000000000b1b1b', vaultId, r.blob, r.locators.map(toHex));
     f.use(1);
     const opened = await unlock({ rpId: 'localhost' }, { credentials: f.credentials, reader });
@@ -218,9 +275,9 @@ describe('harden-gas-sponsorship: legacy VaultRegistry v1 vaults', () => {
     f.use(1);
     const opened = await unlock({ rpId: 'localhost' }, { credentials: f.credentials, reader });
     const prf = await f.prfFor(b.credId, locatorSalt());
-    const newBlob = await editVaultBlob(opened.matches[0]!.blob, prf, res.vaultId, [{ label: 'Seed', secret: 'new' }]);
+    const newBlob = await editVaultBlob(opened.matches[0]!.blob, prf, res.vaultId, { archived: false, items: [{ label: 'Seed', secret: 'new' }] });
     const account = await existingVaultAccount({ client, address: res.owner, entryIndex: 1, credId: b.credId, expectedLocator: opened.locator, credentials: f.credentials });
-    await updateVaultOnChain({ account, vaultId: res.vaultId, blob: newBlob }, { client, sponsor, reader });
+    await updateVaultOnChain({ account, vaultId: res.vaultId, blob: newBlob, base: opened.matches[0]!.blob }, { client, sponsor, reader });
     // Replay: the old blob under the SAME vaultId in v1 (v1 accepts caller-chosen ids), under the victim's locators.
     await writeV1('0x00000000000000000000000000000000000a77ad', res.vaultId, staleBlob, res.locators);
     for (const k of [0, 1]) {

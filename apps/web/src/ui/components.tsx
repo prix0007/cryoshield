@@ -1,10 +1,66 @@
-import { useEffect, useId, useRef, type ReactNode } from 'react';
+import { Component, useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { capacity } from '../vault/adapter';
 import { MAX_LABEL_CHARS, type SecretItem } from '../vault/payload';
 import { S } from './strings';
 import { ActionBar } from './chrome';
 import { CEREMONY_WAITING, noticeTitle } from './ceremony';
 import { AnimatePresence, Btn, Collapse, Disclosure, Pulse, Shake, SlideIn } from './motionkit';
+
+/**
+ * A lazily loaded chunk that fails to load (offline, or a redeploy replaced the hashed assets) shows `fallback`
+ * instead; without this boundary React would unmount the whole unlocked app.
+ */
+export class ChunkBoundary extends Component<{ fallback: ReactNode; children: ReactNode }, { failed: boolean }> {
+  override state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  override render() {
+    return this.state.failed ? this.props.fallback : this.props.children;
+  }
+}
+
+/**
+ * A lazily loaded module, fetched once `enabled` (review M6). A failed load is not cached: `retry` imports again, which
+ * fixes a dropped connection (after a redeploy only a reload helps; the fallback copy says so).
+ */
+export function useLazyModule<T>(load: () => Promise<T>, enabled: boolean): { mod: T | null; failed: boolean; retry: () => void } {
+  const [state, setState] = useState<{ mod: T | null; failed: boolean }>({ mod: null, failed: false });
+  const [attempt, setAttempt] = useState(0);
+  const loaded = state.mod !== null;
+  useEffect(() => {
+    if (!enabled || loaded) return;
+    let live = true;
+    load().then(
+      (mod) => live && setState({ mod, failed: false }),
+      () => live && setState({ mod: null, failed: true }),
+    );
+    return () => {
+      live = false;
+    };
+  }, [load, enabled, loaded, attempt]);
+  return { ...state, retry: () => (setState({ mod: null, failed: false }), setAttempt((n) => n + 1)) };
+}
+
+/** The fallback for a lazily loaded screen that failed to load (review M6): try again, go back, or lock. */
+export function ChunkFailed(props: { onRetry: () => void; back?: { label: string; onClick: () => void } | undefined; onLock: () => void }) {
+  return (
+    <div>
+      <Notice kind="error">{S.chunkFailed}</Notice>
+      <ActionBar>
+        <Btn onClick={props.onRetry}>{S.save.retry}</Btn>
+        {props.back && (
+          <Btn className="secondary" onClick={props.back.onClick}>
+            {props.back.label}
+          </Btn>
+        )}
+        <Btn className="secondary" onClick={props.onLock}>
+          {S.vault.lock}
+        </Btn>
+      </ActionBar>
+    </div>
+  );
+}
 
 /** Step heading that receives focus when the step appears (WCAG 2.4.3 focus order). */
 export function StepHeading({ children }: { children: ReactNode }) {
@@ -112,9 +168,14 @@ export function SecretsEditor(props: {
   busy?: boolean;
   /** Extra confirmation shown above Save (create flow: permanence + 18+). Save stays disabled until `ok`. */
   gate?: { ok: boolean; content: ReactNode; hintId: string };
+  /** The vault's name and archived flag: counted in the space left (D11), and kept by the save. */
+  meta?: { name?: string | undefined; archived: boolean };
+  /** Shown next to Save (testnet save-budget hint, D10); `blocked` disables Save. */
+  budget?: { text: string; blocked: boolean } | undefined;
 }) {
   const { items, onChange } = props;
-  const cap = capacity(props.rpId, props.credIds, items);
+  const name = props.meta?.name;
+  const cap = capacity(props.rpId, props.credIds, { archived: props.meta?.archived ?? false, items, ...(name ? { name } : {}) });
   const nonEmpty = items.some((i) => i.secret.trim() !== '');
   const meterId = useId();
   const over = !cap.fits && nonEmpty;
@@ -145,7 +206,7 @@ export function SecretsEditor(props: {
           return (
           <Collapse key={k}>
             <fieldset className="item card">
-              <legend>{it.label || `${S.editor.secret} ${i + 1}`}</legend>
+              <legend>{it.label ? <bdi>{it.label}</bdi> : `${S.editor.secret} ${i + 1}`}</legend>
               <label htmlFor={`label-${k}`}>{S.editor.label}</label>
               <input
                 id={`label-${k}`}
@@ -176,7 +237,7 @@ export function SecretsEditor(props: {
               />
               {items.length > 1 && (
                 <Btn type="button" className="secondary" onClick={() => remove(i)}>
-                  {S.editor.removeItem(it.label)}
+                  {S.editor.remove} {it.label ? <bdi>{it.label}</bdi> : S.editor.thisSecret}
                 </Btn>
               )}
             </fieldset>
@@ -195,11 +256,12 @@ export function SecretsEditor(props: {
       <ActionBar>
         <Btn
           type="submit"
-          disabled={!cap.fits || !nonEmpty || props.busy || (props.gate ? !props.gate.ok : false)}
+          disabled={!cap.fits || !nonEmpty || props.busy || props.budget?.blocked || (props.gate ? !props.gate.ok : false)}
           {...(props.gate && !props.gate.ok ? { 'aria-describedby': props.gate.hintId } : {})}
         >
           {S.editor.save}
         </Btn>
+        {props.budget && <p className="hint">{props.budget.text}</p>}
         {props.onCancel && (
           <Btn type="button" className="secondary" onClick={props.onCancel} disabled={props.busy}>
             {S.editor.cancel}

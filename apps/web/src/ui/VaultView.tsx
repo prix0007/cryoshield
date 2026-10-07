@@ -1,9 +1,11 @@
-import { Component, lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import type { SecretItem } from '../vault/payload';
-import { cleanItems, KeyPrompt, Notice, SecretsEditor, StepHeading } from './components';
+import { visibleName } from '../vault/name';
+import { ChunkBoundary, ChunkFailed, cleanItems, useLazyModule, KeyPrompt, Notice, SecretsEditor, StepHeading } from './components';
 import { MirrorLine } from './CreateFlow';
-import { ensureMirror, errorReference, isReadOnly, messageFor, mirrorWrite, saveAddKey, saveEdit, type MirrorItem, type MirrorResult, type VaultSession } from './operations';
-import { useServices } from './services';
+import { ensureMirror, errorReference, isReadOnly, messageFor, mirrorWrite, rewrite, saveAddKey, saveEdit, withPayload, type MirrorItem, type MirrorResult, type VaultSession } from './operations';
+import { testnetName, useServices } from './services';
+import { BUDGET_HINT_AT, readNonce, savesLeft } from '../account/budget';
 import { S } from './strings';
 import { ActionBar, EmptyState } from './chrome';
 import { copySecret, forgetClearListener } from './clipboard';
@@ -13,23 +15,12 @@ import { reveal } from './motion';
 
 /** show-vault-onchain-location D3: the panel content is a separate chunk, fetched when the disclosure first opens. */
 const VaultLocation = lazy(() => import('./VaultLocation'));
+/** vault-list-labels-archive: the Edit vault sheet ships in the vault list's chunk. */
+const menu = () => import('./VaultsMenu');
+const ops = { rewrite, withPayload };
 
-/**
- * A failed chunk load (offline, or a redeploy replaced the hashed assets) only replaces the panel with a one-line hint;
- * without this boundary React would unmount the whole unlocked app.
- */
-class PanelBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
-  override state = { failed: false };
-  static getDerivedStateFromError() {
-    return { failed: true };
-  }
-  override render() {
-    return this.state.failed ? <p className="hint">{S.location.failed}</p> : this.props.children;
-  }
-}
-
-type Mode = 'view' | 'edit' | 'addKey' | 'details';
-const MODE_ORDER: readonly Mode[] = ['view', 'edit', 'addKey', 'details'];
+type Mode = 'view' | 'edit' | 'meta' | 'addKey' | 'details';
+const MODE_ORDER: readonly Mode[] = ['view', 'edit', 'meta', 'addKey', 'details'];
 
 export function VaultView(props: {
   session: VaultSession;
@@ -37,10 +28,13 @@ export function VaultView(props: {
   onChange: (s: VaultSession) => void;
   onLock: () => void;
   freshMirror?: boolean;
-  /** Opens the legacy v1 copy this key also opens (harden-gas-sponsorship). */
-  onOpenOlder?: () => void;
-  /** From a legacy v1 copy, back to the current v2 vault. */
-  onBackToCurrent?: () => void;
+  /** Opens with the Edit vault sheet (from the vault list's "Edit vault"). */
+  initialMode?: 'meta';
+  /** How many vaults are open (the "All vaults (N)" button), and the way there. */
+  vaultCount?: number;
+  onAllVaults?: () => void;
+  /** The account nonce read at open (D8): App stores it on the session. */
+  onNonce?: (vaultId: `0x${string}`, nonce: bigint) => void;
   /** This vault's Arweave copy known to the session (App state, so it survives a remount; wiped on lock). */
   mirrorItem?: MirrorItem | undefined;
   /** Reports every mirror result with the version it is for; App validates it and keeps the newest version. */
@@ -49,7 +43,9 @@ export function VaultView(props: {
   const svc = useServices();
   const s = props.session;
   const readOnly = isReadOnly(s);
-  const [mode, setMode] = useState<Mode>('view');
+  const [mode, setMode] = useState<Mode>(props.initialMode ?? 'view');
+  // Review M6: the Edit vault sheet ships in the vault list chunk; a failed load can be retried.
+  const sheet = useLazyModule(menu, mode === 'meta');
   const [shown, setShown] = useState<Set<number>>(new Set());
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -116,7 +112,24 @@ export function VaultView(props: {
     });
   }
 
-  async function saveDraft() {
+  // D8/D10: when the vault opens, read and pin the account's EntryPoint nonce (one eth_call; no write stack).
+  // It is the base every write of this session is checked against, and it feeds the testnet save-budget hint.
+  const { onNonce } = props;
+  useEffect(() => {
+    if (readOnly || s.nonce !== undefined || !onNonce) return;
+    let live = true;
+    readNonce(svc.client, s.owner)
+      .then((n) => live && onNonce(s.vaultId, n))
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [readOnly, s.nonce, s.vaultId, svc.client, s.owner, onNonce]);
+  const left = testnetName(svc.chainId) && s.nonce !== undefined ? savesLeft(Number(s.nonce)) : null;
+  const budget = left !== null && left <= BUDGET_HINT_AT ? { text: left === 0 ? S.save.paused : S.save.budget(left), blocked: left === 0 } : undefined;
+
+  /** One write with the usual taps, prompts and checklist. `next === s` (nothing changed) closes without a save. */
+  async function run(write: (onSign: () => void) => Promise<VaultSession>) {
     setBusy(true);
     setError(null);
     setErrorRef(undefined);
@@ -124,9 +137,10 @@ export function VaultView(props: {
     setProgress(new Set());
     setPrompt(S.edit.touchAny);
     try {
-      const next = await saveEdit(svc, s, cleanItems(draft), () => setPrompt(S.edit.touchSame), onProgress);
+      const next = await write(() => setPrompt(S.edit.touchSame));
       setMode('view');
-      afterWrite(next);
+      if (next === s) setProgress(null);
+      else afterWrite(next);
     } catch (e) {
       setProgress(null);
       setError(messageFor(e));
@@ -136,6 +150,8 @@ export function VaultView(props: {
       setBusy(false);
     }
   }
+
+  const saveDraft = () => run((sign) => saveEdit(svc, s, cleanItems(draft), sign, onProgress));
 
   async function addKey() {
     setBusy(true);
@@ -181,7 +197,7 @@ export function VaultView(props: {
   return (
     <section aria-labelledby="vault-title" className="step">
       <h1 id="vault-title" ref={title} tabIndex={-1}>
-        {S.vault.title}
+        {visibleName(s.name) === undefined ? S.vault.title : <bdi>{visibleName(s.name)}</bdi>}
       </h1>
       {error && (
         <Notice kind="error" reference={errorRef}>
@@ -204,12 +220,22 @@ export function VaultView(props: {
           <div>
             <OnArrival run={() => (leftView.current ? title.current?.focus() : undefined)} />
             {readOnly && <Notice kind="info">{S.vault.legacyReadOnly}</Notice>}
+            {s.archived && !readOnly && (
+              <div className="notice notice-info notice-inline" role="status">
+                <p className="notice-text">{S.vault.archived}</p>
+                <Btn className="secondary" onClick={() => run((sign) => menu().then((m) => m.saveVaultMeta(ops, svc, s, { ...(s.name !== undefined ? { name: s.name } : {}), archived: false }, sign, onProgress)))} disabled={busy}>
+                  {S.vault.unarchive}
+                </Btn>
+              </div>
+            )}
             {s.items.length === 0 && <EmptyState>{S.vault.empty}</EmptyState>}
             <ul className="secrets" aria-label={S.vault.title} hidden={s.items.length === 0}>
               <AnimatePresence initial={false}>
                 {s.items.map((it, i) => (
                   <Collapse as="li" key={i} className="secret card">
-                    <h3>{it.label}</h3>
+                    <h3>
+                      <bdi>{it.label}</bdi>
+                    </h3>
                     <div className="secret-value" aria-live="polite">
                       {/* De-blur only after an explicit Show; the secret is children, never an animated value. */}
                       {shown.has(i) ? (
@@ -233,7 +259,7 @@ export function VaultView(props: {
                           })
                         }
                       >
-                        {shown.has(i) ? S.vault.hide : S.vault.show} <span className="sr-only">{it.label}</span>
+                        {shown.has(i) ? S.vault.hide : S.vault.show} <span className="sr-only"><bdi>{it.label}</bdi></span>
                       </Btn>
                       <Btn
                         className="secondary"
@@ -245,7 +271,7 @@ export function VaultView(props: {
                           }
                         }}
                       >
-                        {S.vault.copy} <span className="sr-only">{it.label}</span>
+                        {S.vault.copy} <span className="sr-only"><bdi>{it.label}</bdi></span>
                       </Btn>
                     </div>
                     {copied?.i === i && <CopyFeedback key={copied.n} />}
@@ -255,23 +281,15 @@ export function VaultView(props: {
             </ul>
             <ActionBar>
               {!readOnly && <Btn onClick={() => { setDraft(s.items); setMode('edit'); setStatus(null); setProgress(null); }}>{S.vault.edit}</Btn>}
+              {!readOnly && <Btn className="secondary" onClick={() => { setMode('meta'); setStatus(null); setProgress(null); }}>{S.vault.editVault}</Btn>}
               {!readOnly && <Btn className="secondary" onClick={() => { setMode('addKey'); setStatus(null); setProgress(null); }}>{S.vault.addKey}</Btn>}
+              {props.onAllVaults && <Btn className="secondary" onClick={props.onAllVaults}>{S.vault.allVaults(props.vaultCount ?? 1)}</Btn>}
               <Btn className="secondary" onClick={() => { setMode('details'); setProgress(null); }}>{S.vault.details}</Btn>
               <Btn className="secondary" onClick={props.onLock}>{S.vault.lock}</Btn>
             </ActionBar>
-            {props.onOpenOlder && (
-              <Btn className="link-button" onClick={props.onOpenOlder}>
-                {S.unlock.olderVault}
-              </Btn>
-            )}
-            {props.onBackToCurrent && (
-              <Btn className="link-button" onClick={props.onBackToCurrent}>
-                {S.vault.backToCurrent}
-              </Btn>
-            )}
             <div className="vault-location-disclosure">
               <Disclosure label={S.location.title}>
-                <PanelBoundary>
+                <ChunkBoundary fallback={<p className="hint">{S.location.failed}</p>}>
                 <Suspense fallback={<p className="hint">{S.location.loading}</p>}>
                   <VaultLocation
                     network={svc.network}
@@ -285,7 +303,7 @@ export function VaultView(props: {
                     arweaveGatewayUrl={svc.arweaveGatewayUrl}
                   />
                 </Suspense>
-                </PanelBoundary>
+                </ChunkBoundary>
               </Disclosure>
             </div>
           </div>
@@ -294,8 +312,30 @@ export function VaultView(props: {
         {mode === 'edit' && (
           <div>
             <StepHeading>{S.vault.edit}</StepHeading>
-            <SecretsEditor rpId={svc.rpId} credIds={s.credIds} items={draft} onChange={setDraft} onSave={saveDraft} onCancel={() => setMode('view')} busy={busy} />
+            <SecretsEditor rpId={svc.rpId} credIds={s.credIds} items={draft} meta={s} budget={budget} onChange={setDraft} onSave={saveDraft} onCancel={() => setMode('view')} busy={busy} />
           </div>
+        )}
+
+        {mode === 'meta' && (
+          sheet.failed ? (
+            <ChunkFailed onRetry={sheet.retry} back={{ label: S.editor.cancel, onClick: () => setMode('view') }} onLock={props.onLock} />
+          ) : sheet.mod ? (
+            <>
+              <sheet.mod.EditVaultSheet
+                session={s}
+                busy={busy}
+                saveBlocked={budget?.blocked ?? false}
+                onSave={(meta) => run((sign) => menu().then((m) => m.saveVaultMeta(ops, svc, s, meta, sign, onProgress)))}
+                onClear={() => run((sign) => menu().then((m) => m.archiveAndClear(ops, svc, s, sign, onProgress)))}
+                onCancel={() => setMode('view')}
+              />
+              {budget && <p className="hint">{budget.text}</p>}
+            </>
+          ) : (
+            <p className="hint" role="status">
+              {S.location.loading}
+            </p>
+          )
         )}
 
         {mode === 'addKey' && (

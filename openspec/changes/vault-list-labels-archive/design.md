@@ -163,6 +163,19 @@ The writer emits **v1** when there is no name, no archive flag, no `z`, and at l
 - *Separate writes for rename and archive.* Doubles the use of a 50-operation lifetime budget.
 - *Query Pimlico for the remaining budget.* No public per-sender endpoint, and the API key must not gain account APIs (`harden-gas-sponsorship` D3).
 
+### D10 amendment. One EntryPoint nonce key (overwatcher, 2026-10-08)
+
+Found at task 2.5: viem's `toSmartAccount` picks a fresh nonce **key** for every user operation (`Date.now()`), so `EntryPoint.getNonce(owner, 0)` stays 0 and the hint above could never count anything.
+
+- **Decision:** the CryoShield wallet wrapper (`src/account/wallet.ts`) always uses nonce key **0**. `getNonce(owner, 0)` then counts every included operation of the account, and `sponsoredOpsUsed` reads exactly that. Client-side only: the EntryPoint and CryoShieldSmartWallet contracts are unchanged, and so is signing (UV, `rpIdHash`).
+- **Under-count:** accounts that already saved under timestamp keys start counting from 0 at their next save. This only affects testnet accounts, and the hint already says "about".
+- **Sequential operations:** one key means one sequence per account. Two tabs or devices saving at the same moment: the second operation reuses the same nonce and fails validation (EntryPoint `AA25 invalid account nonce`). The app maps it, from the paymaster, the gas estimate or the send, to `WriteError('NONCE_CONFLICT')` and a retryable message ("Another save for this vault was happening at the same moment … try again"), never "Saving is paused". When the first save has already landed, the D8 check (`STALE`) refuses the second one earlier, before any key tap.
+- **Tests:** the nonce increments after a create and after each edit on the local stack; the AA25 mapping (unit and local stack); the write stack, `wallet.ts` included, stays out of the initial `/app` chunk (`verify-build`).
+
+**Rejected alternatives:**
+- *Count `UserOperationEvent` logs by sender.* Paged `eth_getLogs` over the EntryPoint's whole history on every open, through a public RPC.
+- *Drop the hint.* Users would meet the 50-operation lifetime cap without warning.
+
 ### D11. Capacity
 
 - The editor's "space remaining" reserves the bytes needed to archive the vault later (`"a":true,`, 9 bytes) and counts the name's encoded bytes (`"n":"…",`). v1 → v2 adds no bytes otherwise (`"v":2` is as long as `"v":1`).
@@ -246,6 +259,24 @@ These points were left open by D1–D4. `docs/spec/payload-v2.md` and its vector
 - **A5. No trimming or normalisation.** Names are not trimmed and not NFC-normalised. Code points are counted as they are, so "Cafe" plus a combining accent is 5 code points. Vectors: `v2-name-spaces`, `v2-name-combining`.
 - **A6. BOM: v1 as today, v2 malformed.** Like `TextDecoder`, decoders strip one leading BOM before parsing; Python must do this explicitly. A v1 payload with a BOM therefore opens, as it does today (`v1-legacy-bom`). v2 compares the re-encoding with the input bytes, so a BOM is `MALFORMED` (`utf8-bom`).
 - **A7. REVERSED (overwatcher, 2026-10-08): v1 decoding is unchanged.** v1 payloads decode with the deployed v1 rules, lone surrogates included, and D3 applies to v2 only. The `v1-legacy-*` positive vectors pin this, among them the regression `v1-legacy-lone-surrogate-escaped` and its blob `blob-v1-legacy-lone-surrogate`. A web test runs every v1 positive and every negative vector against today's `decodePayload`. A v1 vault with a lone surrogate can still be saved as v1 (today's encoding). It can't be written as v2 (named, archived or cleared) until that secret is fixed, because v2 strings must be well-formed: the writer refuses, and nothing is lost.
+
+## Assumptions recorded at tasks 3.1-3.4 [fe]
+
+- **A8. Auto-open with other vaults present.** The spec's "Unlock and view flow" says both "exactly one active VaultRegistry v2 vault opens directly" and "more than one vault decrypts: show the list", which disagree when one active v2 vault decrypts next to an archived or an older test vault. The web app follows D5: exactly one **active v2** vault opens directly, and the others (archived, older test, or made by a newer version) are one tap away under "All vaults (N)". This keeps today's behaviour for keys that also open an older test vault. Anything else (two active vaults; only archived; only older test vaults) shows the picker; with no active vault every group is expanded, and D13's note is shown when an archived vault is among them.
+- **A9. Vaults made by a newer version are listed.** A vault that decrypts but whose payload is `UNKNOWN_VERSION` or `MALFORMED` is listed ("Made by a newer version of CryoShield") with no Open or Edit action, so the list never hides a vault that decrypts. When it is the only vault, the unlock screen shows today's "newer version" message instead.
+- **A10. Bundle shape.** The vault list chunk (VaultsMenu.tsx with chain/history.ts, the Edit vault sheet, and the name, archive and Archive and clear writes in ui/vault-meta.ts) must not import any module that reaches viem or the write stack: when a lazy chunk shares those with the write stack, the bundler splits the initial `/app` chunk and it grows by about 6 KB gzip. So `history.ts` gets the RPC and keccak-256 passed in, and `vault-meta.ts` gets the shared update path (`rewrite`) passed in. `verify-build` asserts the list is one lazy chunk and never in the initial graph.
+
+## Web changes at the ECC review of feat/vlla-web [fe] (2026-10-08)
+
+- **D8 + D10: writes are pinned to a nonce.** Every update reads the account's EntryPoint key-0 nonce first, then the vault (`assertCurrent`), and the user operation carries exactly that nonce (it is passed to `sendUserOperation`, so it is never re-read at send time). The nonce is also read when the vault opens and stored on the session; a later check that finds a different nonce is `STALE`, and each save of the session advances it by one.
+  - **Guaranteed:** a write that this session's user confirms is based on the blob they saw. Any other operation of the same account that lands after the nonce read (another tab or device saving, including during a slow key tap) either changes the blob before the re-read (`STALE`, before any tap or signature) or consumes the pinned nonce, so the bundler or EntryPoint refuses this one (AA25, `NONCE_CONFLICT`, "a previous save may still be finishing; wait a minute, then try again"). Two tabs can no longer overwrite each other silently. Proven on the local stack (`test-int/writes.int.test.ts`, "two tabs").
+  - **Not guaranteed:** a lying RPC can still return a stale blob and a stale nonce; the operation then fails at the bundler (the real nonce has moved) rather than overwriting, but the user sees a conflict, not "STALE". A stuck pending operation of the same account (sent but not yet included) is reported as a conflict until it lands or is dropped. Writes from VaultRegistry v1 accounts are out of scope (read-only).
+  - The nonce at open is one raw `eth_call` to the EntryPoint from the initial chunk (`account/budget.ts`), so opening a vault still never fetches the write stack (harden-gas-sponsorship 5.5; `e2e/specs/20-security.spec.ts`). It also feeds the save-budget hint.
+- **D9: the dates lookup.** Only public fields (`vaultId`, `version`, `blob`, `registry`) reach `history.ts`, never a decrypted session. The lookup is aborted when the list closes or locks, reads at most 200 pages per registry (a longer history or an absurd latest block gives "Date unavailable" without querying), accepts block timestamps only in 1 to 4e9, and runs only for vaults (or versions) it has not looked up yet, so "Check another key" adds one lookup. **Privacy:** one `eth_getLogs` query per page carries all listed vault IDs of a registry (topic1 OR). The IDs are public, but the RPC learns they were looked up together; one query per vault would multiply the requests by the number of vaults and is not used.
+- **AA25 detection** looks only at the RPC's short text (`details`, `shortMessage`), case-sensitively (`\bAA25\b` or "invalid account nonce"), never at a full message that may carry calldata.
+- **Display only, follow-ups for a spec revision (vectors unchanged):**
+  - Runs of more than 3 combining marks in a name or a list label are shortened to 3 when shown; the stored name is untouched. Capping them in `validName` would make the web codec refuse names that the frozen spec and the Python codec accept.
+  - Excluding U+200B, U+FEFF, U+00AD, U+E0000–U+E007F and U+FFF9–U+FFFB from names needs a spec and vector revision. Until then, a name made only of such characters shows as "Unnamed vault" (they are all `Cf`), and names render in a clipped `<bdi>`.
 
 ## Display-time requirements for later tasks (recorded at review of task 1.1)
 
