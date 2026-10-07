@@ -40,7 +40,7 @@ from .errors import ExitCode, RecoveryError
 from .net import check_url, host_of
 from .recover import VAULT_ID_FOR_FILE, ArweaveFactory, Recovery, RegistryFactory, Result
 from .secure import disable_core_dumps, wipe
-from .ui import Console, write_new_file
+from .ui import Console, describe, write_new_file
 
 EXIT_CODES_HELP = "\n".join(f"  {c.value:>2}  {c.name.lower().replace('_', ' ')}" for c in ExitCode)
 
@@ -135,6 +135,11 @@ def build_parser() -> argparse.ArgumentParser:
     o.add_argument("--output", type=Path, metavar="PATH", help="write the secret to a NEW file (mode 0600)")
     o.add_argument(
         "--save-blob", type=Path, metavar="PATH", help="also save the encrypted vault for offline use"
+    )
+    o.add_argument(
+        "--list",
+        action="store_true",
+        help="list every vault this key opens (ID, name, status, counts) and exit; shows no labels or secrets",
     )
     o.add_argument("--verbose", action="store_true", help="diagnostic output (never includes secrets)")
     return p
@@ -419,7 +424,11 @@ def main(
     recovery: Recovery | None = None
     try:
         cfg = config_from_args(args)
-        if cfg.output is None and not ui.interactive:
+        if args.list and (cfg.output is not None or cfg.save_blob is not None):
+            raise RecoveryError(
+                ExitCode.USAGE, "--list shows no secrets and writes no files; drop --output and --save-blob."
+            )
+        if cfg.output is None and not ui.interactive and not args.list:
             raise RecoveryError(
                 ExitCode.OUTPUT_REFUSED,
                 "Refusing to print a secret when not attached to a terminal. Use --output <new file> instead.",
@@ -432,6 +441,12 @@ def main(
         if arweave_factory is not None:
             factories["arweave_factory"] = arweave_factory
         recovery = Recovery(cfg, prf, ui, **factories)
+        if args.list:
+            summaries = recovery.list_vaults()
+            for w in recovery.warnings():
+                ui.warn(w)
+            ui.show_listing(summaries)
+            return ExitCode.OK
         result = recovery.run()
         secret = result.secret
         _emit(result, cfg, ui)
@@ -471,7 +486,7 @@ def _emit(result: Result, cfg: Config, ui: Console) -> None:
         if caveat:
             ui.warn(f"The secret written {caveat}")
     elif ui.confirm_show():
-        ui.show_secret(result.secret)
+        ui.show_vault(result.secret)
     else:
         ui.info("Not shown. Nothing was written anywhere.")
 
@@ -498,6 +513,9 @@ def _report(result: Result, ui: Console) -> None:
     caveat = _untrusted_caveat(c)
     if caveat:
         ui.warn(f"SECURITY: this copy {caveat}")
+    if result.summary is not None:
+        for line in describe(result.summary):
+            ui.info(line)
 
 
 def _untrusted_caveat(c: Candidate) -> str:

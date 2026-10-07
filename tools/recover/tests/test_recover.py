@@ -286,7 +286,7 @@ def test_select_never_reuses_stale_decoded_vault(monkeypatch: pytest.MonkeyPatch
     broken = Candidate(b"broken", "chain", "y", b"\x09" * 32, 1, Freshness.CURRENT)
     rec._tap("cryoshield.app", None)
     for order in ([broken], [sh, broken]):
-        result, pending = rec._select(order)
-        assert result is None
-        assert all(c is not broken for c, _ in pending)
-        assert all(d.mode == 2 for _, d in pending)
+        groups = rec._open_all(order)
+        assert all(g.secret is None for g in groups)  # nothing opened with one Shamir share
+        assert all(g.cand is not broken for g in groups)
+        assert all(g.decoded.mode == 2 for g in groups)

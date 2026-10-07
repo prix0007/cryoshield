@@ -136,10 +136,12 @@ def _args(url: str, d: Deployed, *, v1: bool = True) -> list[str]:
 
 
 def test_v2_vault_behind_stuffing_recovers(anvil: str, deployed: Deployed) -> None:  # noqa: F811
-    """Both registries: the v2 vault (behind 300 junk entries) is opened, ahead of the older v1 vault."""
-    console, out, err = _term("show\n")
+    """Both registries: the v2 vault (behind 300 junk entries) is listed first, ahead of the older v1
+    vault, and opens when chosen (vault-list-labels-archive 5.1: every vault the key opens is listed)."""
+    console, out, err = _term("1\nshow\n")
     code = _main(_args(anvil, deployed), console, _key("A"))
     assert code == ExitCode.OK, err.getvalue()
+    assert "This key opens 2 vaults" in err.getvalue()
     assert SECRET.decode() in out.getvalue()
     assert f"0x{deployed.vault_id.hex()}" in err.getvalue()
 

@@ -55,9 +55,9 @@
 
 ## 5. Recovery tool listing [rec] (parallel with 2–4, after 1.3)
 
-- [ ] 5.1 [rec] Write failing tests, then change `recover.py` (`_open_all` groups authenticating candidates by vault ID and ranks freshness within each, under the existing quorum and tie rules) and `ui.py` (`choose_vault`; structured display with name, status and `label: secret`; inert names and labels; raw fallback). Non-interactive without `--vault-id` and with several vaults exits 12 (`AMBIGUOUS`) printing only IDs and status. Verify: `pytest`, including the zeroization tests for decoded payloads.
-- [ ] 5.2 [rec] Write failing tests, then add `--list` to `cli.py` (IDs, names, status, counts and freshness; no labels or secret values; archived vaults included). Update the README. Verify: `pytest`.
-- [ ] 5.3 [rec] Extend the anvil e2e: two vaults on one key (one named and archived, one v1), recovered interactively, with `--list`, and non-interactively (exit 12). Verify: the e2e job passes.
+- [x] 5.1 [rec] Write failing tests, then change `recover.py` (`_open_all` groups authenticating candidates by vault ID and ranks freshness within each, under the existing quorum and tie rules) and `ui.py` (`choose_vault`; structured display with name, status and `label: secret`; inert names and labels; raw fallback). Non-interactive without `--vault-id` and with several vaults exits 12 (`AMBIGUOUS`) printing only IDs and status. Verify: `pytest`, including the zeroization tests for decoded payloads.
+- [x] 5.2 [rec] Write failing tests, then add `--list` to `cli.py` (IDs, names, status, counts and freshness; no labels or secret values; archived vaults included). Update the README. Verify: `pytest`.
+- [x] 5.3 [rec] Extend the anvil e2e: two vaults on one key (one named and archived, one v1), recovered interactively, with `--list`, and non-interactively (exit 12). Verify: the e2e job passes.
 
 ## 6. Docs, hardware check and security review [fe] [ow] [sec]
 

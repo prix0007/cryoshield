@@ -7,12 +7,16 @@ import os
 import sys
 from collections.abc import Callable
 from pathlib import Path
-from typing import TextIO
+from typing import TYPE_CHECKING, TextIO
 
 from .errors import ExitCode, RecoveryError
-from .text import sanitize
+from .payload import PayloadError, decode
+from .text import display_name, inert_label, inert_secret, sanitize
 
-__all__ = ["Console", "sanitize", "write_new_file"]
+if TYPE_CHECKING:
+    from .recover import VaultSummary
+
+__all__ = ["Console", "describe", "sanitize", "write_new_file"]
 
 CONFIRM_WORD = "show"
 
@@ -96,6 +100,44 @@ class Console:
         answer = self.stdin.readline()
         return answer.strip() == CONFIRM_WORD
 
+    def show_listing(self, summaries: list[VaultSummary]) -> None:
+        """``--list``: one block per vault on stdout. IDs, names, status and counts; no labels, no secrets."""
+        print(f"{len(summaries)} vault(s) open with this key:", file=self.stdout)
+        for s in summaries:
+            print(f"\n0x{s.vault_id.hex()}", file=self.stdout)
+            if s.contents == "ok":
+                flag = " [ARCHIVED]" if s.archived else ""
+                print(f"  {display_name(s.name)}{flag}", file=self.stdout)
+                print(f"  {_count(s.items)}, {s.keys}", file=self.stdout)
+            elif s.contents == "locked":
+                print(f"  needs {s.keys} to open (insert more keys without --list)", file=self.stdout)
+            else:
+                what = "made by a newer CryoShield version" if s.contents == "newer-version" else "not a list"
+                print(f"  contents: {what}; {s.keys}", file=self.stdout)
+            print(f"  status: {s.freshness}", file=self.stdout, flush=True)
+
+    def show_vault(self, secret: bytearray) -> None:
+        """After confirmation: the vault as ``label: secret`` lines (payload v1/v2), or the raw text for
+        a payload this version can't read, so recovery never refuses the user's own data."""
+        try:
+            p = decode(bytes(secret))
+        except PayloadError as e:
+            if e.code == "UNKNOWN_VERSION":
+                self.info("This vault was made by a newer version of CryoShield; showing its raw contents.")
+            self.show_secret(secret)
+            return
+        flag = " [ARCHIVED]" if p.archived else ""
+        print("\n----- BEGIN SECRETS -----", file=self.stdout)
+        print(f"Vault: {display_name(p.name)}{flag}", file=self.stdout)
+        if not p.items:
+            print("(no items)", file=self.stdout)
+        for item in p.items:
+            label, value = inert_label(item.l) or "(no label)", inert_secret(item.s)
+            sep = "\n" if "\n" in value else " "
+            print(f"{label}:{sep}{value}", file=self.stdout)
+        print("----- END SECRETS -----", file=self.stdout, flush=True)
+        self._after_show()
+
     def show_secret(self, secret: bytearray) -> None:
         try:
             text = bytes(secret).decode("utf-8")
@@ -104,12 +146,31 @@ class Console:
             body = bytes(secret).hex()
             self.info("(The secret is not text; showing it as hexadecimal.)")
         print("\n----- BEGIN SECRET -----", file=self.stdout)
-        print(body, file=self.stdout)
+        print(inert_secret(body), file=self.stdout)
         print("----- END SECRET -----", file=self.stdout, flush=True)
+        self._after_show()
+
+    def _after_show(self) -> None:
         self.info(
             "\nWhen you are done, close this window or clear the terminal scrollback "
             "(e.g. 'clear && printf \"\\e[3J\"')."
         )
+
+
+def _count(n: int | None) -> str:
+    return "?" if n is None else f"{n} item{'s' if n != 1 else ''}"
+
+
+def describe(s: VaultSummary) -> list[str]:
+    """Lines about the opened vault that may appear before the confirmation: name, status, labels.
+    Never a secret value. Names and labels are made inert."""
+    if s.contents != "ok":
+        return []
+    flag = " [ARCHIVED]" if s.archived else ""
+    lines = [f"Vault: {display_name(s.name)}{flag} ({_count(s.items)}; {s.keys})"]
+    if s.labels:
+        lines.append("Items: " + ", ".join(inert_label(label) or "(no label)" for label in s.labels))
+    return lines
 
 
 def write_new_file(path: Path, data: bytes | bytearray, mode: int) -> None:

@@ -44,7 +44,21 @@ Plug in your key (or put it on the NFC reader) and run:
 cryoshield-recover
 ```
 
-The tool lists the public servers it will contact. It then asks you to touch the key and enter its PIN, finds the vault, and asks you to type `show` before it prints anything. Anything other than `show` exits without displaying the secret.
+The tool lists the public servers it will contact. It then asks you to touch the key and enter its PIN, and finds every vault the key opens. It asks you to type `show` before it prints any secret. Anything other than `show` exits without displaying it.
+
+### Several vaults, names and archived vaults
+
+One key can open several vaults (one per vault you created with it).
+- **Choosing a vault.** When the key opens more than one, the tool lists them: the vault ID, the vault's name (or "Unnamed vault"), `[ARCHIVED]` for archived vaults, the item count, how many keys it needs, and whether its copy is confirmed current. You pick one by number. Archived vaults are always listed.
+- **Without a terminal.** With `--output` in a script, the tool can't ask. It stops with exit code 12 and prints only each vault's ID and status. Pass `--vault-id <id>` for the one you want.
+- **`--list`.** This lists every vault the key opens and exits with code 0. It prints IDs, names, archived status, item and key counts, and freshness, but no item labels and no secret values. It works in a pipe, and refuses `--output` and `--save-blob`.
+- **What is shown before `show`.** The vault's name, its status and its item labels may appear above the confirmation prompt, so you can check that it is the right vault. Secret values never appear before you type `show`.
+- **How secrets are shown.** After `show`, each item is printed as `label: secret`. A secret with several lines is printed below its label.
+- **Raw fallback.** A vault made by a newer version of CryoShield, or one whose contents aren't a list of items (for example an old plain-text secret), is printed as its raw text, with a note. The tool never refuses to show you your own data.
+- **Text made safe.** Names and labels are printed with control, format, bidi and line-separator characters (Unicode Cc, Cf, Zl, Zp) removed, so they can't reorder or disguise the screen. A name with nothing visible left shows as "Unnamed vault". Secret values keep their line breaks and tabs, and every other such character is shown as a visible `\uXXXX` escape, so the value is exact but inert. Unpaired surrogates (possible in old vaults) print as `\udxxx`.
+- **What `--output` writes.** It writes the vault's decrypted contents exactly as stored (the payload JSON), so nothing is lost.
+
+The payload format is `docs/spec/payload-v2.md`. The tool's codec passes every shared vector in `docs/spec/payload-vectors.json`, and its tests pin that file by SHA-256.
 
 ### Other ways in
 
@@ -57,6 +71,9 @@ cryoshield-recover --credential-id qEfv7-8OVCjN2K3o-4j-1mFD5f9wyS-1_k1XjHAIhmc
 cryoshield-recover --blob-file my-vault.bin --vault-id 0x1f2e3d4c5b6a79881f2e3d4c5b6a79881f2e3d4c5b6a79881f2e3d4c5b6a7988 --offline
 # Write the secret to a new file (permissions 0600) instead of the screen:
 cryoshield-recover --output secret.txt
+# List every vault this key opens (no secrets), then open one by its ID:
+cryoshield-recover --list
+cryoshield-recover --vault-id 0x1111111111111111111111111111111111111111111111111111111111111111
 # Save the encrypted vault for future offline recovery (it is useless without your key):
 cryoshield-recover --save-blob my-vault.bin
 # Use your own node, or pick a network explicitly:
@@ -187,7 +204,7 @@ If the vault needs several keys, the tool asks for them one at a time: "Remove t
 | 9 | the secret was not output: not a terminal and no `--output`, or the output file already exists |
 | 10 | unexpected internal error |
 | 11 | cancelled |
-| 12 | ambiguous: different copies of your vault decrypt, and the servers disagree about which is current (non-interactive runs only; interactively you are asked to choose) |
+| 12 | ambiguous: the key opens several vaults and none was chosen with `--vault-id`, or different copies of your vault decrypt and the servers disagree about which is current (non-interactive runs only; interactively you are asked to choose) |
 
 ## Troubleshooting
 
@@ -241,6 +258,7 @@ The tool overwrites the buffers it controls as soon as they are no longer needed
 - **Your PIN.** `getpass` returns an immutable Python string. python-fido2 hashes it and keeps it inside its own objects. Neither can be wiped.
 - **Library copies.** python-fido2 returns the PRF output as immutable `bytes`, and `cryptography`'s AES-GCM takes and returns immutable `bytes`. The tool copies these into wipeable buffers, but the originals stay in memory until the garbage collector reuses it.
 - **Display.** Printing the secret creates a decoded `str`, plus copies in the terminal and its scrollback. Writing to `--output` puts the secret on disk, and the file is never shredded.
+- **Vault contents.** Reading a vault's name, labels and items (for the list, the chooser and the display) parses the decrypted payload into Python strings, which can't be wiped. The decrypted buffers themselves, of every vault found, chosen or not, are wiped.
 - **Shamir shares.** Combining shares uses slices of the unwrapped buffers, which are short-lived copies the tool does not wipe individually.
 - **The operating system.** Memory can be swapped to disk or captured in hibernation images. Core dumps are disabled, but swap and hibernation are not.
 

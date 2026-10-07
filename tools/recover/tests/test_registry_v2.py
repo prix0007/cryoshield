@@ -471,7 +471,8 @@ def test_full_size_batch_fits_in_one_call() -> None:
 
 def test_recreated_v2_vault_opens_before_the_old_v1_vault() -> None:
     """Migration (design D8): the same key has an old v1 vault and a re-created v2 vault (different
-    ids). v2 is read first, so the re-created vault opens; the old one stays reachable by --vault-id."""
+    ids). Both are listed (vault-list-labels-archive 5.1), the v2 vault first because v2 is read first;
+    the old one stays reachable by choosing it or by --vault-id."""
     import os
 
     from support import writer
@@ -494,7 +495,11 @@ def test_recreated_v2_vault_opens_before_the_old_v1_vault() -> None:
         c.enable_v2()
         c.add_vault(VID, BLOB, [LOC_A, LOC_B])
         c.add_vault_v2(v2_id, v2_blob, [LOC_A, LOC_B])
-        assert bytes(run(cfg_v2(c)).secret) == b"new"
+        ui = RecUI(pick=lambda options: 0)
+        assert bytes(run(cfg_v2(c), ui).secret) == b"new"
+        assert len(ui.choices) == 1 and len(ui.choices[0]) == 2
+        assert v2_id.hex()[:8] in ui.choices[0][0] and VID.hex()[:8] in ui.choices[0][1]
+        assert bytes(run(cfg_v2(c), RecUI(pick=lambda options: 1)).secret) == SECRET
         assert bytes(run(cfg_v2(c, vault_id=VID)).secret) == SECRET
 
 
