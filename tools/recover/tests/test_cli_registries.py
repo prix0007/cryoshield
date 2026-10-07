@@ -115,7 +115,7 @@ def test_registries_only() -> None:
 
 def test_registries_only_needs_a_registry_or_a_file(tmp_path: Path) -> None:
     assert "--registries-only" in usage("--registries-only")
-    f = write(tmp_path, "r.json", json.loads(RECORD.read_text()))
+    f = write(tmp_path, "r.json", json.loads(RECORD.read_text(encoding="utf-8")))
     c = cfg("--registries-only", "--deployment-file", f)
     assert [(s.version, s.trusted) for s in c.registries] == [(2, True), (1, True)]
 
@@ -205,13 +205,15 @@ def test_deploy_block_without_that_version_is_refused() -> None:
     assert "v2" in usage(
         "--registries-only", "--registry", "0x" + "c1" * 20 + "@1:v1", "--deploy-block-v2", "5"
     )
-    usage("--deploy-block", "-1")
+    with pytest.raises(SystemExit) as ei:  # rejected by the argument parser: ASCII digits only
+        cli.build_parser().parse_args(["--deploy-block", "-1"])
+    assert ei.value.code == ExitCode.USAGE
 
 
 # ------------------------------------------------------------------ --deployment-file
 def test_deployment_record_equal_to_the_built_ins_is_built_in(tmp_path: Path) -> None:
     """M2: a file that only restates the built-in entries raises no warning."""
-    f = write(tmp_path, "11155420.json", json.loads(RECORD.read_text()))
+    f = write(tmp_path, "11155420.json", json.loads(RECORD.read_text(encoding="utf-8")))
     c = cfg("--deployment-file", f)
     assert c.network == "op-sepolia" and c.rpcs == list(NETWORKS["op-sepolia"].rpcs)
     assert c.registries == SEPOLIA
@@ -219,7 +221,7 @@ def test_deployment_record_equal_to_the_built_ins_is_built_in(tmp_path: Path) ->
 
 
 def test_deployment_file_with_a_new_version_and_a_flag_on_top(tmp_path: Path) -> None:
-    doc = json.loads(RECORD.read_text())
+    doc = json.loads(RECORD.read_text(encoding="utf-8"))
     doc["contracts"]["vaultRegistries"] = {"v3": {"address": A3, "deployBlock": 60, "abiHash": V2_HASH}}
     f = write(tmp_path, "next.json", doc)
     c = cfg("--deployment-file", f, "--registry", f"{B2}@9:v2")
@@ -228,7 +230,7 @@ def test_deployment_file_with_a_new_version_and_a_flag_on_top(tmp_path: Path) ->
 
 
 def test_tampered_deployment_file_is_untrusted(tmp_path: Path) -> None:
-    doc = json.loads(RECORD.read_text())
+    doc = json.loads(RECORD.read_text(encoding="utf-8"))
     doc["contracts"]["vaultRegistryV2"]["address"] = B2
     c = cfg("--deployment-file", write(tmp_path, "t.json", doc))
     assert key(c) == [*BUILT, (2, B2, 49755277, False, "from 't.json'")]
@@ -236,7 +238,7 @@ def test_tampered_deployment_file_is_untrusted(tmp_path: Path) -> None:
 
 
 def test_deployment_file_raising_a_built_in_block_is_refused(tmp_path: Path) -> None:
-    doc = json.loads(RECORD.read_text())
+    doc = json.loads(RECORD.read_text(encoding="utf-8"))
     doc["contracts"]["vaultRegistryV2"]["deployBlock"] = 49755277 + 1000
     assert "49755277" in usage("--deployment-file", write(tmp_path, "late.json", doc))
 
@@ -252,7 +254,7 @@ def test_release_file_on_a_chain_without_built_ins_is_trusted_with_a_warning(tmp
 
 
 def test_deployment_file_chain_conflicts_are_refused(tmp_path: Path) -> None:
-    f = write(tmp_path, "r.json", json.loads(RECORD.read_text()))
+    f = write(tmp_path, "r.json", json.loads(RECORD.read_text(encoding="utf-8")))
     assert "11155420" in usage("--deployment-file", f, "--network", "op-mainnet")
     assert "11155420" in usage("--deployment-file", f, "--chain-id", "10")
     assert cfg("--deployment-file", f, "--testnet").network == "op-sepolia"
@@ -280,7 +282,9 @@ def test_deployment_file_for_a_custom_chain_needs_rpc(tmp_path: Path) -> None:
 def test_bad_deployment_files_are_usage_errors(tmp_path: Path, content: str) -> None:
     p = tmp_path / "bad.json"
     p.write_text(content)
-    usage("--deployment-file", str(p))
+    message = usage("--deployment-file", str(p))
+    if '"v4"' in content:
+        assert "registry v4" in message and "update cryoshield-recover" in message
     usage("--deployment-file", str(tmp_path / "missing.json"))
 
 

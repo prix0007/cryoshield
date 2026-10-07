@@ -10,7 +10,7 @@ import logging
 import os
 import sys
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 from .authdata import require_user_verified
@@ -29,7 +29,7 @@ class Assertion:
     """One credential's PRF output from a ceremony. ``prf`` is wiped by the consumer."""
 
     cred_id: bytes
-    prf: bytearray
+    prf: bytearray = field(repr=False)
 
 
 class PrfSource(Protocol):

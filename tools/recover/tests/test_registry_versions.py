@@ -292,10 +292,14 @@ def record(**contracts: Any) -> dict[str, Any]:
 
 
 def test_parse_real_records() -> None:
-    chain_id, specs = deployments.parse_record(json.loads((DEPLOYMENTS / "11155420.json").read_text()))
+    chain_id, specs = deployments.parse_record(
+        json.loads((DEPLOYMENTS / "11155420.json").read_text(encoding="utf-8"))
+    )
     assert chain_id == 11155420
     assert specs_key(specs) == specs_key(list(NETWORKS["op-sepolia"].registries))
-    chain_id, specs = deployments.parse_record(json.loads((DEPLOYMENTS / "31337.json").read_text()))
+    chain_id, specs = deployments.parse_record(
+        json.loads((DEPLOYMENTS / "31337.json").read_text(encoding="utf-8"))
+    )
     assert chain_id == 31337 and [s.version for s in specs] == [2, 1]
 
 
@@ -451,12 +455,10 @@ def test_file_names_are_inert(tmp_path: Path) -> None:
 
 
 def test_read_error_without_strerror(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    import builtins
-
     def boom(*_a: Any, **_k: Any) -> Any:
         raise OSError()
 
-    monkeypatch.setattr(builtins, "open", boom)
+    monkeypatch.setattr(deployments, "open", boom, raising=False)  # this module only, not the whole process
     with pytest.raises(ValueError, match="OSError"):
         deployments.load_file(tmp_path / "x.json")
 
@@ -493,22 +495,22 @@ def test_presets_match_deployment_records() -> None:
     errors: list[str] = []
     for p in NETWORKS.values():
         path = DEPLOYMENTS / f"{p.chain_id}.json"
-        errors += parity_errors(p, json.loads(path.read_text()) if path.exists() else None)
+        errors += parity_errors(p, json.loads(path.read_text(encoding="utf-8")) if path.exists() else None)
     assert not errors, "\n".join(errors)
     preset_chains = {p.chain_id for p in NETWORKS.values()}
     for path in DEPLOYMENTS.glob("*.json"):
-        assert int(path.stem) in preset_chains, f"{path.name} has no network preset"
+        assert path.stem.isdigit() and int(path.stem) in preset_chains, f"{path.name} has no network preset"
 
 
 def test_parity_fails_when_a_record_gains_a_version() -> None:
-    data = json.loads((DEPLOYMENTS / "11155420.json").read_text())
+    data = json.loads((DEPLOYMENTS / "11155420.json").read_text(encoding="utf-8"))
     data["contracts"]["vaultRegistries"] = {"v3": {"address": A3, "deployBlock": 1, "abiHash": V2_HASH}}
     errors = parity_errors(NETWORKS["op-sepolia"], data)
     assert errors and "RegistrySpec(3, " in errors[0]
 
 
 def test_parity_fails_when_a_record_has_an_unreadable_version() -> None:
-    data = json.loads((DEPLOYMENTS / "11155420.json").read_text())
+    data = json.loads((DEPLOYMENTS / "11155420.json").read_text(encoding="utf-8"))
     data["contracts"]["vaultRegistries"] = {"v3": {"address": A3, "deployBlock": 1, "abiHash": UNKNOWN_HASH}}
     with pytest.raises(UnknownRegistryVersion):
         parity_errors(NETWORKS["op-sepolia"], data)

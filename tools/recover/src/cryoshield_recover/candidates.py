@@ -42,14 +42,19 @@ class Candidate:
     # Set when this copy came from a supplied registry that is not built in (recover-registry-versions
     # D10): "registry vN 0x…". Shown again next to the result and the --output/--save-blob messages.
     untrusted: str = ""
+    # Where a chain copy came from, for --list and the chooser: "built-in registry v2", or
+    # "SUPPLIED registry v3 0x… (not built in)". Empty for Arweave and file copies.
+    registry: str = ""
 
     @property
-    def rank(self) -> tuple[int, int, int]:
+    def rank(self) -> tuple[int, int, int, int]:
         """Freshness class, then MORE independent sources, then newer Arweave block height.
 
         A version reported by an RPC or an Arweave tag is attacker-writable and is NEVER used for
         ranking (audit REC-M1: one liar claimed version 2**32-1 to win)."""
-        return _RANK[self.freshness], -self.support, -(self.height or 0)
+        # A copy from a supplied, untrusted registry never ranks ahead of an equally fresh trusted copy,
+        # however many servers returned it (PR #48 review): it is never "Copy 1" by default.
+        return _RANK[self.freshness], 1 if self.untrusted else 0, -self.support, -(self.height or 0)
 
 
 def dedupe(cands: list[Candidate]) -> list[Candidate]:

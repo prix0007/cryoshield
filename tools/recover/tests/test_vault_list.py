@@ -164,7 +164,7 @@ def test_structured_display_after_confirmation(two: FakeChain) -> None:
     code, out, err = main(two, answer="2\nshow\n")
     assert code == ExitCode.OK, err
     assert 'Status: ARCHIVED\nVault: "Family"' in out
-    assert "GitHub codes:\n1a2b3-c4d5e\n6f7g8" in out and "Email: JBSW" in out
+    assert "GitHub codes:\n  | 1a2b3-c4d5e\n  | 6f7g8" in out and "Email: JBSW" in out
     # Names and labels may appear before the confirmation; secret values never do.
     before = err.split('Type "show"')[0]
     assert "Family" in before and "GitHub codes" in before
@@ -329,7 +329,10 @@ def test_status_first_and_quoted_name_defeat_spoofing() -> None:
         code, out, err = main(c, "--list", answer="")
     first = ui.choices[0][0]
     assert first.lstrip().startswith("1. [ACTIVE  ]") and first.endswith('name: "x [ARCHIVED]"')
-    assert 'status: ACTIVE, current\n  1 item, any 1 of 2 keys\n  name: "x [ARCHIVED]"' in out
+    assert (
+        'status: ACTIVE, current\n  source: built-in registry v1\n  1 item, any 1 of 2 keys\n  name: "x [ARCHIVED]"'
+        in out
+    )
 
 
 @pytest.mark.parametrize(
