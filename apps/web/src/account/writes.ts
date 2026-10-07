@@ -27,34 +27,13 @@ import { config } from '../config';
 import { deriveVaultIdV2, registryV2Abi } from '../chain/contracts';
 import { bytesEqual, randomBytes, toHex } from '../lib/bytes';
 import type { RegistryReader } from '../chain/registry';
-import { findKeyError, KeyError } from '../webauthn';
+import { findKeyError } from '../webauthn';
 import { ensureChain } from '../chain/guard';
+import { notify, WriteError, type ProgressListener, type WriteErrorCode } from './errors';
 import { assertSponsorableCallData, assertSponsorableCalls, PolicyError, smartWalletAbi, type Call } from './policy';
 
-export type WriteErrorCode =
-  | 'SPONSORSHIP_REFUSED' // paymaster policy refused (cap reached, outside policy, balance exhausted)
-  | 'ALREADY_HAS_VAULT'
-  | 'TOO_MANY_KEYS'
-  | 'TOO_LARGE'
-  | 'NOT_OWNER'
-  | 'DUPLICATE_KEY'
-  | 'REVERTED' // included, inner call reverted: nothing saved
-  | 'NOT_CONFIRMED' // receipt ok but read-back differs / timed out
-  | 'KEY' // WebAuthn problem during signing (see .keyError)
-  | 'POLICY' // our own allowlist refused the call (programming error)
-  | 'OWNER_MISMATCH' // account owners don't line up with the blob's entries (owner index == entry index)
-  | 'READ_ONLY' // a legacy VaultRegistry v1 vault: clients never write to v1
-  | 'NETWORK';
-
-export class WriteError extends Error {
-  override name = 'WriteError';
-  constructor(
-    readonly code: WriteErrorCode,
-    readonly detail: { locator?: Hex; keyError?: KeyError; cause?: unknown } = {},
-  ) {
-    super(code);
-  }
-}
+// The error type and the checklist events live in errors.ts (kept out of this lazily loaded module; see lazy.ts).
+export { notify, WriteError, type ProgressListener, type SaveStage, type WriteErrorCode } from './errors';
 
 const REGISTRY_ERROR_CODES: Record<string, WriteErrorCode> = {
   OwnerAlreadyHasVault: 'ALREADY_HAS_VAULT',
@@ -102,24 +81,6 @@ export async function preflight(client: PublicClient, from: Hex, calls: readonly
       if (data) throw registryError(data);
       throw new WriteError('NETWORK', { cause: e });
     }
-  }
-}
-
-/** Real write-path events, in order, for the save checklist (app-motion-ux D5). */
-export type SaveStage = 'encrypted' | 'sponsored' | 'sent' | 'confirmed';
-export type ProgressListener = (stage: SaveStage) => void;
-
-/**
- * Fire-and-forget notification: never awaited, and a throwing (or async-rejecting) listener can never break, delay
- * or alter a write.
- */
-export function notify(listener: ProgressListener | undefined, stage: SaveStage): void {
-  if (!listener) return;
-  try {
-    const r = listener(stage) as unknown;
-    if (r && typeof (r as Promise<unknown>).catch === 'function') (r as Promise<unknown>).catch(() => undefined);
-  } catch {
-    /* presentation only */
   }
 }
 

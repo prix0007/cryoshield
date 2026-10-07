@@ -178,6 +178,7 @@ export const S = {
     tooMany: 'This vault can’t hold more keys.',
     tooLarge: 'This is too much to store. Please shorten your secrets.',
     notConfirmed: 'We couldn’t confirm the save yet. Please unlock again in a minute to check.',
+    loadFailed: 'Nothing was saved. Part of the app didn’t load. Check your connection, then try again.',
     retry: 'Try again',
   },
 

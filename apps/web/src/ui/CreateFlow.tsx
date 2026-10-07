@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { wipe } from '../lib/bytes';
 import type { SecretItem } from '../vault/payload';
-import type { SaveStage } from '../account/writes';
+import type { SaveStage } from '../account/errors';
 import { cleanItems, KeyPrompt, Notice, PermanenceAck, SecretsEditor, StepHeading } from './components';
 import { enrollWithPrf, errorReference, messageFor, mirrorWrite, saveNewVault, type MirrorResult, type PendingKey, type VaultSession } from './operations';
 import { useServices } from './services';

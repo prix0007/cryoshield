@@ -8,8 +8,8 @@ import { enrollKey, ENROLL, evaluatePrf, KeyError, type EnrolledKey } from '../w
 import { addKeyToBlob, createVaultBlob, editVaultBlob } from '../vault/adapter';
 import type { SecretItem } from '../vault/payload';
 import type { RegistryVersion } from '../vault/adapter';
-import { existingVaultAccount, newVaultAccount } from '../account/account';
-import { addKeyOnChain, createVaultOnChain, notify, updateVaultOnChain, WriteError, type ProgressListener } from '../account/writes';
+import { notify, WriteError, type ProgressListener } from '../account/errors';
+import { loadWriteStack } from '../account/lazy';
 import { bytesEqual, toHex, wipe } from '../lib/bytes';
 import { MirrorError } from '../mirror/mirror';
 import type { Services } from './services';
@@ -117,6 +117,7 @@ export async function saveNewVault(
   let signerLocator: Uint8Array | undefined;
   try {
     if (keys.some((k) => !k.prf)) throw new KeyError('PRF_UNAVAILABLE');
+    const { newVaultAccount, createVaultOnChain } = await loadWriteStack(); // lazy chunk; LOAD_FAILED before any tap
     const owners = keys.map((k) => ({ credId: k.credId, publicKey: k.publicKey }));
     // Locators don't depend on the vaultId (empty-salt HKDF), so the signer's expected locator is known up front.
     signerLocator = deriveLocator(keys[0]!.prf!);
@@ -141,6 +142,7 @@ export async function saveNewVault(
 /** Edit: PRF tap with any key of this vault, re-encrypt payload, sign tap with the same key. */
 export async function saveEdit(svc: Services, s: VaultSession, items: SecretItem[], onSign: () => void, onProgress?: ProgressListener): Promise<VaultSession> {
   if (isReadOnly(s)) throw new WriteError('READ_ONLY');
+  const { existingVaultAccount, updateVaultOnChain } = await loadWriteStack(); // before the PRF tap: a failed load wastes no tap
   const { credId, prf } = await evaluatePrf({ rpId: svc.rpId }, svc.credentials);
   let locator: Uint8Array | undefined;
   try {
@@ -164,6 +166,7 @@ export async function saveAddKey(
   steps: { onInsertNew: () => void | Promise<void>; onNewAgain: () => void; onSign: () => void | Promise<void>; onProgress?: ProgressListener },
 ): Promise<{ session: VaultSession; newLocator: Hex }> {
   if (isReadOnly(s)) throw new WriteError('READ_ONLY');
+  const { existingVaultAccount, addKeyOnChain } = await loadWriteStack(); // before the PRF tap: a failed load wastes no tap
   const current = await evaluatePrf({ rpId: svc.rpId }, svc.credentials);
   let locator: Uint8Array | undefined;
   let fresh: PendingKey | undefined;
@@ -210,6 +213,8 @@ export function messageFor(e: unknown, context: 'create' | 'edit' = 'edit'): str
         return S.save.tooLarge;
       case 'NOT_CONFIRMED':
         return S.save.notConfirmed;
+      case 'LOAD_FAILED':
+        return S.save.loadFailed;
       case 'KEY':
         return e.detail.keyError ? (S.keyErrors[e.detail.keyError.code] ?? S.save.nothingSaved) : S.save.nothingSaved;
       default:

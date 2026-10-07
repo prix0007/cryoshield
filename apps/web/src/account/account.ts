@@ -7,19 +7,17 @@
  * in blob credential order, so owner index i == blob entry i. Nothing is stored locally: for an existing vault,
  * the account address is the registry owner and the signer's public key is read back with ownerAtIndex(i).
  */
-import { createPublicClient, type Hex, type PublicClient, type Transport } from 'viem';
+import { createPublicClient, type Hex, type PublicClient } from 'viem';
 import { toWebAuthnAccount, type WebAuthnAccount } from 'viem/account-abstraction';
 import { toCryoShieldSmartAccount } from './wallet';
 import { config } from '../config';
-import { chainOf, defaultTransport } from '../chain/registry';
 import { prfCapturingGetFn, type CredentialsApi } from '../webauthn';
 import { toBase64Url } from '../lib/bytes';
 import { smartWalletAbi } from './policy';
 import { ensureChain } from '../chain/guard';
 
-export function makePublicClient(transport: Transport = defaultTransport()): PublicClient {
-  return createPublicClient({ chain: chainOf(), transport }) as PublicClient;
-}
+// The read client lives with the registry reader (initial /app chunk); re-exported here for existing imports.
+export { makePublicClient } from '../chain/registry';
 
 /** A WebAuthn owner whose signing ceremony also proves (via PRF/locator) that the expected key was tapped. */
 export function webAuthnOwner(p: {
