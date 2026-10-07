@@ -8,6 +8,7 @@ import { credentialLabel, enrollKey, ENROLL, evaluatePrf, KeyError, type Enrolle
 import { addKeyToBlob, createVaultBlob, editVaultBlob } from '../vault/adapter';
 import { payloadOf, withItems, type PayloadErrorCode, type SecretItem, type VaultPayloadInput } from '../vault/payload';
 import type { RegistryVersion } from '../vault/adapter';
+import { isOlder } from '../config';
 import { notify, WriteError, type ProgressListener } from '../account/errors';
 import { loadWriteStack } from '../account/lazy';
 import { bytesEqual, toHex, wipe } from '../lib/bytes';
@@ -50,7 +51,7 @@ export interface VaultSession {
   /** D8/D10: the account's EntryPoint key-0 nonce, read when the vault opened (then +1 per save of this session). */
   nonce?: bigint;
   credIds: Uint8Array[];
-  /** Where the vault lives. 'v1' (legacy testnet) is read-only: clients never write to VaultRegistry v1. */
+  /** Where the vault lives. Only the newest registry takes writes; a vault in an older one is read-only. */
   registry: RegistryVersion;
   /**
    * show-vault-onchain-location D2: the last save's transaction, tagged with the version it produced (shown only while
@@ -79,7 +80,7 @@ export function withPayload(s: VaultSession, p: VaultPayloadInput, r: { version:
 }
 
 /** harden-gas-sponsorship: only VaultRegistry v2 vaults can be edited or given a new key. */
-export const isReadOnly = (s: Pick<VaultSession, 'registry' | 'payloadError'>) => s.registry === 'v1' || s.payloadError !== undefined;
+export const isReadOnly = (s: Pick<VaultSession, 'registry' | 'payloadError'>) => isOlder(s.registry) || s.payloadError !== undefined;
 
 export type MirrorStatus = 'pending' | 'saved' | 'failed';
 /** fix-arweave-mirror-status D3: the outcome plus, when known, the Arweave item id or a sanitized failure reference. */
@@ -100,7 +101,7 @@ export async function mirrorWrite(svc: Services, s: { vaultId: Hex; version: num
   // (e.g. public-RPC eth_getLogs range limits) never prevents the upload (fix-arweave-mirror-status D2).
   let locators = s.locators ? [...new Set(s.locators.map((l) => l.toLowerCase() as Hex))] : [];
   try {
-    const fromChain = await svc.reader.locatorsOf(s.vaultId, s.registry ?? 'v2');
+    const fromChain = await svc.reader.locatorsOf(s.vaultId, s.registry);
     locators = [...new Set([...locators, ...fromChain.map((l) => l.toLowerCase() as Hex)])];
   } catch {
     /* logs unavailable: use what we know */
@@ -117,7 +118,7 @@ export async function mirrorWrite(svc: Services, s: { vaultId: Hex; version: num
 export async function ensureMirror(svc: Services, s: { vaultId: Hex; version: number; blob: Uint8Array; locator: Hex; registry?: RegistryVersion }): Promise<MirrorResult> {
   let locators: Hex[] = [s.locator.toLowerCase() as Hex];
   try {
-    locators = [...new Set([...locators, ...(await svc.reader.locatorsOf(s.vaultId, s.registry ?? 'v2')).map((l) => l.toLowerCase() as Hex)])];
+    locators = [...new Set([...locators, ...(await svc.reader.locatorsOf(s.vaultId, s.registry)).map((l) => l.toLowerCase() as Hex)])];
   } catch {
     /* keep the known locator */
   }

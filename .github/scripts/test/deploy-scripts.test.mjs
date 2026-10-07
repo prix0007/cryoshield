@@ -18,7 +18,12 @@ const OTHER = 'b'.repeat(40);
 const ADDRESS = '0xB43f58cF17e64B603aE5588a1DD17E96a0849e44'; // VaultRegistry v1 (legacy)
 const V2 = '0xA622c92d3D5b54aeA081Cf410224a8A2eCb08cB7'; // VaultRegistry v2 (harden-gas-sponsorship)
 const FACTORY = '0x75Bd6e2C371b97D6c0F02D3556f3d9711b2D42fb'; // wallet factory for the release's RP ID
-const releaseBody = (config = { registry: { address: ADDRESS }, registryV2: { address: V2 }, wallet: { factory: FACTORY } }, commit = SHA) =>
+// web-registry-versions D4: every registry, newest first, next to the legacy registry/registryV2 fields.
+const REGISTRIES = [
+  { version: 'v2', address: V2, deployBlock: 9, abiHash: '0x' + '22'.repeat(32) },
+  { version: 'v1', address: ADDRESS, deployBlock: 7, abiHash: '0x' + '11'.repeat(32) },
+];
+const releaseBody = (config = { registry: { address: ADDRESS }, registryV2: { address: V2 }, registries: REGISTRIES, wallet: { factory: FACTORY } }, commit = SHA) =>
   JSON.stringify({ name: 'cryoshield-web', commit, treeHash: 'sha256:' + 'c'.repeat(64), config });
 const IMAGE = 'registry.fly.io/cryoshield-web:deployment-01M41Z2MXSZQKZWXR97MSQG02X';
 const GOOD_HEADERS = {
@@ -321,13 +326,63 @@ test('smoke: rejects malformed inputs', async () => {
 });
 
 test('smoke: harden-gas-sponsorship: v1 is optional (OP Mainnet has none), and then must not be claimed', async () => {
-  site = { ...healthySite(), architecture: `<td>${V2}</td><td>${FACTORY}</td>`, release: { status: 200, body: releaseBody({ registry: null, registryV2: { address: V2 }, wallet: { factory: FACTORY } }) } };
+  site = { ...healthySite(), architecture: `<td>${V2}</td><td>${FACTORY}</td>`, release: { status: 200, body: releaseBody({ registry: null, registryV2: { address: V2 }, registries: REGISTRIES.slice(0, 1), wallet: { factory: FACTORY } }) } };
   const ok = await run('smoke.sh', smokeEnv({ REGISTRY_ADDRESS: '' }));
   assert.equal(ok.status, 0, ok.stdout + ok.stderr);
   site = { ...site, release: { status: 200, body: releaseBody() } };
   const bad = await run('smoke.sh', smokeEnv({ REGISTRY_ADDRESS: '' }));
   assert.notEqual(bad.status, 0);
   assert.match(bad.stdout + bad.stderr, /names a registry v1/);
+});
+
+// web-registry-versions D6: config.registries is checked for shape, order, the record's v1/v2, /architecture and,
+// when REGISTRIES is given, the exact list.
+const V3 = '0x00000000000000000000000000000000000000a3';
+const withRegistries = (registries, extra = {}) => ({
+  release: { status: 200, body: releaseBody({ registry: { address: ADDRESS }, registryV2: { address: V2 }, registries, wallet: { factory: FACTORY } }) },
+  ...extra,
+});
+const R3 = { version: 'v3', address: V3, deployBlock: 12, abiHash: '0x' + '22'.repeat(32) };
+
+test('smoke: registries: a v3 listed first and shown on /architecture passes; REGISTRIES equal to the list passes', async () => {
+  site = { ...healthySite(), ...withRegistries([R3, ...REGISTRIES], { architecture: `${healthySite().architecture}<td>${V3}</td>` }) };
+  const ok = await run('smoke.sh', smokeEnv());
+  assert.equal(ok.status, 0, ok.stdout + ok.stderr);
+  const exact = await run('smoke.sh', smokeEnv({ REGISTRIES: `v3=${V3} v2=${V2} v1=${ADDRESS}` }));
+  assert.equal(exact.status, 0, exact.stdout + exact.stderr);
+});
+
+test('smoke: registries: every failure class fails and is named', async () => {
+  const cases = [
+    [withRegistries(undefined), {}, /config\.registries/],
+    [withRegistries([]), {}, /config\.registries/],
+    [withRegistries([REGISTRIES[1], REGISTRIES[0]]), {}, /newest first/],
+    [withRegistries([REGISTRIES[0], REGISTRIES[0], REGISTRIES[1]]), {}, /newest first/],
+    [withRegistries([{ ...REGISTRIES[0], version: 'v02' }, REGISTRIES[1]]), {}, /config\.registries/],
+    [withRegistries([{ ...REGISTRIES[0], address: '0x12' }, REGISTRIES[1]]), {}, /config\.registries/],
+    [withRegistries([{ ...REGISTRIES[0], address: ADDRESS.replace('B43f', 'B43e') }, REGISTRIES[1]]), {}, /registries v2/],
+    [withRegistries([REGISTRIES[0], { ...REGISTRIES[1], address: V3 }], { architecture: `${healthySite().architecture}<td>${V3}</td>` }), {}, /registries v1/],
+    [withRegistries(REGISTRIES.slice(0, 1)), {}, /registries v1/],
+    [withRegistries([R3, ...REGISTRIES]), {}, /architecture does not show registry v3/],
+    [withRegistries(REGISTRIES), { REGISTRIES: `v3=${V3} v2=${V2} v1=${ADDRESS}` }, /registries are v2=.* expected v3=/],
+  ];
+  for (const [over, env, why] of cases) {
+    site = { ...healthySite(), ...over };
+    const r = await run('smoke.sh', smokeEnv(env));
+    assert.notEqual(r.status, 0, JSON.stringify([over, env]));
+    assert.match(r.stdout + r.stderr, why, JSON.stringify([over, env]));
+  }
+  site = { ...healthySite(), ...withRegistries(REGISTRIES) };
+  const v1Claimed = await run('smoke.sh', smokeEnv({ REGISTRY_ADDRESS: '' }));
+  assert.notEqual(v1Claimed.status, 0);
+  assert.match(v1Claimed.stdout + v1Claimed.stderr, /registries.*v1/);
+});
+
+test('smoke: a malformed REGISTRIES is a usage error (exit 2)', async () => {
+  site = healthySite();
+  for (const bad of ['v2', `v2=${V2},v1=${ADDRESS}`, `v02=${V2}`, `v2=0x12`, ` v2=${V2}`, `v2=${V2}\nv1=${ADDRESS}`]) {
+    assert.equal((await run('smoke.sh', smokeEnv({ REGISTRIES: bad }))).status, 2, bad);
+  }
 });
 
 // ---- rollback.sh ----

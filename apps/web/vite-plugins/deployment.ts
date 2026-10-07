@@ -1,30 +1,29 @@
 /**
  * Reads the deployment record published by the contracts track (contracts/deployments/README.md; spec
- * deployment-targets "Per-chain deployment records", harden-gas-sponsorship):
+ * deployment-targets "Per-chain deployment records", harden-gas-sponsorship; web-registry-versions D1):
  *
  *   {chainId, address?, deployBlock?, txHash?, abiHash?,           // VaultRegistry v1: legacy reads, optional
  *    contracts: {
- *      vaultRegistryV2: {address, deployBlock, txHash, abiHash},     // required: all writes, reads first
+ *      vaultRegistryV2: {address, deployBlock, txHash, abiHash},     // v2
+ *      vaultRegistries?: {v3: {…}, …},                               // later versions (proposed key; also vaultRegistryV<N>)
  *      wallets: {<rpId>: {implementation, factory, rpIdHash, deployBlock, txHash, abiHash, factoryAbiHash}}}}
  *
- * The wallet entry is selected by VITE_RP_ID. Anything missing or inconsistent fails the build: never a fallback to
- * another chain, another RP ID's wallet, or Coinbase's factory. Every abiHash is keccak256 of the exact bytes of the
- * exported ABI, and the app's own ABI fragments (src/chain/contracts.ts, src/account/policy.ts) must exist with the
- * same signature in those ABIs. Nothing about the contracts is hardcoded in the app.
+ * Registries form one list, newest first (vite-plugins/registries.mjs, shared with deploy/release-manifest.mjs); the
+ * newest takes every write. A version the app doesn't know fails the build. The wallet entry is selected by VITE_RP_ID.
+ * Anything missing or inconsistent fails the build: never a fallback to another chain, another RP ID's wallet, or
+ * Coinbase's factory. Every abiHash is keccak256 of the exact bytes of the exported ABI, and the app's own ABI fragments
+ * (src/chain/contracts.ts, src/account/policy.ts) must exist with the same signature in those ABIs. Nothing about the
+ * contracts is hardcoded in the app.
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { getAddress, isAddress, keccak256, sha256, toHex, type Abi, type AbiParameter } from 'viem';
 import { registryV1Abi, registryV2Abi, smartWalletAbi, walletFactoryAbi } from '../src/chain/contracts.ts';
+import { registryList, type RegistryEntry } from './registries.mjs';
 
 type Address = `0x${string}`;
 
-export interface RegistryDeployment {
-  address: Address;
-  deployBlock: number;
-  txHash: string;
-  abiHash: string;
-}
+export type RegistryDeployment = RegistryEntry;
 
 export interface WalletDeployment {
   rpId: string;
@@ -36,9 +35,8 @@ export interface WalletDeployment {
 
 export interface Deployment {
   chainId: number;
-  /** VaultRegistry v1, read-only; null where v1 was never deployed (OP Mainnet). */
-  v1: (RegistryDeployment & { abi: unknown[] }) | null;
-  v2: RegistryDeployment;
+  /** Every VaultRegistry version, newest first; [0] takes every write, the rest are read-only. */
+  registries: [RegistryDeployment, ...RegistryDeployment[]];
   wallet: WalletDeployment;
 }
 
@@ -100,31 +98,18 @@ export function loadDeployment(contractsDir: string, chainId: number, rpId: stri
   const rec = JSON.parse(readFileSync(recordPath, 'utf8')) as Record<string, unknown>;
   if (rec.chainId !== chainId) throw new Error(`${recordPath}: chainId ${String(rec.chainId)} != configured ${chainId}`);
 
+  const abis = { 1: readAbi(contractsDir, 'VaultRegistry.json'), 2: readAbi(contractsDir, 'VaultRegistryV2.json') };
+  const list = registryList(rec, recordPath, { 1: abis[1].hash, 2: abis[2].hash });
   // VaultRegistry v1 (top-level): legacy reads only, and never on OP Mainnet.
-  let v1: Deployment['v1'] = null;
-  if (rec.address !== undefined) {
-    if (chainId === OP_MAINNET) throw new Error(`${recordPath}: VaultRegistry v1 is never deployed to OP Mainnet (chain 10); remove the top-level v1 entry`);
-    const abi = readAbi(contractsDir, 'VaultRegistry.json');
-    const addr = address(recordPath, 'address', rec.address);
-    const deployBlock = block(recordPath, 'deployBlock', rec.deployBlock);
-    checkHash('VaultRegistry', recordPath, rec.abiHash, abi);
-    assertAbiCovers(registryV1Abi, abi.abi, 'VaultRegistry.json');
-    v1 = { address: addr, deployBlock, txHash: String(rec.txHash ?? ''), abiHash: abi.hash, abi: abi.abi };
+  if (chainId === OP_MAINNET && list.some((r) => r.n === 1)) {
+    throw new Error(`${recordPath}: VaultRegistry v1 is never deployed to OP Mainnet (chain 10); remove the top-level v1 entry`);
   }
+  // The app's fragments must exist in each exported ABI it reads (or writes) through.
+  if (list.some((r) => r.abi === 1)) assertAbiCovers(registryV1Abi, abis[1].abi, 'VaultRegistry.json');
+  assertAbiCovers(registryV2Abi, abis[2].abi, 'VaultRegistryV2.json');
+  const registries = list.map((r) => ({ ...r, address: address(recordPath, `${r.key}.address`, r.address) })) as Deployment['registries'];
 
   const contracts = obj(rec.contracts);
-  const r2 = obj(contracts?.vaultRegistryV2);
-  if (!r2) throw new Error(`${recordPath}: missing contracts.vaultRegistryV2 (VaultRegistry v2 is required for writes)`);
-  const abi2 = readAbi(contractsDir, 'VaultRegistryV2.json');
-  checkHash('VaultRegistryV2', recordPath, r2.abiHash, abi2);
-  assertAbiCovers(registryV2Abi, abi2.abi, 'VaultRegistryV2.json');
-  const v2: RegistryDeployment = {
-    address: address(recordPath, 'contracts.vaultRegistryV2.address', r2.address),
-    deployBlock: block(recordPath, 'contracts.vaultRegistryV2.deployBlock', r2.deployBlock),
-    txHash: String(r2.txHash ?? ''),
-    abiHash: abi2.hash,
-  };
-
   const w = obj(obj(contracts?.wallets)?.[rpId]);
   if (!w) {
     throw new Error(`${recordPath}: no wallet entry for RP ID "${rpId}" (contracts.wallets["${rpId}"]); deploy the CryoShield wallet pair for this RP ID`);
@@ -146,8 +131,7 @@ export function loadDeployment(contractsDir: string, chainId: number, rpId: stri
 
   return {
     chainId,
-    v1,
-    v2,
+    registries,
     wallet: { rpId, factory, implementation, rpIdHash: expectedRpIdHash, deployBlock: block(recordPath, `${at}.deployBlock`, w.deployBlock) },
   };
 }

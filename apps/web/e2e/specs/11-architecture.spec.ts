@@ -1,6 +1,8 @@
 /** add-architecture-page 1.2 (spec architecture-page): render, axe in light and dark, phone reflow, focusable figures. */
 import { readFileSync } from 'node:fs';
 import AxeBuilder from '@axe-core/playwright';
+import { keccak256, toHex } from 'viem';
+import { registryList } from '../../vite-plugins/registries.mjs';
 import { expect, test } from '@playwright/test';
 
 for (const scheme of ['light', 'dark'] as const) {
@@ -48,13 +50,18 @@ test('/architecture reference table matches the deployment record', async ({ pag
       .filter((l) => /^VITE_[A-Z_]+=/.test(l))
       .map((l) => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1).trim()]),
   );
-  const dep = JSON.parse(readFileSync(new URL(`../../../../contracts/deployments/${env.VITE_CHAIN_ID}.json`, import.meta.url), 'utf8'));
+  const contracts = new URL('../../../../contracts/', import.meta.url);
+  const dep = JSON.parse(readFileSync(new URL(`deployments/${env.VITE_CHAIN_ID}.json`, contracts), 'utf8'));
   const wallet = dep.contracts.wallets[env.VITE_RP_ID!];
+  // web-registry-versions D5: every registry in the record, newest first (the build's own parser).
+  const hash = (f: string) => keccak256(toHex(new Uint8Array(readFileSync(new URL(`abi/${f}`, contracts)))));
+  const regs = registryList(dep, 'record', { 1: hash('VaultRegistry.json'), 2: hash('VaultRegistryV2.json') });
   await page.goto('/architecture');
   const row = (label: string) => page.locator('section[aria-labelledby="s5"] tr').filter({ has: page.getByRole('rowheader', { name: label, exact: true }) }).locator('td');
-  await expect(row('VaultRegistry v2')).toHaveText(dep.contracts.vaultRegistryV2.address);
-  await expect(row('Deploy block')).toHaveText(String(dep.contracts.vaultRegistryV2.deployBlock));
-  await expect(row('VaultRegistry v1')).toHaveText(`${dep.address} (read-only)`);
+  const heads = page.locator('section[aria-labelledby="s5"] tr th').filter({ hasText: /^VaultRegistry v\d+$/ });
+  await expect(heads).toHaveText(regs.map((r) => `VaultRegistry ${r.version}`));
+  for (const [i, r] of regs.entries()) await expect(row(`VaultRegistry ${r.version}`)).toHaveText(i === 0 ? r.address : `${r.address} (read-only)`);
+  await expect(row('Deploy block')).toHaveText(String(regs[0]!.deployBlock));
   await expect(row('Account factory')).toHaveText(wallet.factory);
   await expect(row('Account implementation')).toHaveText(wallet.implementation);
   await expect(row('WebAuthn RP ID')).toContainText(env.VITE_RP_ID!);

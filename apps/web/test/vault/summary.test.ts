@@ -6,26 +6,26 @@ const items = (labels: string[]) => labels.map((l) => ({ label: l, secret: 'SECR
 
 describe('summarize', () => {
   it('a named vault with 5 items and 3 keys: name, Active, 5 items, 3 labels, +2 more, 3 keys', () => {
-    const s = summarize({ name: 'Work', archived: false, items: items(['A', 'B', 'C', 'D', 'E']), registry: 'v2', keyCount: 3 });
+    const s = summarize({ name: 'Work', archived: false, items: items(['A', 'B', 'C', 'D', 'E']), older: false, keyCount: 3 });
     expect(s).toEqual({ name: 'Work', status: 'active', count: 5, labels: ['A', 'B', 'C'], more: 2, keys: 3 });
   });
 
   it('never contains a secret value', () => {
-    const s = summarize({ name: 'Work', archived: true, items: items(['A', 'B', 'C', 'D']), registry: 'v2', keyCount: 2 });
+    const s = summarize({ name: 'Work', archived: true, items: items(['A', 'B', 'C', 'D']), older: false, keyCount: 2 });
     expect(JSON.stringify(s)).not.toContain('SECRET-VALUE');
   });
 
   it('status: archived, and older test vault for VaultRegistry v1', () => {
-    expect(summarize({ archived: true, items: [], registry: 'v2', keyCount: 2 }).status).toBe('archived');
-    expect(summarize({ archived: false, items: items(['a']), registry: 'v1', keyCount: 2 }).status).toBe('older');
+    expect(summarize({ archived: true, items: [], older: false, keyCount: 2 }).status).toBe('archived');
+    expect(summarize({ archived: false, items: items(['a']), older: true, keyCount: 2 }).status).toBe('older');
   });
 
   it('an unnamed vault has no name (the UI says "Unnamed vault")', () => {
-    expect(summarize({ archived: false, items: items(['a']), registry: 'v2', keyCount: 2 }).name).toBeUndefined();
+    expect(summarize({ archived: false, items: items(['a']), older: false, keyCount: 2 }).name).toBeUndefined();
   });
 
   it('empty labels show as "Secret n"', () => {
-    expect(summarize({ archived: false, items: items(['', 'x']), registry: 'v2', keyCount: 2 }).labels).toEqual(['Secret 1', 'x']);
+    expect(summarize({ archived: false, items: items(['', 'x']), older: false, keyCount: 2 }).labels).toEqual(['Secret 1', 'x']);
   });
 });
 
@@ -68,7 +68,7 @@ describe('display-only cap on combining marks (review LOW)', () => {
     expect(visibleName(`e${marks}x`)).toBe('e\u0301\u0301\u0301x');
   });
   it('labels in a row summary too', () => {
-    expect(summarize({ archived: false, items: [{ label: `a${marks}`, secret: 's' }], registry: 'v2', keyCount: 2 }).labels).toEqual(['a\u0301\u0301\u0301']);
+    expect(summarize({ archived: false, items: [{ label: `a${marks}`, secret: 's' }], older: false, keyCount: 2 }).labels).toEqual(['a\u0301\u0301\u0301']);
   });
   it('3 or fewer are left alone', () => {
     expect(visibleName('Cafe\u0301')).toBe('Cafe\u0301');

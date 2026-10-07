@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Hex } from 'viem';
+import { decodeFunctionData, type Hex } from 'viem';
 import { createRegistryReader } from '../../src/chain/registry';
 import { MockRegistry } from '../fixtures/mock-registry';
 
@@ -122,5 +122,103 @@ describe('harden-gas-sponsorship 5.3: v2 pages + getVaults batches, then v1, as 
     const r = createRegistryReader(v2.transport(v1));
     expect((await r.getVault(id(1)))?.version).toBe(6);
     expect((await r.getVault(id(1), 'v1'))?.version).toBe(5);
+  });
+});
+
+describe('web-registry-versions D2: the newest registry holding a vault ID is authoritative (v3 > v2 > v1)', () => {
+  // The 3-registry fixture: a fake v3 with v2's interface, next to the configured v2 and v1.
+  const A3 = '0x00000000000000000000000000000000000000a3' as const;
+  const setup = () => {
+    const v3 = new MockRegistry('v3', { abi: 2, address: A3 });
+    const v2 = new MockRegistry('v2');
+    const v1 = new MockRegistry('v1');
+    const reader = createRegistryReader(v3.transport(v2, v1), [v3.config, v2.config, v1.config]);
+    return { v3, v2, v1, reader };
+  };
+  const brief = (c: { registry: string; vaultId: Hex; version: number }[]) => c.map((x) => [x.registry, x.vaultId, x.version]);
+
+  it('one id in all three registries: only v3\'s copy, whichever registry lists it', async () => {
+    const { v3, v2, v1, reader } = setup();
+    v3.put(id(9), { owner, blob: blob('33'), version: 7 }, [loc]);
+    v2.put(id(9), { owner, blob: blob('22'), version: 5 }, [loc]);
+    v1.put(id(9), { owner, blob: blob('11'), version: 1 }, [loc]);
+    expect(brief(await reader.candidatesFor(loc))).toEqual([['v3', id(9), 7]]);
+    expect(v3.calls[0]).toBe('locatorLength'); // the newest registry is queried first
+  });
+
+  it('a v1 id and a v2 id held by v3 under ANOTHER locator yield only v3\'s records', async () => {
+    const { v3, v2, v1, reader } = setup();
+    const other = ('0x' + 'bb'.repeat(32)) as Hex;
+    v3.put(id(1), { owner, blob: blob('33'), version: 4 }, [other]);
+    v3.put(id(2), { owner, blob: blob('34'), version: 6 }, [other]);
+    v2.put(id(2), { owner, blob: blob('22'), version: 5 }, [loc]);
+    v1.put(id(1), { owner, blob: blob('11'), version: 1 }, [loc]);
+    const c = brief(await reader.candidatesFor(loc));
+    expect(c).toHaveLength(2);
+    expect(c).toEqual(expect.arrayContaining([['v3', id(1), 4], ['v3', id(2), 6]]));
+  });
+
+  it('a v1 id held by v2 (not v3) yields v2\'s copy; v3 was checked first', async () => {
+    const { v3, v2, v1, reader } = setup();
+    v2.put(id(5), { owner, blob: blob('22'), version: 3 }, [('0x' + 'cc'.repeat(32)) as Hex]);
+    v1.put(id(5), { owner, blob: blob('11'), version: 1 }, [loc]);
+    expect(brief(await reader.candidatesFor(loc))).toEqual([['v2', id(5), 3]]);
+    expect(v3.calls.filter((x) => x === 'getVaults').length).toBeGreaterThan(0);
+  });
+
+  it('distinct vaults in each registry form one list, oldest first (unlock shows the newest first)', async () => {
+    const { v3, v2, v1, reader } = setup();
+    v3.put(id(3), { owner, blob: blob('33'), version: 1 }, [loc]);
+    v2.put(id(2), { owner, blob: blob('22'), version: 1 }, [loc]);
+    v1.put(id(1), { owner, blob: blob('11'), version: 1 }, [loc]);
+    expect((await reader.candidatesFor(loc)).map((c) => c.registry)).toEqual(['v1', 'v2', 'v3']);
+  });
+
+  it('a v1-only vault still opens when v3 and v2 both confirm they lack it', async () => {
+    const { v1, reader } = setup();
+    v1.put(id(7), { owner, blob: blob('11'), version: 4 }, [loc]);
+    expect(brief(await reader.candidatesFor(loc))).toEqual([['v1', id(7), 4]]);
+  });
+
+  it('v3 unconfirmed (RPC error): no fallback to v2 or v1 (RegistryUnconfirmedError)', async () => {
+    const { RegistryUnconfirmedError } = await import('../../src/chain/registry');
+    const { v3, v2, v1, reader } = setup();
+    v2.put(id(9), { owner, blob: blob('22'), version: 5 }, [loc]);
+    v1.put(id(8), { owner, blob: blob('11'), version: 1 }, [loc]);
+    v3.handle = () => {
+      throw new Error('rpc down');
+    };
+    await expect(reader.candidatesFor(loc)).rejects.toBeInstanceOf(RegistryUnconfirmedError);
+  });
+
+  it('v3 fails only when asked about an older id: still unconfirmed, never v1\'s copy', async () => {
+    const { RegistryUnconfirmedError } = await import('../../src/chain/registry');
+    const { v3, v1, reader } = setup();
+    v1.put(id(8), { owner, blob: blob('11'), version: 1 }, [loc]);
+    const real = v3.handle.bind(v3);
+    v3.handle = (data) => {
+      if (decodeFunctionData({ abi: v3.abi, data }).functionName === 'getVaults') throw new Error('rpc down');
+      return real(data);
+    };
+    await expect(reader.candidatesFor(loc)).rejects.toBeInstanceOf(RegistryUnconfirmedError);
+  });
+
+  it('v2 unconfirmed while v3 is fine: an id only v1 lists is not shown', async () => {
+    const { RegistryUnconfirmedError } = await import('../../src/chain/registry');
+    const { v2, v1, reader } = setup();
+    v1.put(id(8), { owner, blob: blob('11'), version: 1 }, [loc]);
+    v2.handle = () => {
+      throw new Error('rpc down');
+    };
+    await expect(reader.candidatesFor(loc)).rejects.toBeInstanceOf(RegistryUnconfirmedError);
+  });
+
+  it('getVault, locatorsOf and vaultOf default to the newest registry; getVault takes any version', async () => {
+    const { v3, v2, reader } = setup();
+    v3.put(id(1), { owner, blob: blob('33'), version: 8 }, [loc]);
+    v2.put(id(1), { owner, blob: blob('22'), version: 6 }, [loc]);
+    expect((await reader.getVault(id(1)))).toMatchObject({ registry: 'v3', version: 8 });
+    expect((await reader.getVault(id(1), 'v2'))).toMatchObject({ registry: 'v2', version: 6 });
+    await expect(reader.getVault(id(1), 'v9')).rejects.toThrow(/v9/);
   });
 });

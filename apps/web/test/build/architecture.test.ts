@@ -7,6 +7,9 @@ import { join } from 'node:path';
 import { render, screen } from '@testing-library/react';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { renderApp } from '../ui/helpers';
+import { keccak256, toHex } from 'viem';
+import { registryList } from '../../vite-plugins/registries.mjs';
+import { architectureValues } from '../../vite-plugins/cryoshield';
 
 const web = join(__dirname, '..', '..');
 let out = '';
@@ -58,10 +61,14 @@ describe('/architecture page', () => {
     const dep = JSON.parse(readFileSync(join(contractsDir, 'deployments', `${chainId}.json`), 'utf8'));
     const d = doc('architecture/index.html');
     const value = (label: string) => [...d.querySelectorAll('section[aria-labelledby="s5"] tr')].find((tr) => tr.querySelector('th')?.textContent?.trim() === label)?.querySelector('td')?.textContent?.trim();
-    // harden-gas-sponsorship: v2 takes every write; v1 is shown as read-only; our factory for this build's RP ID.
-    expect(value('VaultRegistry v2')).toBe(dep.contracts.vaultRegistryV2.address);
-    expect(value('Deploy block')).toBe(String(dep.contracts.vaultRegistryV2.deployBlock));
-    expect(value('VaultRegistry v1')).toBe(`${dep.address} (read-only)`);
+    // web-registry-versions D5: one row per registry in the record, newest first; the newest takes every write and the
+    // rest are read-only; the deploy block is the newest's. Our factory for this build's RP ID.
+    const hash = (f: string) => keccak256(toHex(new Uint8Array(readFileSync(join(contractsDir, 'abi', f)))));
+    const regs = registryList(dep, 'record', { 1: hash('VaultRegistry.json'), 2: hash('VaultRegistryV2.json') });
+    const rows = [...d.querySelectorAll('section[aria-labelledby="s5"] tr th')].map((th) => th.textContent!.trim()).filter((t) => t.startsWith('VaultRegistry'));
+    expect(rows).toEqual(regs.map((r) => `VaultRegistry ${r.version}`));
+    regs.forEach((r, i) => expect(value(`VaultRegistry ${r.version}`)).toBe(i === 0 ? r.address : `${r.address} (read-only)`));
+    expect(value('Deploy block')).toBe(String(regs[0]!.deployBlock));
     expect(value('Account factory')).toBe(dep.contracts.wallets[env.VITE_RP_ID!].factory);
     expect(value('Account implementation')).toBe(dep.contracts.wallets[env.VITE_RP_ID!].implementation);
     expect(value('Vault limits')).not.toMatch(/16 vaults per locator$/);
@@ -74,6 +81,29 @@ describe('/architecture page', () => {
     for (const p of ['index.html', 'privacy/index.html', 'terms/index.html', 'cookies/index.html', 'architecture/index.html']) {
       expect([...doc(p).querySelectorAll('a')].map((a) => a.getAttribute('href')), p).toContain('/architecture');
     }
+  });
+});
+
+describe('architectureValues (web-registry-versions D5)', () => {
+  const reg = (version: `v${number}`, address: string, deployBlock: number) => ({ version, n: Number(version.slice(1)), abi: 2 as const, address: address as `0x${string}`, deployBlock, txHash: '', abiHash: '0x' as const, key: '' });
+  const wallet = { rpId: 'cryoshield.app', factory: ('0x' + 'f1'.repeat(20)) as `0x${string}`, implementation: ('0x' + 'e1'.repeat(20)) as `0x${string}`, rpIdHash: '0x' as const, deployBlock: 1 };
+  const page = '<table>__CS_REGISTRY_ROWS__<tr><th scope="row">Deploy block</th><td>__CS_DEPLOY_BLOCK__</td></tr></table>';
+
+  it('lists every registry with its version, newest first, older ones read-only (the 3-registry fixture)', () => {
+    const regs: Parameters<typeof architectureValues>[2]['registries'] = [reg('v3', '0x' + 'a3'.repeat(20), 12), reg('v2', '0x' + 'a2'.repeat(20), 9), reg('v1', '0x' + 'a1'.repeat(20), 7)];
+    const html = architectureValues(page, 11155420, { registries: regs, wallet }, 'cryoshield.app');
+    const d = new DOMParser().parseFromString(html, 'text/html');
+    expect([...d.querySelectorAll('tr')].map((tr) => [tr.querySelector('th')!.textContent, tr.querySelector('td')!.textContent])).toEqual([
+      ['VaultRegistry v3', '0x' + 'a3'.repeat(20)],
+      ['VaultRegistry v2', `0x${'a2'.repeat(20)} (read-only)`],
+      ['VaultRegistry v1', `0x${'a1'.repeat(20)} (read-only)`],
+      ['Deploy block', '12'],
+    ]);
+  });
+
+  it('refuses a value that is not a strict version or address (no markup injection)', () => {
+    expect(() => architectureValues(page, 11155420, { registries: [reg('v2', '<b>x</b>', 1)], wallet }, 'cryoshield.app')).toThrow(/invalid registry/);
+    expect(() => architectureValues(page, 11155420, { registries: [reg('v2<i>' as `v${number}`, '0x' + 'a2'.repeat(20), 1)], wallet }, 'cryoshield.app')).toThrow(/invalid registry/);
   });
 });
 

@@ -15,7 +15,7 @@ export function fakeServices(over: Partial<Services> = {}): Services {
     mirror: { upload: async () => 'id', ensure: async () => ({ state: 'present', id: 'A'.repeat(43) }), lookup: async () => [] } as unknown as Services['mirror'],
     fastIndexUrl: 'https://turbo-gateway.com',
     network: { name: 'local test chain', explorerUrl: null },
-    registries: { v1: null, v2: '0x00000000000000000000000000000000000000a2' },
+    registries: [{ version: 'v2', address: '0x00000000000000000000000000000000000000a2' }],
     arweaveGatewayUrl: 'https://arweave.net',
     ...over,
   };

@@ -9,7 +9,9 @@ import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { datesKey, vaultDates, type HistorySource, type VaultDates } from '../chain/history';
 import { summarize, visibleName } from '../vault/summary';
 import { validName } from '../vault/payload';
+// Value imports from ./operations would make the bundler split the initial /app chunk; config is already shared.
 import type { VaultSession } from './operations';
+import { isOlder } from '../config';
 import { KeyPrompt, Notice } from './components';
 import { ActionBar } from './chrome';
 import { Btn, CeremonyPresence, Disclosure } from './motionkit';
@@ -34,7 +36,7 @@ export function VaultName({ name }: { name: string | undefined }) {
 
 function Row(props: { v: VaultSession; dates: ReadonlyMap<string, VaultDates>; onOpen: () => void; onEdit?: (() => void) | undefined }) {
   const { v } = props;
-  const s = summarize({ ...v, keyCount: v.credIds.length });
+  const s = summarize({ ...v, older: isOlder(v.registry), keyCount: v.credIds.length });
   const d = props.dates.get(vaultKey(v));
   const status = v.payloadError ? V.newer : s.status === 'active' ? V.active : s.status === 'archived' ? V.archived : V.older;
   return (
@@ -93,7 +95,7 @@ export default function VaultsMenu(props: {
   mode: 'picker' | 'menu';
   vaults: readonly VaultSession[];
   onOpen: (v: VaultSession) => void;
-  /** Menu mode: open the vault's Edit vault sheet (VaultRegistry v2 only). */
+  /** Menu mode: open the vault's Edit vault sheet (vaults in the newest registry only). */
   onEdit?: (v: VaultSession) => void;
   /** One more key ceremony, merged by vault ID (D6). Resolves to a message to show, or null when vaults were added. */
   onCheckAnother: () => Promise<string | null>;
@@ -139,13 +141,14 @@ export default function VaultsMenu(props: {
     };
   }, [history, want]);
 
-  const active = list.filter((v) => v.registry === 'v2' && !v.archived && !v.payloadError);
-  const archived = list.filter((v) => v.registry === 'v2' && v.archived && !v.payloadError);
+  const writable = (v: VaultSession) => !isOlder(v.registry) && !v.payloadError;
+  const active = list.filter((v) => writable(v) && !v.archived);
+  const archived = list.filter((v) => writable(v) && v.archived);
   const newer = list.filter((v) => v.payloadError);
-  const older = list.filter((v) => v.registry === 'v1');
+  const older = list.filter((v) => isOlder(v.registry));
   const expand = props.mode === 'menu' || active.length === 0;
   const row = (v: VaultSession) => (
-    <Row key={vaultKey(v)} v={v} dates={dates} onOpen={() => props.onOpen(v)} onEdit={props.mode === 'menu' && v.registry === 'v2' && props.onEdit ? () => props.onEdit!(v) : undefined} />
+    <Row key={vaultKey(v)} v={v} dates={dates} onOpen={() => props.onOpen(v)} onEdit={props.mode === 'menu' && !isOlder(v.registry) && props.onEdit ? () => props.onEdit!(v) : undefined} />
   );
 
   async function another() {

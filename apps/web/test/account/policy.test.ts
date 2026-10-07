@@ -6,7 +6,7 @@ import { registryV2Abi } from '../../src/chain/contracts';
 import { assertSponsorableCalls, assertSponsorableCallData, smartWalletAbi, PolicyError } from '../../src/account/policy';
 
 const account = '0x00000000000000000000000000000000000000aa' as Hex;
-const reg = config.registryV2.address;
+const reg = config.registries[0].address;
 const registryAbi = registryV2Abi;
 const vaultId = ('0x' + '01'.repeat(32)) as Hex;
 const create = { to: reg, value: 0n, data: encodeFunctionData({ abi: registryAbi as any, functionName: 'createVault', args: [vaultId, '0x01', [vaultId, vaultId]] }) };
@@ -27,7 +27,7 @@ describe('sponsorship allowlist (6.2)', () => {
     ['addOwnerAddress (EOA owner)', [{ to: account, value: 0n, data: encodeFunctionData({ abi: smartWalletAbi, functionName: 'addOwnerAddress', args: [account] }) }]],
     ['an empty call list', []],
     // harden-gas-sponsorship: clients never write to VaultRegistry v1.
-    ['a VaultRegistry v1 write', [{ to: config.registryV1!.address, value: 0n, data: encodeFunctionData({ abi: registryV1Abi as any, functionName: 'updateVault', args: [vaultId, '0x01'] }) }]],
+    ['a VaultRegistry v1 write', [{ to: config.registries.find((r: { version: string }) => r.version === 'v1')!.address, value: 0n, data: encodeFunctionData({ abi: registryV1Abi as any, functionName: 'updateVault', args: [vaultId, '0x01'] }) }]],
   ])('refuses %s', (_n, calls) => {
     expect(() => assertSponsorableCalls(calls as any, account)).toThrow(PolicyError);
   });

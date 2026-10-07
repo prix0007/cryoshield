@@ -4,6 +4,7 @@ import { unlock, UnlockError, type OpenedVault } from '../chain/unlock';
 import { KeyError } from '../webauthn';
 import { ChainMismatchError } from '../chain/guard';
 import { RegistryUnconfirmedError } from '../chain/registry';
+import { isOlder } from '../config';
 import { toHex } from '../lib/bytes';
 import { KeyPrompt, Notice, StepHeading } from './components';
 import { messageFor, type VaultSession } from './operations';
@@ -73,9 +74,9 @@ export function UnlockFlow(props: { onUnlocked: (u: Unlocked) => void; onCreate:
         setError(vaults[0]!.payloadError === 'UNKNOWN_VERSION' ? S.unlock.newerVersion : S.save.nothingSaved);
         return;
       }
-      // D5: exactly one active VaultRegistry v2 vault opens directly; anything else shows the list. An archived vault
+      // D5: exactly one active vault in the newest registry opens directly; anything else shows the list. An archived vault
       // never opens by itself (D13).
-      const active = readable.filter((v) => v.registry === 'v2' && !v.archived);
+      const active = readable.filter((v) => !isOlder(v.registry) && !v.archived);
       props.onUnlocked({ vaults, open: active.length === 1 ? active[0]! : null });
     } catch (e) {
       if (e instanceof UnlockError) setNotFound(true);

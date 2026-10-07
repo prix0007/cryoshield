@@ -11,6 +11,7 @@ import { join } from 'node:path';
 import { keccak256, sha256, toHex, type Abi } from 'viem';
 import { describe, expect, it } from 'vitest';
 import { assertAbiCovers, loadDeployment } from '../../vite-plugins/deployment';
+import { cryoshield } from '../../vite-plugins/cryoshield';
 
 import { registryV1Abi, registryV2Abi, smartWalletAbi, walletFactoryAbi } from '../../src/chain/contracts';
 
@@ -26,6 +27,8 @@ const rpIdHash = (rpId: string) => sha256(toHex(new TextEncoder().encode(rpId)))
 interface Opts {
   v1?: boolean;
   v2?: boolean;
+  /** Extra registries under contracts.vaultRegistries (the 3-registry fixture: a fake v3 with v2's ABI). */
+  more?: Record<string, { address: string; deployBlock: number; abi?: 'v1' | 'v2' | string }>;
   wallets?: (typeof PROD)[];
   chainId?: number;
   abis?: Partial<Record<'v1' | 'v2' | 'wallet' | 'factory', string>>;
@@ -51,6 +54,10 @@ function contracts(o: Opts = {}) {
   if (o.v1 ?? true) Object.assign(rec, { address: V1, deployBlock: 7, txHash: '0x' + '11'.repeat(32), abiHash: hash(abis.v1) });
   const c: Record<string, unknown> = {};
   if (o.v2 ?? true) c.vaultRegistryV2 = { address: V2, deployBlock: 9, txHash: '0x' + '22'.repeat(32), abiHash: hash(abis.v2) };
+  if (o.more) {
+    const kind = (a?: string) => (a === 'v1' ? hash(abis.v1) : a === undefined || a === 'v2' ? hash(abis.v2) : a);
+    c.vaultRegistries = Object.fromEntries(Object.entries(o.more).map(([k, r]) => [k, { address: r.address, deployBlock: r.deployBlock, txHash: '0x', abiHash: kind(r.abi) }]));
+  }
   const wallets: Record<string, Record<string, unknown>> = {};
   for (const w of o.wallets ?? [PROD, DEV]) {
     wallets[w.rpId] = {
@@ -70,18 +77,42 @@ function contracts(o: Opts = {}) {
   return dir;
 }
 
-describe('loadDeployment: registries', () => {
-  it('reads v1 (legacy) and v2 with their deploy blocks', () => {
+const V3 = '0x00000000000000000000000000000000000000a3';
+const brief = (d: ReturnType<typeof loadDeployment>) => d.registries.map((r) => [r.version, r.abi, r.address.toLowerCase(), r.deployBlock]);
+
+describe('loadDeployment: registries (web-registry-versions D1)', () => {
+  it('reads v2 and the legacy v1 as one list, newest first, with explicit ABI kinds', () => {
     const d = loadDeployment(contracts(), 11155420, 'cryoshield.app');
-    expect(d.v1).toMatchObject({ address: V1, deployBlock: 7 });
-    expect(d.v1!.abi).toHaveLength(registryV1Abi.length);
-    expect([d.v2.address.toLowerCase(), d.v2.deployBlock]).toEqual([V2, 9]);
+    expect(brief(d)).toEqual([
+      ['v2', 2, V2, 9],
+      ['v1', 1, V1.toLowerCase(), 7],
+    ]);
+    expect(d.registries[1]!.address).toBe(V1); // EIP-55
+  });
+
+  it('3-registry fixture: a fake v3 with v2\'s ABI comes first and is read with the v2 interface', () => {
+    const d = loadDeployment(contracts({ more: { v3: { address: V3, deployBlock: 12 } } }), 11155420, 'cryoshield.app');
+    expect(brief(d)).toEqual([
+      ['v3', 2, V3, 12],
+      ['v2', 2, V2, 9],
+      ['v1', 1, V1.toLowerCase(), 7],
+    ]);
+  });
+
+  it('the build fails on a registry version the app does not know ("update the app"), never a guess', () => {
+    const dir = contracts({ more: { v3: { address: V3, deployBlock: 12, abi: '0x' + '99'.repeat(32) } } });
+    expect(() => loadDeployment(dir, 11155420, 'cryoshield.app')).toThrow(/doesn't know VaultRegistry v3.*update the app/);
+    const env = {
+      VITE_CHAIN_ID: '11155420', VITE_RPC_URL: 'https://sepolia.optimism.io', VITE_BUNDLER_URL: 'https://api.pimlico.io/v2/11155420/rpc',
+      VITE_SPONSORSHIP_POLICY_ID: 'sp_x', VITE_TURBO_UPLOAD_URL: 'https://upload.ardrive.io', VITE_ARWEAVE_GATEWAY_URL: 'https://arweave.net',
+      VITE_RP_ID: 'cryoshield.app', VITE_RP_NAME: 'CryoShield',
+    };
+    expect(() => cryoshield(env, dir, 'e2e')).toThrow(/update the app/);
   });
 
   it('a record with no top-level v1 address (OP Mainnet) uses only v2', () => {
     const d = loadDeployment(contracts({ v1: false, chainId: 10, wallets: [PROD] }), 10, 'cryoshield.app');
-    expect(d.v1).toBeNull();
-    expect(d.v2.address).toMatch(/^0x/);
+    expect(d.registries.map((r) => r.version)).toEqual(['v2']);
   });
 
   it('refuses a v1 entry on OP Mainnet (v1 is never deployed there)', () => {
@@ -178,8 +209,8 @@ describe('the committed records', () => {
   it('contracts/deployments/31337.json has v1, v2 and the "localhost" wallet pair (local and E2E builds)', () => {
     const dir = process.env.CRYOSHIELD_CONTRACTS_DIR ?? join(__dirname, '../../../../contracts');
     const d = loadDeployment(dir, 31337, 'localhost');
-    expect(d.v1?.address).toMatch(/^0x[0-9a-fA-F]{40}$/);
-    expect(d.v2.address).toMatch(/^0x[0-9a-fA-F]{40}$/);
+    expect(d.registries.map((r) => r.version)).toEqual(['v2', 'v1']);
+    for (const r of d.registries) expect(r.address).toMatch(/^0x[0-9a-fA-F]{40}$/);
     expect(d.wallet.factory).toMatch(/^0x[0-9a-fA-F]{40}$/);
   });
 });

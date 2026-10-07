@@ -7,6 +7,7 @@ import { lazySponsor } from '../account/lazy';
 import type { Sponsor } from '../account/writes';
 import { createMirror } from '../mirror/mirror';
 import type { CredentialsApi } from '../webauthn';
+import type { RegistryVersion } from '../vault/adapter';
 
 export interface Services {
   rpId: string;
@@ -24,8 +25,8 @@ export interface Services {
   host: string;
   /** show-vault-onchain-location: the configured chain's display name and block explorer (null: no explorer). */
   network: { name: string; explorerUrl: string | null };
-  /** Registry addresses shown in "Where your vault is stored" (v1 is legacy, read-only, absent on OP Mainnet). */
-  registries: { v1: Hex | null; v2: Hex };
+  /** Registry addresses shown in "Where your vault is stored", newest first (web-registry-versions D5). */
+  registries: readonly { version: RegistryVersion; address: Hex }[];
   /** Arweave gateway for the mirror item link. */
   arweaveGatewayUrl: string;
 }
@@ -50,7 +51,7 @@ export function defaultServices(): Services {
     fastIndexUrl: config.arweaveFastIndexUrl,
     host: typeof location === 'undefined' ? '' : location.hostname,
     network: config.network,
-    registries: { v1: config.registryV1?.address ?? null, v2: config.registryV2.address },
+    registries: config.registries,
     arweaveGatewayUrl: config.arweaveGatewayUrl,
   };
 }

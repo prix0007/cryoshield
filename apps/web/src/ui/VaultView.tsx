@@ -294,7 +294,8 @@ export function VaultView(props: {
                   <VaultLocation
                     network={svc.network}
                     chainId={svc.chainId}
-                    registry={{ address: s.registry === 'v2' ? svc.registries.v2 : svc.registries.v1, version: s.registry }}
+                    registries={svc.registries}
+                    registry={s.registry}
                     vaultId={s.vaultId}
                     owner={s.owner}
                     version={s.version}

@@ -233,7 +233,7 @@ describe('10.7: vault cloning is neutralised (vaultId bound into the ciphertext)
     const cloneTx = await w.sendTransaction({
       account: attacker,
       chain,
-      to: config.registryV2.address,
+      to: config.registries[0].address,
       data: encodeFunctionData({ abi: registryV2Abi, functionName: 'createVault', args: [salt, toHex(res.blob), res.locators] }),
     } as never);
     // Wait until the clone is mined and succeeded before asserting on the index.
@@ -303,7 +303,7 @@ async function writeV1(from: Hex, vaultId: Hex, blob: Uint8Array, locators: read
   const w = createWalletClient({ chain: anvilChain, transport: rpc });
   await t.impersonateAccount({ address: from });
   await t.setBalance({ address: from, value: 10n ** 18n });
-  const h = await w.sendTransaction({ account: from, chain: anvilChain, to: config.registryV1!.address, data: vEncode({ abi: registryV1Abi as never, functionName: 'createVault', args: [vaultId, toHex(blob), locators] }) } as never);
+  const h = await w.sendTransaction({ account: from, chain: anvilChain, to: config.registries.find((r: { version: string }) => r.version === 'v1')!.address, data: vEncode({ abi: registryV1Abi as never, functionName: 'createVault', args: [vaultId, toHex(blob), locators] }) } as never);
   expect((await makePublicClient(rpc).waitForTransactionReceipt({ hash: h })).status).toBe('success');
 }
 
@@ -316,7 +316,7 @@ async function junkV2(from: Hex, target: Hex, i: number) {
   await t.impersonateAccount({ address: from });
   await t.setBalance({ address: from, value: 10n ** 18n });
   const salt = keccak256Hex(`junk-${Date.now()}-${i}`);
-  const h = await w.sendTransaction({ account: from, chain: anvilChain, to: config.registryV2.address, data: vEncode({ abi: registryV2Abi, functionName: 'createVault', args: [salt, '0xdead', [target, vKeccak(salt)]] }) } as never);
+  const h = await w.sendTransaction({ account: from, chain: anvilChain, to: config.registries[0].address, data: vEncode({ abi: registryV2Abi, functionName: 'createVault', args: [salt, '0xdead', [target, vKeccak(salt)]] }) } as never);
   expect((await makePublicClient(rpc).waitForTransactionReceipt({ hash: h })).status).toBe('success');
 }
 

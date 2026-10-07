@@ -14,7 +14,9 @@ import { LOCATION as L } from './strings-location';
 export interface VaultLocationProps {
   network: { name: string; explorerUrl: string | null };
   chainId: number;
-  registry: { address: Hex | null; version: 'v1' | 'v2' };
+  /** Every configured registry, newest first, and the version of the one holding the vault (web-registry-versions D5). */
+  registries: readonly { version: string; address: Hex }[];
+  registry: string;
   vaultId: Hex;
   owner: Hex;
   version: number;
@@ -43,9 +45,10 @@ export default function VaultLocation(p: VaultLocationProps) {
   const ex = p.network.explorerUrl;
   const rows: Row[] = [
     { label: L.network, value: String(p.chainId), text: L.networkValue(p.network.name, p.chainId) },
-    ...(p.registry.address
-      ? [{ label: L.registry, value: p.registry.address, note: p.registry.version === 'v2' ? L.registryV2 : L.registryV1, href: addressUrl(ex, p.registry.address) }]
-      : []),
+    // Not the newest registry: read-only.
+    ...p.registries
+      .filter((r) => r.version === p.registry)
+      .map((r) => ({ label: L.registry, value: r.address, note: L.registryVersion(r.version, r !== p.registries[0]), href: addressUrl(ex, r.address) })),
     { label: L.vaultId, value: p.vaultId },
     { label: L.owner, value: p.owner, href: addressUrl(ex, p.owner) },
     { label: L.version, value: String(p.version) },

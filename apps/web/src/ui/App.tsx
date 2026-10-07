@@ -10,7 +10,7 @@ import { ActionBar, AppFooter, GlobalNav, SubNav, useFocusClearOfActionBar } fro
 import { unlockMessage, unlockSessions, UnlockFlow, type Unlocked } from './UnlockFlow';
 import { UnlockError } from '../chain/unlock';
 import { keccak256 } from 'viem';
-import { config } from '../config';
+import { config, isOlder, WRITE_REGISTRY } from '../config';
 import { useAutoLock } from './useAutoLock';
 import { VaultView } from './VaultView';
 import { Btn, MotionRoot, ScreenTransition, useDirection } from './motionkit';
@@ -97,10 +97,10 @@ function Shell() {
   // D6: one more key ceremony; its vaults are merged by vault ID, never duplicated, and nothing is stored.
   // D8: the nonce read when a vault opens; a later write (which sets its own) is never overwritten.
   const pinNonce = useCallback(
-    (vaultId: string, n: bigint) => setVaults((vs) => vs.map((v) => (v.registry === 'v2' && v.vaultId === vaultId && v.nonce === undefined ? { ...v, nonce: n } : v))),
+    (vaultId: string, n: bigint) => setVaults((vs) => vs.map((v) => (!isOlder(v.registry) && v.vaultId === vaultId && v.nonce === undefined ? { ...v, nonce: n } : v))),
     [],
   );
-  const history = useMemo(() => ({ rpc: svc.client, keccak256: (b: Uint8Array) => keccak256(b), registries: { v1: config.registryV1, v2: config.registryV2 } }), [svc.client]);
+  const history = useMemo(() => ({ rpc: svc.client, keccak256: (b: Uint8Array) => keccak256(b), registries: config.registries }), [svc.client]);
   const menu = useLazyModule(loadMenu, screen.name === 'vaults');
   const vaultsRef = useRef(vaults);
   vaultsRef.current = vaults;
@@ -174,7 +174,7 @@ function Shell() {
           {screen.name === 'create' && allowed && (
             <CreateFlow
               onCancel={() => setScreen({ name: 'home' })}
-              onMirror={(vaultId, version, r) => recordMirror(vaultKey('v2', vaultId), version, r)}
+              onMirror={(vaultId, version, r) => recordMirror(vaultKey(WRITE_REGISTRY.version, vaultId), version, r)}
               onDone={(s) => {
                 setVaults([s]);
                 setOpenKey(keyOf(s));

@@ -7,7 +7,7 @@
  * backstop (see docs/paymaster-policy.md); this check stops our own code from ever asking for more.
  */
 import { decodeFunctionData, toFunctionSelector, type Hex } from 'viem';
-import { config } from '../config';
+import { WRITE_REGISTRY } from '../config';
 import { smartWalletAbi } from '../chain/contracts';
 
 export { smartWalletAbi };
@@ -29,7 +29,7 @@ export interface Call {
   data: Hex;
 }
 
-export function assertSponsorableCalls(calls: readonly Call[], account: Hex, registry: Hex = config.registryV2.address): void {
+export function assertSponsorableCalls(calls: readonly Call[], account: Hex, registry: Hex = WRITE_REGISTRY.address): void {
   if (calls.length === 0 || calls.length > 4) throw new PolicyError('call count out of range');
   for (const c of calls) {
     if ((c.value ?? 0n) !== 0n) throw new PolicyError('sponsored calls must not transfer value');
@@ -46,7 +46,7 @@ export function assertSponsorableCalls(calls: readonly Call[], account: Hex, reg
 }
 
 /** Decodes a Coinbase Smart Wallet execute/executeBatch callData and applies the same allowlist. */
-export function assertSponsorableCallData(callData: Hex, account: Hex, registry: Hex = config.registryV2.address): void {
+export function assertSponsorableCallData(callData: Hex, account: Hex, registry: Hex = WRITE_REGISTRY.address): void {
   let decoded;
   try {
     decoded = decodeFunctionData({ abi: smartWalletAbi, data: callData });
