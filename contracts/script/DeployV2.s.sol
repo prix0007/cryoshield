@@ -142,6 +142,8 @@ contract DeployV2 is Script {
             bool ok = (c >= "a" && c <= "z") || (c >= "0" && c <= "9") || c == "-" || c == ".";
             if (!ok) revert InvalidRpId(rpId);
             if (c == "." && i > 0 && (b[i - 1] == "." || b[i - 1] == "-")) revert InvalidRpId(rpId);
+            // A label may not start with '-' either (e.g. "a.-b"); same rule as deploy.sh and the web app.
+            if (c == "-" && i > 0 && b[i - 1] == ".") revert InvalidRpId(rpId);
         }
     }
 }

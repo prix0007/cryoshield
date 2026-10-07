@@ -25,7 +25,8 @@
 #   RP_IDS               WebAuthn RP IDs to deploy wallet pairs for (comma or space separated). Defaults:
 #                        anvil "localhost cryoshield.app"; op_sepolia "cryoshield.app cryoshield-web-dev.fly.dev";
 #                        op_mainnet "cryoshield.app"; other presets: required.
-#   CRYOSHIELD_MAINNET_GATE=approved   required to BROADCAST to op_mainnet (OpenSpec harden-gas-sponsorship task 8.1)
+#   CRYOSHIELD_MAINNET_GATE=approved   required to BROADCAST to any mainnet preset (kind != local/testnet; e.g.
+#                        op_mainnet, arbitrum_one). OpenSpec harden-gas-sponsorship task 8.1. Fail-closed.
 #   DEPLOY_PLAN_ONLY=1   print the resolved preset, RP IDs and forge args, then exit before any RPC call (tests)
 # Anvil overrides: RPC_URL, ANVIL_SENDER (default: anvil account #0, sent via --unlocked; no key involved).
 #
@@ -37,16 +38,18 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-# Preset table: name, chain ID, RPC env var, Blockscout verifier API URL (keyless; "-" = no explorer).
+# Preset table: name, chain ID, RPC env var, Blockscout verifier API URL (keyless; "-" = no explorer), kind.
+# kind: local | testnet | mainnet. Broadcasting to anything that is not local or testnet (including any preset added
+# later without a kind) needs CRYOSHIELD_MAINNET_GATE=approved: the mainnet gate is fail-closed.
 # OP URLs are the canonical Blockscout hosts; optimism-*.blockscout.com 301-redirects there, which breaks forge's POST.
 # Parity with config/chain-presets.json is enforced by script/test-deploy-args.sh.
 # Adding a chain is a one-line data change here plus foundry.toml and config/chain-presets.json.
 PRESETS="
-anvil             31337     RPC_URL                   -
-op_sepolia        11155420  OP_SEPOLIA_RPC_URL        https://testnet-explorer.optimism.io/api/
-op_mainnet        10        OP_MAINNET_RPC_URL        https://explorer.optimism.io/api/
-arbitrum_sepolia  421614    ARBITRUM_SEPOLIA_RPC_URL  https://arbitrum-sepolia.blockscout.com/api/
-arbitrum_one      42161     ARBITRUM_ONE_RPC_URL      https://arbitrum.blockscout.com/api/
+anvil             31337     RPC_URL                   -                                             local
+op_sepolia        11155420  OP_SEPOLIA_RPC_URL        https://testnet-explorer.optimism.io/api/     testnet
+op_mainnet        10        OP_MAINNET_RPC_URL        https://explorer.optimism.io/api/             mainnet
+arbitrum_sepolia  421614    ARBITRUM_SEPOLIA_RPC_URL  https://arbitrum-sepolia.blockscout.com/api/  testnet
+arbitrum_one      42161     ARBITRUM_ONE_RPC_URL      https://arbitrum.blockscout.com/api/          mainnet
 "
 CREATE2_DEPLOYER=0x4e59b44847b379578588920cA78FbF26c0B4956C
 # Verification goes to a third-party explorer with no key: strip any inherited explorer keys so they are never forwarded.
@@ -78,8 +81,9 @@ default_rp_ids() {
 
 # Normalise "a, b c" -> "a,b,c" and validate each RP ID (same rule as the web app's VITE_RP_ID).
 rp_ids_csv() {
-  local out="" id
-  for id in $(tr ',' ' ' <<<"$1"); do
+  local out="" id ids
+  read -r -a ids <<<"$(tr ',' ' ' <<<"$1")" # array split: no glob expansion of operator input
+  for id in "${ids[@]+"${ids[@]}"}"; do
     [[ "$id" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$ && ${#id} -le 64 ]] ||
       die "invalid RP ID '$id' (bare lowercase host name, no scheme, port or path)"
     out="${out:+$out,}$id"
@@ -105,7 +109,7 @@ predict_v2() {
 abi_hash() { cast keccak "0x$(xxd -p "$1" | tr -d '\n')"; }
 
 case "${1:-}" in
-  --list-presets) awk 'NF {print $1, $2, $3, $4}' <<<"$PRESETS"; exit 0 ;;
+  --list-presets) awk 'NF {print $1, $2, $3, $4, $5}' <<<"$PRESETS"; exit 0 ;;
   --predict) predicted_address; exit 0 ;;
   --predict-v2)
     csv="$(rp_ids_csv "${2:-localhost}")" || die "no RP IDs given"
@@ -115,10 +119,12 @@ case "${1:-}" in
 esac
 
 NETWORK="${1:-anvil}"
-read -r _ EXPECTED_CHAIN_ID RPC_ENV VERIFIER_URL < <(awk -v n="$NETWORK" '$1 == n {print $1, $2, $3, $4}' <<<"$PRESETS") || true
+read -r _ EXPECTED_CHAIN_ID RPC_ENV VERIFIER_URL KIND < <(awk -v n="$NETWORK" '$1 == n {print $1, $2, $3, $4, $5}' <<<"$PRESETS") || true
 [[ -n "${EXPECTED_CHAIN_ID:-}" ]] || die "unknown network: $NETWORK (valid: $(preset_names))"
 
-args=()
+# --slow: send one transaction at a time and wait for its receipt, so transactions land in a fixed order and blocks
+# (the anvil record is then reproducible byte for byte, and public deploys never race each other).
+args=(--slow)
 verify_args=()
 if [[ "$NETWORK" == "anvil" ]]; then
   RPC_URL="${RPC_URL:-http://127.0.0.1:8545}"
@@ -132,8 +138,9 @@ else
   DO_BROADCAST="${BROADCAST:-0}"
   if [[ "$DO_BROADCAST" == "1" ]]; then
     [[ -n "${DEPLOYER_ACCOUNT:-}" ]] || die "BROADCAST=1 requires DEPLOYER_ACCOUNT (a Foundry keystore name)"
-    if [[ "$NETWORK" == "op_mainnet" && "${CRYOSHIELD_MAINNET_GATE:-}" != "approved" ]]; then
-      die "op_mainnet broadcast is gated (harden-gas-sponsorship task 8.1): set CRYOSHIELD_MAINNET_GATE=approved only after the recorded founder approval"
+    # Fail-closed: only local and testnet presets broadcast without the gate.
+    if [[ "${KIND:-}" != "testnet" && "${KIND:-}" != "local" && "${CRYOSHIELD_MAINNET_GATE:-}" != "approved" ]]; then
+      die "$NETWORK (chain $EXPECTED_CHAIN_ID, kind ${KIND:-unset}) broadcast is gated (harden-gas-sponsorship task 8.1): set CRYOSHIELD_MAINNET_GATE=approved only after the recorded founder approval"
     fi
     args+=(--account "$DEPLOYER_ACCOUNT" --broadcast)
     # Keyless Blockscout verification. It runs as a separate step after the deployment record is written, so a
@@ -156,7 +163,7 @@ RP_IDS_CSV="$(rp_ids_csv "${RP_IDS:-$(default_rp_ids "$NETWORK")}")" ||
   die "set RP_IDS (WebAuthn RP IDs to deploy wallet pairs for) for $NETWORK"
 
 if [[ "${DEPLOY_PLAN_ONLY:-0}" == "1" ]]; then
-  echo "network=$NETWORK chainId=$EXPECTED_CHAIN_ID rpcEnv=$RPC_ENV broadcast=$DO_BROADCAST"
+  echo "network=$NETWORK chainId=$EXPECTED_CHAIN_ID rpcEnv=$RPC_ENV broadcast=$DO_BROADCAST kind=${KIND:-unset}"
   echo "v1=$V1_POLICY"
   echo "rpIds=$RP_IDS_CSV"
   echo "forge-args: ${args[*]}"
@@ -274,7 +281,8 @@ done < <(awk '$1 == "wallet"' <<<"$PRED")
 # Every requested contract must now be recorded.
 [[ "$(jq -r '.contracts.vaultRegistryV2.address // empty' <<<"$RECORD_JSON")" == "$REG" ]] ||
   die "VaultRegistryV2 not recorded after broadcast"
-for RPID in $(tr ',' ' ' <<<"$RP_IDS_CSV"); do
+IFS=',' read -r -a RPID_LIST <<<"$RP_IDS_CSV"
+for RPID in "${RPID_LIST[@]}"; do
   [[ -n "$(jq -r --arg r "$RPID" '.contracts.wallets[$r].factory // empty' <<<"$RECORD_JSON")" ]] ||
     die "wallet pair for $RPID not recorded after broadcast"
 done

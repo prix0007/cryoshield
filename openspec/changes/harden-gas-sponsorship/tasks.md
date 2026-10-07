@@ -156,6 +156,7 @@
   Record it in `docs/reviews/harden-gas-sponsorship.md`. Verify: no open CRITICAL or HIGH findings.
 
   2026-10-08: recorded in `docs/reviews/harden-gas-sponsorship.md`. No open CRITICAL or HIGH; APPROVE for OP Sepolia, not a mainnet approval. Open MEDIUMs and owner/hardware tasks (1.1, 1.2, 6.2–6.4, 8.x) are listed there.
+  Contracts/CI follow-ups from the review, done on `ci/contracts-review-followups` (design.md, Implementation notes): C3 and C4 (all spec-named checks and the ERC-7562 traces now run in CI), W2 (on-chain record check: OP Sepolia passes all 40 checks), C6 (`GAS.md` generated from the snapshots and checked in CI), C8 (RP ID label rule, no glob expansion), and C9 (fail-closed mainnet gate for every non-testnet preset). Still open: C10 (wording only).
 
 ## 8. Mainnet gate [ow]
 

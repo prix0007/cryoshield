@@ -1,0 +1,49 @@
+# Weekly check that the committed public-chain deployment records match the chain
+# (OpenSpec change harden-gas-sponsorship, security review W2).
+# Read-only: public RPCs only (eth_getCode, eth_call, transactions and receipts). No secrets, no keys, nothing is sent.
+# It never updates anything; a mismatch fails the run and prints every failed check.
+
+name: Deployments check
+
+on:
+  schedule:
+    - cron: '41 5 * * 2' # Tuesdays 05:41 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deployments-check
+  cancel-in-progress: true
+
+env:
+  FOUNDRY_VERSION: v1.1.0
+
+jobs:
+  deployments-check:
+    name: deployments-check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read # checkout only
+    defaults:
+      run:
+        working-directory: contracts
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Foundry
+        uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1.9.1
+        with:
+          version: ${{ env.FOUNDRY_VERSION }}
+          cache: false
+      # Every public record (deployments/*.json except 31337) against its chain, then the tamper self-test.
+      - name: Records match the chain
+        run: script/check-deployments.sh
+      - name: Checker rejects tampered records (non-vacuity)
+        run: script/test-check-deployments.sh
+        env:
+          CRYOSHIELD_NETWORK_TESTS: "1"

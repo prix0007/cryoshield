@@ -125,7 +125,9 @@ CBSW v1.1.0 is vendored and pruned in [`lib/cbsw-v1.1.0/`](lib/cbsw-v1.1.0/READM
 anvil `localhost cryoshield.app`, op_sepolia `cryoshield.app cryoshield-web-dev.fly.dev`, op_mainnet `cryoshield.app`).
 On OP Sepolia it verifies the existing v1 (bytecode + record) and never redeploys it. VaultRegistry v1 is built with
 the `v1` Foundry profile so its bytecode (and CREATE2 address `0xB43f…9e44`) stays byte-identical to the deployed one.
-OP Mainnet broadcasts additionally require `CRYOSHIELD_MAINNET_GATE=approved` (task 8.1, founder approval).
+Broadcasts to any mainnet preset (every preset whose `kind` in `deploy.sh` is not `local` or `testnet`, e.g.
+`op_mainnet` and `arbitrum_one`; fail-closed for presets without a kind) additionally require
+`CRYOSHIELD_MAINNET_GATE=approved` (task 8.1, founder approval). Transactions are sent one at a time (`--slow`).
 
 ```sh
 # OP Sepolia dry run (no keys, nothing sent)
@@ -140,7 +142,17 @@ OP_SEPOLIA_RPC_URL=https://sepolia.optimism.io DEPLOYER_ACCOUNT=cryoshield-deplo
 ### Extra checks
 
 ```sh
-forge test --mc CryoShieldSmartWalletErc7562Test -vvv   # ERC-7562 opcode/storage traces (skipped without -vvv)
+CRYOSHIELD_REQUIRE_TRACE=1 forge test --mc CryoShieldSmartWalletErc7562Test -vvv   # ERC-7562 traces (CI; fails without the tracer)
 script/check-storage-layout.sh                          # storage layout == CBSW v1.1
-script/anvil-e2e.sh                                     # v1 + v2 + wallet pairs on a throwaway anvil
+script/export-abi.sh --check                            # committed ABIs are current
+script/test-deploy-args.sh                              # presets, mainnet gate (fail-closed), argv, no secrets
+script/anvil-e2e.sh && git diff --exit-code -- deployments/ abi/   # anvil deploy reproduces the 31337 record
+script/gas-md.sh --check                                # GAS.md == snapshots/*.json (regenerate: script/gas-md.sh)
+script/check-deployments.sh [chainId...]                # NETWORK: public records vs chain (code, block, tx, init code)
+CRYOSHIELD_NETWORK_TESTS=1 script/test-check-deployments.sh   # NETWORK: the checker also rejects tampered records
 ```
+
+All but the two NETWORK checks run in the CI `contracts` job. The NETWORK checks run weekly and on demand in
+`.github/workflows/deployments-check.yml` (public RPCs only, no secrets). `test/DeployV2.t.sol` pins the predicted
+CREATE2 addresses to the live OP Sepolia record, so any change to `src/`, the compiler settings or the remappings
+fails `forge test`.
