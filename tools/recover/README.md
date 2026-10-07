@@ -21,7 +21,7 @@ You need Python 3.10 or newer, or a single-file binary from the releases page.
 # with uv (recommended): run without installing
 uvx cryoshield-recover --version
 # from the source repository instead of PyPI
-uvx --from "git+https://github.com/<org>/cryoshield#subdirectory=tools/recover" cryoshield-recover --version
+uvx --from "git+https://github.com/prix0007/cryoshield#subdirectory=tools/recover" cryoshield-recover --version
 # with pipx
 pipx install cryoshield-recover
 # NFC readers (PC/SC) need the optional extra
