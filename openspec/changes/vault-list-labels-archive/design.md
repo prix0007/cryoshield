@@ -257,6 +257,13 @@ The codec admits names and labels that are valid but can still mislead when show
 - **Recovery tool (task 5.1):** strip characters of the categories Cc, Cf, Zl and Zp from names and labels before printing, and print with `errors="backslashreplace"`, because v1 labels and secrets can hold unpaired surrogates.
 - **Web (task 1.2), review L1:** turn the `testIf`/`todo` fallbacks in `apps/web/test/vault/payload-v2.test.ts` into hard tests once the codec exists, so a missing export fails instead of being skipped.
 
+## Recovery-tool decisions recorded at the ECC review of c9830c1 [rec]
+
+- **R1. Arweave is always searched in locator mode.** Before, Arweave was a fallback when no chain copy opened. Now chain and Arweave candidates are merged before opening, so the list and the chooser show every vault the key opens. This is consistent with the "Arweave fallback" requirement, which says when Arweave MUST be queried, not that it must not be otherwise. Ranking still prefers a verified chain copy. If a source is unreachable or truncated, the tool warns that the list may be incomplete.
+- **R2. No summary-only parse.** A parser that reads names and labels without building secret strings would be a second, hand-written JSON reader next to the vector-verified codec. The tool instead parses each decrypted `bytearray` in place, with no `bytes()` copy, and the README documents that listing an unchosen vault leaves unwipeable label and secret strings.
+- **R3. Name display.** The status always comes first, in a fixed column. Names are shown last and quoted. A name counts as empty unless it has a character outside Cc, Cf, Zl, Zp, Zs, Mn, Me, Co, Cn, and not one of U+115F, U+1160, U+17B4, U+17B5, U+2800, U+3164 or U+FFA0. Runs of combining marks are capped at 3. ZWJ and ZWNJ are kept, because the codec allows them in names.
+- **R4. `--vault-id` and `--blob-file` try every RP ID** (at most 3, safest first) and merge what each opens, instead of stopping at the first that opens.
+
 ## Open questions
 
 None. The founder answered D2, D4, D12 and D13 on 2026-10-06.

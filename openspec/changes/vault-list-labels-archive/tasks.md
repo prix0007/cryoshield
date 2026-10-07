@@ -31,7 +31,7 @@
 
   Point `apps/web/docs/payload-v1.md` at the v2 spec. Verify: running the generator twice gives a byte-identical file (a CI check), and `packages/vault-crypto/test-vectors/v1.json` and `docs/spec/vault-format-v1.md` are unchanged.
 - [ ] 1.2 [fe] Write failing tests in `apps/web/test/vault/payload.test.ts` that run every vector, then implement the v2 codec in `apps/web/src/vault/payload.ts`: a single `VaultPayload` type, v1 + v2 decoding, strict canonical decoding (decode, validate, re-encode, byte-compare), and the minimal-version writer. Verify: `pnpm --filter web test`. **This is the decoder release** (see the release rule).
-- [ ] 1.3 [rec] In parallel with 1.2: write failing tests in `tools/recover/tests/test_payload.py` that run every vector and check the file's SHA-256 pin, then implement `tools/recover/src/cryoshield_recover/payload.py` (v1 with the deployed lenient rules, last duplicate wins as in `JSON.parse`, one leading BOM stripped; v2 strict: `type(a) is bool`, `ensure_ascii=False` with compact separators, well-formed Unicode, byte compare; see `docs/spec/payload-v2.md` section 7). Verify: `pytest`.
+- [x] 1.3 [rec] In parallel with 1.2: write failing tests in `tools/recover/tests/test_payload.py` that run every vector and check the file's SHA-256 pin, then implement `tools/recover/src/cryoshield_recover/payload.py` (v1 with the deployed lenient rules, last duplicate wins as in `JSON.parse`, one leading BOM stripped; v2 strict: `type(a) is bool`, `ensure_ascii=False` with compact separators, well-formed Unicode, byte compare; see `docs/spec/payload-v2.md` section 7). Verify: `pytest`.
 
 ## 2. Web data layer (no UI change) [fe]
 
@@ -55,9 +55,9 @@
 
 ## 5. Recovery tool listing [rec] (parallel with 2–4, after 1.3)
 
-- [ ] 5.1 [rec] Write failing tests, then change `recover.py` (`_open_all` groups authenticating candidates by vault ID and ranks freshness within each, under the existing quorum and tie rules) and `ui.py` (`choose_vault`; structured display with name, status and `label: secret`; inert names and labels; raw fallback). Non-interactive without `--vault-id` and with several vaults exits 12 (`AMBIGUOUS`) printing only IDs and status. Verify: `pytest`, including the zeroization tests for decoded payloads.
-- [ ] 5.2 [rec] Write failing tests, then add `--list` to `cli.py` (IDs, names, status, counts and freshness; no labels or secret values; archived vaults included). Update the README. Verify: `pytest`.
-- [ ] 5.3 [rec] Extend the anvil e2e: two vaults on one key (one named and archived, one v1), recovered interactively, with `--list`, and non-interactively (exit 12). Verify: the e2e job passes.
+- [x] 5.1 [rec] Write failing tests, then change `recover.py` (`_open_all` groups authenticating candidates by vault ID and ranks freshness within each, under the existing quorum and tie rules) and `ui.py` (`choose_vault`; structured display with name, status and `label: secret`; inert names and labels; raw fallback). Non-interactive without `--vault-id` and with several vaults exits 12 (`AMBIGUOUS`) printing only IDs and status. Verify: `pytest`, including the zeroization tests for decoded payloads.
+- [x] 5.2 [rec] Write failing tests, then add `--list` to `cli.py` (IDs, names, status, counts and freshness; no labels or secret values; archived vaults included). Update the README. Verify: `pytest`.
+- [x] 5.3 [rec] Extend the anvil e2e: two vaults on one key (one named and archived, one v1), recovered interactively, with `--list`, and non-interactively (exit 12). Verify: the e2e job passes.
 
 ## 6. Docs, hardware check and security review [fe] [ow] [sec]
 

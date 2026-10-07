@@ -136,7 +136,9 @@ def test_chain_preferred_over_arweave(chain: FakeChain, ar: FakeArweave) -> None
     ar.mirror(h(V2["blob"]), vault_id=VID, locators=[LOC["A"]])
     res, _, _ = run(cfg_for(chain, ar), [PhysicalKey.named("A")])
     assert res.candidate.source == "chain"
-    assert not any(r.path == "/graphql" for r in ar.requests), "Arweave is only a fallback"
+    # vault-list-labels-archive (ECC review of c9830c1): Arweave is always searched too, so the list and
+    # the chooser show every vault; ranking still prefers the verified chain copy.
+    assert any(r.path == "/graphql" for r in ar.requests)
 
 
 def test_vault_id_flow_non_discoverable(chain: FakeChain) -> None:
@@ -286,7 +288,7 @@ def test_select_never_reuses_stale_decoded_vault(monkeypatch: pytest.MonkeyPatch
     broken = Candidate(b"broken", "chain", "y", b"\x09" * 32, 1, Freshness.CURRENT)
     rec._tap("cryoshield.app", None)
     for order in ([broken], [sh, broken]):
-        result, pending = rec._select(order)
-        assert result is None
-        assert all(c is not broken for c, _ in pending)
-        assert all(d.mode == 2 for _, d in pending)
+        groups = rec._open_all(order)
+        assert all(g.secret is None for g in groups)  # nothing opened with one Shamir share
+        assert all(g.cand is not broken for g in groups)
+        assert all(g.decoded.mode == 2 for g in groups)

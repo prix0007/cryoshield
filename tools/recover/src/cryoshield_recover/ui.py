@@ -7,12 +7,16 @@ import os
 import sys
 from collections.abc import Callable
 from pathlib import Path
-from typing import TextIO
+from typing import TYPE_CHECKING, TextIO
 
 from .errors import ExitCode, RecoveryError
-from .text import sanitize
+from .payload import UNKNOWN_VERSION, PayloadError, decode
+from .text import display_name, inert_label, inert_secret, sanitize, truncate
 
-__all__ = ["Console", "sanitize", "write_new_file"]
+if TYPE_CHECKING:
+    from .recover import VaultSummary
+
+__all__ = ["Console", "describe", "sanitize", "write_new_file"]
 
 CONFIRM_WORD = "show"
 
@@ -82,8 +86,8 @@ class Console:
             flush=True,
         )
         answer = self.stdin.readline().strip()
-        if not answer.isdigit() or not 1 <= int(answer) <= len(options):
-            raise RecoveryError(ExitCode.CANCELLED, "Cancelled: no copy chosen.")
+        if not (answer.isascii() and answer.isdigit()) or not 1 <= int(answer) <= len(options):
+            raise RecoveryError(ExitCode.CANCELLED, "Cancelled: no choice made.")
         return int(answer) - 1
 
     def confirm_show(self) -> bool:
@@ -96,20 +100,98 @@ class Console:
         answer = self.stdin.readline()
         return answer.strip() == CONFIRM_WORD
 
+    def show_listing(self, summaries: list[VaultSummary]) -> None:
+        """``--list``: one block per vault on stdout. IDs, status (first), names and counts; no labels and
+        no secrets."""
+        print(f"{len(summaries)} vault(s) open with this key:", file=self.stdout)
+        for s in summaries:
+            print(f"\n0x{s.vault_id.hex()}", file=self.stdout)
+            print(f"  status: {s.state}, {s.freshness_text}", file=self.stdout)
+            if s.contents == "ok":
+                print(f"  {_count(s.items)}, {s.keys}", file=self.stdout)
+                print(f"  name: {display_name(s.name)}", file=self.stdout)
+            elif s.contents == "locked":
+                print(f"  needs {s.keys} to open (insert more keys without --list)", file=self.stdout)
+            else:
+                what = "made by a newer CryoShield version" if s.contents == "newer-version" else "not a list"
+                print(f"  contents: {what}; {s.keys}", file=self.stdout)
+        self.stdout.flush()
+
+    def show_vault(self, secret: bytearray) -> None:
+        """After confirmation: the vault as ``label: secret`` lines (payload v1/v2), or the raw text for
+        a payload this version can't read, so recovery never refuses the user's own data."""
+        try:
+            p = decode(secret)  # in place: no bytes() copy of the decrypted buffer
+        except PayloadError as e:
+            if e.code == UNKNOWN_VERSION:
+                self.info("This vault was made by a newer version of CryoShield; showing its raw contents.")
+            self.show_secret(secret)
+            return
+        escaped_any = False
+        print("\n----- BEGIN SECRETS -----", file=self.stdout)
+        print(f"Status: {'ARCHIVED' if p.archived else 'ACTIVE'}", file=self.stdout)
+        print(f"Vault: {display_name(p.name)}", file=self.stdout)
+        if not p.items:
+            print("(no items)", file=self.stdout)
+        for item in p.items:
+            value, escaped = inert_secret(item.s)
+            escaped_any = escaped_any or escaped
+            label = inert_label(item.l) or "(no label)"
+            sep = "\n" if "\n" in value else " "
+            print(f"{label}:{sep}{value}", file=self.stdout)
+        print("----- END SECRETS -----", file=self.stdout, flush=True)
+        self._escaped_note(escaped_any)
+        self._after_show()
+
     def show_secret(self, secret: bytearray) -> None:
         try:
-            text = bytes(secret).decode("utf-8")
-            body = text
+            body, escaped = inert_secret(secret.decode("utf-8"))
         except UnicodeDecodeError:
-            body = bytes(secret).hex()
+            body, escaped = secret.hex(), False
             self.info("(The secret is not text; showing it as hexadecimal.)")
         print("\n----- BEGIN SECRET -----", file=self.stdout)
         print(body, file=self.stdout)
         print("----- END SECRET -----", file=self.stdout, flush=True)
+        self._escaped_note(escaped)
+        self._after_show()
+
+    def _escaped_note(self, escaped: bool) -> None:
+        if escaped:
+            self.info(
+                "Some characters were shown as escapes (\\\\, \\uXXXX) so they can't affect your "
+                "screen; use --output for the exact bytes."
+            )
+
+    def _after_show(self) -> None:
         self.info(
             "\nWhen you are done, close this window or clear the terminal scrollback "
             "(e.g. 'clear && printf \"\\e[3J\"')."
         )
+
+
+def _count(n: int | None) -> str:
+    return "?" if n is None else f"{n} item{'s' if n != 1 else ''}"
+
+
+MAX_LABELS_SHOWN = 10
+MAX_LABEL_SHOWN = 24
+
+
+def describe(s: VaultSummary) -> list[str]:
+    """Lines about the opened vault that may appear before the confirmation: status (first), name and
+    up to MAX_LABELS_SHOWN labels, each at most MAX_LABEL_SHOWN code points. Never a secret value."""
+    if s.contents != "ok":
+        return []
+    lines = [
+        f"Status: {s.state}, {s.freshness_text}",
+        f"Vault: {display_name(s.name)} ({_count(s.items)}; {s.keys})",
+    ]
+    if s.labels:
+        shown = [truncate(inert_label(label), MAX_LABEL_SHOWN) or "(no label)" for label in s.labels]
+        more = len(shown) - MAX_LABELS_SHOWN
+        text = ", ".join(shown[:MAX_LABELS_SHOWN]) + (f", +{more} more" if more > 0 else "")
+        lines.append("Items: " + text)
+    return lines
 
 
 def write_new_file(path: Path, data: bytes | bytearray, mode: int) -> None:
