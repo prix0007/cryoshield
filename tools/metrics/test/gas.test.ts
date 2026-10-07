@@ -15,7 +15,8 @@ describe('sponsored gas', () => {
       total_wei: '3000000000000000',
       total_eth: '0.003',
       per_week: { [W41]: { ops: 2, wei: '3000000000000000', eth: '0.003' } },
-      excluded: { unsponsored_ops: 1, other_paymaster_ops: 1, other_paymaster_wei: '7000000000000000' },
+      pending: 0,
+      excluded: { unsponsored_ops: 1, other_paymaster_ops: 1 },
       paymasters_configured: 1,
     });
   });

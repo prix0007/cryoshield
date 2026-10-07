@@ -56,14 +56,22 @@ One JSON object (`schema: cryoshield-metrics/1`): the network, chain ID and each
 `vaults_total`, `vaults_by_registry`, `created`, `updates_total`, `updates`, `weekly_active` (ISO weeks), `keys_per_vault`,
 `mirror_coverage` and `sponsored_gas` (wei and ETH, total and per week).
 
-**Privacy rules** (all enforced in `src/report.ts` and tested):
+**Privacy rules** (all enforced in `src/report.ts` and tested; design D2):
 
 - No address, vaultId, locator, credential ID, transaction hash, blob byte or per-vault row. Before anything is written,
   the report is scanned and refused if it holds any 20- or 32-byte hex value other than the registry addresses.
-- On every public network (every chain except anvil, 31337), a weekly or distribution bucket, or a total, that covers 1
-  or 2 vaults (for gas: 1 or 2 accounts) is shown as `"<3"`.
-- Complementary suppression: if exactly one cell of a family that sums to a published total is hidden, the next-smallest
-  cell is hidden too, so the hidden one can't be recovered by subtraction.
+- On every public network (every chain except anvil, 31337), no published number covers fewer than 3 vaults (for gas:
+  3 accounts), and none can be recovered by subtraction, within one report or between weekly reports:
+  - the run stops at the end of the last **complete** ISO week (`through_week`), so a published week never changes;
+  - time series (`created`, `updates`, `weekly_active`, `sponsored_gas.per_week`) join consecutive weeks into ranges
+    such as `2026-W40..2026-W42` until a range covers at least 3; a range depends only on data up to its own last
+    week, so it is identical in every later report. The open trailing range is shown only as `*_pending: "<3"` and is
+    in no total;
+  - `vaults_total`, `vaults_by_registry`, `keys_per_vault` and `mirror_coverage` cover only vaults created in closed
+    ranges, with small categories merged (`"2-3"`, `"v1+v2"`); 1 or 2 unmirrored vaults are shown only as bounds.
+- Residual, accepted: snapshot metrics (keys per vault, mirror coverage) reflect each vault's latest state, so two
+  reports can differ when an existing vault adds a key or gets mirrored. Both facts are public on-chain/Arweave data
+  and the report never links them to a vault.
 
 ## Scheduled run
 

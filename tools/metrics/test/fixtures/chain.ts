@@ -130,7 +130,9 @@ export class FakeChain {
         return toHex(this.head);
       case 'eth_getBlockByNumber': {
         const n = BigInt(params[0] as string);
-        const ts = this.timestamps.get(n) ?? 0;
+        // blocks without events take the timestamp of the nearest earlier known block (time never goes backwards)
+        let ts = 0;
+        for (const [b, t] of this.timestamps) if (b <= n && t >= ts) ts = t;
         return { number: toHex(n), timestamp: toHex(ts) };
       }
       case 'eth_getLogs': {

@@ -42,14 +42,6 @@ jobs:
         run: pnpm install --frozen-lockfile --filter @cryoshield/metrics
       - name: Compute the metrics
         run: pnpm --filter @cryoshield/metrics metrics --network op-sepolia --out "${RUNNER_TEMP}/metrics/metrics.json"
-      - name: Summary (aggregates only)
-        run: |
-          {
-            echo '### CryoShield metrics (op-sepolia)'
-            echo '```json'
-            cat "${RUNNER_TEMP}/metrics/metrics.json"
-            echo '```'
-          } >> "${GITHUB_STEP_SUMMARY}"
       - name: Upload the report
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

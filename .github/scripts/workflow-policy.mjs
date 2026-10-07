@@ -18,9 +18,9 @@
 //           (repository owner, or .github/trusted-authors.json read from the default branch): an exact, unconditional
 //           gate step at a fixed position (authorGate below), and a valid trusted-authors.json.
 //   scheduled read-only: (add-privacy-preserving-analytics 2.2) SCHEDULED_READ_ONLY workflows run only on schedule and
-//           input-less workflow_dispatch, reference no secrets at all (GITHUB_TOKEN included), hold only contents: read,
-//           never persist checkout credentials, use no environment, and never commit, push, call the GitHub API or
-//           deploy; metrics.yml must upload its report with upload-artifact and retention-days <= 90.
+//           input-less workflow_dispatch, reference no secrets or github.token, hold only contents: read, never persist
+//           checkout credentials, use no environment or custom shell, use only allow-listed actions and run only
+//           allow-listed programs; metrics.yml must upload its report with upload-artifact and retention-days <= 90.
 //   zizmor: SHA pinning (via that hash-pin policy), persist-credentials (artipacked), template injection, etc.
 //
 // CLI: node workflow-policy.mjs [<.github dir>]   (default: .github)  exit 0 ok, 1 violations.
@@ -538,6 +538,24 @@ export const SCHEDULED_READ_ONLY = {
   'beacon-drift.yml': {},
 };
 const SCHEDULED_TRIGGERS = ['schedule', 'workflow_dispatch'];
+// Allow-lists rather than block-lists (security review LOW-4): the only actions, and the only programs a run step may
+// start (shell grouping braces aside). No command substitution, no inline node code, no pnpm dlx/exec.
+const SCHEDULED_ACTIONS = ['actions/checkout', 'pnpm/action-setup', 'actions/setup-node', 'actions/upload-artifact'];
+const SCHEDULED_PROGRAMS = ['pnpm', 'node', 'echo', 'cat'];
+const SCHEDULED_FORBIDDEN_ARGS = /(^|\s)(-e|--eval|-p|--print|dlx|exec)(\s|$)/;
+function scheduledRunProblems(run) {
+  const text = withoutComments(run);
+  const problems = [];
+  if (/\$\(|`|<\(|>\(/.test(text)) problems.push('command substitution');
+  for (const raw of text.split(/\n|;|&&|\|\||\|/)) {
+    const words = raw.trim().split(/\s+/).filter((w) => w && !/^[{}()]$/.test(w));
+    if (words.length === 0) continue;
+    if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(words[0])) problems.push(`environment assignment '${words[0]}'`);
+    else if (!SCHEDULED_PROGRAMS.includes(words[0])) problems.push(`program '${words[0]}'`);
+    else if (['node', 'pnpm'].includes(words[0]) && SCHEDULED_FORBIDDEN_ARGS.test(words.slice(1).join(' '))) problems.push(`'${words.slice(0, 2).join(' ')}'`);
+  }
+  return problems;
+}
 // Writes anywhere: commits, pushes, tags, the gh CLI, GitHub API writes, any HTTP write verb, deploy tooling.
 const WRITES_SOMEWHERE = /\bgit\s+(push|commit|tag|remote)\b|(^|[\s;&|(])gh\s+\S|api\.github\.com|-X\s*(POST|PUT|PATCH|DELETE)\b|--request\s+(POST|PUT|PATCH|DELETE)\b|\bfly(ctl)?\s+deploy\b|\bflyctl\b/m;
 
@@ -550,6 +568,7 @@ function checkScheduled(file, name, wf, on) {
   if (isObj(dispatch) && dispatch.inputs !== undefined) err('workflow_dispatch may not take inputs (nothing user-controlled reaches a scheduled read-only run)');
   const secretRefs = exprsOf(wf).filter((e) => /\bsecrets\b/i.test(e)).length + strings(wf).filter((x) => x === 'inherit').length;
   if (secretRefs) err(`secrets must not be referenced in a read-only scheduled workflow, GITHUB_TOKEN included (${secretRefs} reference(s))`);
+  if (exprsOf(wf).some((e) => /\bgithub\s*\.\s*token\b|\bgithub\s*\[\s*['"]token['"]\s*\]/i.test(e))) err('github.token must not be referenced in a read-only scheduled workflow');
   const uploads = [];
   for (const [id, job] of Object.entries(isObj(wf.jobs) ? wf.jobs : {})) {
     if (!isObj(job)) continue;
@@ -564,7 +583,12 @@ function checkScheduled(file, name, wf, on) {
       const uses = String(step.uses ?? '');
       if (/^actions\/checkout@/.test(uses) && (!isObj(step.with) || step.with['persist-credentials'] !== false)) err(`${label}: checkout must set persist-credentials: false`);
       if (/^actions\/upload-artifact@/.test(uses)) uploads.push([label, step]);
-      if (step.run !== undefined && WRITES_SOMEWHERE.test(withoutComments(step.run))) err(`${label}: a read-only scheduled workflow must never commit, push, call the GitHub API or deploy`);
+      if (step.uses !== undefined && !SCHEDULED_ACTIONS.includes(uses.split('@')[0])) err(`${label}: action '${uses.split('@')[0]}' is not allowed in a read-only scheduled workflow (allowed: ${SCHEDULED_ACTIONS.join(', ')})`);
+      if (step.shell !== undefined) err(`${label}: a custom shell is not allowed in a read-only scheduled workflow`);
+      if (step.run !== undefined) {
+        if (WRITES_SOMEWHERE.test(withoutComments(step.run))) err(`${label}: a read-only scheduled workflow must never commit, push, call the GitHub API or deploy`);
+        for (const p of scheduledRunProblems(step.run)) err(`${label}: ${p} is not allowed in a read-only scheduled workflow (programs: ${SCHEDULED_PROGRAMS.join(', ')})`);
+      }
     }
   }
   if (profile.artifact) {

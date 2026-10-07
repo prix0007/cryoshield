@@ -41,11 +41,11 @@ public on-chain.
 
 #### Scenario: Small-cell suppression
 - **WHEN** a weekly or distribution bucket holds fewer than 3 vaults on a public network
-- **THEN** that bucket is reported as `"<3"` rather than the exact count
+- **THEN** that bucket is not reported with its exact count: it is merged with the following weeks (or the adjacent categories) until the group holds at least 3, and a group that is still open is reported only as `"<3"`
 
 #### Scenario: No hidden cell recoverable by subtraction
-- **WHEN** on a public network a total covers fewer than 3 vaults (for gas: fewer than 3 accounts), or exactly one cell of a family that sums to a published total is hidden
-- **THEN** that total, or the next-smallest cell of the family, is also reported as `"<3"`
+- **WHEN** a reader subtracts published numbers within one report, or compares the reports of successive weeks, on a public network
+- **THEN** no group of fewer than 3 vaults (for gas: 3 accounts) can be recovered, because the report stops at the last complete ISO week, a published week range never changes, and no total includes an open group
 
 ### Requirement: Arweave mirror coverage metric
 The report SHALL include mirror coverage: the share of vaults whose latest on-chain version has an Arweave item tagged

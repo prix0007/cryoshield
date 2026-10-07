@@ -5,7 +5,8 @@
 // counted as lookup_failed, never as mirrored. Vault ids go only to the configured gateways, never to the report.
 import { keccak256, type Hex } from 'viem';
 import { MAX_BLOB } from './blob.ts';
-import type { MirrorResult } from './report.ts';
+import { fetchCapped } from './http.ts';
+import type { MirrorOutcome, MirrorResult } from './report.ts';
 
 export const DEFAULT_GATEWAYS = ['https://arweave.net', 'https://turbo-gateway.com'];
 const MAX_GRAPHQL_BYTES = 256 * 1024;
@@ -19,43 +20,10 @@ export interface MirrorTarget {
   blobHash: Hex;
 }
 
-async function readCapped(res: Response, cap: number): Promise<Uint8Array | null> {
-  const len = Number(res.headers.get('content-length') ?? '0');
-  if (len > cap) return null;
-  if (!res.body) {
-    const b = new Uint8Array(await res.arrayBuffer());
-    return b.length > cap ? null : b;
-  }
-  const reader = res.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    total += value.length;
-    if (total > cap) {
-      await reader.cancel();
-      return null;
-    }
-    chunks.push(value);
-  }
-  const out = new Uint8Array(total);
-  let o = 0;
-  for (const c of chunks) {
-    out.set(c, o);
-    o += c.length;
-  }
-  return out;
-}
-
-async function timed(fetchFn: typeof fetch, url: string, init: RequestInit = {}): Promise<Response> {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
-  try {
-    return await fetchFn(url, { ...init, signal: ctrl.signal, credentials: 'omit', redirect: 'follow' });
-  } finally {
-    clearTimeout(timer);
-  }
+/** Arweave serves item data from sandbox subdomains of the gateway: allow only https on the gateway or below it. */
+function sameSite(host: string) {
+  const base = new URL(host).hostname;
+  return (to: URL) => to.hostname === base || to.hostname.endsWith(`.${base}`);
 }
 
 interface Node {
@@ -73,13 +41,14 @@ async function lookup(host: string, t: MirrorTarget, fetchFn: typeof fetch): Pro
       { name: 'CryoShield-Version', values: [String(t.version)] },
     ],
   };
-  const res = await timed(fetchFn, `${host}/graphql`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ query, variables }),
-  });
+  const res = await fetchCapped(
+    fetchFn,
+    `${host}/graphql`,
+    { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ query, variables }) },
+    { cap: MAX_GRAPHQL_BYTES, timeoutMs: TIMEOUT_MS },
+  );
   if (!res.ok) throw new Error(`GraphQL HTTP ${res.status}`);
-  const body = await readCapped(res, MAX_GRAPHQL_BYTES);
+  const body = res.body;
   if (!body) throw new Error('GraphQL response too large');
   const json = JSON.parse(new TextDecoder().decode(body)) as {
     data?: { transactions?: { edges?: { node?: { id?: unknown; data?: { size?: unknown }; tags?: { name?: unknown; value?: unknown }[] } }[] } };
@@ -101,9 +70,7 @@ const tagsMatch = (n: Node, t: MirrorTarget) =>
   n.tags.get('CryoShield-Vault-Id')?.some((v) => v.toLowerCase() === t.vaultId.toLowerCase()) === true &&
   n.tags.get('CryoShield-Version')?.includes(String(t.version)) === true;
 
-type Outcome = 'mirrored' | 'not_mirrored' | 'lookup_failed';
-
-async function check(t: MirrorTarget, gateways: string[], fetchFn: typeof fetch): Promise<Outcome> {
+async function check(t: MirrorTarget, gateways: string[], fetchFn: typeof fetch): Promise<MirrorOutcome> {
   let anyLookup = false;
   for (const host of gateways) {
     let nodes: Node[];
@@ -116,9 +83,8 @@ async function check(t: MirrorTarget, gateways: string[], fetchFn: typeof fetch)
     for (const n of nodes) {
       if (!ITEM_ID.test(n.id) || !Number.isFinite(n.size) || n.size < 1 || n.size > MAX_BLOB || !tagsMatch(n, t)) continue;
       try {
-        const res = await timed(fetchFn, `${host}/${n.id}`);
-        if (!res.ok) continue;
-        const data = await readCapped(res, MAX_BLOB);
+        const res = await fetchCapped(fetchFn, `${host}/${n.id}`, {}, { cap: MAX_BLOB, timeoutMs: TIMEOUT_MS, allowRedirect: sameSite(host), maxRedirects: 3 });
+        const data = res.ok ? res.body : null;
         if (data && data.length > 0 && keccak256(data) === t.blobHash.toLowerCase()) return 'mirrored';
       } catch {
         /* try the next item */
@@ -128,15 +94,22 @@ async function check(t: MirrorTarget, gateways: string[], fetchFn: typeof fetch)
   return anyLookup ? 'not_mirrored' : 'lookup_failed';
 }
 
-export async function mirrorCoverage(targets: MirrorTarget[], gateways: string[], fetchFn: typeof fetch = fetch): Promise<MirrorResult> {
-  const result: MirrorResult = { vaults: targets.length, mirrored: 0, not_mirrored: 0, lookup_failed: 0 };
+/** One outcome per target, in order. */
+export async function mirrorOutcomes(targets: MirrorTarget[], gateways: string[], fetchFn: typeof fetch = fetch): Promise<MirrorOutcome[]> {
+  const out: MirrorOutcome[] = new Array(targets.length);
   let next = 0;
   const worker = async () => {
     while (next < targets.length) {
-      const t = targets[next++] as MirrorTarget;
-      result[await check(t, gateways, fetchFn)]++;
+      const i = next++;
+      out[i] = await check(targets[i] as MirrorTarget, gateways, fetchFn);
     }
   };
   await Promise.all(Array.from({ length: Math.min(CONCURRENCY, targets.length) }, worker));
+  return out;
+}
+
+export async function mirrorCoverage(targets: MirrorTarget[], gateways: string[], fetchFn: typeof fetch = fetch): Promise<MirrorResult> {
+  const result: MirrorResult = { vaults: targets.length, mirrored: 0, not_mirrored: 0, lookup_failed: 0 };
+  for (const o of await mirrorOutcomes(targets, gateways, fetchFn)) result[o]++;
   return result;
 }

@@ -2,6 +2,7 @@
 // else is read (spec "Chain ID mismatch refused"). eth_getLogs pages adapt to each RPC's block-range limit, as
 // tools/recover/chain.py does: start at 10k blocks, halve on a range error, give up below MIN_LOG_CHUNK.
 import type { Hex } from 'viem';
+import { clean, fetchCapped } from './http.ts';
 
 export const DEFAULT_LOG_CHUNK = 10_000n;
 export const MIN_LOG_CHUNK = 64n;
@@ -80,7 +81,7 @@ export class Rpc {
       try {
         got = Number(BigInt((await probe.send(url, 'eth_chainId', [])) as string));
       } catch (e) {
-        warnings.push(`RPC ${hostOf(url)} is unreachable (${(e as Error).message.slice(0, 120)}); skipped`);
+        warnings.push(`RPC ${hostOf(url)} is unreachable (${clean((e as Error).message, 120)}); skipped`);
         continue;
       }
       if (got !== chainId) throw new ChainIdMismatchError(`RPC ${hostOf(url)} reports chain ID ${got}, expected ${chainId}; refusing to read logs`);
@@ -93,32 +94,25 @@ export class Rpc {
   }
 
   private async send(url: string, method: string, params: unknown[]): Promise<unknown> {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
-    let res: Response;
+    let res;
     try {
-      res = await this.fetchFn(url, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ jsonrpc: '2.0', id: ++this.id, method, params }),
-        signal: ctrl.signal,
-        credentials: 'omit',
-        redirect: 'error',
-      });
+      res = await fetchCapped(
+        this.fetchFn,
+        url,
+        { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: ++this.id, method, params }) },
+        { cap: MAX_RESPONSE_BYTES, timeoutMs: TIMEOUT_MS },
+      );
     } catch (e) {
-      throw new RpcError(`request failed: ${(e as Error).message}`);
-    } finally {
-      clearTimeout(timer);
+      throw new RpcError(clean((e as Error).message));
     }
-    const text = await res.text();
-    if (text.length > MAX_RESPONSE_BYTES) throw new RpcError('response too large');
+    if (!res.body) throw new RpcError('response too large', undefined, res.status);
     let body: { result?: unknown; error?: { code?: number; message?: string } };
     try {
-      body = JSON.parse(text);
+      body = JSON.parse(new TextDecoder().decode(res.body));
     } catch {
       throw new RpcError(`HTTP ${res.status}: not JSON`, undefined, res.status);
     }
-    if (body.error) throw new RpcError(String(body.error.message ?? 'error'), body.error.code, res.status);
+    if (body.error) throw new RpcError(clean(String(body.error.message ?? 'error')), typeof body.error.code === 'number' ? body.error.code : undefined, res.status);
     if (!res.ok) throw new RpcError(`HTTP ${res.status}`, undefined, res.status);
     return body.result;
   }

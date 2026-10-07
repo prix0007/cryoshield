@@ -59,6 +59,7 @@ export function scenario(chainId = 31337): Scenario {
   chain.userOp(ENTRY_POINT, { sender: OWNER.a, paymaster: OTHER_PAYMASTER, gasCost: 7_000_000_000_000_000n, block: 60n, ts: MON_W41 + 7 * DAY });
   chain.userOp(ENTRY_POINT, { sender: OWNER.stranger, paymaster: SPONSOR, gasCost: 9_000_000_000_000_000n, block: 61n, ts: MON_W41 + 7 * DAY });
   chain.head = 70n;
+  chain.timestamps.set(70n, MON_W41 + 9 * DAY); // the head is in W42 (Wednesday): W42 is not complete
   return { chain, blobs: { a, b: b, c: c3 } };
 }
 

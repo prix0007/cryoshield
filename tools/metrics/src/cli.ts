@@ -8,6 +8,7 @@ import { dirname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 import { checkUrls, ConfigError, loadNetwork, loadPaymasters } from './config.ts';
+import { clean } from './http.ts';
 import { collect } from './metrics.ts';
 import { DEFAULT_GATEWAYS } from './mirror.ts';
 import { ChainIdMismatchError } from './rpc.ts';
@@ -56,7 +57,7 @@ export async function main(argv: string[]): Promise<number> {
     process.stdout.write(USAGE);
     return 0;
   }
-  const log = args.quiet ? () => {} : (m: string) => process.stderr.write(`metrics: ${m}\n`);
+  const log = args.quiet ? () => {} : (m: string) => process.stderr.write(`metrics: ${clean(m, 400)}\n`);
   try {
     if (args['to-block'] !== undefined && !/^[0-9]{1,19}$/.test(args['to-block'])) throw new ConfigError('--to-block must be a block number');
     const net = loadNetwork(args.network, {
@@ -78,7 +79,7 @@ export async function main(argv: string[]): Promise<number> {
     } else process.stdout.write(json);
     return 0;
   } catch (e) {
-    process.stderr.write(`metrics: ${(e as Error).message}\n`);
+    process.stderr.write(`metrics: ${clean((e as Error).message, 400)}\n`);
     if (e instanceof ChainIdMismatchError) return 3;
     return e instanceof ConfigError ? 2 : 1;
   }

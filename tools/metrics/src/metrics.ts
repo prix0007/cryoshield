@@ -5,8 +5,8 @@ import { decodeAbiParameters, decodeFunctionResult, encodeFunctionData, hexToByt
 import { MAX_BATCH_IDS, REGISTRY_ABI, TOPIC } from './abi.ts';
 import { keyCount } from './blob.ts';
 import type { GasConfig, Network, RegistrySpec } from './config.ts';
-import { DEFAULT_GATEWAYS, mirrorCoverage, type MirrorTarget } from './mirror.ts';
-import { buildReport, type GasOp, type MirrorResult, type Report, type VaultEvent, type VaultFacts } from './report.ts';
+import { DEFAULT_GATEWAYS, mirrorOutcomes, type MirrorTarget } from './mirror.ts';
+import { buildReport, isoWeek, weekStart, type GasOp, type MirrorOutcome, type Report, type VaultEvent, type VaultFacts } from './report.ts';
 import { Rpc } from './rpc.ts';
 
 export interface CollectOptions {
@@ -21,6 +21,7 @@ export interface CollectOptions {
 }
 
 interface Latest {
+  key: string;
   registry: RegistrySpec;
   vaultId: Hex;
   owner: Hex | null;
@@ -59,6 +60,7 @@ async function readRegistry(rpc: Rpc, reg: RegistrySpec, toBlock: bigint) {
     const prev = latest.get(vault);
     if (!prev || version >= prev.version) {
       latest.set(vault, {
+        key: vault,
         registry: reg,
         vaultId,
         owner: created ? topicAddress(l.topics[2]) : (prev?.owner ?? null),
@@ -116,14 +118,34 @@ async function sponsoredOps(rpc: Rpc, gas: GasConfig, owners: Hex[], fromBlock: 
   return ops;
 }
 
+/** The last block whose timestamp is before `boundary` (binary search), or -1n. */
+async function lastBlockBefore(rpc: Rpc, boundary: number, hi: bigint): Promise<bigint> {
+  if ((await rpc.blockTimestamp(0n)) >= boundary) return -1n;
+  let lo = 0n;
+  while (lo < hi) {
+    const mid = (lo + hi + 1n) / 2n;
+    if ((await rpc.blockTimestamp(mid)) < boundary) lo = mid;
+    else hi = mid - 1n;
+  }
+  return lo;
+}
+
 export async function collect(net: Network, opts: CollectOptions = {}): Promise<Report> {
   const fetchFn = opts.fetchFn ?? fetch;
   const log = opts.log ?? (() => {});
   const rpc = await Rpc.connect(net.rpcs, net.chainId, fetchFn); // chain-ID check BEFORE any log is read
   for (const w of rpc.warnings) log(w);
   const head = await rpc.blockNumber();
-  const toBlock = opts.toBlock !== undefined && opts.toBlock < head ? opts.toBlock : head;
+  let toBlock = opts.toBlock !== undefined && opts.toBlock < head ? opts.toBlock : head;
   const notes: string[] = [];
+  let throughWeek: string | null = null;
+  if (net.public) {
+    // stop at the last COMPLETE ISO week, so a published week never changes in a later report (design D2)
+    const boundary = weekStart(await rpc.blockTimestamp(toBlock));
+    throughWeek = isoWeek(boundary - 1);
+    toBlock = await lastBlockBefore(rpc, boundary, toBlock);
+    log(`reading complete weeks only: through ${throughWeek} (block ${toBlock})`);
+  }
 
   const events: VaultEvent[] = [];
   const vaults = new Map<string, VaultFacts>();
@@ -131,7 +153,7 @@ export async function collect(net: Network, opts: CollectOptions = {}): Promise<
   const ranges: { version: number; address: string; fromBlock: bigint; toBlock: bigint }[] = [];
   for (const reg of net.registries) {
     log(`reading registry v${reg.version} from block ${reg.deployBlock} to ${toBlock}`);
-    ranges.push({ version: reg.version, address: reg.address, fromBlock: reg.deployBlock, toBlock });
+    ranges.push({ version: reg.version, address: reg.address, fromBlock: reg.deployBlock, toBlock: toBlock < 0n ? 0n : toBlock });
     if (reg.deployBlock > toBlock) continue;
     const r = await readRegistry(rpc, reg, toBlock);
     for (const e of r.events) events.push({ kind: e.kind, registry: e.registry, vault: e.vault, ts: await rpc.blockTimestamp(e.block) });
@@ -142,16 +164,17 @@ export async function collect(net: Network, opts: CollectOptions = {}): Promise<
     }
   }
 
-  let mirror: MirrorResult | null = null;
+  let mirror: Map<string, MirrorOutcome> | null = null;
   if (opts.mirror !== false) {
     const gateways = opts.mirror?.gateways ?? DEFAULT_GATEWAYS;
     log(`checking Arweave mirror coverage of ${latestAll.length} vault(s)`);
     const targets: MirrorTarget[] = latestAll.map((l) => ({ vaultId: l.vaultId, version: l.version, blobHash: l.blobHash }));
-    mirror = await mirrorCoverage(targets, gateways, fetchFn);
+    const outcomes = await mirrorOutcomes(targets, gateways, fetchFn);
+    mirror = new Map(latestAll.map((l, i) => [l.key, outcomes[i] as MirrorOutcome]));
   } else notes.push('mirror coverage not checked');
 
   let gas: { ops: GasOp[]; paymasters: number } | null = null;
-  if (opts.gas) {
+  if (opts.gas && toBlock >= 0n) {
     const owners = latestAll.map((l) => l.owner).filter((o): o is Hex => o !== null);
     const from = net.registries.reduce((m, r) => (r.deployBlock < m ? r.deployBlock : m), toBlock);
     log(`reading EntryPoint operations of ${new Set(owners).size} vault owner(s)`);
@@ -163,6 +186,7 @@ export async function collect(net: Network, opts: CollectOptions = {}): Promise<
     chainId: net.chainId,
     public: net.public,
     registries: ranges,
+    throughWeek,
     events,
     vaults,
     mirror,

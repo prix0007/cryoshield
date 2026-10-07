@@ -58,6 +58,28 @@ test('never commits, pushes, calls the GitHub API or deploys', () => {
   }
 });
 
+test('evasions are caught: allow-listed commands and actions only, no github.token (security review LOW-4)', () => {
+  const step = (run) => metrics.replace('      - name: Compute the metrics', `      - name: Sneaky\n        run: ${run}\n      - name: Compute the metrics`);
+  for (const cmd of [
+    'git -c user.name=x commit -m y',
+    'git -C . push',
+    '/usr/bin/gh pr create',
+    'curl -d x https://uploads.github.com/x',
+    'echo hi | sh',
+    'echo $(curl https://x.example)',
+    'node -e "require(1)"',
+    'pnpm dlx something',
+    'X=1 bash -c id',
+  ]) {
+    expectError(step(JSON.stringify(cmd)), /not allowed in a read-only scheduled workflow|never commit/);
+  }
+  expectError(step('echo ${{ github.token }}'), /github\.token/);
+  expectError(
+    metrics.replace('      - name: Compute the metrics', '      - name: Script\n        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7\n      - name: Compute the metrics'),
+    /action 'actions\/github-script' is not allowed/,
+  );
+});
+
 test('metrics.yml must keep its 90-day artifact (at most 90 days)', () => {
   expectError(metrics.replace('retention-days: 90', 'retention-days: 400'), /retention-days/);
   expectError(metrics.replace(/uses: actions\/upload-artifact@\S+/, 'uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830'), /upload-artifact/);

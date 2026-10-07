@@ -1,8 +1,17 @@
-// The aggregate report (spec product-metrics "Aggregate metrics report", "No identifiers in the report").
+// The aggregate report (spec product-metrics "Aggregate metrics report", "No identifiers in the report"; design D2).
 // Pure functions: events and per-vault facts in, counts out. No address, vaultId, locator, tx hash or blob byte ever
-// reaches the report; on public networks every weekly or distribution bucket holding fewer than MIN_CELL vaults is
-// shown as "<3" (design D2), and assertNoIdentifiers() refuses to emit a report with any 20/32-byte hex value other
-// than the registry addresses.
+// reaches the report, and assertNoIdentifiers() refuses one with any 20/32-byte hex value other than the registries.
+//
+// Small cells on public networks (every chain except the local one) are never published, and never recoverable by
+// subtraction, within one report or across successive weekly reports:
+// - Time series (created, updates, weekly_active, sponsored gas) are merged CHRONOLOGICALLY: consecutive weeks are
+//   joined into one range ("2026-W40..2026-W42") until it covers at least MIN_CELL vaults (gas: accounts). A range
+//   depends only on data up to its own last week, so a published range never changes in a later report. The open
+//   trailing range is only "pending": "<3", and no total includes it.
+// - The run stops at the last complete ISO week (metrics.ts), so a week's data never changes after it is published.
+// - Snapshot metrics (vaults_total, vaults_by_registry, keys_per_vault, mirror_coverage) cover only the "published
+//   population": vaults created in closed creation ranges, which grows in steps of at least MIN_CELL vaults. Their
+//   categories are merged ("2-3" keys, "v1+v2") until each holds at least MIN_CELL vaults; no cell is hidden.
 import { formatEther } from 'viem';
 
 export const SCHEMA = 'cryoshield-metrics/1';
@@ -21,23 +30,11 @@ export function isoWeek(ts: number): string {
   return `${year}-W${String(week).padStart(2, '0')}`;
 }
 
-/** `value` unless the bucket holds 1..MIN_CELL-1 vaults on a public network. */
-export function suppress(value: number, vaults: number, applied: boolean): Cell {
-  return applied && vaults > 0 && vaults < MIN_CELL ? SUPPRESSED : value;
-}
-
-/**
- * Complementary suppression: a family of cells that sums to a published total must not have exactly one hidden cell,
- * or total minus the shown cells gives it away. Then the smallest shown non-zero cell is hidden too.
- */
-export function complement<T>(cells: Record<string, T | typeof SUPPRESSED>, sizes: Record<string, number>): Record<string, T | typeof SUPPRESSED> {
-  const hidden = Object.values(cells).filter((c) => c === SUPPRESSED).length;
-  if (hidden !== 1) return cells;
-  const shown = Object.keys(cells)
-    .filter((k) => cells[k] !== SUPPRESSED && (sizes[k] ?? 0) > 0)
-    .sort((a, b) => (sizes[a] ?? 0) - (sizes[b] ?? 0) || (a < b ? -1 : 1));
-  const victim = shown[0];
-  return victim === undefined ? cells : { ...cells, [victim]: SUPPRESSED };
+/** UNIX time of the Monday 00:00 UTC that starts the ISO week containing `ts`. */
+export function weekStart(ts: number): number {
+  const d = new Date(ts * 1000);
+  const day = (d.getUTCDay() + 6) % 7;
+  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - day) / 1000;
 }
 
 const HEX_RUN = /(?:0x)?[0-9a-fA-F]{40,}/g;
@@ -52,6 +49,75 @@ export function assertNoIdentifiers(report: { registries: readonly { address: st
   const found = findIdentifiers(JSON.stringify(report), report.registries.map((r) => r.address));
   if (found.length > 0) throw new Error(`refusing to write a report containing ${found.length} identifier(s)`);
 }
+
+// ---------------------------------------------------------------------------------------------------------------
+// Merging
+
+export interface Bucket<V> {
+  value: V;
+  members: Set<string>; // vaults (or accounts) in the bucket; only its size is ever used
+}
+
+export interface Merged<V> {
+  cells: Record<string, V>;
+  /** "<3" when the open trailing range covers 1..MIN_CELL-1 members, else 0. */
+  pending: Cell;
+  /** Keys (weeks) inside closed ranges. */
+  closed: Set<string>;
+}
+
+/**
+ * Join consecutive weeks (sorted keys) into ranges until each covers at least MIN_CELL distinct members. With
+ * `applied` false (local chain) every week is its own cell. `add` combines two bucket values.
+ */
+export function mergeSeries<V>(byWeek: Map<string, Bucket<V>>, add: (a: V, b: V) => V, applied: boolean): Merged<V> {
+  const weeks = [...byWeek.keys()].sort();
+  const cells: Record<string, V> = {};
+  const closed = new Set<string>();
+  type Open = { first: string; last: string; value: V; members: Set<string>; weeks: string[] };
+  let open: Open | null = null;
+  for (const w of weeks) {
+    const b = byWeek.get(w) as Bucket<V>;
+    const cur: Open = open
+      ? { first: open.first, last: w, value: add(open.value, b.value), members: new Set([...open.members, ...b.members]), weeks: [...open.weeks, w] }
+      : { first: w, last: w, value: b.value, members: new Set(b.members), weeks: [w] };
+    if (!applied || cur.members.size >= MIN_CELL) {
+      cells[cur.first === cur.last ? cur.first : `${cur.first}..${cur.last}`] = cur.value;
+      for (const x of cur.weeks) closed.add(x);
+      open = null;
+    } else open = cur;
+  }
+  const rest = open as Open | null;
+  return { cells, pending: rest && rest.members.size > 0 ? SUPPRESSED : 0, closed };
+}
+
+/**
+ * Merge ordered categories (e.g. key counts 2..8) into adjacent groups of at least MIN_CELL members; a short
+ * remainder joins the last group. `population` must be 0 or at least MIN_CELL when `applied`.
+ */
+export function mergeCategories(ordered: [string, number][], applied: boolean, join: (a: string, b: string) => string): Record<string, number> {
+  const out: [string, number][] = [];
+  let acc: [string, string, number] | null = null; // first label, last label, count
+  for (const [label, n] of ordered) {
+    if (n === 0) continue;
+    acc = acc ? [acc[0], label, acc[2] + n] : [label, label, n];
+    if (!applied || acc[2] >= MIN_CELL) {
+      out.push([acc[0] === acc[1] ? acc[0] : join(acc[0], acc[1]), acc[2]]);
+      acc = null;
+    }
+  }
+  if (acc) {
+    const prev = out.pop();
+    if (prev) {
+      const first = prev[0].split(/\.\.|-|\+/)[0] ?? prev[0];
+      out.push([join(first, acc[1]), prev[1] + acc[2]]);
+    } else if (!applied) out.push([acc[0] === acc[1] ? acc[0] : join(acc[0], acc[1]), acc[2]]);
+  }
+  return Object.fromEntries(out);
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Inputs and the report
 
 export type EventKind = 'created' | 'updated' | 'locator';
 
@@ -76,11 +142,21 @@ export interface GasOp {
   ts: number;
 }
 
+export type MirrorOutcome = 'mirrored' | 'not_mirrored' | 'lookup_failed';
+
 export interface MirrorResult {
   vaults: number;
   mirrored: number;
   not_mirrored: number;
   lookup_failed: number;
+}
+
+/** Public form: when 1..2 vaults are not (known to be) mirrored, only bounds are shown. */
+export interface MirrorReport {
+  vaults: number;
+  mirrored: number | string;
+  not_mirrored: number | string;
+  lookup_failed: number | string;
 }
 
 export interface WeekGas {
@@ -90,11 +166,12 @@ export interface WeekGas {
 }
 
 export interface SponsoredGas {
-  ops: Cell;
+  ops: number;
   total_wei: string;
   total_eth: string;
-  per_week: Record<string, WeekGas | typeof SUPPRESSED>;
-  excluded: { unsponsored_ops: Cell; other_paymaster_ops: Cell; other_paymaster_wei: string };
+  per_week: Record<string, WeekGas>;
+  pending: Cell;
+  excluded: { unsponsored_ops: Cell; other_paymaster_ops: Cell };
   paymasters_configured: number;
 }
 
@@ -104,15 +181,20 @@ export interface Report {
   network: string;
   chain_id: number;
   registries: { version: string; address: string; from_block: number; to_block: number }[];
+  /** On public networks: the last complete ISO week read. */
+  through_week: string | null;
   suppression: { min_cell: number; applied: boolean };
-  vaults_total: Cell;
-  vaults_by_registry: Record<string, Cell>;
-  created: Record<string, Cell>;
-  updates_total: Cell;
-  updates: Record<string, Cell>;
-  weekly_active: Record<string, Cell>;
-  keys_per_vault: Record<string, Cell>;
-  mirror_coverage: MirrorResult | null;
+  vaults_total: number;
+  vaults_pending: Cell;
+  vaults_by_registry: Record<string, number>;
+  created: Record<string, number>;
+  updates_total: number;
+  updates: Record<string, number>;
+  updates_pending: Cell;
+  weekly_active: Record<string, number>;
+  weekly_active_pending: Cell;
+  keys_per_vault: Record<string, number>;
+  mirror_coverage: MirrorReport | null;
   sponsored_gas: SponsoredGas | null;
   notes: string[];
 }
@@ -122,90 +204,137 @@ export interface ReportInput {
   chainId: number;
   public: boolean;
   registries: { version: number; address: string; fromBlock: bigint; toBlock: bigint }[];
+  throughWeek: string | null;
   events: VaultEvent[];
   vaults: Map<string, VaultFacts>;
-  mirror: MirrorResult | null;
+  /** Per-vault mirror outcome (opaque vault keys), or null when not checked. */
+  mirror: Map<string, MirrorOutcome> | null;
   gas: { ops: GasOp[]; paymasters: number } | null;
   notes: string[];
   now: Date;
 }
 
-const sorted = <T>(m: Map<string, T>) => new Map([...m].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
+const addN = (a: number, b: number) => a + b;
 
-/** Per-week buckets: shown value = events (or vaults), suppression judged by the distinct vaults in the bucket. */
-function weekly(events: VaultEvent[], kinds: EventKind[], count: 'events' | 'vaults', applied: boolean, summed: boolean): Record<string, Cell> {
-  const byWeek = new Map<string, { events: number; vaults: Set<string> }>();
+function series(events: VaultEvent[], kinds: EventKind[], count: 'events' | 'vaults'): Map<string, Bucket<number>> {
+  const byWeek = new Map<string, Bucket<number> & { events: number }>();
   for (const e of events) {
     if (!kinds.includes(e.kind)) continue;
     const w = isoWeek(e.ts);
-    const b = byWeek.get(w) ?? { events: 0, vaults: new Set<string>() };
+    const b = byWeek.get(w) ?? { value: 0, events: 0, members: new Set<string>() };
     b.events++;
-    b.vaults.add(e.vault);
+    b.members.add(e.vault);
+    b.value = count === 'events' ? b.events : b.members.size;
     byWeek.set(w, b);
   }
-  const out: Record<string, Cell> = {};
-  const sizes: Record<string, number> = {};
-  for (const [w, b] of sorted(byWeek)) {
-    out[w] = suppress(count === 'events' ? b.events : b.vaults.size, b.vaults.size, applied);
-    sizes[w] = b.vaults.size;
-  }
-  return summed ? complement(out, sizes) : out;
+  return byWeek;
 }
 
-function distribution(values: string[], applied: boolean): Record<string, Cell> {
-  const counts = new Map<string, number>();
-  for (const v of values) counts.set(v, (counts.get(v) ?? 0) + 1);
-  const out: Record<string, Cell> = {};
-  const keys = [...counts.keys()].sort((a, b) => (a === 'unknown' ? 1 : b === 'unknown' ? -1 : Number(a) - Number(b) || (a < b ? -1 : 1)));
-  for (const k of keys) out[k] = suppress(counts.get(k) ?? 0, counts.get(k) ?? 0, applied);
-  return complement(out, Object.fromEntries(counts));
+/** Distinct vaults across a range (not the sum of weekly counts): merge members, then count. */
+function activeSeries(events: VaultEvent[], applied: boolean): Merged<number> {
+  const byWeek = new Map<string, Bucket<Set<string>>>();
+  for (const e of events) {
+    const w = isoWeek(e.ts);
+    const b = byWeek.get(w) ?? { value: new Set<string>(), members: new Set<string>() };
+    b.value.add(e.vault);
+    b.members.add(e.vault);
+    byWeek.set(w, b);
+  }
+  const m = mergeSeries(byWeek, (a, b) => new Set([...a, ...b]), applied);
+  return { cells: Object.fromEntries(Object.entries(m.cells).map(([k, v]) => [k, v.size])), pending: m.pending, closed: m.closed };
 }
 
 const eth = (wei: bigint) => formatEther(wei);
 
 function sponsoredGas(gas: { ops: GasOp[]; paymasters: number }, applied: boolean): SponsoredGas {
-  const sponsored = gas.ops.filter((o) => o.sponsored);
-  const total = sponsored.reduce((s, o) => s + o.wei, 0n);
-  const byWeek = new Map<string, { ops: number; wei: bigint; senders: Set<string> }>();
-  for (const o of sponsored) {
+  const byWeek = new Map<string, Bucket<{ ops: number; wei: bigint }>>();
+  for (const o of gas.ops.filter((x) => x.sponsored)) {
     const w = isoWeek(o.ts);
-    const b = byWeek.get(w) ?? { ops: 0, wei: 0n, senders: new Set<string>() };
-    b.ops++;
-    b.wei += o.wei;
-    b.senders.add(o.sender);
+    const b = byWeek.get(w) ?? { value: { ops: 0, wei: 0n }, members: new Set<string>() };
+    b.value = { ops: b.value.ops + 1, wei: b.value.wei + o.wei };
+    b.members.add(o.sender);
     byWeek.set(w, b);
   }
-  let per_week: SponsoredGas['per_week'] = {};
-  const sizes: Record<string, number> = {};
-  for (const [w, b] of sorted(byWeek)) {
-    // a week's gas sum with fewer than MIN_CELL distinct accounts could point at single operations
-    per_week[w] = applied && b.senders.size < MIN_CELL ? SUPPRESSED : { ops: b.ops, wei: b.wei.toString(), eth: eth(b.wei) };
-    sizes[w] = b.senders.size;
+  // per-week gas sums are merged until each covers MIN_CELL distinct accounts, so no published sum (or difference of
+  // published sums across reports) is the cost of one account's operations
+  const m = mergeSeries(byWeek, (a, b) => ({ ops: a.ops + b.ops, wei: a.wei + b.wei }), applied);
+  let ops = 0;
+  let total = 0n;
+  const per_week: Record<string, WeekGas> = {};
+  for (const [k, v] of Object.entries(m.cells)) {
+    per_week[k] = { ops: v.ops, wei: v.wei.toString(), eth: eth(v.wei) };
+    ops += v.ops;
+    total += v.wei;
   }
-  per_week = complement(per_week, sizes);
-  const senders = (ops: GasOp[]) => new Set(ops.map((o) => o.sender)).size;
-  const hide = applied && senders(sponsored) > 0 && senders(sponsored) < MIN_CELL;
-  const other = gas.ops.filter((o) => o.otherPaymaster);
-  const unsponsored = gas.ops.filter((o) => !o.sponsored && !o.otherPaymaster);
-  const hideOther = applied && senders(other) > 0 && senders(other) < MIN_CELL;
+  // excluded operations: counts only (no wei), over the same closed weeks, hidden below MIN_CELL accounts
+  const inClosed = (o: GasOp) => !applied || m.closed.has(isoWeek(o.ts));
+  const count = (pick: (o: GasOp) => boolean): Cell => {
+    const sel = gas.ops.filter((o) => pick(o) && inClosed(o));
+    const accounts = new Set(sel.map((o) => o.sender)).size;
+    return applied && accounts > 0 && accounts < MIN_CELL ? SUPPRESSED : sel.length;
+  };
   return {
-    ops: hide ? SUPPRESSED : sponsored.length,
-    total_wei: hide ? SUPPRESSED : total.toString(),
-    total_eth: hide ? SUPPRESSED : eth(total),
+    ops,
+    total_wei: total.toString(),
+    total_eth: eth(total),
     per_week,
+    pending: m.pending,
     excluded: {
-      unsponsored_ops: suppress(unsponsored.length, senders(unsponsored), applied),
-      other_paymaster_ops: hideOther ? SUPPRESSED : other.length,
-      other_paymaster_wei: hideOther ? SUPPRESSED : other.reduce((s, o) => s + o.wei, 0n).toString(),
+      unsponsored_ops: count((o) => !o.sponsored && !o.otherPaymaster),
+      other_paymaster_ops: count((o) => o.otherPaymaster),
     },
     paymasters_configured: gas.paymasters,
   };
 }
 
+export function mirrorReport(outcomes: MirrorOutcome[], applied: boolean): MirrorReport {
+  const n = (o: MirrorOutcome) => outcomes.filter((x) => x === o).length;
+  const vaults = outcomes.length;
+  const mirrored = n('mirrored');
+  const nm = n('not_mirrored');
+  const lf = n('lookup_failed');
+  const small = (x: number) => applied && x > 0 && x < MIN_CELL;
+  const bound = (x: number) => `>=${Math.max(0, x - (MIN_CELL - 1))}`;
+  if (small(vaults - mirrored)) {
+    // 1..2 vaults not (known to be) mirrored: show only bounds, never how many or of which kind
+    return { vaults, mirrored: bound(vaults), not_mirrored: SUPPRESSED, lookup_failed: SUPPRESSED };
+  }
+  // one small part next to a large one: hide the small one, show the large one as a bound so that
+  // vaults - mirrored - shown cannot recover it
+  if (small(nm)) return { vaults, mirrored, not_mirrored: SUPPRESSED, lookup_failed: bound(lf + nm) };
+  if (small(lf)) return { vaults, mirrored, not_mirrored: bound(nm + lf), lookup_failed: SUPPRESSED };
+  return { vaults, mirrored, not_mirrored: nm, lookup_failed: lf };
+}
+
 export function buildReport(input: ReportInput): Report {
   const applied = input.public;
-  const facts = [...input.vaults.values()];
-  const updates = input.events.filter((e) => e.kind === 'updated');
+  const created = mergeSeries(series(input.events, ['created'], 'vaults'), addN, applied);
+  const updates = mergeSeries(series(input.events, ['updated'], 'events'), addN, applied);
+  const active = activeSeries(input.events, applied);
+
+  // the published population: vaults created inside closed creation ranges
+  const createdWeek = new Map<string, string>();
+  for (const e of input.events) if (e.kind === 'created') createdWeek.set(e.vault, isoWeek(e.ts));
+  const population = [...input.vaults.entries()].filter(([k]) => !applied || created.closed.has(createdWeek.get(k) ?? ''));
+  const facts = population.map(([, f]) => f);
+
+  const byRegistry = new Map<number, number>();
+  for (const f of facts) byRegistry.set(f.registry, (byRegistry.get(f.registry) ?? 0) + 1);
+  const registries = [...byRegistry.entries()].sort(([a], [b]) => a - b).map(([v, c]) => [`v${v}`, c] as [string, number]);
+
+  const keys = new Map<string, number>();
+  for (const f of facts) {
+    const k = f.keys === null ? 'unknown' : String(f.keys);
+    keys.set(k, (keys.get(k) ?? 0) + 1);
+  }
+  // key counts ascending, then "unknown" (an unreadable header) last; small groups merge with their neighbour
+  const ordered = [...keys.entries()].sort(([a], [b]) => (a === 'unknown' ? 1 : b === 'unknown' ? -1 : Number(a) - Number(b)));
+  const keysPerVault = mergeCategories(ordered, applied, (a, b) => `${a}-${b}`);
+
+  const populationKeys = new Set(population.map(([k]) => k));
+  const mirror = input.mirror ? mirrorReport([...input.mirror.entries()].filter(([k]) => populationKeys.has(k)).map(([, o]) => o), applied) : null;
+
+  const sum = (r: Record<string, number>) => Object.values(r).reduce(addN, 0);
   const report: Report = {
     schema: SCHEMA,
     generated_at: input.now.toISOString(),
@@ -217,21 +346,22 @@ export function buildReport(input: ReportInput): Report {
       from_block: Number(r.fromBlock),
       to_block: Number(r.toBlock),
     })),
+    through_week: input.throughWeek,
     suppression: { min_cell: MIN_CELL, applied },
-    vaults_total: suppress(facts.length, facts.length, applied),
-    vaults_by_registry: distribution(facts.map((f) => `v${f.registry}`), applied),
-    created: weekly(input.events, ['created'], 'vaults', applied, true),
-    updates_total: suppress(updates.length, new Set(updates.map((e) => e.vault)).size, applied),
-    updates: weekly(input.events, ['updated'], 'events', applied, true),
-    // weekly_active has no published total (a vault can be active in many weeks), so no complement is needed
-    weekly_active: weekly(input.events, ['created', 'updated', 'locator'], 'vaults', applied, false),
-    keys_per_vault: distribution(facts.map((f) => (f.keys === null ? 'unknown' : String(f.keys))), applied),
-    mirror_coverage: input.mirror,
+    vaults_total: facts.length,
+    vaults_pending: created.pending,
+    vaults_by_registry: mergeCategories(registries, applied, (a, b) => `${a}+${b}`),
+    created: created.cells,
+    updates_total: sum(updates.cells),
+    updates: updates.cells,
+    updates_pending: updates.pending,
+    weekly_active: active.cells,
+    weekly_active_pending: active.pending,
+    keys_per_vault: keysPerVault,
+    mirror_coverage: mirror,
     sponsored_gas: input.gas ? sponsoredGas(input.gas, applied) : null,
     notes: input.notes,
   };
-  // vaults_by_registry keys are "v1", "v2"...: keep version order rather than string order
-  report.vaults_by_registry = Object.fromEntries(Object.entries(report.vaults_by_registry).sort(([a], [b]) => Number(a.slice(1)) - Number(b.slice(1))));
   assertNoIdentifiers(report);
   return report;
 }
