@@ -59,10 +59,12 @@ describe('/architecture page', () => {
     const d = doc('architecture/index.html');
     const value = (label: string) => [...d.querySelectorAll('section[aria-labelledby="s5"] tr')].find((tr) => tr.querySelector('th')?.textContent?.trim() === label)?.querySelector('td')?.textContent?.trim();
     // harden-gas-sponsorship: v2 takes every write; v1 is shown as read-only; our factory for this build's RP ID.
-    expect(value('VaultRegistry')).toBe(dep.contracts.vaultRegistryV2.address);
+    expect(value('VaultRegistry v2')).toBe(dep.contracts.vaultRegistryV2.address);
     expect(value('Deploy block')).toBe(String(dep.contracts.vaultRegistryV2.deployBlock));
     expect(value('VaultRegistry v1')).toBe(`${dep.address} (read-only)`);
     expect(value('Account factory')).toBe(dep.contracts.wallets[env.VITE_RP_ID!].factory);
+    expect(value('Account implementation')).toBe(dep.contracts.wallets[env.VITE_RP_ID!].implementation);
+    expect(value('Vault limits')).not.toMatch(/16 vaults per locator$/);
     expect(value('Network')).toContain(`chain ${chainId}`);
     expect(value('WebAuthn RP ID')).toContain(env.VITE_RP_ID);
     expect(html('architecture/index.html')).not.toMatch(/__CS_[A-Z_]+__/);

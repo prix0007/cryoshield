@@ -77,6 +77,7 @@ export function architectureValues(html: string, chainId: number, dep: Pick<Depl
     .replaceAll('__CS_REGISTRY__', dep.v2.address)
     .replaceAll('__CS_DEPLOY_BLOCK__', String(dep.v2.deployBlock))
     .replaceAll('__CS_WALLET_FACTORY__', dep.wallet.factory)
+    .replaceAll('__CS_WALLET_IMPL__', dep.wallet.implementation)
     .replaceAll('__CS_RP_ID__', rpId);
 }
 

@@ -19,7 +19,7 @@
     <main id="main" tabindex="-1">
       <article class="arch-doc">
   <div class="arch-intro">
-    <p class="arch-tag">Reference · __CS_NETWORK__ · updated 4 Oct 2026</p>
+    <p class="arch-tag">Reference · __CS_NETWORK__ · updated 7 Oct 2026</p>
     <h1>CryoShield system map</h1>
     <p class="arch-lede">How a secret goes from your browser to permanent storage and back, which pieces we run, and how code reaches production.</p>
     <p class="arch-source">This page mirrors <a href="https://github.com/prix0007/cryoshield/blob/main/docs/system-design.md" rel="noopener noreferrer">docs/system-design.md</a> in the open-source repository.</p>
@@ -84,7 +84,7 @@
           <text x="835" y="128" text-anchor="middle" font-size="11" font-weight="600" fill-opacity=".6">__CS_NETWORK_UPPER__ (__CS_CHAIN_ID__)</text>
           <text x="835" y="170" text-anchor="middle" font-weight="600" font-size="13">EntryPoint v0.6</text>
           <text x="835" y="250" text-anchor="middle" font-weight="600" font-size="13">CryoShield Smart Wallet</text>
-          <text x="835" y="326" text-anchor="middle" font-weight="600" font-size="13">VaultRegistry</text>
+          <text x="835" y="326" text-anchor="middle" font-weight="600" font-size="13">VaultRegistry v2</text>
           <text x="835" y="346" text-anchor="middle" fill-opacity=".7">no admin, no upgrades</text>
           <text x="835" y="364" text-anchor="middle" fill-opacity=".7">blob ≤1 KB · locator → vaultIds</text>
           <text x="835" y="468" text-anchor="middle" font-weight="600" font-size="13">Arweave permaweb</text>
@@ -264,14 +264,15 @@
     <h2 id="s5">Live reference values</h2>
     <div class="table-wrap"><table class="arch-table">
       <tr><th scope="row">Network</th><td>__CS_NETWORK__, chain __CS_CHAIN_ID__ (mainnet will be OP Mainnet)</td></tr>
-      <tr><th scope="row">VaultRegistry</th><td class="mono">__CS_REGISTRY__</td></tr>
+      <tr><th scope="row">VaultRegistry v2</th><td class="mono">__CS_REGISTRY__</td></tr>
       <tr><th scope="row">VaultRegistry v1</th><td class="mono">__CS_REGISTRY_V1__</td></tr>
       <tr><th scope="row">Deploy block</th><td class="mono">__CS_DEPLOY_BLOCK__</td></tr>
       <tr><th scope="row">Smart account</th><td>CryoShield Smart Wallet (Coinbase Smart Wallet v1.1 code that also requires the key's PIN and this RP ID on every signature) on EntryPoint v0.6, P-256 precompile at <code>0x100</code></td></tr>
       <tr><th scope="row">Account factory</th><td class="mono">__CS_WALLET_FACTORY__</td></tr>
+      <tr><th scope="row">Account implementation</th><td class="mono">__CS_WALLET_IMPL__</td></tr>
       <tr><th scope="row">WebAuthn RP ID</th><td class="mono">__CS_RP_ID__ (permanent)</td></tr>
       <tr><th scope="row">Hosting</th><td>Fly app <code>cryoshield-web</code>, org <code>cryoshield</code>, region sin; DNSSEC and CAA on</td></tr>
-      <tr><th scope="row">Vault limits</th><td>blob ≤ 1024 bytes · 2–8 keys · 16 vaults per locator</td></tr>
+      <tr><th scope="row">Vault limits</th><td>blob ≤ 1024 bytes · 2–8 keys · v2: vault ID derived from the owner account, no per-locator cap, paged lookups (v1: 16 vaults per locator)</td></tr>
       <tr><th scope="row">Source</th><td><a href="https://github.com/prix0007/cryoshield" rel="noopener noreferrer">github.com/prix0007/cryoshield</a> (MIT, public)</td></tr>
     </table></div>
   </section>
