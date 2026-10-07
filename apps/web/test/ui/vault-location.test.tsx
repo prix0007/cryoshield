@@ -3,12 +3,13 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as ops from '../../src/ui/operations';
 import * as unlockMod from '../../src/chain/unlock';
+import userEvent from '@testing-library/user-event';
 import { S as S0 } from '../../src/ui/strings';
 import { LOCATION } from '../../src/ui/strings-location';
+import type { Services } from '../../src/ui/services';
+import { acknowledge, renderApp } from './helpers';
 
 const S = { ...S0, location: { ...S0.location, ...LOCATION } };
-import type { Services } from '../../src/ui/services';
-import { renderApp } from './helpers';
 
 const EXPLORER = 'https://testnet-explorer.optimism.io';
 const REG1 = ('0x' + 'a1'.repeat(20)) as `0x${string}`;
@@ -69,8 +70,8 @@ describe('Where your vault is stored (show-vault-onchain-location 1.3)', () => {
     const p = within(panel);
     expect(p.getByText('OP Sepolia testnet (chain ID 11155420)')).toBeInTheDocument();
     expect(p.getByText(VAULT_ID)).toBeInTheDocument(); // full value for assistive technology
-    expect(p.getByText(OWNER)).toBeInTheDocument();
-    expect(p.getByText(REG2)).toBeInTheDocument();
+    expect(p.getByText(OWNER, { exact: false })).toBeInTheDocument();
+    expect(p.getByText(REG2, { exact: false })).toBeInTheDocument();
     expect(p.getByText(S.location.registryV2)).toBeInTheDocument();
     expect(p.getByText('3')).toBeInTheDocument();
     expect(p.getByText(S.location.publicNote)).toBeInTheDocument();
@@ -82,14 +83,18 @@ describe('Where your vault is stored (show-vault-onchain-location 1.3)', () => {
   it('links addresses to the explorer in a new tab with noopener noreferrer', async () => {
     await openVault();
     const p = within(await expand());
-    const owner = p.getByRole('link', { name: new RegExp(`^${S.location.owner}: ${OWNER}`) });
+    const owner = p.getByRole('link', { name: new RegExp(`^${S.location.owner}: .*${OWNER}`) });
     expect(owner).toHaveAttribute('href', `${EXPLORER}/address/${OWNER}`);
-    const registry = p.getByRole('link', { name: new RegExp(`^${S.location.registry}: ${REG2}`) });
+    const registry = p.getByRole('link', { name: new RegExp(`^${S.location.registry}: .*${REG2}`) });
     expect(registry).toHaveAttribute('href', `${EXPLORER}/address/${REG2}`);
     for (const a of p.getAllByRole('link')) {
       expect(a).toHaveAttribute('target', '_blank');
       expect(a).toHaveAttribute('rel', 'noopener noreferrer');
-      expect(a.getAttribute('aria-label')).toContain(S.location.newTab);
+      expect(a).not.toHaveAttribute('aria-label');
+      // WCAG 2.5.3: the visible (truncated) text is part of the accessible name, with the full value and the new tab.
+      const visible = a.querySelector('.loc-short')!.textContent!;
+      expect(a).toHaveAccessibleName(expect.stringContaining(visible));
+      expect(a).toHaveAccessibleName(expect.stringContaining(S.location.newTab));
     }
   });
 
@@ -99,6 +104,12 @@ describe('Where your vault is stored (show-vault-onchain-location 1.3)', () => {
     fireEvent.click(p.getByRole('button', { name: `${S.location.copy} ${S.location.vaultId}` }));
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(VAULT_ID));
     expect(await p.findByText(S.location.copied(S.location.vaultId))).toBeInTheDocument();
+    const status = p.getByRole('status');
+    const first = status.textContent;
+    fireEvent.click(p.getByRole('button', { name: `${S.location.copy} ${S.location.vaultId}` }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(status.textContent).not.toBe(first)); // the same copy again is announced again
+    expect(status.textContent!.trim()).toBe(S.location.copied(S.location.vaultId));
     fireEvent.click(p.getByRole('button', { name: `${S.location.copy} ${S.location.owner}` }));
     await waitFor(() => expect(writeText).toHaveBeenLastCalledWith(OWNER));
   });
@@ -119,7 +130,7 @@ describe('Where your vault is stored (show-vault-onchain-location 1.3)', () => {
     vi.mocked(ops.ensureMirror).mockResolvedValue({ status: 'saved', itemId: AR_ID });
     await openVault();
     const p = within(await expand());
-    const link = await p.findByRole('link', { name: new RegExp(`^${S.location.arweave}: ${AR_ID}`) });
+    const link = await p.findByRole('link', { name: new RegExp(`^${S.location.arweave}: .*${AR_ID}`) });
     expect(link).toHaveAttribute('href', `https://arweave.net/${AR_ID}`);
     expect(link).toHaveAttribute('rel', 'noopener noreferrer');
   });
@@ -133,14 +144,14 @@ describe('Where your vault is stored (show-vault-onchain-location 1.3)', () => {
     await screen.findByText(S.save.saved);
     const p = within(await expand());
     expect(p.getByText('4')).toBeInTheDocument();
-    expect(p.getByRole('link', { name: new RegExp(`^${S.location.lastSave}: ${HASH}`) })).toHaveAttribute('href', `${EXPLORER}/tx/${HASH}`);
-    expect(p.getByRole('link', { name: new RegExp(`^${S.location.arweave}: ${AR_ID}`) })).toBeInTheDocument();
+    expect(p.getByRole('link', { name: new RegExp(`^${S.location.lastSave}: .*${HASH}`) })).toHaveAttribute('href', `${EXPLORER}/tx/${HASH}`);
+    expect(p.getByRole('link', { name: new RegExp(`^${S.location.arweave}: .*${AR_ID}`) })).toBeInTheDocument();
   });
 
   it('says a legacy v1 vault is read-only and points at the v1 registry', async () => {
     await openVault(OP_SEPOLIA, 'v1');
     const p = within(await expand());
-    expect(p.getByText(REG1)).toBeInTheDocument();
+    expect(p.getByText(REG1, { exact: false })).toBeInTheDocument();
     expect(p.getByText(S.location.registryV1)).toBeInTheDocument();
   });
 
@@ -148,7 +159,7 @@ describe('Where your vault is stored (show-vault-onchain-location 1.3)', () => {
     await openVault({ ...OP_SEPOLIA, chainId: 31337, network: { name: 'local test chain', explorerUrl: null } });
     const p = within(await expand());
     expect(p.queryAllByRole('link')).toEqual([]);
-    expect(p.getByText(OWNER)).toBeInTheDocument();
+    expect(p.getByText(OWNER, { exact: false })).toBeInTheDocument();
     expect(p.getByRole('button', { name: `${S.location.copy} ${S.location.owner}` })).toBeInTheDocument();
   });
 
@@ -168,5 +179,111 @@ describe('Where your vault is stored (show-vault-onchain-location 1.3)', () => {
     await expand();
     const r = await axe.run(container, { runOnly: ['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'], rules: { 'color-contrast': { enabled: false } } });
     expect(r.violations.map((v) => v.id)).toEqual([]);
+  });
+
+  it('version gate: an add-key save without a transaction hash hides the previous last save', async () => {
+    vi.spyOn(ops, 'saveEdit').mockImplementation(async (_svc, s, items) => ({ ...s, items, version: 4, lastSave: { version: 4, txHash: HASH } }));
+    vi.spyOn(ops, 'saveAddKey').mockImplementation(async (_svc, s) => ({ session: { ...s, version: 5, credIds: [...s.credIds, credId(3)] }, newLocator: ('0x' + '77'.repeat(32)) as `0x${string}` }));
+    vi.spyOn(ops, 'mirrorWrite').mockResolvedValue({ status: 'failed', ref: 'UPLOAD_FAILED · upload' });
+    await openVault();
+    fireEvent.click(screen.getByRole('button', { name: S.vault.edit }));
+    fireEvent.click(await screen.findByRole('button', { name: S.editor.save }));
+    await screen.findByText(S.save.saved);
+    fireEvent.click(await screen.findByRole('button', { name: S.vault.addKey }));
+    await screen.findByRole('heading', { level: 2, name: S.addKey.title });
+    await waitFor(() => expect(screen.getAllByRole('button', { name: S.addKey.start })).toHaveLength(1));
+    fireEvent.click(screen.getByRole('button', { name: S.addKey.start }));
+    await screen.findByText(S.addKey.done);
+    const p = within(await expand());
+    expect(p.getByText('5')).toBeInTheDocument();
+    expect(p.queryByText(S.location.lastSave)).toBeNull();
+    expect(document.body.innerHTML).not.toContain(HASH.slice(2));
+  });
+
+  it('version gate: the Arweave copy of an older version is hidden', async () => {
+    vi.mocked(ops.ensureMirror).mockResolvedValue({ status: 'saved', itemId: AR_ID });
+    vi.spyOn(ops, 'saveEdit').mockImplementation(async (_svc, s, items) => ({ ...s, items, version: 4 }));
+    vi.spyOn(ops, 'mirrorWrite').mockResolvedValue({ status: 'failed', ref: 'UPLOAD_FAILED · upload' });
+    await openVault();
+    await waitFor(() => expect(ops.ensureMirror).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole('button', { name: S.vault.edit }));
+    fireEvent.click(await screen.findByRole('button', { name: S.editor.save }));
+    await screen.findByText(S.save.saved);
+    const p = within(await expand());
+    expect(p.getByText('4')).toBeInTheDocument();
+    expect(p.queryByText(S.location.arweave)).toBeNull();
+  });
+
+  it('a late mirror result for an older version never replaces the current one', async () => {
+    let healLate!: (r: ops.MirrorResult) => void;
+    vi.mocked(ops.ensureMirror).mockReturnValue(new Promise((r) => (healLate = r)));
+    vi.spyOn(ops, 'saveEdit').mockImplementation(async (_svc, s, items) => ({ ...s, items, version: 4 }));
+    vi.spyOn(ops, 'mirrorWrite').mockResolvedValue({ status: 'saved', itemId: AR_ID });
+    await openVault();
+    fireEvent.click(screen.getByRole('button', { name: S.vault.edit }));
+    fireEvent.click(await screen.findByRole('button', { name: S.editor.save }));
+    await screen.findByText(S.mirror.saved);
+    healLate({ status: 'saved', itemId: 'Old' + 'o'.repeat(40) }); // v3's self-heal resolves after v4's upload
+    const p = within(await expand());
+    expect(await p.findByRole('link', { name: new RegExp(`^${S.location.arweave}: .*${AR_ID}`) })).toBeInTheDocument();
+  });
+
+  it('keeps the Arweave copy across "Open an older test vault" and back', async () => {
+    vi.mocked(ops.ensureMirror).mockResolvedValueOnce({ status: 'saved', itemId: AR_ID }).mockResolvedValue({ status: 'saved' });
+    vi.spyOn(unlockMod, 'unlock').mockResolvedValue({
+      credId: credId(1),
+      locator: LOCATOR,
+      matches: [
+        { vaultId: VAULT_ID, owner: OWNER, version: 3, blob: new Uint8Array(400), items: [{ label: 'Seed', secret: 'abandon art' }], entryIndex: 0, registry: 'v2' },
+        { vaultId: ('0x' + '56'.repeat(32)) as `0x${string}`, owner: OWNER, version: 1, blob: new Uint8Array(400), items: [{ label: 'Old', secret: 'x' }], entryIndex: 0, registry: 'v1' },
+      ],
+    });
+    renderApp(OP_SEPOLIA);
+    fireEvent.click(screen.getByRole('button', { name: 'Unlock my vault' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Unlock with my key' }));
+    await screen.findByRole('heading', { name: 'Seed' });
+    await waitFor(() => expect(ops.ensureMirror).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole('button', { name: S.unlock.olderVault }));
+    fireEvent.click(await screen.findByRole('button', { name: S.vault.backToCurrent }));
+    await screen.findByRole('heading', { name: 'Seed' });
+    const p = within(await expand());
+    expect(p.getByRole('link', { name: new RegExp(`^${S.location.arweave}: .*${AR_ID}`) })).toBeInTheDocument();
+  });
+
+  it('never stores a malformed Arweave id', async () => {
+    vi.mocked(ops.ensureMirror).mockResolvedValue({ status: 'saved', itemId: 'short-id' });
+    await openVault();
+    await waitFor(() => expect(ops.ensureMirror).toHaveBeenCalled());
+    const p = within(await expand());
+    expect(p.queryByText(S.location.arweave)).toBeNull();
+    expect(document.body.innerHTML).not.toContain('short-id');
+  });
+
+  it('records the Arweave copy of a new vault even when it finishes after Continue', async () => {
+    const u = userEvent.setup();
+    let uploadDone!: (r: ops.MirrorResult) => void;
+    vi.spyOn(ops, 'enrollWithPrf').mockImplementation(async (_s, n) => ({ credId: credId(n), publicKey: ('0x' + 'aa'.repeat(64)) as `0x${string}`, prf: new Uint8Array(32).fill(n) }));
+    vi.spyOn(ops, 'saveNewVault').mockResolvedValue({
+      session: { vaultId: VAULT_ID, owner: OWNER, version: 1, blob: new Uint8Array(10), items: [{ label: 'Seed', secret: 'abandon art' }], credIds: [], registry: 'v2' as const, lastSave: { version: 1, txHash: HASH } },
+      locators: [('0x' + '77'.repeat(32)) as `0x${string}`],
+    });
+    vi.spyOn(ops, 'mirrorWrite').mockReturnValue(new Promise((r) => (uploadDone = r)));
+    renderApp(OP_SEPOLIA);
+    await u.click(screen.getByRole('button', { name: 'Create a new vault' }));
+    await u.click(screen.getByRole('button', { name: 'Get started' }));
+    await u.click(screen.getByRole('button', { name: 'Set up key 1' }));
+    await screen.findByText('Key 1 is ready.');
+    await u.click(screen.getByRole('button', { name: 'Set up key 2' }));
+    await screen.findByText('Key 2 is ready.');
+    await u.click(screen.getByRole('button', { name: 'Continue' }));
+    await u.type(screen.getByLabelText('Secret'), 'x');
+    await acknowledge(u);
+    await u.click(screen.getByRole('button', { name: 'Save' }));
+    await u.click(await screen.findByRole('button', { name: 'Continue' })); // mirror still pending
+    await screen.findByRole('heading', { name: 'Seed' });
+    uploadDone({ status: 'saved', itemId: AR_ID });
+    const p = within(await expand());
+    expect(await p.findByRole('link', { name: new RegExp(`^${S.location.arweave}: .*${AR_ID}`) })).toBeInTheDocument();
+    expect(p.getByRole('link', { name: new RegExp(`^${S.location.lastSave}: .*${HASH}`) })).toBeInTheDocument();
   });
 });

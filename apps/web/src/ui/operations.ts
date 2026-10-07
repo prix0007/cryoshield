@@ -42,11 +42,16 @@ export interface VaultSession {
   /** Where the vault lives. 'v1' (legacy testnet) is read-only: clients never write to VaultRegistry v1. */
   registry: RegistryVersion;
   /**
-   * show-vault-onchain-location D2: public facts this session learnt while saving, each tagged with the version it
-   * belongs to (shown only while that is still the current version). Never looked up after a plain unlock.
+   * show-vault-onchain-location D2: the last save's transaction, tagged with the version it produced (shown only while
+   * that is still the current version). Never looked up after a plain unlock. The Arweave item lives in App state.
    */
   lastSave?: { version: number; txHash: Hex };
-  mirrorItem?: { version: number; id: string };
+}
+
+/** The Arweave copy this session uploaded or byte-verified, for one version of one vault (public). */
+export interface MirrorItem {
+  version: number;
+  id: string;
 }
 
 const lastSaveOf = (r: { version: number; txHash?: Hex }) => (r.txHash ? { lastSave: { version: r.version, txHash: r.txHash } } : {});

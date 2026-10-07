@@ -58,7 +58,7 @@ test('create with two keys, unlock with either, edit, add a third key; every ver
   const lastSave = panel.locator('.loc-row', { has: page.locator('dt', { hasText: 'Last save' }) });
   await expect(lastSave.locator('.sr-only').first()).toHaveText(/^0x[0-9a-f]{64}$/);
   const v2Item = arweave.items.find((i) => i.tags.some((t) => t.name === 'CryoShield-Version' && t.value === '2'))!;
-  const arLink = panel.getByRole('link', { name: new RegExp(`^Arweave copy: ${v2Item.id}`) });
+  const arLink = panel.getByRole('link', { name: new RegExp(`^Arweave copy: .*${v2Item.id}`) });
   await expect(arLink).toHaveAttribute('href', `https://arweave.net/${v2Item.id}`);
   await expect(arLink).toHaveAttribute('target', '_blank');
   await expect(arLink).toHaveAttribute('rel', 'noopener noreferrer');

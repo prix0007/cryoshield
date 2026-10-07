@@ -1,8 +1,8 @@
-import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { Component, lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
 import type { SecretItem } from '../vault/payload';
 import { cleanItems, KeyPrompt, Notice, SecretsEditor, StepHeading } from './components';
 import { MirrorLine } from './CreateFlow';
-import { ensureMirror, errorReference, isReadOnly, messageFor, mirrorWrite, saveAddKey, saveEdit, type MirrorResult, type VaultSession } from './operations';
+import { ensureMirror, errorReference, isReadOnly, messageFor, mirrorWrite, saveAddKey, saveEdit, type MirrorItem, type MirrorResult, type VaultSession } from './operations';
 import { useServices } from './services';
 import { S } from './strings';
 import { ActionBar, EmptyState } from './chrome';
@@ -13,6 +13,20 @@ import { reveal } from './motion';
 
 /** show-vault-onchain-location D3: the panel content is a separate chunk, fetched when the disclosure first opens. */
 const VaultLocation = lazy(() => import('./VaultLocation'));
+
+/**
+ * A failed chunk load (offline, or a redeploy replaced the hashed assets) only replaces the panel with a one-line hint;
+ * without this boundary React would unmount the whole unlocked app.
+ */
+class PanelBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  override state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  override render() {
+    return this.state.failed ? <p className="hint">{S.location.failed}</p> : this.props.children;
+  }
+}
 
 type Mode = 'view' | 'edit' | 'addKey' | 'details';
 const MODE_ORDER: readonly Mode[] = ['view', 'edit', 'addKey', 'details'];
@@ -27,6 +41,10 @@ export function VaultView(props: {
   onOpenOlder?: () => void;
   /** From a legacy v1 copy, back to the current v2 vault. */
   onBackToCurrent?: () => void;
+  /** This vault's Arweave copy known to the session (App state, so it survives a remount; wiped on lock). */
+  mirrorItem?: MirrorItem | undefined;
+  /** Reports every mirror result with the version it is for; App validates it and keeps the newest version. */
+  onMirror?: (version: number, r: MirrorResult) => void;
 }) {
   const svc = useServices();
   const s = props.session;
@@ -50,11 +68,8 @@ export function VaultView(props: {
   const [draft, setDraft] = useState<SecretItem[]>(s.items);
   const [busy, setBusy] = useState(false);
   const [mirror, setMirror] = useState<MirrorResult | { status: 'pending' } | null>(null);
-  // The Arweave item this session uploaded or byte-verified, for the version it belongs to (show-vault-onchain-location).
-  const [mirrorItem, setMirrorItem] = useState<{ version: number; id: string } | null>(s.mirrorItem ?? null);
-  const noteMirror = (version: number, r: MirrorResult) => {
-    if (r.status === 'saved' && r.itemId) setMirrorItem({ version, id: r.itemId });
-  };
+  const { onMirror } = props;
+  const noteMirror = (version: number, r: MirrorResult) => onMirror?.(version, r);
   const healed = useRef(false);
   const dir = useDirection(MODE_ORDER, mode);
   const reduced = useReduced();
@@ -86,9 +101,10 @@ export function VaultView(props: {
     healed.current = true;
     void ensureMirror(svc, { vaultId: s.vaultId, version: s.version, blob: s.blob, locator: props.locator, registry: s.registry }).then((m) => {
       if (m.status === 'failed') setMirror(m);
-      else noteMirror(s.version, m);
+      else onMirror?.(s.version, m);
     });
-  }, [svc, s.vaultId, s.version, s.blob, s.registry, props.locator, props.freshMirror]);
+    // `healed` makes this run once per mount, so a new onMirror identity on re-render never re-runs it.
+  }, [svc, s.vaultId, s.version, s.blob, s.registry, props.locator, props.freshMirror, onMirror]);
 
   function afterWrite(next: VaultSession, extraLocators: `0x${string}`[] = []) {
     props.onChange(next);
@@ -255,6 +271,7 @@ export function VaultView(props: {
             )}
             <div className="vault-location-disclosure">
               <Disclosure label={S.location.title}>
+                <PanelBoundary>
                 <Suspense fallback={<p className="hint">{S.location.loading}</p>}>
                   <VaultLocation
                     network={svc.network}
@@ -264,10 +281,11 @@ export function VaultView(props: {
                     owner={s.owner}
                     version={s.version}
                     lastSaveTx={s.lastSave?.version === s.version ? s.lastSave.txHash : undefined}
-                    mirrorId={mirrorItem?.version === s.version ? mirrorItem.id : undefined}
+                    mirrorId={props.mirrorItem?.version === s.version ? props.mirrorItem.id : undefined}
                     arweaveGatewayUrl={svc.arweaveGatewayUrl}
                   />
                 </Suspense>
+                </PanelBoundary>
               </Disclosure>
             </div>
           </div>

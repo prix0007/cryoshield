@@ -36,24 +36,36 @@ contracts and recovery owners.
   `eth_getLogs` scan is added to find it (public RPCs limit log ranges, and the planned `vault-list-labels-archive`
   date lookup is a separate change).
 - **Arweave copy:** `mirror.ensure()` now returns `{ state, id }`, the item it byte-verified or uploaded, and
-  `ensureMirror` passes it through as `itemId`. Upload results already carried it. The view keeps
-  `{ version, id }` and shows it only for the current version. An ID is shown and linked only if it matches the
-  43-character base64url form of an Arweave ID.
+  `ensureMirror` passes it through as `itemId`. Upload results already carried it. Every mirror result (self-heal,
+  save, Retry, and the create flow's upload, even if it lands after Continue) is reported to `App` with the version it
+  is for. `App` keeps one `{ version, id }` per `registry:vaultId`:
+  - it stores the ID only if it is the 43-character base64url form;
+  - a result for an older version never replaces a newer one, so out-of-order results are safe;
+  - the map is cleared on lock, and a result that lands after a lock (an older lock epoch) is dropped;
+  - it lives in `App`, not in the keyed `VaultView`, so it survives "Open an older test vault" and "Back to your
+    current vault".
+
+  The panel shows the item only when its version equals the session's.
 
 ### D3. Lazy content
 `/app`'s initial JS is about 1.5 KB under its budget. The disclosure button stays in the main bundle, and its panel
 content (`VaultLocation.tsx`) is loaded with `React.lazy` when the user opens it. It is a same-origin chunk, so the
-existing `script-src 'self'` and Trusted Types policy apply unchanged.
+existing `script-src 'self'` and Trusted Types policy apply unchanged. A small local error boundary wraps the panel. If the
+chunk fails to load (offline, or a redeploy replaced the hashed assets), it shows "Couldn't load this section. Reload
+the page to try again." and the rest of the unlocked vault stays usable.
 
 ### D4. Copy without the secret auto-clear
-These values are public, so the copy uses a plain `writeText` (`copyPublic`). It doesn't take over the 30-second
-secret-clear timer or its callback, so copying an address never cancels the scheduled clear of a secret copied
-earlier.
+These values are public, so the copy uses a plain `writeText` (`copyPublic`) with no auto-clear of its own. A secret
+copied earlier is gone from the clipboard once a public copy succeeds, so `copyPublic` then cancels the secret's
+pending 30-second clear, which would otherwise blank the public value, and tells the secret's chip that the clear is
+done. If the public write fails, the secret clear stays scheduled. Repeated copies of the same row are announced again:
+a counter changes the live region's text.
 
 ### D5. Presentation
 The section uses the existing `Disclosure` (Motion `Collapse`) and a `<dl>`. Long values show as `0x1234…abcd` in
-monospace. The full value is in visually hidden text, in the link's accessible name and in the copied text. Links name
-their destination and say they open in a new tab. Copy buttons read "Copy <label>", so the visible "Copy" is part of the
+monospace. The full value is in visually hidden text and in the copied text. A link has no `aria-label`. Its name is
+one visually hidden text run, "<row>: <visible text>, <full value>, opens in a new tab", which contains the visible
+text (WCAG 2.5.3). Copy buttons read "Copy <label>", so the visible "Copy" is part of the
 accessible name (WCAG 2.5.3). The strings avoid the banned jargon, so the last save is "Last save", not "transaction".
 
 ## Threats and abuse

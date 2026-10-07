@@ -31,6 +31,15 @@ The section SHALL state: "Anyone can see that this encrypted vault exists at thi
 - **WHEN** the user saves an edit in this session and the write returned a transaction hash
 - **THEN** the section shows that hash as the last save
 
+#### Scenario: Panel fails to load
+- **WHEN** the panel's code can't be loaded (offline, or the site was redeployed)
+- **THEN** the panel shows "Couldn't load this section. Reload the page to try again." and the vault stays open and
+  usable
+
+#### Scenario: Results arrive out of order
+- **WHEN** the self-heal check for version 3 finishes after the upload for version 4
+- **THEN** the panel still shows version 4's Arweave copy
+
 #### Scenario: Last save not known
 - **WHEN** the user has only unlocked the vault in this session
 - **THEN** the section shows no last-save row, and no log query is made to find one

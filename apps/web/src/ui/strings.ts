@@ -194,6 +194,7 @@ export const S = {
   location: {
     title: 'Where your vault is stored',
     loading: 'Loading…',
+    failed: 'Couldn’t load this section. Reload the page to try again.',
   },
 
   details: {

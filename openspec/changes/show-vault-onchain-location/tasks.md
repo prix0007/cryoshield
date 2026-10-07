@@ -45,7 +45,8 @@
   bundle delta.
 
   **Result:** `/app` initial JS gzip went from 215,698 B to 216,199 B (+501 B). It is within the budget of
-  196,737 B + 20,480 B. The lazy chunks went from 15,938 B to 17,164 B (+1,226 B, the panel and its strings).
+  196,737 B + 20,480 B. The lazy chunks went from 15,938 B to 17,164 B (+1,226 B, the panel and its strings). After the
+  review fixes (section 4): initial is 216,554 B (+856 B over main, 663 B of budget left), and lazy is 17,132 B.
 - [x] 2.6 Docs: one line in `docs/system-design.md`, and a manual step in `apps/web/docs/hardware-test.md`.
 
 ## 3. Review
@@ -67,3 +68,21 @@
     Unit and E2E tests confirm nothing remains in the DOM.
   - A side effect: the architecture page now also has names for Arbitrum Sepolia and Arbitrum One (shared table), so a
     build for those chains no longer fails on a missing network name.
+
+## 4. Review fixes (ECC review of 1df30da)
+
+- [x] 4.1 HIGH: an error boundary around the lazy panel. Test: `test/ui/vault-location-chunk.test.tsx`, where the
+  import rejects, shows the hint, and the vault still shows and reveals secrets.
+- [x] 4.2 MEDIUM: the Arweave item is kept in `App` per `registry:vaultId`, newest version wins, cleared on lock, and a
+  post-lock result is ignored. It survives "Open an older test vault" and back.
+  - Tests: an out-of-order result, the older-vault round trip, and the create flow recording an upload that finishes
+    after Continue (the optional LOW).
+- [x] 4.3 MEDIUM: tests for the version gates: an add-key save with no hash hides the older last save, and an older
+  version's Arweave copy is hidden. A mutation check, removing the gates, makes both fail.
+- [x] 4.4 LOWs:
+  - the link name is one sr-only text run containing the visible text (no `aria-label`);
+  - repeated copies are re-announced;
+  - Arweave IDs are validated before entering state;
+  - `copyPublic` cancels a pending secret clear (`test/ui/clipboard-public.test.ts`);
+  - the redundant `'itemId' in` is gone (the code moved);
+  - the test imports are reordered.

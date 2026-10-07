@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { detectPrfSupport, rpIdAllowed } from '../webauthn';
 import { CreateFlow } from './CreateFlow';
 import { Notice } from './components';
-import type { VaultSession } from './operations';
+import type { MirrorItem, MirrorResult, VaultSession } from './operations';
+import { isArweaveId } from '../config/networks';
 import { ServicesProvider, useServices, type Services } from './services';
 import { S } from './strings';
 import { ActionBar, AppFooter, GlobalNav, SubNav, useFocusClearOfActionBar } from './chrome';
@@ -38,6 +39,17 @@ function Shell() {
   const [current, setCurrent] = useState<VaultSession | null>(null);
   const [older, setOlder] = useState<VaultSession[]>([]);
   const [locked, setLocked] = useState(false);
+  // show-vault-onchain-location: the Arweave copy each open vault's session uploaded or verified, newest version only.
+  // Public, but still dropped on lock; a result that lands after a lock (older epoch) is ignored.
+  const [mirrorItems, setMirrorItems] = useState<Readonly<Record<string, MirrorItem>>>({});
+  const epoch = useRef(0);
+  const renderEpoch = epoch.current;
+  const recordMirror = (key: string, version: number, r: MirrorResult) => {
+    if (epoch.current !== renderEpoch || r.status !== 'saved' || !r.itemId || !isArweaveId(r.itemId)) return;
+    const item = { version, id: r.itemId };
+    setMirrorItems((all) => ((all[key]?.version ?? 0) > version ? all : { ...all, [key]: item }));
+  };
+  const vaultKey = (registry: string, vaultId: string) => `${registry}:${vaultId.toLowerCase()}`;
   const [prf, setPrf] = useState<'supported' | 'unsupported' | 'unknown'>('unknown');
   const allowed = rpIdAllowed(svc.host, svc.rpId);
   useFocusClearOfActionBar();
@@ -58,6 +70,8 @@ function Shell() {
     setSession(null);
     setCurrent(null);
     setOlder([]);
+    setMirrorItems({});
+    epoch.current++;
     setScreen({ name: 'home' });
     setLocked(true);
   }, []);
@@ -126,6 +140,7 @@ function Shell() {
           {screen.name === 'create' && allowed && (
             <CreateFlow
               onCancel={() => setScreen({ name: 'home' })}
+              onMirror={(vaultId, version, r) => recordMirror(vaultKey('v2', vaultId), version, r)}
               onDone={(s) => {
                 setSession(s);
                 setScreen({ name: 'vault', locator: '0x', fresh: true });
@@ -146,6 +161,8 @@ function Shell() {
                 if (s.registry === 'v2') setCurrent(s);
               }}
               onLock={lock}
+              mirrorItem={mirrorItems[vaultKey(session.registry, session.vaultId)]}
+              onMirror={(version, r) => recordMirror(vaultKey(session.registry, session.vaultId), version, r)}
               {...(session.registry === 'v2' && older.length > 0 ? { onOpenOlder: () => setSession(older[0]!) } : {})}
               {...(session.registry !== 'v2' && current ? { onBackToCurrent: () => setSession(current) } : {})}
             />

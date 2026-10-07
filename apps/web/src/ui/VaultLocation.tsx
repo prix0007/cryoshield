@@ -38,7 +38,8 @@ interface Row {
 const short = (v: string) => (v.length > 16 ? `${v.slice(0, 6)}…${v.slice(-4)}` : v);
 
 export default function VaultLocation(p: VaultLocationProps) {
-  const [copied, setCopied] = useState('');
+  // `n` makes a repeated copy of the same row change the live region's text, so it is announced again.
+  const [copied, setCopied] = useState({ text: '', n: 0 });
   const ex = p.network.explorerUrl;
   const rows: Row[] = [
     { label: L.network, value: String(p.chainId), text: L.networkValue(p.network.name, p.chainId) },
@@ -67,7 +68,7 @@ export default function VaultLocation(p: VaultLocationProps) {
                 type="button"
                 className="secondary loc-copy"
                 onClick={async () => {
-                  if (await copyPublic(r.value)) setCopied(L.copied(r.label));
+                  if (await copyPublic(r.value)) setCopied((c) => ({ text: L.copied(r.label), n: c.n + 1 }));
                 }}
               >
                 {L.copy} <span className="sr-only">{r.label}</span>
@@ -78,30 +79,34 @@ export default function VaultLocation(p: VaultLocationProps) {
       </dl>
       <p className="loc-public">{L.publicNote}</p>
       <p className="sr-only" role="status" aria-live="polite">
-        {copied}
+        {copied.text}
+        {copied.n % 2 === 1 ? '\u00a0' : ''}
       </p>
     </div>
   );
 }
 
 function Value({ row }: { row: Row }) {
-  const shown = short(row.value);
-  // Full value for assistive technology; the truncated one on screen only.
-  const body =
-    row.text ??
-    (shown === row.value ? (
-      row.value
-    ) : (
-      <>
-        <span aria-hidden="true">{shown}</span>
-        <span className="sr-only">{row.value}</span>
-      </>
-    ));
+  const shown = row.text ?? short(row.value);
   const cls = row.text ? 'loc-value' : 'loc-value mono';
-  if (!row.href) return <span className={cls}>{body}</span>;
+  if (row.href) {
+    // The name is one text run (no aria-label) that contains the visible, possibly truncated text (WCAG 2.5.3), with the
+    // row label before it and the full value and "opens in a new tab" after it.
+    return (
+      <a className={cls} href={row.href} target="_blank" rel="noopener noreferrer">
+        <span className="loc-short" aria-hidden="true">
+          {shown}
+        </span>
+        <span className="sr-only">{`${row.label}: ${shown}${shown === row.value ? '' : `, ${row.value}`}, ${L.newTab}`}</span>
+      </a>
+    );
+  }
+  // Not interactive: the truncated value on screen only, the full value for assistive technology.
+  if (shown === row.value || row.text) return <span className={cls}>{shown}</span>;
   return (
-    <a className={cls} href={row.href} target="_blank" rel="noopener noreferrer" aria-label={`${row.label}: ${row.value}, ${L.newTab}`}>
-      {body}
-    </a>
+    <span className={cls}>
+      <span aria-hidden="true">{shown}</span>
+      <span className="sr-only">{row.value}</span>
+    </span>
   );
 }
