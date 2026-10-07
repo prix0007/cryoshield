@@ -1,0 +1,8 @@
+{
+  "_comment": "Public RPCs per preset (names and chain IDs from config/chain-presets.json). The same verified endpoints as tools/recover's presets (verified to answer eth_chainId on 2026-10-02). No keys, no CryoShield servers.",
+  "anvil": ["http://127.0.0.1:8545"],
+  "op-sepolia": ["https://sepolia.optimism.io", "https://optimism-sepolia-rpc.publicnode.com", "https://optimism-sepolia.drpc.org"],
+  "op-mainnet": ["https://mainnet.optimism.io", "https://optimism-rpc.publicnode.com", "https://optimism.drpc.org"],
+  "arbitrum-sepolia": ["https://sepolia-rollup.arbitrum.io/rpc", "https://arbitrum-sepolia-rpc.publicnode.com", "https://arbitrum-sepolia.drpc.org"],
+  "arbitrum-one": ["https://arb1.arbitrum.io/rpc", "https://arbitrum-one-rpc.publicnode.com", "https://arbitrum.drpc.org"]
+}

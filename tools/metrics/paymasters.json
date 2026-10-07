@@ -1,0 +1,20 @@
+{
+  "_comment": "Sponsor paymasters per network (OpenSpec change add-privacy-preserving-analytics, task 1.5). Only UserOperationEvent logs whose paymaster is listed here count as CryoShield-sponsored gas; any other paymaster is reported separately. Update through an OpenSpec change, with a source for every address.",
+  "networks": {
+    "op-sepolia": {
+      "entryPoint": {
+        "address": "0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789",
+        "version": "0.6",
+        "source": "https://docs.pimlico.io/references/paymaster/erc20-paymaster/contract-addresses"
+      },
+      "sponsors": [
+        {
+          "address": "0x6666666666667849c56f2850848cE1C4da65c68b",
+          "name": "Pimlico paymaster (EntryPoint v0.6, same address on every chain)",
+          "source": "https://docs.pimlico.io/references/paymaster/erc20-paymaster/contract-addresses",
+          "observed": "2026-10-08: the paymaster of all 9 EntryPoint v0.6 UserOperationEvent logs sent by OP Sepolia vault owners (VaultRegistry v1 and v2) up to block 49806226. Pimlico documents this address on its ERC-20 paymaster page; that it is also the verifying (sponsorship-policy) paymaster is from the on-chain observation, not from Pimlico's documentation."
+        }
+      ]
+    }
+  }
+}
