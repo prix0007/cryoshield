@@ -230,7 +230,7 @@ If a Pimlico key changes, re-run step 3 of the setup. If any other value changes
 
 ## Before OP Mainnet
 
-Production's chain is changed only through `production-build` variables (`VITE_CHAIN_ID`, `VITE_RPC_URL`, the bundler and policy), plus a deployment record in `contracts/deployments/<chainId>.json`. Before that switch, meet the re-gate criterion in `openspec/changes/split-dev-and-release-deploys/design.md` → Security review:
+Production's chain is changed only through `production-build` variables (`VITE_CHAIN_ID`, `VITE_RPC_URL`, the bundler and policy), plus a deployment record in `contracts/deployments/<chainId>.json`. Before that switch, meet the re-gate criterion in `openspec/changes/archive/2026-10-08-split-dev-and-release-deploys/design.md` → Security review:
 - a required reviewer back on `production`;
 - agents only through the machine account;
 - hardware-key 2FA on the owner's account.
