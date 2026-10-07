@@ -15,6 +15,7 @@ const session = (items = [{ label: 'Bitcoin seed', secret: 'abandon art' }]) => 
   version: 1,
   blob: new Uint8Array(400).fill(1),
   items,
+  archived: false,
   credIds: [id(1), id(2)],
   registry: 'v2' as const,
 });

@@ -62,7 +62,7 @@ describe('create flow Retry (regression for bug 2)', () => {
     const u = userEvent.setup();
     vi.spyOn(await import('@cryoshield/vault-crypto'), 'decodeVault').mockReturnValue({ entries: [] } as never);
     vi.spyOn(ops, 'enrollWithPrf').mockImplementation(async (_s, n) => ({ credId: new Uint8Array(48).fill(n), publicKey: ('0x' + 'aa'.repeat(64)) as `0x${string}`, prf: new Uint8Array(32).fill(n) }));
-    vi.spyOn(ops, 'saveNewVault').mockResolvedValue({ session: { vaultId, owner: ('0x' + '34'.repeat(20)) as `0x${string}`, version: 1, blob: new Uint8Array(10), items: [], credIds: [], registry: 'v2' as const }, locators: [LOC] });
+    vi.spyOn(ops, 'saveNewVault').mockResolvedValue({ session: { vaultId, owner: ('0x' + '34'.repeat(20)) as `0x${string}`, version: 1, blob: new Uint8Array(10), items: [], archived: false, credIds: [], registry: 'v2' as const }, locators: [LOC] });
     const write = vi.spyOn(ops, 'mirrorWrite').mockResolvedValue({ status: 'failed', ref: 'UPLOAD_FAILED · HTTP 503 · upload' });
     renderApp();
     await u.click(screen.getByRole('button', { name: 'Create a new vault' }));

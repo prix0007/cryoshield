@@ -11,6 +11,11 @@
  *   - the initCode: `getFactoryArgs` is replaced to return OUR factory and `createAccount(owners, nonce)`.
  * (`toSmartAccount` calls the implementation's own `getFactoryArgs` through a closure, so overriding it on the
  * returned object is required; `sign`/`signMessage` reach it through `this`, so they also see ours.)
+ *
+ * vault-list-labels-archive D10 amendment: every user operation uses EntryPoint nonce KEY 0 (viem would pick a fresh
+ * timestamp key per operation), so `EntryPoint.getNonce(account, 0)` counts the account's operations for the testnet
+ * save-budget hint. Operations are therefore sequential per account; a concurrent second save fails validation (AA25)
+ * and is reported as NONCE_CONFLICT (writes.ts). Signing (UV, rpIdHash) is unchanged.
  */
 import { encodeFunctionData, getAddress, type Address, type Hex, type PublicClient } from 'viem';
 import { toCoinbaseSmartAccount, type WebAuthnAccount } from 'viem/account-abstraction';
@@ -58,6 +63,7 @@ export async function toCryoShieldSmartAccount(p: {
   return {
     ...base,
     factory: { abi: walletFactoryAbi, address: factory },
+    getNonce: (parameters?: { key?: bigint }) => base.getNonce({ ...parameters, key: 0n }),
     async getFactoryArgs() {
       if (await base.isDeployed()) return { factory: undefined, factoryData: undefined };
       return { factory, factoryData };

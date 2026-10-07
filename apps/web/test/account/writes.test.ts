@@ -66,19 +66,19 @@ describe('registry v2 error mapping', () => {
 describe('write confirmation (6.8)', () => {
   it('reports Saved only when the receipt succeeded and the read-back equals the blob', async () => {
     const sponsor = { send: vi.fn(async () => ({ userOpHash: '0x01' as Hex, success: true })) };
-    const r = await updateVaultOnChain({ account, vaultId: ('0x' + '33'.repeat(32)) as Hex, blob }, { client: okClient, sponsor, reader: reader(blob) });
+    const r = await updateVaultOnChain({ account, vaultId: ('0x' + '33'.repeat(32)) as Hex, blob, base: blob }, { client: okClient, sponsor, reader: reader(blob) });
     expect(r.version).toBe(2);
-    await expect(updateVaultOnChain({ account, vaultId: ('0x' + '33'.repeat(32)) as Hex, blob }, { client: okClient, sponsor, reader: reader(new Uint8Array([9])) })).rejects.toMatchObject({ code: 'NOT_CONFIRMED' });
+    await expect(updateVaultOnChain({ account, vaultId: ('0x' + '33'.repeat(32)) as Hex, blob, base: new Uint8Array([9]) }, { client: okClient, sponsor, reader: reader(new Uint8Array([9])) })).rejects.toMatchObject({ code: 'NOT_CONFIRMED' });
   });
 
   it('an included-but-reverted operation is REVERTED (nothing saved)', async () => {
     const sponsor = { send: vi.fn(async () => ({ userOpHash: '0x01' as Hex, success: false, reason: '0x' as Hex })) };
-    await expect(updateVaultOnChain({ account, vaultId: ('0x' + '33'.repeat(32)) as Hex, blob }, { client: okClient, sponsor, reader: reader(blob) })).rejects.toMatchObject({ code: 'REVERTED' });
+    await expect(updateVaultOnChain({ account, vaultId: ('0x' + '33'.repeat(32)) as Hex, blob, base: blob }, { client: okClient, sponsor, reader: reader(blob) })).rejects.toMatchObject({ code: 'REVERTED' });
   });
 
   it('updates target VaultRegistry v2', async () => {
     const sponsor = { send: vi.fn(async () => ({ userOpHash: '0x01' as Hex, success: true })) };
-    await updateVaultOnChain({ account, vaultId: ('0x' + '33'.repeat(32)) as Hex, blob }, { client: okClient, sponsor, reader: reader(blob) });
+    await updateVaultOnChain({ account, vaultId: ('0x' + '33'.repeat(32)) as Hex, blob, base: blob }, { client: okClient, sponsor, reader: reader(blob) });
     const calls = (sponsor.send.mock.calls[0] as unknown as [unknown, { to: Hex }[]])[1];
     expect(calls.map((c) => c.to.toLowerCase())).toEqual([config.registryV2.address.toLowerCase()]);
   });
@@ -171,7 +171,7 @@ describe('add-key asserts nextOwnerIndex == keyCount before signing (review fix 
     const sponsor = { send: vi.fn() };
     const client = { getChainId: async () => 31337, call: vi.fn(async () => ({ data: '0x' })), readContract: vi.fn(async () => 5n) } as never;
     const err = await addKeyOnChain(
-      { account, vaultId: ('0x' + '33'.repeat(32)) as Hex, blob, newLocator: ('0x' + '44'.repeat(32)) as Hex, newPublicKey: ('0x' + 'aa'.repeat(64)) as Hex, keyCountBefore: 2 },
+      { account, vaultId: ('0x' + '33'.repeat(32)) as Hex, blob, base: blob, newLocator: ('0x' + '44'.repeat(32)) as Hex, newPublicKey: ('0x' + 'aa'.repeat(64)) as Hex, keyCountBefore: 2 },
       { client, sponsor: sponsor as never, reader: reader(blob), onSign },
     ).catch((e) => e);
     expect(err.code).toBe('OWNER_MISMATCH');
@@ -183,7 +183,7 @@ describe('add-key asserts nextOwnerIndex == keyCount before signing (review fix 
     const sponsor = { send: vi.fn(async () => ({ userOpHash: '0x01' as Hex, success: true })) };
     const client = { getChainId: async () => 31337, call: vi.fn(async () => ({ data: '0x' })), readContract: vi.fn(async () => 2n) } as never;
     const r = await addKeyOnChain(
-      { account, vaultId: ('0x' + '33'.repeat(32)) as Hex, blob, newLocator: ('0x' + '44'.repeat(32)) as Hex, newPublicKey: ('0x' + 'aa'.repeat(64)) as Hex, keyCountBefore: 2 },
+      { account, vaultId: ('0x' + '33'.repeat(32)) as Hex, blob, base: blob, newLocator: ('0x' + '44'.repeat(32)) as Hex, newPublicKey: ('0x' + 'aa'.repeat(64)) as Hex, keyCountBefore: 2 },
       { client, sponsor: sponsor as never, reader: reader(blob) },
     );
     expect(r.version).toBe(2);
@@ -200,7 +200,7 @@ describe('add-key asserts nextOwnerIndex == keyCount before signing (review fix 
 describe('sponsorship refusal (2.2)', () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  async function attempt(refuseAt: 'pm_getPaymasterStubData' | 'pm_getPaymasterData', message: string) {
+  async function attempt(refuseAt: 'pm_getPaymasterStubData' | 'pm_getPaymasterData' | 'eth_estimateUserOperationGas' | 'eth_sendUserOperation', message: string) {
     const { createPublicClient, custom, encodeFunctionResult: efr, getAddress } = await import('viem');
     const { toWebAuthnAccount, entryPoint06Abi } = await import('viem/account-abstraction');
     const { createSponsor } = await import('../../src/account/writes');
@@ -254,6 +254,15 @@ describe('sponsorship refusal (2.2)', () => {
   }
 
   it.each([
+    ['pm_getPaymasterStubData', 'AA25 invalid account nonce'],
+    ['eth_estimateUserOperationGas', 'UserOperation reverted during simulation with reason: AA25 invalid account nonce'],
+  ] as const)('a nonce conflict at %s (another save at the same moment) -> NONCE_CONFLICT, not "paused"', async (at, message) => {
+    const { err } = await attempt(at, message);
+    expect(err).toBeInstanceOf(WriteError);
+    expect(err.code).toBe('NONCE_CONFLICT');
+  });
+
+  it.each([
     ['pm_getPaymasterStubData', 'Insufficient balance: please top up your Pimlico balance'],
     ['pm_getPaymasterData', 'User operation rejected by sponsorship policy: limit reached'],
   ] as const)('%s refusal "%s" -> SPONSORSHIP_REFUSED, nothing signed or sent', async (at, message) => {
@@ -265,5 +274,100 @@ describe('sponsorship refusal (2.2)', () => {
     const pm = methods.filter((m) => m.method.startsWith('pm_'));
     expect(pm.length).toBeGreaterThan(0);
     for (const m of pm) expect(m.params[3]).toEqual({ sponsorshipPolicyId: 'sp_test_policy' });
+  });
+});
+
+/** vault-list-labels-archive 2.5 (design D8, D10). */
+describe('every update starts from the current blob (STALE)', () => {
+  const vaultId = ('0x' + '33'.repeat(32)) as Hex;
+  const base = new Uint8Array([7, 7, 7]);
+  /** A reader that answers `first` to the staleness read and `blob` afterwards (the confirmation read-back). */
+  const seq = (first: Uint8Array | null) => {
+    let n = 0;
+    return {
+      getVault: async (id: Hex) => {
+        const b = n++ === 0 ? first : blob;
+        return b ? { vaultId: id, owner, blob: b, version: 2, registry: 'v2' } : null;
+      },
+    } as never;
+  };
+
+  it('assertCurrent passes on the same blob and throws STALE on another blob or none', async () => {
+    const { assertCurrent } = await import('../../src/account/writes');
+    await expect(assertCurrent(reader(base), vaultId, base)).resolves.toBeUndefined();
+    await expect(assertCurrent(reader(new Uint8Array([7, 7, 8])), vaultId, base)).rejects.toMatchObject({ code: 'STALE' });
+    await expect(assertCurrent(reader(null), vaultId, base)).rejects.toMatchObject({ code: 'STALE' });
+  });
+
+  it('update: STALE before onSign and before anything is sent', async () => {
+    const onSign = vi.fn();
+    const sponsor = { send: vi.fn() };
+    const err = await updateVaultOnChain({ account, vaultId, blob, base }, { client: okClient, sponsor: sponsor as never, reader: seq(new Uint8Array([1])), onSign }).catch((e) => e);
+    expect(err).toBeInstanceOf(WriteError);
+    expect(err.code).toBe('STALE');
+    expect(onSign).not.toHaveBeenCalled();
+    expect(sponsor.send).not.toHaveBeenCalled();
+  });
+
+  it('update: proceeds when the chain still has the base blob', async () => {
+    const sponsor = { send: vi.fn(async () => ({ userOpHash: '0x01' as Hex, success: true })) };
+    const r = await updateVaultOnChain({ account, vaultId, blob, base }, { client: okClient, sponsor, reader: seq(base) });
+    expect(r.blob).toBe(blob);
+  });
+
+  it('add key: STALE before the owner check, onSign and sending', async () => {
+    const { addKeyOnChain } = await import('../../src/account/writes');
+    const onSign = vi.fn();
+    const sponsor = { send: vi.fn() };
+    const client = { getChainId: async () => 31337, call: vi.fn(async () => ({ data: '0x' })), readContract: vi.fn(async () => 2n) };
+    const err = await addKeyOnChain(
+      { account, vaultId, blob, base, newLocator: ('0x' + '44'.repeat(32)) as Hex, newPublicKey: ('0x' + 'aa'.repeat(64)) as Hex, keyCountBefore: 2 },
+      { client: client as never, sponsor: sponsor as never, reader: seq(null), onSign },
+    ).catch((e) => e);
+    expect(err.code).toBe('STALE');
+    expect(client.readContract).not.toHaveBeenCalled();
+    expect(onSign).not.toHaveBeenCalled();
+    expect(sponsor.send).not.toHaveBeenCalled();
+  });
+});
+
+describe('nonce conflicts (D10 amendment: one nonce key)', () => {
+  it('isNonceConflict finds AA25 anywhere in the cause chain, and nothing else', async () => {
+    const { isNonceConflict } = await import('../../src/account/writes');
+    expect(isNonceConflict(new Error('outer', { cause: { details: 'AA25 invalid account nonce' } }))).toBe(true);
+    expect(isNonceConflict({ shortMessage: 'x', cause: { message: 'invalid account nonce' } })).toBe(true);
+    expect(isNonceConflict(new Error('AA21 didn\'t pay prefund'))).toBe(false);
+    expect(isNonceConflict(new Error('Insufficient balance'))).toBe(false);
+  });
+
+  it('the app says "try again", never "Saving is paused"', async () => {
+    const { messageFor } = await import('../../src/ui/operations');
+    const { S } = await import('../../src/ui/strings');
+    expect(messageFor(new WriteError('NONCE_CONFLICT'))).toBe(S.save.nonceConflict);
+    expect(S.save.nonceConflict).not.toBe(S.save.paused);
+    expect(S.save.nonceConflict).toMatch(/try again/i);
+  });
+});
+
+describe('testnet save budget (D10)', () => {
+  it('sponsoredOpsUsed reads EntryPoint.getNonce(owner, 0)', async () => {
+    const { sponsoredOpsUsed } = await import('../../src/account/writes');
+    const { entryPoint06Address } = await import('viem/account-abstraction');
+    const readContract = vi.fn(async () => 43n);
+    expect(await sponsoredOpsUsed({ readContract } as never, owner)).toBe(43);
+    const arg = (readContract.mock.calls[0] as unknown as [{ address: Hex; functionName: string; args: unknown[] }])[0];
+    expect(arg.address).toBe(entryPoint06Address);
+    expect(arg.functionName).toBe('getNonce');
+    expect(arg.args).toEqual([owner, 0n]);
+  });
+
+  it.each([
+    [0, 50],
+    [43, 7],
+    [50, 0],
+    [61, 0],
+  ])('nonce %i leaves about %i free saves', async (nonce, left) => {
+    const { savesLeft } = await import('../../src/account/budget');
+    expect(savesLeft(nonce)).toBe(left);
   });
 });

@@ -2,11 +2,11 @@
  * Flow orchestration (non-visual): ties ceremonies, vault-crypto, sponsored writes and the mirror together.
  * Each function owns the PRF buffers it obtains and wipes them on every path.
  */
-import { decodeVault, deriveLocator, VaultError } from '@cryoshield/vault-crypto';
+import { decodeVault, deriveLocator, maxPayloadBytes, VaultError } from '@cryoshield/vault-crypto';
 import type { Hex } from 'viem';
 import { enrollKey, ENROLL, evaluatePrf, KeyError, type EnrolledKey } from '../webauthn';
-import { addKeyToBlob, createVaultBlob, editVaultBlob } from '../vault/adapter';
-import type { SecretItem } from '../vault/payload';
+import { addKeyToBlob, clearVaultBlob, createVaultBlob, editVaultBlob } from '../vault/adapter';
+import { withItems, writeVaultPayload, type SecretItem, type VaultPayloadInput } from '../vault/payload';
 import type { RegistryVersion } from '../vault/adapter';
 import { notify, WriteError, type ProgressListener } from '../account/errors';
 import { loadWriteStack } from '../account/lazy';
@@ -38,6 +38,11 @@ export interface VaultSession {
   version: number;
   blob: Uint8Array;
   items: SecretItem[];
+  /** Payload v2 (vault-list-labels-archive): every write keeps these unless the user changes them (2.1). */
+  name?: string;
+  archived: boolean;
+  /** Payload v2 `z`, only while a cleared vault has no items. */
+  pad?: string;
   credIds: Uint8Array[];
   /** Where the vault lives. 'v1' (legacy testnet) is read-only: clients never write to VaultRegistry v1. */
   registry: RegistryVersion;
@@ -55,6 +60,20 @@ export interface MirrorItem {
 }
 
 const lastSaveOf = (r: { version: number; txHash?: Hex }) => (r.txHash ? { lastSave: { version: r.version, txHash: r.txHash } } : {});
+
+/** The session's whole payload: the only input any write starts from (never items alone). */
+export function payloadOf(s: Pick<VaultSession, 'name' | 'archived' | 'items' | 'pad'>): VaultPayloadInput {
+  return { archived: s.archived, items: s.items, ...(s.name !== undefined ? { name: s.name } : {}), ...(s.pad !== undefined ? { pad: s.pad } : {}) };
+}
+
+/** The session after a write of payload `p`. */
+function withPayload(s: VaultSession, p: VaultPayloadInput, r: { version: number; txHash?: Hex }, blob: Uint8Array): VaultSession {
+  const next: VaultSession = { ...s, ...payloadOf(p), version: r.version, blob, ...lastSaveOf(r) };
+  if (p.name === undefined) delete next.name;
+  if (p.pad === undefined) delete next.pad;
+  if (!r.txHash) delete next.lastSave;
+  return next;
+}
 
 /** harden-gas-sponsorship: only VaultRegistry v2 vaults can be edited or given a new key. */
 export const isReadOnly = (s: Pick<VaultSession, 'registry'>) => s.registry === 'v1';
@@ -113,7 +132,10 @@ export async function saveNewVault(
   items: SecretItem[],
   onSign: () => void,
   onProgress?: ProgressListener,
+  /** Optional vault name (D10: part of the one create write). */
+  name?: string,
 ): Promise<{ session: VaultSession; locators: Hex[] }> {
+  const payload: VaultPayloadInput = { archived: false, items, ...(name !== undefined ? { name } : {}) };
   let signerLocator: Uint8Array | undefined;
   try {
     if (keys.some((k) => !k.prf)) throw new KeyError('PRF_UNAVAILABLE');
@@ -125,12 +147,12 @@ export async function saveNewVault(
     // The blob is bound to its vaultId, which VaultRegistry v2 derives from the account address and a fresh salt; the
     // write computes it, then this encrypts under it from the PRF outputs held for this setup.
     const build = async (vaultId: Hex) => {
-      const r = await createVaultBlob({ vaultId, rpId: svc.rpId, keys: keys.map((k) => ({ credId: k.credId, prf: k.prf!.slice() })), items });
+      const r = await createVaultBlob({ vaultId, rpId: svc.rpId, keys: keys.map((k) => ({ credId: k.credId, prf: k.prf!.slice() })), payload });
       return { blob: r.blob, locators: r.locators.map(toHex) };
     };
     const res = await createVaultOnChain({ account, build }, { client: svc.client, sponsor: svc.sponsor, reader: svc.reader, onSign, ...(onProgress ? { onProgress } : {}) });
     return {
-      session: { vaultId: res.vaultId, owner: res.owner, version: res.version, blob: res.blob, items, credIds: keys.map((k) => k.credId), registry: 'v2', ...lastSaveOf(res) },
+      session: { vaultId: res.vaultId, owner: res.owner, version: res.version, blob: res.blob, ...payloadOf(payload), credIds: keys.map((k) => k.credId), registry: 'v2', ...lastSaveOf(res) },
       locators: res.locators,
     };
   } finally {
@@ -139,24 +161,61 @@ export async function saveNewVault(
   }
 }
 
-/** Edit: PRF tap with any key of this vault, re-encrypt payload, sign tap with the same key. */
-export async function saveEdit(svc: Services, s: VaultSession, items: SecretItem[], onSign: () => void, onProgress?: ProgressListener): Promise<VaultSession> {
+/**
+ * One update of an existing vault: the staleness check (D8, before any key tap), a PRF tap with any key of this vault,
+ * `build` re-encrypts (and wipes the PRF it is given), then the sign tap with the same key. `updateVaultOnChain`
+ * re-checks staleness right before signing.
+ */
+async function rewrite(svc: Services, s: VaultSession, build: (prf: Uint8Array) => Promise<Uint8Array>, onSign: () => void, onProgress?: ProgressListener) {
   if (isReadOnly(s)) throw new WriteError('READ_ONLY');
-  const { existingVaultAccount, updateVaultOnChain } = await loadWriteStack(); // before the PRF tap: a failed load wastes no tap
+  const { assertCurrent, existingVaultAccount, updateVaultOnChain } = await loadWriteStack(); // before the PRF tap: a failed load wastes no tap
+  await assertCurrent(svc.reader, s.vaultId, s.blob);
   const { credId, prf } = await evaluatePrf({ rpId: svc.rpId }, svc.credentials);
   let locator: Uint8Array | undefined;
   try {
     const entryIndex = decodeVault(s.blob).entries.findIndex((e) => bytesEqual(e.credId, credId));
     if (entryIndex < 0) throw new KeyError('WRONG_KEY', 'not in vault');
     locator = deriveLocator(prf);
-    const blob = await editVaultBlob(s.blob, prf, s.vaultId, items); // wipes prf
+    const blob = await build(prf);
     notify(onProgress, 'encrypted');
     const account = await existingVaultAccount({ client: svc.client, address: s.owner, entryIndex, credId, expectedLocator: locator, ...(svc.credentials ? { credentials: svc.credentials } : {}) });
-    const res = await updateVaultOnChain({ account, vaultId: s.vaultId, blob }, { client: svc.client, sponsor: svc.sponsor, reader: svc.reader, onSign, ...(onProgress ? { onProgress } : {}) });
-    return { ...s, version: res.version, blob, items, ...lastSaveOf(res) };
+    const res = await updateVaultOnChain({ account, vaultId: s.vaultId, blob, base: s.blob }, { client: svc.client, sponsor: svc.sponsor, reader: svc.reader, onSign, ...(onProgress ? { onProgress } : {}) });
+    return { res, blob };
   } finally {
     wipe(prf, locator);
   }
+}
+
+/** Edit secrets: keeps the name and the archived flag (2.1); drops `z` once there is an item. */
+export async function saveEdit(svc: Services, s: VaultSession, items: SecretItem[], onSign: () => void, onProgress?: ProgressListener): Promise<VaultSession> {
+  const payload = withItems(payloadOf(s), items);
+  const { res, blob } = await rewrite(svc, s, (prf) => editVaultBlob(s.blob, prf, s.vaultId, payload), onSign, onProgress);
+  return withPayload(s, payload, res, blob);
+}
+
+/**
+ * Edit vault (D10): the name and the archived flag in ONE update. Nothing changed: returns `s` and sends nothing. An
+ * invalid name or a payload that can't fit is refused before any key tap.
+ */
+export async function saveVaultMeta(svc: Services, s: VaultSession, meta: { name?: string; archived: boolean }, onSign: () => void, onProgress?: ProgressListener): Promise<VaultSession> {
+  if (meta.name === s.name && meta.archived === s.archived) return s;
+  const payload: VaultPayloadInput = { ...payloadOf(s), archived: meta.archived };
+  if (meta.name === undefined) delete payload.name;
+  else payload.name = meta.name;
+  if (writeVaultPayload(payload).length > maxPayloadBytes(svc.rpId, s.credIds)) throw new WriteError('TOO_LARGE');
+  const { res, blob } = await rewrite(svc, s, (prf) => editVaultBlob(s.blob, prf, s.vaultId, payload), onSign, onProgress);
+  return withPayload(s, payload, res, blob);
+}
+
+/** Archive and clear (D4): keeps the name and the blob length, no items, one update. */
+export async function archiveAndClear(svc: Services, s: VaultSession, onSign: () => void, onProgress?: ProgressListener): Promise<VaultSession> {
+  let payload: VaultPayloadInput | undefined;
+  const { res, blob } = await rewrite(svc, s, async (prf) => {
+    const r = await clearVaultBlob(s.blob, prf, s.vaultId);
+    payload = r.payload;
+    return r.blob;
+  }, onSign, onProgress);
+  return withPayload(s, payload!, res, blob);
 }
 
 /** Add key: PRF tap (current key) -> enroll new key (+PRF tap) -> addKey -> sign tap (current key). */
@@ -166,7 +225,8 @@ export async function saveAddKey(
   steps: { onInsertNew: () => void | Promise<void>; onNewAgain: () => void; onSign: () => void | Promise<void>; onProgress?: ProgressListener },
 ): Promise<{ session: VaultSession; newLocator: Hex }> {
   if (isReadOnly(s)) throw new WriteError('READ_ONLY');
-  const { existingVaultAccount, addKeyOnChain } = await loadWriteStack(); // before the PRF tap: a failed load wastes no tap
+  const { assertCurrent, existingVaultAccount, addKeyOnChain } = await loadWriteStack(); // before the PRF tap: a failed load wastes no tap
+  await assertCurrent(svc.reader, s.vaultId, s.blob);
   const current = await evaluatePrf({ rpId: svc.rpId }, svc.credentials);
   let locator: Uint8Array | undefined;
   let fresh: PendingKey | undefined;
@@ -181,7 +241,7 @@ export async function saveAddKey(
     notify(steps.onProgress, 'encrypted');
     const account = await existingVaultAccount({ client: svc.client, address: s.owner, entryIndex, credId: current.credId, expectedLocator: locator, ...(svc.credentials ? { credentials: svc.credentials } : {}) });
     const res = await addKeyOnChain(
-      { account, vaultId: s.vaultId, blob: added.blob, newLocator: toHex(added.locator), newPublicKey: fresh.publicKey, keyCountBefore: decoded.keyCount },
+      { account, vaultId: s.vaultId, blob: added.blob, base: s.blob, newLocator: toHex(added.locator), newPublicKey: fresh.publicKey, keyCountBefore: decoded.keyCount },
       { client: svc.client, sponsor: svc.sponsor, reader: svc.reader, onSign: steps.onSign, ...(steps.onProgress ? { onProgress: steps.onProgress } : {}) },
     );
     return {
@@ -215,6 +275,10 @@ export function messageFor(e: unknown, context: 'create' | 'edit' = 'edit'): str
         return S.save.notConfirmed;
       case 'LOAD_FAILED':
         return S.save.loadFailed;
+      case 'STALE':
+        return S.save.stale;
+      case 'NONCE_CONFLICT':
+        return S.save.nonceConflict;
       case 'KEY':
         return e.detail.keyError ? (S.keyErrors[e.detail.keyError.code] ?? S.save.nothingSaved) : S.save.nothingSaved;
       default:

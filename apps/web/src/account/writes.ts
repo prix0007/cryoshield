@@ -14,6 +14,7 @@ import {
   decodeFunctionResult,
   encodeFunctionData,
   http,
+  parseAbi,
   type Hex,
   type PublicClient,
 } from 'viem';
@@ -114,7 +115,7 @@ export function createSponsor(client: PublicClient, bundlerUrl = config.bundlerU
           try {
             return await pimlico.getPaymasterStubData(p);
           } catch (e) {
-            throw new WriteError('SPONSORSHIP_REFUSED', { cause: e });
+            throw new WriteError(isNonceConflict(e) ? 'NONCE_CONFLICT' : 'SPONSORSHIP_REFUSED', { cause: e });
           }
         },
         async getPaymasterData(p: Parameters<typeof pimlico.getPaymasterData>[0]) {
@@ -123,7 +124,7 @@ export function createSponsor(client: PublicClient, bundlerUrl = config.bundlerU
           try {
             data = await pimlico.getPaymasterData(p);
           } catch (e) {
-            throw new WriteError('SPONSORSHIP_REFUSED', { cause: e });
+            throw new WriteError(isNonceConflict(e) ? 'NONCE_CONFLICT' : 'SPONSORSHIP_REFUSED', { cause: e });
           }
           notify(onProgress, 'sponsored');
           return data;
@@ -162,8 +163,20 @@ export function createSponsor(client: PublicClient, bundlerUrl = config.bundlerU
   };
 }
 
+/** EntryPoint AA25: the account's key-0 nonce was already used (a concurrent save from another tab or device). */
+export function isNonceConflict(e: unknown): boolean {
+  let cur: unknown = e;
+  for (let i = 0; i < 10 && cur && typeof cur === 'object'; i++) {
+    const c = cur as { message?: unknown; details?: unknown; shortMessage?: unknown; cause?: unknown };
+    if ([c.message, c.details, c.shortMessage].some((m) => typeof m === 'string' && /AA25|invalid account nonce/i.test(m))) return true;
+    cur = c.cause;
+  }
+  return false;
+}
+
 function classify(e: unknown): WriteError {
   if (e instanceof WriteError) return e;
+  if (isNonceConflict(e)) return new WriteError('NONCE_CONFLICT', { cause: e });
   let cur: unknown = e;
   for (let i = 0; i < 10 && cur; i++) {
     if (cur instanceof WriteError) return cur;
@@ -178,6 +191,29 @@ function classify(e: unknown): WriteError {
 /** Decodes the inner revert of a failed (included) user operation. */
 function revertOf(reason: Hex | undefined): WriteError {
   return registryError(reason);
+}
+
+/**
+ * vault-list-labels-archive D8: every update starts from the current blob. Re-reads the vault and throws STALE when it
+ * is gone or differs from `base` (the blob this session decrypted), so nothing is signed over a newer version.
+ */
+export async function assertCurrent(reader: Pick<RegistryReader, 'getVault'>, vaultId: Hex, base: Uint8Array): Promise<void> {
+  let v;
+  try {
+    v = await reader.getVault(vaultId);
+  } catch (e) {
+    throw new WriteError('NETWORK', { cause: e });
+  }
+  if (!v || !bytesEqual(v.blob, base)) throw new WriteError('STALE');
+}
+
+/** EntryPoint v0.6 `getNonce`, beside the bundler's EntryPoint use above (D10: the testnet save-budget hint). */
+const entryPointNonceAbi = parseAbi(['function getNonce(address sender, uint192 key) view returns (uint256 nonce)']);
+
+/** Sponsored operations this account has used: its EntryPoint nonce for key 0 (one per included user operation). */
+export async function sponsoredOpsUsed(client: Pick<PublicClient, 'readContract'>, owner: Hex): Promise<number> {
+  const n = await client.readContract({ address: entryPoint06Address, abi: entryPointNonceAbi, functionName: 'getNonce', args: [owner, 0n] });
+  return Number(n);
 }
 
 async function confirm(reader: RegistryReader, vaultId: Hex, owner: Hex, blob: Uint8Array) {
@@ -256,9 +292,10 @@ export async function createVaultOnChain(
 }
 
 export async function updateVaultOnChain(
-  p: { account: SmartAccount; vaultId: Hex; blob: Uint8Array },
+  p: { account: SmartAccount; vaultId: Hex; blob: Uint8Array; /** The blob this session decrypted (D8). */ base: Uint8Array },
   deps: WriteDeps,
 ): Promise<Omit<WriteResult, 'locators'>> {
+  await assertCurrent(deps.reader, p.vaultId, p.base);
   const owner = await p.account.getAddress();
   const calls: Call[] = [registryCall(encodeFunctionData({ abi: registryV2Abi, functionName: 'updateVault', args: [p.vaultId, toHex(p.blob)] }))];
   await preflight(deps.client, owner, calls);
@@ -272,9 +309,10 @@ export async function updateVaultOnChain(
 
 /** Atomic add-key: addOwnerPublicKey (self) + addLocators + updateVault in one executeBatch. */
 export async function addKeyOnChain(
-  p: { account: SmartAccount; vaultId: Hex; blob: Uint8Array; newLocator: Hex; newPublicKey: Hex; keyCountBefore: number },
+  p: { account: SmartAccount; vaultId: Hex; blob: Uint8Array; base: Uint8Array; newLocator: Hex; newPublicKey: Hex; keyCountBefore: number },
   deps: WriteDeps,
 ): Promise<Omit<WriteResult, 'locators'>> {
+  await assertCurrent(deps.reader, p.vaultId, p.base);
   const owner = await p.account.getAddress();
   // The new owner will land at nextOwnerIndex; the new blob entry at keyCountBefore. They must match, or
   // owner index == entry index (design D2) breaks and later signatures would use the wrong owner.

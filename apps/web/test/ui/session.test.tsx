@@ -13,6 +13,7 @@ const s = {
   version: 1,
   blob: new Uint8Array(400),
   items: [{ label: 'Seed', secret: 'abandon art' }],
+  archived: false,
 };
 
 async function unlocked() {

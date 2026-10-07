@@ -163,6 +163,19 @@ The writer emits **v1** when there is no name, no archive flag, no `z`, and at l
 - *Separate writes for rename and archive.* Doubles the use of a 50-operation lifetime budget.
 - *Query Pimlico for the remaining budget.* No public per-sender endpoint, and the API key must not gain account APIs (`harden-gas-sponsorship` D3).
 
+### D10 amendment. One EntryPoint nonce key (overwatcher, 2026-10-08)
+
+Found at task 2.5: viem's `toSmartAccount` picks a fresh nonce **key** for every user operation (`Date.now()`), so `EntryPoint.getNonce(owner, 0)` stays 0 and the hint above could never count anything.
+
+- **Decision:** the CryoShield wallet wrapper (`src/account/wallet.ts`) always uses nonce key **0**. `getNonce(owner, 0)` then counts every included operation of the account, and `sponsoredOpsUsed` reads exactly that. Client-side only: the EntryPoint and CryoShieldSmartWallet contracts are unchanged, and so is signing (UV, `rpIdHash`).
+- **Under-count:** accounts that already saved under timestamp keys start counting from 0 at their next save. This only affects testnet accounts, and the hint already says "about".
+- **Sequential operations:** one key means one sequence per account. Two tabs or devices saving at the same moment: the second operation reuses the same nonce and fails validation (EntryPoint `AA25 invalid account nonce`). The app maps it, from the paymaster, the gas estimate or the send, to `WriteError('NONCE_CONFLICT')` and a retryable message ("Another save for this vault was happening at the same moment … try again"), never "Saving is paused". When the first save has already landed, the D8 check (`STALE`) refuses the second one earlier, before any key tap.
+- **Tests:** the nonce increments after a create and after each edit on the local stack; the AA25 mapping (unit and local stack); the write stack, `wallet.ts` included, stays out of the initial `/app` chunk (`verify-build`).
+
+**Rejected alternatives:**
+- *Count `UserOperationEvent` logs by sender.* Paged `eth_getLogs` over the EntryPoint's whole history on every open, through a public RPC.
+- *Drop the hint.* Users would meet the 50-operation lifetime cap without warning.
+
 ### D11. Capacity
 
 - The editor's "space remaining" reserves the bytes needed to archive the vault later (`"a":true,`, 9 bytes) and counts the name's encoded bytes (`"n":"…",`). v1 → v2 adds no bytes otherwise (`"v":2` is as long as `"v":1`).

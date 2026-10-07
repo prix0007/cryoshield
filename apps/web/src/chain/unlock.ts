@@ -1,12 +1,12 @@
 /**
  * Single-tap unlock (spec hardware-key-auth "Single-tap unlock ceremony"):
- * one PRF ceremony -> locator -> registry candidates (eth_call) -> vault-crypto selection -> payload v1.
+ * one PRF ceremony -> locator -> registry candidates (eth_call) -> vault-crypto selection -> payload v1 or v2.
  * No smart account, signature, or transaction is involved.
  */
 import { deriveLocator } from '@cryoshield/vault-crypto';
 import { evaluatePrf, type CredentialsApi } from '../webauthn';
 import { matchCandidates, type RegistryVersion } from '../vault/adapter';
-import { decodePayload, PayloadError, type SecretItem, type PayloadErrorCode } from '../vault/payload';
+import { decodeVaultPayload, PayloadError, type SecretItem, type PayloadErrorCode, type VaultPayload } from '../vault/payload';
 import { toHex, wipe, type Hex } from '../lib/bytes';
 import type { RegistryReader } from './registry';
 
@@ -24,6 +24,12 @@ export interface OpenedVault {
   blob: Uint8Array;
   /** Decrypted items, or null when the payload can't be shown (see payloadError). */
   items: SecretItem[] | null;
+  /** Payload v2 (vault-list-labels-archive): the encrypted vault name, if any. */
+  name?: string;
+  /** Payload v2: archived vaults are listed, never opened automatically (D13). */
+  archived: boolean;
+  /** Payload v2 `z` (only after Archive and clear); kept so an unarchive keeps it. */
+  pad?: string;
   payloadError?: PayloadErrorCode;
   /** Unlocking credential's index in the blob (= smart-account owner index). */
   entryIndex: number;
@@ -60,16 +66,18 @@ export async function unlock(
   const matches = await matchCandidates(candidates, prf, credId); // wipes prf
   if (matches.length === 0) throw new UnlockError('NO_VAULT');
   const opened = matches.map((m): OpenedVault => {
-    let items: SecretItem[] | null = null;
+    let p: VaultPayload | null = null;
     let payloadError: PayloadErrorCode | undefined;
     try {
-      items = decodePayload(m.secret);
+      p = decodeVaultPayload(m.secret);
     } catch (e) {
       payloadError = e instanceof PayloadError ? e.code : 'MALFORMED';
     } finally {
       wipe(m.secret);
     }
-    const o: OpenedVault = { ...m.candidate, items, entryIndex: m.entryIndex };
+    const o: OpenedVault = { ...m.candidate, items: p?.items ?? null, archived: p?.archived ?? false, entryIndex: m.entryIndex };
+    if (p?.name !== undefined) o.name = p.name;
+    if (p?.pad !== undefined) o.pad = p.pad;
     if (payloadError) o.payloadError = payloadError;
     return o;
   });

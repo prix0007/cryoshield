@@ -8,12 +8,13 @@ import {
   decodeVault,
   maxPayloadBytes,
   MODE_ANY_OF_N,
+  openVault,
   selectVault,
   updatePayload,
   VaultError,
 } from '@cryoshield/vault-crypto';
 import { bytesEqual, fromHex, toHex, wipe, type Hex } from '../lib/bytes';
-import { encodePayload, type SecretItem } from './payload';
+import { ARCHIVE_RESERVE, archiveAndClearPayload, decodeVaultPayload, writeVaultPayload, type VaultPayload, type VaultPayloadInput } from './payload';
 
 export interface KeyPrf {
   credId: Uint8Array;
@@ -33,15 +34,15 @@ export interface Candidate {
 
 export interface Match {
   candidate: Candidate;
-  /** Decrypted payload bytes (payload v1). Caller wipes after decoding. */
+  /** Decrypted payload bytes (payload v1 or v2). Caller wipes after decoding. */
   secret: Uint8Array;
   /** Index of the unlocking credential in the blob's entry list (= smart-account owner index), or -1. */
   entryIndex: number;
 }
 
 /** The vault is cryptographically bound to its on-chain vaultId (wrap + payload AAD): a clone under another id never opens. */
-export async function createVaultBlob(p: { vaultId: Hex; rpId: string; keys: readonly KeyPrf[]; items: readonly SecretItem[] }) {
-  const secret = encodePayload(p.items);
+export async function createVaultBlob(p: { vaultId: Hex; rpId: string; keys: readonly KeyPrf[]; payload: VaultPayloadInput }) {
+  const secret = writeVaultPayload(p.payload);
   try {
     return await createVault({
       vaultId: fromHex(p.vaultId),
@@ -90,8 +91,12 @@ export async function matchCandidates(candidates: readonly Candidate[], prf: Uin
   }
 }
 
-export async function editVaultBlob(blob: Uint8Array, prf: Uint8Array, vaultId: Hex, items: readonly SecretItem[]): Promise<Uint8Array> {
-  const secret = encodePayload(items);
+/**
+ * Re-encrypts a whole payload (vault-list-labels-archive 2.1): callers pass the session's payload with their change,
+ * never items alone, so the name and the archived flag can't be dropped.
+ */
+export async function editVaultBlob(blob: Uint8Array, prf: Uint8Array, vaultId: Hex, payload: VaultPayloadInput): Promise<Uint8Array> {
+  const secret = writeVaultPayload(payload);
   try {
     return await updatePayload(blob, { prf }, fromHex(vaultId), secret);
   } finally {
@@ -107,11 +112,31 @@ export async function addKeyToBlob(blob: Uint8Array, existingPrf: Uint8Array, va
   }
 }
 
-export function capacity(rpId: string, credIds: readonly Uint8Array[], items: readonly SecretItem[]) {
+/**
+ * Archive and clear (D4): decrypts the current payload (its exact length sizes `z`), writes the cleared one. Wipes prf.
+ * Returns the new blob and the payload it holds.
+ */
+export async function clearVaultBlob(blob: Uint8Array, prf: Uint8Array, vaultId: Hex): Promise<{ blob: Uint8Array; payload: VaultPayload }> {
+  const v = decodeVault(blob);
+  const id = fromHex(vaultId);
+  let prev: Uint8Array | undefined;
+  let secret: Uint8Array | undefined;
+  try {
+    prev = await openVault(blob, { prf: prf.slice() }, id);
+    secret = archiveAndClearPayload(prev, maxPayloadBytes(v.rpId, v.entries.map((e) => e.credId), v.mode));
+    const payload = decodeVaultPayload(secret);
+    return { blob: await updatePayload(blob, { prf: prf.slice() }, id, secret), payload };
+  } finally {
+    wipe(prf, prev, secret);
+  }
+}
+
+/** Space left (D11): counts the encoded name and, while active, reserves `"a":true,` so the vault can be archived. */
+export function capacity(rpId: string, credIds: readonly Uint8Array[], payload: VaultPayloadInput) {
   const max = maxPayloadBytes(rpId, [...credIds], MODE_ANY_OF_N);
   let used: number;
   try {
-    used = encodePayload(items).length;
+    used = writeVaultPayload(payload).length + (payload.archived ? 0 : ARCHIVE_RESERVE);
   } catch {
     used = 0;
   }

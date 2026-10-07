@@ -180,6 +180,8 @@ export const S = {
     notConfirmed: 'We couldn’t confirm the save yet. Please unlock again in a minute to check.',
     loadFailed: 'Nothing was saved. Part of the app didn’t load. Check your connection and try again, or reload the page (your unsaved changes will be lost).',
     retry: 'Try again',
+    stale: 'This vault changed since you opened it. Unlock again.',
+    nonceConflict: 'Another save for this vault was happening at the same moment, so nothing was saved. Your changes are still here. Please try again in a minute.',
   },
 
   mirror: {

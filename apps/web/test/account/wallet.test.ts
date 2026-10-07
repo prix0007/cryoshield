@@ -99,3 +99,30 @@ describe('CryoShield smart account wrapper (4.1, design D8)', () => {
     await expect(toCryoShieldSmartAccount({ client, factory: OUR_FACTORY, owners: [owner('aa')], ownerIndex: 1 })).rejects.toThrow(/owner index/);
   });
 });
+
+/** vault-list-labels-archive D10 amendment: every user operation uses EntryPoint nonce key 0. */
+describe('nonce key 0 (save-budget hint)', () => {
+  it('getNonce asks the EntryPoint for key 0, not a per-operation timestamp key', async () => {
+    const { entryPoint06Abi, entryPoint06Address } = await import('viem/account-abstraction');
+    const asked: unknown[][] = [];
+    const client = createPublicClient({
+      chain: { id: 31337, name: 't', nativeCurrency: { name: 'E', symbol: 'E', decimals: 18 }, rpcUrls: { default: { http: ['http://x'] } } },
+      transport: custom({
+        async request({ method, params }: { method: string; params: any }) {
+          if (method === 'eth_chainId') return '0x7a69';
+          if (method === 'eth_call' && getAddress(params[0].to) === getAddress(entryPoint06Address)) {
+            const d = decodeFunctionData({ abi: entryPoint06Abi, data: params[0].data });
+            asked.push([...(d.args ?? [])]);
+            return encodeFunctionResult({ abi: entryPoint06Abi, functionName: 'getNonce', result: 7n });
+          }
+          throw new Error(`unsupported ${method}`);
+        },
+      }),
+    });
+    const acc = await toCryoShieldSmartAccount({ client, factory: OUR_FACTORY, owners: [owner('aa')], ownerIndex: 0, address: PREDICTED });
+    expect(await acc.getNonce()).toBe(7n);
+    expect(await acc.getNonce()).toBe(7n);
+    expect(asked).toEqual([[PREDICTED, 0n], [PREDICTED, 0n]]);
+  });
+});
+

@@ -112,9 +112,14 @@ export function SecretsEditor(props: {
   busy?: boolean;
   /** Extra confirmation shown above Save (create flow: permanence + 18+). Save stays disabled until `ok`. */
   gate?: { ok: boolean; content: ReactNode; hintId: string };
+  /** The vault's name and archived flag: counted in the space left (D11), and kept by the save. */
+  meta?: { name?: string | undefined; archived: boolean };
+  /** Shown next to Save (testnet save-budget hint, D10); `blocked` disables Save. */
+  budget?: { text: string; blocked: boolean } | undefined;
 }) {
   const { items, onChange } = props;
-  const cap = capacity(props.rpId, props.credIds, items);
+  const name = props.meta?.name;
+  const cap = capacity(props.rpId, props.credIds, { archived: props.meta?.archived ?? false, items, ...(name ? { name } : {}) });
   const nonEmpty = items.some((i) => i.secret.trim() !== '');
   const meterId = useId();
   const over = !cap.fits && nonEmpty;
@@ -195,11 +200,12 @@ export function SecretsEditor(props: {
       <ActionBar>
         <Btn
           type="submit"
-          disabled={!cap.fits || !nonEmpty || props.busy || (props.gate ? !props.gate.ok : false)}
+          disabled={!cap.fits || !nonEmpty || props.busy || props.budget?.blocked || (props.gate ? !props.gate.ok : false)}
           {...(props.gate && !props.gate.ok ? { 'aria-describedby': props.gate.hintId } : {})}
         >
           {S.editor.save}
         </Btn>
+        {props.budget && <p className="hint">{props.budget.text}</p>}
         {props.onCancel && (
           <Btn type="button" className="secondary" onClick={props.onCancel} disabled={props.busy}>
             {S.editor.cancel}

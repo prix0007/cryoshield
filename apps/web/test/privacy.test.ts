@@ -38,7 +38,7 @@ describe('no storage, no logging (3.6)', () => {
     f.use(0);
     const pa = (await evaluatePrf({ rpId: 'localhost', credId: a.credId }, f.credentials)).prf;
     const pb = await f.prfFor(b.credId, locatorSalt());
-    const { blob, locators } = await createVaultBlob({ vaultId: ('0x' + '01'.repeat(32)) as `0x${string}`, rpId: 'localhost', keys: [{ credId: a.credId, prf: pa }, { credId: b.credId, prf: pb }], items: [{ label: 'x', secret: 'y' }] });
+    const { blob, locators } = await createVaultBlob({ vaultId: ('0x' + '01'.repeat(32)) as `0x${string}`, rpId: 'localhost', keys: [{ credId: a.credId, prf: pa }, { credId: b.credId, prf: pb }], payload: { archived: false, items: [{ label: 'x', secret: 'y' }] } });
     const reg = new MockRegistry();
     reg.put(('0x' + '01'.repeat(32)) as `0x${string}`, { owner: '0x00000000000000000000000000000000000000a1', blob: toHex(blob), version: 1 }, locators.map(toHex));
     f.use(0);

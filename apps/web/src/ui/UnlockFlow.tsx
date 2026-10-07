@@ -29,6 +29,9 @@ function toSession(m: OpenedVault): VaultSession {
     version: m.version,
     blob: m.blob,
     items: m.items ?? [],
+    archived: m.archived,
+    ...(m.name !== undefined ? { name: m.name } : {}),
+    ...(m.pad !== undefined ? { pad: m.pad } : {}),
     credIds: decodeVault(m.blob).entries.map((e) => e.credId),
     registry: m.registry,
   };

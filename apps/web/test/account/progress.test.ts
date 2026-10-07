@@ -39,11 +39,11 @@ describe('write progress events (D5)', () => {
 
   it('update and add-key report sponsored -> sent -> confirmed (encrypted is reported by the caller that built the blob)', async () => {
     const a: string[] = [];
-    await updateVaultOnChain({ account, vaultId, blob }, { client: okClient, sponsor: sponsor(), reader: reader(blob), onProgress: (s) => void a.push(s) });
+    await updateVaultOnChain({ account, vaultId, blob, base: blob }, { client: okClient, sponsor: sponsor(), reader: reader(blob), onProgress: (s) => void a.push(s) });
     expect(a).toEqual(['sponsored', 'sent', 'confirmed']);
     const b: string[] = [];
     await addKeyOnChain(
-      { account, vaultId, blob, newLocator: ('0x' + '44'.repeat(32)) as Hex, newPublicKey: ('0x' + 'aa'.repeat(64)) as Hex, keyCountBefore: 2 },
+      { account, vaultId, blob, base: blob, newLocator: ('0x' + '44'.repeat(32)) as Hex, newPublicKey: ('0x' + 'aa'.repeat(64)) as Hex, keyCountBefore: 2 },
       { client: okClient, sponsor: sponsor(), reader: reader(blob), onProgress: (s) => void b.push(s) },
     );
     expect(b).toEqual(['sponsored', 'sent', 'confirmed']);
@@ -51,7 +51,7 @@ describe('write progress events (D5)', () => {
 
   it('a throwing progress listener never breaks or alters the write', async () => {
     const r = await updateVaultOnChain(
-      { account, vaultId, blob },
+      { account, vaultId, blob, base: blob },
       { client: okClient, sponsor: sponsor(), reader: reader(blob), onProgress: () => { throw new Error('ui bug'); } },
     );
     expect(r.version).toBe(2);
@@ -70,14 +70,14 @@ describe('write progress events (D5)', () => {
   it('confirmed is not reported when the read-back differs', async () => {
     const log: string[] = [];
     await expect(
-      updateVaultOnChain({ account, vaultId, blob }, { client: okClient, sponsor: sponsor(), reader: reader(new Uint8Array([9])), onProgress: (s) => void log.push(s) }),
+      updateVaultOnChain({ account, vaultId, blob, base: new Uint8Array([9]) }, { client: okClient, sponsor: sponsor(), reader: reader(new Uint8Array([9])), onProgress: (s) => void log.push(s) }),
     ).rejects.toMatchObject({ code: 'NOT_CONFIRMED' });
     expect(log).not.toContain('confirmed');
   });
 
   it('the listener is never awaited (a never-resolving promise does not stall the write)', async () => {
     const r = await updateVaultOnChain(
-      { account, vaultId, blob },
+      { account, vaultId, blob, base: blob },
       { client: okClient, sponsor: sponsor(), reader: reader(blob), onProgress: (() => new Promise(() => undefined)) as never },
     );
     expect(r.version).toBe(2);

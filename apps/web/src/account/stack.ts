@@ -4,4 +4,4 @@
  * operations. Only lazy.ts imports this module, and only with a dynamic import().
  */
 export { existingVaultAccount, newVaultAccount } from './account';
-export { addKeyOnChain, createSponsor, createVaultOnChain, updateVaultOnChain } from './writes';
+export { addKeyOnChain, assertCurrent, createSponsor, createVaultOnChain, sponsoredOpsUsed, updateVaultOnChain } from './writes';
