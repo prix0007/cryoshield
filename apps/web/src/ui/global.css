@@ -629,3 +629,57 @@ dd {
   background: var(--app-surface);
   font-size: var(--caption-size);
 }
+
+/* "Where your vault is stored" (show-vault-onchain-location): a quiet disclosure under the vault, utility-card rows. */
+.vault-location-disclosure {
+  margin: var(--space-md) 0;
+}
+.vault-location-disclosure .notice-details button.disclosure {
+  min-height: var(--target);
+}
+.vault-location {
+  margin-top: var(--space-xs);
+  padding: var(--space-md) var(--space-lg);
+  background: var(--app-surface);
+  border: 1px solid var(--app-hairline);
+  border-radius: var(--radius-lg);
+}
+.loc-list {
+  margin: 0;
+}
+.loc-row {
+  padding: var(--space-xs) 0;
+  border-bottom: 1px solid var(--app-hairline);
+}
+.loc-row:last-child {
+  border-bottom: 0;
+}
+.loc-row dd {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-xxs) var(--space-sm);
+}
+.loc-value.mono {
+  white-space: nowrap;
+}
+.loc-note {
+  color: var(--app-muted);
+  font-size: var(--caption-size);
+}
+button.loc-copy {
+  margin-left: auto;
+  padding: 4px 14px;
+  min-height: var(--target);
+  font-size: var(--caption-size);
+}
+.loc-public {
+  margin: var(--space-sm) 0 0;
+  font-size: var(--caption-size);
+  color: var(--app-muted);
+}
+.loc-row a.loc-value {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+}

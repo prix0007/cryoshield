@@ -38,6 +38,7 @@ testnet build. Both need `contracts.vaultRegistryV2` and `contracts.wallets.<the
 | H6 | Re-create the old test vault on v2 with the same keys (task 6.4), then unlock | the v2 vault opens directly (no picker) with Edit; "Open an older test vault" shows the v1 copy read-only; "Back to your current vault" returns | not run |
 | H7 | Pimlico dashboard: temporarily set the per-sender count to the sender's current count, then edit | "Saving is paused right now…"; nothing sent; unlock still works. Restore the cap | not run |
 | H8 | Recovery tool reads the v1 and the v2 vault | both open | not run |
+| H10 | After H4, open "Where your vault is stored" (show-vault-onchain-location) | network "OP Sepolia testnet (chain ID 11155420)"; registry = `contracts.vaultRegistryV2`, Version 2; vault ID = the one under Vault details; the Vault account link opens `testnet-explorer.optimism.io/address/<owner>` in a new tab; the Last save link opens the edit's transaction; Copy puts the full value on the clipboard; no locator is shown; after Lock the panel is gone | not run |
 | H9 | Record gas and USD per create / edit / add-key in `docs/costs.md` and `contracts/GAS.md`; re-check the D2 per-operation caps | filled | not run |
 
 Arbitrum Sepolia (421614) stays a supported preset: rebuild with its `VITE_*` values and

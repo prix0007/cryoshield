@@ -89,9 +89,9 @@ describe('self-heal (7.5)', () => {
       return new Response(new Uint8Array(store[id] ?? new Uint8Array()));
     };
     const m = createMirror({ turboUploadUrl: 'https://u.example', arweaveGatewayUrl: 'https://gw.example', fetchFn: fetchFn as any });
-    expect(await m.ensure({ vaultId, version: 4, locators: locs, blob })).toBe('present');
+    expect((await m.ensure({ vaultId, version: 4, locators: locs, blob })).state).toBe('present');
     delete store.good;
-    expect(await m.ensure({ vaultId, version: 4, locators: locs, blob })).toBe('uploaded');
+    expect((await m.ensure({ vaultId, version: 4, locators: locs, blob })).state).toBe('uploaded');
     expect(uploads).toBe(1);
   });
 
@@ -104,7 +104,7 @@ describe('self-heal (7.5)', () => {
       return new Response(new Uint8Array(5000));
     };
     const m = createMirror({ turboUploadUrl: 'https://u.example', arweaveGatewayUrl: 'https://gw.example', fetchFn: fetchFn as any });
-    expect(await m.ensure({ vaultId, version: 1, locators: locs, blob: new Uint8Array([1]) })).toBe('uploaded');
+    expect((await m.ensure({ vaultId, version: 1, locators: locs, blob: new Uint8Array([1]) })).state).toBe('uploaded');
     expect(fetched).toEqual([]);
   });
 });
@@ -125,7 +125,7 @@ describe('review fix 7: a gateway listing alone is never trusted', () => {
       return data();
     };
     const m = createMirror({ turboUploadUrl: 'https://u.example', arweaveGatewayUrl: 'https://gw.example', fetchFn: fetchFn as any });
-    expect(await m.ensure({ vaultId, version: 1, locators: locs, blob })).toBe('uploaded');
+    expect((await m.ensure({ vaultId, version: 1, locators: locs, blob })).state).toBe('uploaded');
     expect(uploads).toBe(1);
   });
   it('a 409/"already exists" upload response is not treated as success', async () => {
@@ -160,20 +160,29 @@ describe('fix-arweave-mirror-status 1.1: copy found on either index', () => {
 
   it('present (no upload) when arweave.net has nothing yet but the fast index serves identical bytes', async () => {
     const { m, calls } = server({ fastHas: blob, gwHas: null });
-    expect(await m.ensure(input)).toBe('present');
+    expect((await m.ensure(input)).state).toBe('present');
     expect(calls.some((u) => u.includes('upload.example'))).toBe(false);
     expect(calls).toContain(`${FAST}/${ID}`); // data fetched from the host that listed it
   });
 
   it('uploads when the fast index serves different bytes and the gateway has nothing', async () => {
     const { m, calls } = server({ fastHas: new Uint8Array(300).fill(8), gwHas: null });
-    expect(await m.ensure(input)).toBe('uploaded');
+    expect((await m.ensure(input)).state).toBe('uploaded');
     expect(calls.some((u) => u.includes('upload.example/v1/tx/ethereum'))).toBe(true);
+  });
+
+  it('show-vault-onchain-location 1.2: returns the id of the item it byte-verified, or of the one it uploaded', async () => {
+    const found = server({ fastHas: blob, gwHas: null });
+    expect(await found.m.ensure(input)).toEqual({ state: 'present', id: ID });
+    const fresh = server({ fastHas: null, gwHas: null });
+    const r = await fresh.m.ensure(input);
+    expect(r.state).toBe('uploaded');
+    expect(r.id).toMatch(/^[A-Za-z0-9_-]{43}$/);
   });
 
   it('tolerates one index being down and still finds the copy on the other', async () => {
     const { m } = server({ fastDown: true, gwHas: blob });
-    expect(await m.ensure(input)).toBe('present');
+    expect((await m.ensure(input)).state).toBe('present');
   });
 
   it('upload() reports the Turbo item id and MirrorError carries status and step', async () => {

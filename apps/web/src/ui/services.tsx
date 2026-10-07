@@ -1,6 +1,6 @@
 /** Dependency container for the UI, so flows can be tested with fakes. Production wires real services. */
 import { createContext, useContext, useMemo, type ReactNode } from 'react';
-import type { PublicClient } from 'viem';
+import type { Hex, PublicClient } from 'viem';
 import { config } from '../config';
 import { createRegistryReader, type RegistryReader } from '../chain/registry';
 import { makePublicClient } from '../account/account';
@@ -22,6 +22,12 @@ export interface Services {
   fastIndexUrl: string;
   /** Hostname check for the RP ID guard (overridable in tests). */
   host: string;
+  /** show-vault-onchain-location: the configured chain's display name and block explorer (null: no explorer). */
+  network: { name: string; explorerUrl: string | null };
+  /** Registry addresses shown in "Where your vault is stored" (v1 is legacy, read-only, absent on OP Mainnet). */
+  registries: { v1: Hex | null; v2: Hex };
+  /** Arweave gateway for the mirror item link. */
+  arweaveGatewayUrl: string;
 }
 
 const Ctx = createContext<Services | null>(null);
@@ -38,6 +44,9 @@ export function defaultServices(): Services {
     mirror: createMirror({ turboUploadUrl: config.turboUploadUrl, arweaveGatewayUrl: config.arweaveGatewayUrl, fastIndexUrl: config.arweaveFastIndexUrl }),
     fastIndexUrl: config.arweaveFastIndexUrl,
     host: typeof location === 'undefined' ? '' : location.hostname,
+    network: config.network,
+    registries: { v1: config.registryV1?.address ?? null, v2: config.registryV2.address },
+    arweaveGatewayUrl: config.arweaveGatewayUrl,
   };
 }
 

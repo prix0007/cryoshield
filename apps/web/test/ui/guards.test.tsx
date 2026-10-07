@@ -1,6 +1,7 @@
 import { screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { S } from '../../src/ui/strings';
+import { LOCATION } from '../../src/ui/strings-location';
 import { renderApp } from './helpers';
 
 describe('jargon (8.7)', () => {
@@ -19,6 +20,7 @@ describe('jargon (8.7)', () => {
       } else if (v && typeof v === 'object') Object.values(v).forEach(walk);
     };
     walk(S);
+    walk(LOCATION); // show-vault-onchain-location: the lazily loaded panel's strings
     const banned = /\b(gas|wallet|transactions?|smart account|bundler|paymaster|ETH)\b/i;
     expect(all.filter((t) => banned.test(t))).toEqual([]);
   });

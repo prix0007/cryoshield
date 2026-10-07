@@ -11,6 +11,8 @@ declare module 'virtual:cryoshield-config' {
       registryV2: Contract;
       /** The CryoShield wallet pair for this build's RP ID (contracts.wallets[VITE_RP_ID]). */
       wallet: { factory: `0x${string}`; implementation: `0x${string}` };
+      /** Display name and block explorer of the configured chain (src/config/networks.ts). */
+      network: { name: string; explorerUrl: string | null };
     }
   >;
 

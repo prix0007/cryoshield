@@ -14,7 +14,12 @@ type Step = 'intro' | 'keys' | 'secrets' | 'saving' | 'done';
 const STEP_ORDER: readonly Step[] = ['intro', 'keys', 'secrets', 'saving', 'done'];
 const MAX_KEYS = 8;
 
-export function CreateFlow(props: { onDone: (s: VaultSession) => void; onCancel: () => void }) {
+export function CreateFlow(props: {
+  onDone: (s: VaultSession) => void;
+  onCancel: () => void;
+  /** Every mirror result, even one that arrives after Continue (show-vault-onchain-location). */
+  onMirror?: (vaultId: `0x${string}`, version: number, r: MirrorResult) => void;
+}) {
   const svc = useServices();
   const [step, setStep] = useState<Step>('intro');
   const [keys, setKeys] = useState<PendingKey[]>([]);
@@ -94,7 +99,10 @@ export function CreateFlow(props: { onDone: (s: VaultSession) => void; onCancel:
       setStep('done');
       setPrompt(null);
       setKnownLocators(locators);
-      void mirrorWrite(svc, { vaultId: s.vaultId, version: s.version, blob: s.blob, locators }).then(setMirror);
+      void mirrorWrite(svc, { vaultId: s.vaultId, version: s.version, blob: s.blob, locators }).then((r) => {
+        setMirror(r);
+        props.onMirror?.(s.vaultId, s.version, r);
+      });
     } catch (e) {
       setPrompt(null);
       setError(messageFor(e, 'create'));
@@ -203,7 +211,10 @@ export function CreateFlow(props: { onDone: (s: VaultSession) => void; onCancel:
             ))}
             <MirrorLine result={mirror} fastIndexUrl={svc.fastIndexUrl} onRetry={() => {
               setMirror({ status: 'pending' });
-              void mirrorWrite(svc, { vaultId: session.vaultId, version: session.version, blob: session.blob, locators: knownLocators }).then(setMirror);
+              void mirrorWrite(svc, { vaultId: session.vaultId, version: session.version, blob: session.blob, locators: knownLocators }).then((r) => {
+                setMirror(r);
+                props.onMirror?.(session.vaultId, session.version, r);
+              });
             }} />
             <ActionBar>
               <Btn onClick={() => props.onDone(session)}>{S.create.continue}</Btn>

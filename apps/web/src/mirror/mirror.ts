@@ -156,8 +156,11 @@ export function createMirror(opts: { turboUploadUrl: string; arweaveGatewayUrl: 
     return out;
   }
 
-  /** Self-heal: 'present' if some item for (vaultId, version) has exactly these bytes, else uploads ('uploaded'). */
-  async function ensure(p: MirrorInput): Promise<'present' | 'uploaded'> {
+  /**
+   * Self-heal: 'present' if some item for (vaultId, version) has exactly these bytes, else uploads ('uploaded'). `id` is
+   * that byte-verified item, or the fresh upload (show-vault-onchain-location D2).
+   */
+  async function ensure(p: MirrorInput): Promise<{ state: 'present' | 'uploaded'; id: string }> {
     let nodes: { id: string; size: number; host: string }[] = [];
     try {
       nodes = await lookup(p);
@@ -170,13 +173,12 @@ export function createMirror(opts: { turboUploadUrl: string; arweaveGatewayUrl: 
         const res = await fetchFn(`${n.host}/${n.id}`, { credentials: 'omit', referrerPolicy: 'no-referrer' });
         if (!res.ok) continue;
         const data = await readCapped(res, MAX_BLOB);
-        if (data && bytesEqual(data, p.blob)) return 'present';
+        if (data && bytesEqual(data, p.blob)) return { state: 'present', id: n.id };
       } catch {
         /* try next */
       }
     }
-    await upload(p);
-    return 'uploaded';
+    return { state: 'uploaded', id: await upload(p) };
   }
 
   return { upload, ensure, lookup };

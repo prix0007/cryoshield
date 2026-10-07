@@ -12,8 +12,11 @@ export function fakeServices(over: Partial<Services> = {}): Services {
     reader: {} as Services['reader'],
     client: {} as Services['client'],
     sponsor: { send: async () => ({ userOpHash: '0x', success: true }) },
-    mirror: { upload: async () => 'id', ensure: async () => 'present', lookup: async () => [] } as unknown as Services['mirror'],
+    mirror: { upload: async () => 'id', ensure: async () => ({ state: 'present', id: 'A'.repeat(43) }), lookup: async () => [] } as unknown as Services['mirror'],
     fastIndexUrl: 'https://turbo-gateway.com',
+    network: { name: 'local test chain', explorerUrl: null },
+    registries: { v1: null, v2: '0x00000000000000000000000000000000000000a2' },
+    arweaveGatewayUrl: 'https://arweave.net',
     ...over,
   };
 }

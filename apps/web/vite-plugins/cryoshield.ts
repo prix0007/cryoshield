@@ -6,6 +6,7 @@
 import { join } from 'node:path';
 import type { Plugin } from 'vite';
 import { parseEnv } from '../src/config/schema.ts';
+import { NETWORKS, networkFor } from '../src/config/networks.ts';
 import { loadDeployment, type Deployment } from './deployment.ts';
 import { headersFile, injectCsp } from './csp.ts';
 import { analyticsFor, beaconTemplate, landingCspExtras } from './analytics.ts';
@@ -32,6 +33,8 @@ export function cryoshield(env: Record<string, string | undefined>, contractsDir
         registryV1: deployment.v1 ? { address: deployment.v1.address, deployBlock: deployment.v1.deployBlock } : null,
         registryV2: { address: deployment.v2.address, deployBlock: deployment.v2.deployBlock },
         wallet: { factory: deployment.wallet.factory, implementation: deployment.wallet.implementation },
+        // show-vault-onchain-location D1: display name and explorer for the "Where your vault is stored" panel.
+        network: networkFor(config.chainId),
       };
       return `export const config = Object.freeze(${JSON.stringify(runtime)});`;
     },
@@ -63,9 +66,8 @@ export function cryoshield(env: Record<string, string | undefined>, contractsDir
   };
 }
 
-const NETWORKS: Record<number, string> = { 11155420: 'OP Sepolia testnet', 10: 'OP Mainnet', 31337: 'local test chain' };
 export function architectureValues(html: string, chainId: number, dep: Pick<Deployment, 'v1' | 'v2' | 'wallet'>, rpId: string): string {
-  const network = NETWORKS[chainId];
+  const network = NETWORKS[chainId]?.name;
   if (!network) throw new Error(`add-architecture-page: no network name for chain ${chainId}`);
   return html
     .replaceAll('__CS_NETWORK_UPPER__', network.toUpperCase())

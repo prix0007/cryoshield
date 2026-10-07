@@ -190,6 +190,13 @@ export const S = {
     retry: 'Retry',
   },
 
+  /** show-vault-onchain-location: the disclosure label; the panel's own strings load with it (strings-location.ts). */
+  location: {
+    title: 'Where your vault is stored',
+    loading: 'Loading…',
+    failed: 'Couldn’t load this section. Reload the page to try again.',
+  },
+
   details: {
     title: 'Vault details',
     vaultId: 'Vault ID',
