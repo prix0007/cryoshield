@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
+from functools import partial
 from typing import Protocol
 
 from .arweave import Arweave, ArweaveTx
@@ -15,6 +16,7 @@ from .config import Config, is_placeholder
 from .derive import derive_locator
 from .errors import ExitCode, RecoveryError, VaultError
 from .format import MAX_BLOB, DecodedVault, decode_blob
+from .rpc import JsonRpcClient
 from .secure import wipe
 from .vault import UnlockKey, matching_entries, open_decoded
 
@@ -51,10 +53,6 @@ ArweaveFactory = Callable[[Config], Arweave]
 
 def _default_registry(cfg: Config) -> Registries:
     """VaultRegistry v2 then v1, whichever this chain has (harden-gas-sponsorship D9)."""
-    from functools import partial
-
-    from .rpc import JsonRpcClient
-
     return Registries.build(
         cfg.rpcs,
         cfg.chain_id,
@@ -477,6 +475,13 @@ class Recovery:
         if result is None:
             ar_cands = self._arweave_by_locators(locators)
             result = self._finish(ar_cands) if ar_cands else None  # chain copies already failed
+        elif result.candidate.freshness in (Freshness.OUTDATED, Freshness.UNMATCHED):
+            # The best chain copy is known NOT to be current (e.g. a v1 plant while the v2 read failed):
+            # the current copy may be mirrored on Arweave, so look there too and re-rank everything.
+            ar_cands = self._arweave_by_locators(locators)
+            if ar_cands:
+                wipe(result.secret)
+                result = self._finish(chain_cands + ar_cands)
         if result is not None:
             return result
 

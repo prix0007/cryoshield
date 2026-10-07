@@ -12,6 +12,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
@@ -38,9 +39,14 @@ from cryoshield_recover.keccak import keccak256
 
 CONTRACTS = Path(os.environ.get("CRYOSHIELD_CONTRACTS_DIR", REPO_ROOT / "contracts"))
 
+HAVE_FOUNDRY = bool(shutil.which("anvil") and shutil.which("forge"))
+if not HAVE_FOUNDRY and os.environ.get("CRYOSHIELD_REQUIRE_FOUNDRY"):
+    # CI sets this so a broken Foundry setup fails the job instead of silently skipping these tests.
+    raise RuntimeError("CRYOSHIELD_REQUIRE_FOUNDRY is set but anvil/forge are not on PATH")
+
 pytestmark = [
     pytest.mark.anvil,
-    pytest.mark.skipif(not (shutil.which("anvil") and shutil.which("forge")), reason="Foundry not installed"),
+    pytest.mark.skipif(not HAVE_FOUNDRY, reason="Foundry not installed"),
 ]
 
 LOC_A = h(BY_NAME["A"]["locator"])
@@ -70,8 +76,17 @@ def _vault_id_for(url: str, registry: str, owner: str, salt: bytes) -> bytes:
     return bytes.fromhex(res[2:])
 
 
+@dataclass(frozen=True)
+class Deployed:
+    v1: str
+    v1_block: int
+    v2: str
+    v2_block: int
+    vault_id: bytes
+
+
 @pytest.fixture(scope="module")
-def deployed(anvil: str) -> dict[str, object]:  # noqa: F811 - pytest fixture injection
+def deployed(anvil: str) -> Deployed:  # noqa: F811 - pytest fixture injection
     v1, v1_block = _deploy(anvil, "VaultRegistry")
     v2, v2_block = _deploy(anvil, "VaultRegistryV2")
 
@@ -107,36 +122,36 @@ def deployed(anvil: str) -> dict[str, object]:  # noqa: F811 - pytest fixture in
     assert rc["status"] == "0x1"
     # An old vault of the same key in v1 (another owner account: v1 and v2 are separate registries).
     _send(anvil, DEPLOYER, _create_vault_calldata(V1_VAULT_ID, h(V2["blob"]), [LOC_A, LOC_B]), v1)
-    return {"v1": v1, "v1_block": v1_block, "v2": v2, "v2_block": v2_block, "vault_id": vault_id}
+    return Deployed(v1, v1_block, v2, v2_block, vault_id)
 
 
-def _args(url: str, d: dict[str, object], *, v1: bool = True) -> list[str]:
+def _args(url: str, d: Deployed, *, v1: bool = True) -> list[str]:
     args = ["--rpc", url, "--chain-id", "31337", "--no-arweave"]
-    args += ["--registry-v2", str(d["v2"]), "--deploy-block-v2", str(d["v2_block"])]
+    args += ["--registry-v2", d.v2, "--deploy-block-v2", str(d.v2_block)]
     if v1:
-        args += ["--registry", str(d["v1"]), "--deploy-block", str(d["v1_block"])]
+        args += ["--registry", d.v1, "--deploy-block", str(d.v1_block)]
     else:
         args += ["--registry", "0x" + "00" * 20]
     return args
 
 
-def test_v2_vault_behind_stuffing_recovers(anvil: str, deployed: dict[str, object]) -> None:  # noqa: F811
+def test_v2_vault_behind_stuffing_recovers(anvil: str, deployed: Deployed) -> None:  # noqa: F811
     """Both registries: the v2 vault (behind 300 junk entries) is opened, ahead of the older v1 vault."""
     console, out, err = _term("show\n")
     code = _main(_args(anvil, deployed), console, _key("A"))
     assert code == ExitCode.OK, err.getvalue()
     assert SECRET.decode() in out.getvalue()
-    assert f"0x{bytes(deployed['vault_id']).hex()}" in err.getvalue()  # type: ignore[arg-type]
+    assert f"0x{deployed.vault_id.hex()}" in err.getvalue()
 
 
-def test_v2_only_chain_recovers(anvil: str, deployed: dict[str, object]) -> None:  # noqa: F811
+def test_v2_only_chain_recovers(anvil: str, deployed: Deployed) -> None:  # noqa: F811
     console, out, err = _term("show\n")
     code = _main(_args(anvil, deployed, v1=False), console, _key("A"))
     assert code == ExitCode.OK, err.getvalue()
     assert SECRET.decode() in out.getvalue()
 
 
-def test_old_v1_vault_still_opens_by_id(anvil: str, deployed: dict[str, object]) -> None:  # noqa: F811
+def test_old_v1_vault_still_opens_by_id(anvil: str, deployed: Deployed) -> None:  # noqa: F811
     console, out, err = _term("show\n")
     code = _main([*_args(anvil, deployed), "--vault-id", V1_VAULT_ID.hex()], console, _key("A"))
     assert code == ExitCode.OK, err.getvalue()

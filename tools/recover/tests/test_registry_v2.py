@@ -295,7 +295,7 @@ def test_get_vaults_wrong_count_is_discarded() -> None:
 
 
 def test_overall_deadline_stops_paging(monkeypatch: pytest.MonkeyPatch) -> None:
-    """REC-L1 style: one state deadline per run; once spent, no further pages or batches are sent."""
+    """REC-L1 style: the resolve deadline (and the per-locator cap); once spent, no further pages."""
     now = [0.0]
 
     class Clock:
@@ -610,7 +610,7 @@ def test_resolve_orders_ids_by_support_then_position() -> None:
 
 
 def test_resolved_ids_are_capped_with_a_warning(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(chain_mod, "MAX_RESOLVED_IDS", 100)
+    monkeypatch.setattr(chain_mod, "MAX_IDS_PER_LOCATOR", 100)
     with FakeChain() as spam, FakeChain() as honest:
         spam.enable_v2()
         spam.v2_spam_pages = True
@@ -619,7 +619,7 @@ def test_resolved_ids_are_capped_with_a_warning(monkeypatch: pytest.MonkeyPatch)
         honest.add_vault_v2(VID, BLOB, [LOC_A])
         reg = registries(spam, honest, v1=False)
         ids = reg.resolve([LOC_A])
-    assert len(ids) == 100 and VID in ids[:2]  # interleaved: survives the cap despite 1,024 junk ids
+    assert len(ids) == 100 and VID in ids[:3]  # ranked by distance from a list end: survives the cap
     assert any("--vault-id" in w for w in reg.warnings)
 
 
@@ -669,3 +669,99 @@ def test_persistently_failing_rpc_is_not_retried_forever() -> None:
         calls = len(c.v2_calls.batches)
     assert calls <= chain_mod.MAX_BATCH_FAILURES + 1
     assert any("keeps failing" in w for w in reg.warnings)
+
+
+# ------------------------------------------------------------------ PR #40 re-review fixes
+def test_vault_behind_9000_entries_is_found_with_real_constants() -> None:
+    """HIGH (re-review #1): pre-stuffed beyond the page budget; the vault is the LAST entry. The tail
+    pages must survive the candidate cap (real constants, no monkeypatching)."""
+    with FakeChain() as c:
+        c.enable_v2()
+        c.stuff_v2(LOC_A, 9000, tag=20)
+        c.add_vault_v2(VID, BLOB, [LOC_A])
+        res = run(cfg_v2(c, v1=False))
+    assert bytes(res.secret) == SECRET
+
+
+def test_vault_last_in_a_second_stuffed_locator_is_found() -> None:
+    """HIGH (re-review #1): the first locator's junk must not push the second locator's ids past the
+    cap; here both lists hold 5,000 junk entries and the vault is last under the second one only."""
+    with FakeChain() as c:
+        c.enable_v2()
+        c.stuff_v2(LOC_A, 5000, tag=21)
+        c.stuff_v2(LOC_B, 5000, tag=22)
+        c.add_vault_v2(VID, BLOB, [LOC_B])
+        reg = registries(c, v1=False)
+        ids = reg.resolve([LOC_A, LOC_B])
+        ui = RecUI()
+        prf = FakePrfSource([PhysicalKey.named("A", "B")], ui=ui)  # one key, two locators: A then B
+        res = Recovery(cfg_v2(c, v1=False), prf, ui).run()
+    assert VID in ids
+    assert bytes(res.secret) == SECRET
+
+
+def test_hung_rpc_cannot_starve_the_v1_read(monkeypatch: pytest.MonkeyPatch) -> None:
+    """HIGH (re-review #2): both registries; one RPC answers eth_chainId then hangs on every eth_call;
+    a v1-only vault on the honest RPC must still be found (per-registry budgets, per-RPC cap)."""
+    monkeypatch.setattr(chain_mod, "RESOLVE_DEADLINE", 2.0)
+    monkeypatch.setattr(chain_mod, "LOCATOR_BUDGET", 0.8)
+    monkeypatch.setattr(chain_mod, "STATE_DEADLINE", 3.0)
+    monkeypatch.setattr(chain_mod, "RPC_FETCH_BUDGET", 1.0)
+    with FakeChain() as hung, FakeChain() as honest:
+        hung.enable_v2()
+        hung.call_delay = 2.5
+        honest.enable_v2()
+        honest.stuff_v2(LOC_A, 40, tag=23)  # several v2 ids, so the v2 fetch has batches to hang on
+        honest.add_vault(VID, BLOB, [LOC_A, LOC_B])
+        cfg = cfg_v2(honest, timeout=2)
+        cfg.rpcs = [hung.url, honest.url]
+        res = run(cfg)
+    assert bytes(res.secret) == SECRET
+
+
+def test_always_too_large_rpc_cannot_force_unbounded_splitting() -> None:
+    """MEDIUM (re-review #4): a too-large single id counts as a failure; calls per RPC are bounded."""
+    with FakeChain() as c:
+        c.enable_v2()
+        c.stuff_v2(LOC_A, 64, tag=24)
+        c.v2_too_large = True
+        reg = registries(c, v1=False)
+        reg.fetch(reg.resolve([LOC_A]))
+        calls = len(c.v2_calls.batches)
+    assert calls <= 3 * 2 + chain_mod.MAX_BATCH_FAILURES
+
+
+def test_outdated_chain_copy_consults_arweave() -> None:
+    """MEDIUM (re-review #5): the only chain copy is an OUTDATED v1 plant (v2 read failed); the current
+    copy mirrored on Arweave is found and preferred instead of opening the plant with a warning."""
+    with FakeChain() as c, FakeArweave() as ar:
+        new = _plant_setup(c)
+        c.v2_getvaults_error = True
+        ar.mirror(new, vault_id=VID, locators=[LOC_A, LOC_B], version=2)
+        ui = RecUI()
+        prf = FakePrfSource([PhysicalKey.named("A", "B")], ui=ui)
+        res = Recovery(cfg_v2(c, ar=ar), prf, ui).run()
+    assert res.candidate.blob == new and res.candidate.freshness is Freshness.VERIFIED
+
+
+def test_malformed_batch_is_split_and_retried() -> None:
+    """LOW (re-review #8)."""
+    with FakeChain() as c:
+        c.enable_v2()
+        c.stuff_v2(LOC_A, 40, tag=25)
+        c.add_vault_v2(VID, BLOB, [LOC_A])
+        c.v2_getvaults_malformed_once = 1
+        reg = registries(c, v1=False)
+        assert len(reg.fetch(reg.resolve([LOC_A]))) == 41
+
+
+def test_absurd_length_does_not_lose_the_rpcs_other_results() -> None:
+    """LOW (re-review #9): locatorLength near 2**256 with full junk pages reaches tail starts that do not
+    fit uint256; the head pages already read are kept, no exception escapes."""
+    with FakeChain() as c:
+        c.enable_v2()
+        c.v2_spam_pages = True
+        c.v2_length_override = 2**256 - 1
+        reg = registries(c, v1=False)
+        ids = reg.resolve([LOC_A])
+    assert len(ids) >= 256

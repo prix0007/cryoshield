@@ -172,6 +172,9 @@ class Config:
     save_blob: Path | None = None
     verbose: bool = False
     rp_id_overridden: bool = False
+    # A registry address was given without its deploy block, so history is scanned from block 0.
+    deploy_block_unknown: bool = False
+    deploy_block_v2_unknown: bool = False
     rpcs_user_supplied: bool = False
 
     @property

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import shutil
 import socket
 import subprocess
@@ -29,9 +30,14 @@ from cryoshield_recover.errors import ExitCode
 from cryoshield_recover.keccak import keccak256
 from cryoshield_recover.ui import Console
 
+HAVE_FOUNDRY = bool(shutil.which("anvil") and shutil.which("forge"))
+if not HAVE_FOUNDRY and os.environ.get("CRYOSHIELD_REQUIRE_FOUNDRY"):
+    # CI sets this so a broken Foundry setup fails the job instead of silently skipping these tests.
+    raise RuntimeError("CRYOSHIELD_REQUIRE_FOUNDRY is set but anvil/forge are not on PATH")
+
 pytestmark = [
     pytest.mark.anvil,
-    pytest.mark.skipif(not (shutil.which("anvil") and shutil.which("forge")), reason="Foundry not installed"),
+    pytest.mark.skipif(not HAVE_FOUNDRY, reason="Foundry not installed"),
 ]
 
 CONTRACTS = REPO_ROOT / "contracts"

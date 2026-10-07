@@ -281,15 +281,21 @@ Fixes from the ECC review of PR #40; none changes a spec requirement, both enfor
   - history agreed empty: v1's own classification stands, so legacy v1-only vaults are unchanged;
   - history unverifiable: no copy is current. When both registries hold copies, they are marked *contested* and the user must choose; ranking by server count never decides, because a v1 plant can be served by every honest RPC.
   - Cost: one v2 history lookup per v1 vault id found, within the existing history deadline.
-- **One slow or spamming RPC cannot starve the reads (HIGH).** Before, `resolveLocator` paging and `getVault(s)` shared one 60 s clock, so one slow RPC could spend it during resolve. Now:
-  - resolve has its own budget (30 s), and each (RPC, locator) gets at most 10 s of it;
-  - the fetch budget (60 s) starts at the first fetch;
-  - resolved ids are ranked by how many RPCs reported them, then by position in each RPC's list (interleaved), and capped at 4,096 per registry with a warning pointing to `--vault-id`.
+- **One slow, hung or spamming RPC cannot starve the reads (HIGH, two review rounds).** Before, every `resolveLocator` page and `getVault(s)` call shared one 60 s clock, and v2 ran before v1. So one slow RPC could spend the clock and leave nothing for the honest RPCs or for v1. Now every budget belongs to one registry and one step:
+  - resolve: 30 s per registry, and each (RPC, locator) gets at most 10 s of it;
+  - fetch: 60 s per registry, and each RPC gets at most 20 s of it. RPCs run in parallel, so a hung RPC costs only its own cap.
+  - Deadlines are set before the worker threads start, and a spent budget raises `DeadlineExceeded`, which is never retried.
+- **Candidate ranking keeps both ends of every list (HIGH, second round).** A global position plus a 4,096 cap dropped the tail pages and pushed a second locator's ids behind the first one's junk. Now:
+  - ids are ranked by how many RPCs reported them, then by distance from either end of their own locator's list. Each locator is ranked separately, and the newest tail-page entries rank with the oldest.
+  - The cap is the page budget per locator (32 × 256), so everything read is kept and read in that order.
+  - Tests use the real constants: a vault last behind 9,000 entries, and a vault last in a second locator behind 5,000 + 5,000 entries.
+- **An OUTDATED or UNMATCHED chain copy also consults Arweave.** For example, a v1 plant while the v2 read failed: the current copy may be mirrored there, so both sets of copies are re-ranked together instead of opening the stale one with only a warning.
+- **A registry address without its deploy block** (`--registry`/`--registry-v2` that differs from the preset) scans history from block 0 and warns. Using the preset's block could skip that deployment's first events, making the history look empty.
 - **Smaller fixes (advisories).**
-  - A page longer than the length read earlier (the list grew) is truncated, not discarded.
-  - A failed `getVaults` batch is halved and retried, until 6 consecutive failures from that RPC.
+  - A page longer than the length read earlier (the list grew) is truncated, not discarded. `locatorLength` is clamped to 2^64.
+  - A failed `getVaults` batch (too large, an error or a malformed answer) is halved and retried. Per RPC, it stops after 6 consecutive failures (a too-large single id counts as one) and after 3 calls per 32 ids.
   - `getVaults` answers may be up to 128 KiB (32 × 1 KB blobs as hex), so a full batch is one call; other calls keep the 64 KiB cap.
-- **Anvil v2 tests** now skip only when Foundry is missing; CI's `recover` job installs Foundry, so they always run there.
+- **Anvil tests** (v1 and v2) skip only when Foundry is missing. With `CRYOSHIELD_REQUIRE_FOUNDRY` set, a missing Foundry fails collection instead. CI's `recover` job should set it (an overwatcher change in `.github/workflows/ci.yml`).
 
 ## Open questions
 

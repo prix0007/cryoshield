@@ -288,3 +288,17 @@ def test_both_registries_announced() -> None:
     cli.startup_summary(cfg("--registry-v2", "0x" + "2b" * 20), console)
     text = err.getvalue()
     assert "registry v2 0x" + "2b" * 20 in text and "registry v1 0xb43f58cf" in text
+
+
+def test_overriding_a_registry_without_its_deploy_block_scans_from_genesis() -> None:
+    """A preset's deploy block belongs to the preset's address: with another address it could skip that
+    deployment's first events and make its history look empty. Use 0 (slower, never wrong) and warn."""
+    c = cfg("--registry-v2", "0x" + "2b" * 20, "--registry", "0x" + "3c" * 20)
+    assert c.deploy_block_v2 == 0 and c.deploy_block == 0
+    console, err = term()
+    cli.startup_summary(c, console)
+    assert "--deploy-block-v2" in err.getvalue() and "--deploy-block " in err.getvalue()
+    kept = cfg("--registry-v2", "0x" + "2b" * 20, "--deploy-block-v2", "7")
+    assert kept.deploy_block_v2 == 7
+    same = cfg("--registry-v2", NETWORKS["op-sepolia"].registry_v2)
+    assert same.deploy_block_v2 == NETWORKS["op-sepolia"].deploy_block_v2

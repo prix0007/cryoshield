@@ -143,6 +143,9 @@ class FakeChain(FakeServer):
         self.v2_spam_pages = False  # every page is 256 junk ids (a hostile RPC)
         self.v2_delay = 0.0  # seconds to sleep before answering any v2 call (a slow RPC)
         self.v2_grow_after_length = 0  # entries appended between locatorLength and the pages
+        self.v2_too_large = False  # every getVaults answer is padded past any response cap
+        self.v2_getvaults_malformed_once = 0  # the next N getVaults answers are malformed ABI
+        self.call_delay = 0.0  # seconds every eth_call (v1 and v2) hangs; eth_chainId still answers
 
     def enable_v2(self, address: str = REGISTRY_V2) -> FakeChain:
         self.v2_address = address
@@ -247,6 +250,8 @@ class FakeChain(FakeServer):
         if method == "eth_blockNumber":
             return hex(self.block)
         if method == "eth_call":
+            if self.call_delay:
+                time.sleep(self.call_delay)
             call = params[0]
             data = bytes.fromhex(call["data"][2:])
             if self.v2_address is not None and call["to"].lower() == self.v2_address:
@@ -312,6 +317,11 @@ class FakeChain(FakeServer):
             self.v2_calls.batches.append(n)
             if self.v2_getvaults_error:
                 raise LookupError("internal error")
+            if self.v2_too_large:
+                return bytes(200 * 1024)
+            if self.v2_getvaults_malformed_once:
+                self.v2_getvaults_malformed_once -= 1
+                return word(32) + word(n + 1)
             if self.v2_getvaults_fail_once:
                 self.v2_getvaults_fail_once -= 1
                 raise LookupError("temporary failure")

@@ -166,10 +166,19 @@ def config_from_args(a: argparse.Namespace) -> Config:
         if a.rpc:
             cfg.rpcs = [check_url(u) for u in a.rpc]
             cfg.rpcs_user_supplied = True
+        # A preset's deploy block belongs to the preset's address. For another address without its own
+        # --deploy-block*, scan from block 0 (slower, never wrong) rather than possibly skipping that
+        # deployment's first events, which would make its history look empty (ECC review, PR #40).
         if a.registry:
-            cfg.registry = parse_address(a.registry)
+            new = parse_address(a.registry)
+            if new != cfg.registry and a.deploy_block is None:
+                cfg.deploy_block, cfg.deploy_block_unknown = 0, True
+            cfg.registry = new
         if a.registry_v2:
-            cfg.registry_v2 = parse_address(a.registry_v2)
+            new = parse_address(a.registry_v2)
+            if new != cfg.registry_v2 and a.deploy_block_v2 is None:
+                cfg.deploy_block_v2, cfg.deploy_block_v2_unknown = 0, True
+            cfg.registry_v2 = new
         if a.chain_id is not None:
             cfg.chain_id = a.chain_id
         if a.deploy_block is not None:
@@ -228,6 +237,16 @@ def startup_summary(cfg: Config, ui: Console) -> None:
                 for name, addr in (("v2", cfg.registry_v2), ("v1", cfg.registry))
                 if not is_placeholder(addr)
             ]
+            for flag, unknown in (
+                ("--deploy-block-v2", cfg.deploy_block_v2_unknown),
+                ("--deploy-block", cfg.deploy_block_unknown),
+            ):
+                if unknown:
+                    ui.warn(
+                        f"No deployment block is known for that registry address, so update history is "
+                        f"searched from block 0, which can be slow or fail on public servers. Pass {flag} "
+                        "if you know it."
+                    )
             contacts.append(
                 f"blockchain ({cfg.network}, chain {cfg.chain_id}, {', '.join(regs)}), "
                 f"{source} endpoints: " + ", ".join(host_of(u) for u in cfg.rpcs)

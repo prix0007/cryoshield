@@ -42,16 +42,16 @@ _RANGE_WORDS = ("range", "too many", "limit", "exceed", "too large", "block")
 HISTORY_DEADLINE = 60.0
 # An RPC whose head differs from the median of usable RPCs by more than this is refused for history.
 HEAD_TOLERANCE = 5_000
-# getVault(s) reads share one deadline per run, with clamped request timeouts. It starts at the first
-# fetch, so a slow resolve can never consume it (ECC review, PR #40).
+# Time budgets (ECC reviews of PR #40). Every budget belongs to ONE registry (v2 and v1 never share a
+# clock, so one cannot starve the other) and starts when that registry's step starts:
+# - resolve (resolveLocator/locatorLength): RESOLVE_DEADLINE per registry, and each (RPC, locator) at
+#   most LOCATOR_BUDGET of it;
+# - fetch (getVault/getVaults): STATE_DEADLINE per registry, and each RPC at most RPC_FETCH_BUDGET of it.
+# RPCs run in parallel, so one slow or hung RPC costs at most its own cap, never the honest RPCs' time.
 STATE_DEADLINE = 60.0
-# resolveLocator/locatorLength reads have their OWN deadline per run, and each (RPC, locator) at most
-# LOCATOR_BUDGET seconds of it: one slow or hostile RPC cannot hold the lookup for long (PR #40).
+RPC_FETCH_BUDGET = 20.0
 RESOLVE_DEADLINE = 30.0
 LOCATOR_BUDGET = 10.0
-# At most this many candidate ids per registry per run, ranked by how many RPCs reported them and then by
-# position in each RPC's list (interleaved), so one spamming RPC cannot bury an honest id (PR #40).
-MAX_RESOLVED_IDS = 4096
 # getVaults response cap: 32 blobs of 1 KB is ~38 KB of ABI data, ~76 KB as JSON hex (PR #40).
 GET_VAULTS_MAX_RESPONSE = 128 * 1024
 # Consecutive failed getVaults calls (other than "too large") after which one RPC is no longer asked.
@@ -62,6 +62,10 @@ MAX_BATCH_FAILURES = 6
 # chain, can be pre-stuffed, which pushes the vault's entry to the end).
 MAX_LOCATOR_PAGES = 32
 TAIL_PAGES = 4
+# Candidate ids per locator that are read at most (the whole page budget). Ids are ranked by how many
+# RPCs reported them, then by distance from either END of their locator's list (the oldest entries and
+# the newest pre-stuffed ones come first), so junk in the middle is read last.
+MAX_IDS_PER_LOCATOR = MAX_LOCATOR_PAGES * abi.V2_PAGE_SIZE
 _DEADLINE_MSG = "state lookup deadline exceeded"
 
 
@@ -105,6 +109,10 @@ def is_range_error(e: RpcError) -> bool:
     return e.code in (-32600, -32602, -32000, -32001) and any(w in text for w in _RANGE_WORDS)
 
 
+class DeadlineExceeded(RpcError):
+    """A read was not sent because its time budget is spent (never retried)."""
+
+
 def _hex(b: bytes) -> str:
     return "0x" + b.hex()
 
@@ -119,8 +127,6 @@ class Session:
         self.clients = [client_factory(u) for u in distinct_urls(urls)]
         self.usable: list[JsonRpcClient] | None = None
         self.history_deadline: float | None = None
-        self.state_deadline: float | None = None
-        self.resolve_deadline: float | None = None
         self.heads: list[tuple[JsonRpcClient, int]] | None = None
 
 
@@ -150,6 +156,9 @@ class Registry:
         self.label = label  # shown in a candidate's origin, e.g. "registry v2"
         self.session = session if session is not None else Session(urls, chain_id, client_factory)
         self._history: dict[bytes, list[tuple[int, bytes]] | None] = {}
+        # This registry's own resolve and fetch deadlines, set before any worker thread starts.
+        self._resolve_deadline: float | None = None
+        self._fetch_deadline: float | None = None
 
     @property
     def warnings(self) -> list[str]:
@@ -203,22 +212,22 @@ class Registry:
         with ThreadPoolExecutor(max_workers=min(8, len(items))) as ex:
             return list(ex.map(safe, items))
 
-    def _fetch_deadline(self) -> float:
-        if self.session.state_deadline is None:
-            self.session.state_deadline = time.monotonic() + STATE_DEADLINE
-        return self.session.state_deadline
+    def _start_fetch(self) -> float:
+        if self._fetch_deadline is None:
+            self._fetch_deadline = time.monotonic() + STATE_DEADLINE
+        return self._fetch_deadline
 
-    def _resolve_deadline(self) -> float:
-        if self.session.resolve_deadline is None:
-            self.session.resolve_deadline = time.monotonic() + RESOLVE_DEADLINE
-        return self.session.resolve_deadline
+    def _start_resolve(self) -> float:
+        if self._resolve_deadline is None:
+            self._resolve_deadline = time.monotonic() + RESOLVE_DEADLINE
+        return self._resolve_deadline
 
     def _eth_call(
         self, c: JsonRpcClient, data: bytes, deadline: float, *, max_bytes: int | None = None
     ) -> bytes:
         remaining = deadline - time.monotonic()
         if remaining <= 0:
-            raise RpcError(_DEADLINE_MSG)
+            raise DeadlineExceeded(_DEADLINE_MSG)
         params = [{"to": self.address, "data": _hex(data)}, "latest"]
         if max_bytes is None:
             res = c.call("eth_call", params, timeout=remaining)
@@ -230,37 +239,49 @@ class Registry:
     def resolve(self, locators: Sequence[bytes]) -> list[bytes]:
         """Union of candidate vaultIds for all locators across all usable RPCs.
 
-        Ranked: ids reported by more distinct RPCs first, then by position within each RPC's own list
-        (so lists are interleaved, not appended), then by RPC order. Capped at MAX_RESOLVED_IDS."""
-        deadline = self._resolve_deadline()
+        Ranked: ids reported by more distinct RPCs first; then by distance from either end of the list
+        they were read from (per locator, so a second locator is never pushed behind the first one's
+        junk, and the newest tail-page entries rank with the oldest); then by RPC order. At most
+        MAX_IDS_PER_LOCATOR ids per locator are kept, i.e. everything the page budget reads."""
+        deadline = self._start_resolve()
 
-        def one(c: JsonRpcClient) -> list[bytes]:
-            out: list[bytes] = []
+        def one(c: JsonRpcClient) -> list[list[bytes]]:
+            lists: list[list[bytes]] = []
             for loc in locators:
+                out: list[bytes] = []
                 if self.kind == 2:
                     self._resolve_paged(c, loc, out, deadline)
-                    continue
-                try:
-                    raw = self._eth_call(c, abi.encode_call(abi.SEL_RESOLVE_LOCATOR, loc), deadline)
-                    out.extend(abi.decode_bytes32_array(raw))
-                except (RpcError, abi.AbiError) as e:
-                    self.warnings.append(f"RPC {c.host}: discarded resolveLocator answer ({e})")
-            return out
+                else:
+                    try:
+                        raw = self._eth_call(c, abi.encode_call(abi.SEL_RESOLVE_LOCATOR, loc), deadline)
+                        out.extend(abi.decode_bytes32_array(raw))
+                    except (RpcError, abi.AbiError) as e:
+                        self.warnings.append(f"RPC {c.host}: discarded resolveLocator answer ({e})")
+                lists.append(out)
+            return lists
 
         support: dict[bytes, int] = {}
-        best: dict[bytes, tuple[int, int]] = {}  # id -> (position in an RPC's list, RPC index)
-        for rpc_index, ids in enumerate(self._map(one, self.usable(), [])):
-            for pos, vid in enumerate(dict.fromkeys(v for v in ids if any(v))):
-                support[vid] = support.get(vid, 0) + 1
-                best[vid] = min(best.get(vid, (pos, rpc_index)), (pos, rpc_index))
+        best: dict[bytes, tuple[int, int]] = {}  # id -> (distance from an end of its list, RPC index)
+        for rpc_index, lists in enumerate(self._map(one, self.usable(), [])):
+            seen: set[bytes] = set()
+            for ids in lists:
+                n = len(ids)
+                for pos, vid in enumerate(ids):
+                    if not any(vid):
+                        continue
+                    key = (min(pos, n - 1 - pos), rpc_index)
+                    best[vid] = min(best.get(vid, key), key)
+                    if vid not in seen:
+                        seen.add(vid)
+                        support[vid] = support.get(vid, 0) + 1
         ranked_ids = sorted(support, key=lambda v: (-support[v], best[v]))
-        if len(ranked_ids) > MAX_RESOLVED_IDS:
+        cap = MAX_IDS_PER_LOCATOR * max(1, len(locators))
+        if len(ranked_ids) > cap:
             self.warnings.append(
                 f"{len(ranked_ids)} candidate vaults were listed for your key (possibly spam); only the "
-                f"{MAX_RESOLVED_IDS} most widely reported were read. If your vault is not found, recover "
-                "with --vault-id."
+                f"{cap} most widely reported were read. If your vault is not found, recover with --vault-id."
             )
-        return ranked_ids[:MAX_RESOLVED_IDS]
+        return ranked_ids[:cap]
 
     def _page_starts(self, length: int) -> tuple[list[int], bool]:
         """Page start offsets for a v2 list of ``length`` entries, and whether it was truncated."""
@@ -284,6 +305,7 @@ class Registry:
             length = abi.decode_uint256(
                 self._eth_call(c, abi.encode_call(abi.SEL_LOCATOR_LENGTH, loc), deadline)
             )
+            length = min(length, 2**64)  # no real list is longer; keeps every page start in uint256
             starts, truncated = self._page_starts(length)
             if truncated:
                 self.warnings.append(
@@ -300,57 +322,60 @@ class Registry:
                 out.extend(ids)
                 if len(ids) < expect:
                     break  # the list ends earlier than the claimed length: nothing more to read
-        except (RpcError, abi.AbiError) as e:
+        except (RpcError, abi.AbiError, ValueError) as e:
             self.warnings.append(f"RPC {c.host}: discarded resolveLocator answer ({e})")
 
-    def _fetch_v1(self, c: JsonRpcClient, vault_ids: Sequence[bytes]) -> list[tuple[bytes, bytes, int]]:
+    def _fetch_v1(
+        self, c: JsonRpcClient, vault_ids: Sequence[bytes], deadline: float
+    ) -> list[tuple[bytes, bytes, int]]:
         out: list[tuple[bytes, bytes, int]] = []
-        deadline = self._fetch_deadline()
         for vid in vault_ids:
             try:
                 raw = self._eth_call(c, abi.encode_call(abi.SEL_GET_VAULT, vid), deadline)
                 _owner, blob, version = abi.decode_vault(raw)
             except (RpcError, abi.AbiError) as e:
                 self.warnings.append(f"RPC {c.host}: discarded getVault answer ({e})")
-                if str(e) == _DEADLINE_MSG:
+                if isinstance(e, DeadlineExceeded):
                     break
                 continue
             out.append((vid, blob, version))
         return out
 
-    def _fetch_v2(self, c: JsonRpcClient, vault_ids: Sequence[bytes]) -> list[tuple[bytes, bytes, int]]:
-        """getVaults in batches of at most 32. A batch that fails for any reason other than the deadline
-        (too large, a transient error) is halved and retried, down to single ids."""
+    def _fetch_v2(
+        self, c: JsonRpcClient, vault_ids: Sequence[bytes], deadline: float
+    ) -> list[tuple[bytes, bytes, int]]:
+        """getVaults in batches of at most 32. A failed batch (too large, transient error, malformed
+        answer) is halved and retried. Bounded per RPC: MAX_BATCH_FAILURES consecutive failures (a
+        too-large SINGLE id counts) and at most 3 calls per 32 ids, besides ``deadline``."""
         n = abi.V2_MAX_IDS_PER_CALL
         pending = [list(vault_ids[i : i + n]) for i in range(0, len(vault_ids), n)]
+        max_calls = 3 * len(pending) + MAX_BATCH_FAILURES
         out: list[tuple[bytes, bytes, int]] = []
-        deadline = self._fetch_deadline()
-        failures = 0  # consecutive non-size failures: a persistently failing RPC is not retried forever
+        failures = calls = 0
         while pending:
+            if calls >= max_calls or failures > MAX_BATCH_FAILURES:
+                self.warnings.append(f"RPC {c.host}: getVaults keeps failing; stopped asking it")
+                break
             batch = pending.pop(0)
+            calls += 1
             try:
                 raw = self._eth_call(
                     c, abi.encode_get_vaults(batch), deadline, max_bytes=GET_VAULTS_MAX_RESPONSE
                 )
                 vaults = abi.decode_vaults(raw, len(batch))
-                failures = 0
-            except RpcError as e:
-                if str(e) == _DEADLINE_MSG:
-                    self.warnings.append(f"RPC {c.host}: discarded getVaults answer ({e})")
-                    break
-                failures += 0 if e.too_large else 1
-                if failures > MAX_BATCH_FAILURES:
-                    self.warnings.append(f"RPC {c.host}: getVaults keeps failing ({e}); stopped asking it")
-                    break
+            except DeadlineExceeded as e:
+                self.warnings.append(f"RPC {c.host}: discarded getVaults answer ({e})")
+                break
+            except (RpcError, abi.AbiError) as e:
+                too_large = isinstance(e, RpcError) and e.too_large
+                failures += 0 if too_large and len(batch) > 1 else 1
                 if len(batch) > 1:
                     half = len(batch) // 2
                     pending[:0] = [batch[:half], batch[half:]]
                     continue
                 self.warnings.append(f"RPC {c.host}: discarded getVaults answer ({e})")
                 continue
-            except abi.AbiError as e:
-                self.warnings.append(f"RPC {c.host}: discarded getVaults answer ({e})")
-                continue
+            failures = 0
             out.extend(
                 (vid, blob, version) for vid, (_owner, blob, version) in zip(batch, vaults, strict=True)
             )
@@ -361,10 +386,12 @@ class Registry:
         becomes ONE candidate whose ``support`` is the number of distinct RPCs that returned it."""
         ids = list(dict.fromkeys(vault_ids))
         read = self._fetch_v2 if self.kind == 2 else self._fetch_v1
+        deadline = self._start_fetch()  # before the worker threads: one deadline, no race
 
         def one(c: JsonRpcClient) -> list[tuple[str, bytes, bytes, int]]:
             endpoint = normalize_url(getattr(c, "url", c.host))
-            return [(endpoint, vid, blob, version) for vid, blob, version in read(c, ids) if blob]
+            own = min(deadline, time.monotonic() + RPC_FETCH_BUDGET)  # one RPC never spends it all
+            return [(endpoint, vid, blob, version) for vid, blob, version in read(c, ids, own) if blob]
 
         # Support is counted by normalised endpoint, exactly like the quorum (ECC review, PR #22).
         endpoints: dict[tuple[bytes, bytes], list[str]] = {}

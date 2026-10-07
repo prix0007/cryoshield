@@ -66,7 +66,8 @@ cryoshield-recover --network op-mainnet
 cryoshield-recover --chain-id 10
 # Override the built-in contract address or site name:
 cryoshield-recover --registry 0x0000000000000000000000000000000000000001 --rp-id cryoshield.app
-# Point at a VaultRegistry v2 deployment (and its deployment block, for update history):
+# Point at a VaultRegistry v2 deployment and its deployment block (without the block, update history
+# is searched from block 0, which is slow):
 cryoshield-recover --registry-v2 0x0000000000000000000000000000000000000002 --deploy-block-v2 1
 ```
 
@@ -108,7 +109,7 @@ The mainnet chain (Arbitrum One or OP Mainnet) is not decided yet.
 
 **Built-in registry addresses** come from the project's deployment records at release time; the tool never reads files at runtime. If a network has no deployment in this release, blockchain lookup is off: the tool says so and points you to `--registry-v2`, `--registry` and their `--deploy-block` options.
 
-**Two registry versions.** New vaults are saved in VaultRegistry v2; vaults saved earlier stay in the original registry (v1), which remains readable forever. The tool looks in v2 first, then v1, and treats what it finds as one list, so you never need to know where your vault is. A network may have only one of them (OP Mainnet has only v2). In v2 anyone can add entries to a key's lookup list, so the tool reads long lists in pages. Looking up the list and reading the vaults each have their own time limit, and no single server may use more than a share of the lookup time, so one slow or spamming server cannot stop the others from finding your vault. Entries reported by more servers are read first. If a list is so long that only part of it is read (the oldest and newest entries), the tool says so, and `--vault-id` always works.
+**Two registry versions.** New vaults are saved in VaultRegistry v2; vaults saved earlier stay in the original registry (v1), which remains readable forever. The tool looks in v2 first, then v1, and treats what it finds as one list, so you never need to know where your vault is. A network may have only one of them (OP Mainnet has only v2). In v2 anyone can add entries to a key's lookup list, so the tool reads long lists in pages. Each registry has its own time limits for looking up the list and for reading the vaults, and no single server may use more than a share of either, so one slow, stuck or spamming server cannot stop the others from finding your vault. Entries reported by more servers are read first, then the oldest and newest entries of each list before the ones in the middle. If a list is so long that only part of it is read (the oldest and newest entries), the tool says so, and `--vault-id` always works.
 
 ### Shamir (M-of-N) vaults
 
