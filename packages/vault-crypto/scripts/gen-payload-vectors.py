@@ -3,7 +3,7 @@
 
 Normative spec: docs/spec/payload-v2.md (OpenSpec change vault-list-labels-archive,
 design D1-D4, D11). This script holds an independent Python reference codec for
-the payload layer (strict canonical decoding, the minimal-version writer and the
+the payload layer (v1 with the deployed v1 rules, v2 strict and canonical, the minimal-version writer and the
 "Archive and clear" sizing rule) and checks every vector against it before
 writing. Blob vectors encrypt v2 payloads with the vault format v1 reference
 implementation in gen-vectors.py (same test credentials A and B as
@@ -45,7 +45,7 @@ FORBIDDEN_NAME_CPS = frozenset(
     list(range(0x00, 0x20)) + [0x7F] + list(range(0x80, 0xA0)) + [0x2028, 0x2029]
     + list(range(0x202A, 0x202F)) + list(range(0x2066, 0x206A))
 )
-VERSION_PREFIX = re.compile(r'\{"v":(0|[1-9][0-9]*)[,}]')
+LONE_SURROGATE = re.compile("[\ud800-\udfff]")
 
 
 class PayloadError(Exception):
@@ -60,31 +60,41 @@ def _well_formed(s: str) -> bool:
     return not any(0xD800 <= ord(c) <= 0xDFFF for c in s)
 
 
+def _is_js_number(v: Any) -> bool:
+    """A JSON number as JSON.parse sees it. type() excludes bool, because True == 1 in Python."""
+    return type(v) in (int, float)
+
+
 def valid_name(n: Any) -> bool:
     return (type(n) is str and _well_formed(n) and 1 <= len(n) <= MAX_NAME_CPS
             and not any(ord(c) in FORBIDDEN_NAME_CPS for c in n))
 
 
-def valid_item(x: Any) -> bool:
-    if type(x) is not dict or list(x.keys()) != ["l", "s"]:
+def valid_item_v1(x: Any) -> bool:
+    """The deployed v1 rule (apps/web/src/vault/payload.ts at f2ce3da, validItem): members l and s in any order,
+    both strings, label <= 64 code points. Unpaired surrogates are allowed (each counts as one code point)."""
+    if type(x) is not dict or len(x) != 2 or set(x) != {"l", "s"}:
         return False
-    lab, val = x["l"], x["s"]
-    return (type(lab) is str and type(val) is str and _well_formed(lab) and _well_formed(val)
-            and len(lab) <= MAX_LABEL_CPS)
+    return type(x["l"]) is str and type(x["s"]) is str and len(x["l"]) <= MAX_LABEL_CPS
+
+
+def valid_item_v2(x: Any) -> bool:
+    return valid_item_v1(x) and _well_formed(x["l"]) and _well_formed(x["s"])
 
 
 def validate(p: dict) -> None:
     """p = {version, name, archived, items, pad} (the VaultPayload of design D1)."""
-    if p["version"] not in (1, 2) or type(p["version"]) is not int:
+    if type(p["version"]) is not int or p["version"] not in (1, 2):
         raise PayloadError(MALFORMED)
-    if type(p["items"]) is not list or not all(valid_item(i) for i in p["items"]):
-        raise PayloadError(MALFORMED)
-    if type(p["archived"]) is not bool:
+    if type(p["items"]) is not list or type(p["archived"]) is not bool:
         raise PayloadError(MALFORMED)
     if p["version"] == 1:
-        if p["name"] is not None or p["archived"] or p["pad"] is not None or not p["items"]:
+        if (p["name"] is not None or p["archived"] or p["pad"] is not None or not p["items"]
+                or not all(valid_item_v1(i) for i in p["items"])):
             raise PayloadError(MALFORMED)
         return
+    if not all(valid_item_v2(i) for i in p["items"]):
+        raise PayloadError(MALFORMED)
     if p["name"] is not None and not valid_name(p["name"]):
         raise PayloadError(MALFORMED)
     if p["pad"] is not None:
@@ -93,8 +103,15 @@ def validate(p: dict) -> None:
             raise PayloadError(MALFORMED)
 
 
+def stringify(wire: dict) -> bytes:
+    """JSON.stringify(wire) as UTF-8: compact, raw non-ASCII, and (well-formed JSON.stringify, ES2019) any
+    unpaired surrogate written as a lowercase \\udxxx escape. Only v1 payloads can hold one."""
+    s = json.dumps(wire, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
+    return LONE_SURROGATE.sub(lambda m: "\\u%04x" % ord(m.group()), s).encode("utf-8")
+
+
 def encode(p: dict) -> bytes:
-    """Canonical encoding of a validated payload (spec section 5)."""
+    """Canonical encoding of a validated payload (spec section 5); for v1 it is today's encodePayload."""
     validate(p)
     wire: dict[str, Any] = {"v": p["version"]}
     if p["name"] is not None:
@@ -104,7 +121,7 @@ def encode(p: dict) -> bytes:
     wire["items"] = [{"l": i["l"], "s": i["s"]} for i in p["items"]]
     if p["pad"] is not None:
         wire["z"] = p["pad"]
-    return json.dumps(wire, ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode("utf-8")
+    return stringify(wire)
 
 
 def write(name: str | None, archived: bool, items: list[dict], pad: str | None) -> bytes:
@@ -113,49 +130,47 @@ def write(name: str | None, archived: bool, items: list[dict], pad: str | None) 
     return encode({"version": 1 if v1 else 2, "name": name, "archived": archived, "items": items, "pad": pad})
 
 
-def _no_duplicates(pairs: list[tuple[str, Any]]) -> dict:
-    keys = [k for k, _ in pairs]
-    if len(set(keys)) != len(keys):
-        raise PayloadError(MALFORMED)
-    return dict(pairs)
-
-
 def _reject_constant(_: str) -> Any:
     raise PayloadError(MALFORMED)
 
 
 def decode(data: bytes) -> dict:
-    """Strict canonical decoding (design D3, spec section 7)."""
+    """Spec section 7: v1 with the deployed (lenient) v1 rules, v2 strict and canonical (design D3)."""
     try:
         text = data.decode("utf-8", errors="strict")
     except UnicodeDecodeError:
         raise PayloadError(MALFORMED) from None
-    m = VERSION_PREFIX.match(text)
-    if m and int(m.group(1)) >= 3:
-        raise PayloadError(UNKNOWN_VERSION)
+    if text.startswith("\ufeff"):  # TextDecoder (fatal, BOM not ignored) strips exactly one BOM
+        text = text[1:]
     try:
-        obj = json.loads(text, object_pairs_hook=_no_duplicates, parse_constant=_reject_constant)
+        # json.loads keeps the LAST of duplicate members, like JSON.parse. NaN/Infinity are not JSON.
+        obj = json.loads(text, parse_constant=_reject_constant)
     except PayloadError:
         raise
     except Exception:  # JSONDecodeError, RecursionError, ...
         raise PayloadError(MALFORMED) from None
-    if type(obj) is not dict:
+    if type(obj) is not dict or "v" not in obj or not _is_js_number(obj["v"]):
         raise PayloadError(MALFORMED)
-    v = obj.get("v")
-    if type(v) is not int or v not in (1, 2):  # type() excludes bool: True == 1
-        raise PayloadError(MALFORMED)
-    allowed = ("v", "items") if v == 1 else ("v", "n", "a", "items", "z")
-    if any(k not in allowed for k in obj) or "items" not in obj:
+    v = obj["v"]
+    if v == 1:
+        # Deployed v1 rules, unchanged: exactly v and items, a non-empty array of valid items.
+        if len(obj) != 2 or type(obj.get("items")) is not list or not obj["items"]:
+            raise PayloadError(MALFORMED)
+        if not all(valid_item_v1(i) for i in obj["items"]):
+            raise PayloadError(MALFORMED)
+        return {"version": 1, "name": None, "archived": False,
+                "items": [{"l": i["l"], "s": i["s"]} for i in obj["items"]], "pad": None}
+    if v != 2:
+        raise PayloadError(UNKNOWN_VERSION)
+    # v2: validate, re-encode, compare with the input BYTES.
+    if any(k not in ("v", "n", "a", "items", "z") for k in obj) or "items" not in obj:
         raise PayloadError(MALFORMED)
     if "a" in obj and not (type(obj["a"]) is bool and obj["a"] is True):
         raise PayloadError(MALFORMED)
-    p = {"version": v, "name": obj.get("n"), "archived": "a" in obj, "items": obj["items"], "pad": obj.get("z")}
     if "n" in obj and obj["n"] is None or "z" in obj and obj["z"] is None:
         raise PayloadError(MALFORMED)
-    try:
-        again = encode(p)
-    except UnicodeEncodeError:
-        raise PayloadError(MALFORMED) from None
+    p = {"version": 2, "name": obj.get("n"), "archived": "a" in obj, "items": obj["items"], "pad": obj.get("z")}
+    again = encode(p)
     if again != data:
         raise PayloadError(MALFORMED, reencoded=again)
     return p
@@ -224,9 +239,15 @@ def build() -> dict:
 
     def pos(id_: str, desc: str, data: bytes) -> None:
         p = decode(data)  # raises if the vector is wrong
-        assert encode(p) == data
+        again = encode(p)
+        assert again == data or p["version"] == 1, id_  # v2 is canonical; v1 decodes with the deployed rules
         positive.append({"id": id_, "description": desc, "hex": data.hex(), "text": text_of(data),
-                         "decoded": decoded_json(p), "canonicalHex": encode(p).hex()})
+                         "decoded": decoded_json(p), "canonicalHex": again.hex()})
+
+    def legacy(id_: str, desc: str, data: bytes | str) -> None:
+        """A v1 payload that the deployed v1 decoder accepts although it is not canonical (spec 7.1)."""
+        b = data.encode("utf-8") if isinstance(data, str) else data
+        pos(id_, desc + " Accepted by the deployed v1 rules; canonicalHex is what the writer would emit.", b)
 
     def v2(name: str | None = None, archived: bool = False, items: list[dict] | None = None,
            pad: str | None = None) -> bytes:
@@ -272,6 +293,33 @@ def build() -> dict:
     pos("v2-non-minimal", "v2 with no n, a or z and one item: valid to decode; the writer would emit v1 "
         "(see writer case writer-unnamed-active-v1).", v2(items=ITEMS_SINGLE))
 
+    # v1 decodes with the deployed v1 rules, unchanged (design A7, reversed): never stricter than today.
+    I1 = '[{"l":"a","s":"b"}]'
+    legacy("v1-legacy-lone-surrogate-escaped", "Regression: an escaped lone low surrogate in a v1 secret "
+           "decodes as today (JSON.stringify writes it this way).", '{"v":1,"items":[{"l":"a","s":"\\udc00"}]}')
+    legacy("v1-legacy-lone-surrogate-label", "An escaped lone high surrogate in a v1 label (one code point).",
+           '{"v":1,"items":[{"l":"x\\ud800","s":"b"}]}')
+    legacy("v1-legacy-escaped-surrogate-pair", "A pair written as \\ud83d\\ude00.",
+           '{"v":1,"items":[{"l":"a","s":"\\ud83d\\ude00"}]}')
+    legacy("v1-legacy-escape-solidus", "Escape \\/.", '{"v":1,"items":[{"l":"a","s":"\\/"}]}')
+    legacy("v1-legacy-escape-unneeded-u", "Escape \\u0041.", '{"v":1,"items":[{"l":"a","s":"\\u0041"}]}')
+    legacy("v1-legacy-escape-uppercase-hex", "Escape \\u001F.", '{"v":1,"items":[{"l":"a","s":"\\u001F"}]}')
+    legacy("v1-legacy-escape-non-ascii", "Escape \\u00e9.", '{"v":1,"items":[{"l":"a","s":"\\u00e9"}]}')
+    legacy("v1-legacy-whitespace", "Pretty-printed with spaces and newlines.",
+           '{\n  "v": 1,\n  "items": [ { "l": "a", "s": "b" } ]\n}\n')
+    legacy("v1-legacy-member-order", "items before v.", '{"items":' + I1 + ',"v":1}')
+    legacy("v1-legacy-item-member-order", "s before l in an item.", '{"v":1,"items":[{"s":"b","l":"a"}]}')
+    legacy("v1-legacy-dup-items", "Duplicate items: the last one wins, as in JSON.parse.",
+           '{"v":1,"items":[{"l":"x","s":"y"}],"items":' + I1 + '}')
+    legacy("v1-legacy-dup-in-item", "Duplicate l in an item: the last one wins.",
+           '{"v":1,"items":[{"l":"x","l":"a","s":"b"}]}')
+    legacy("v1-legacy-dup-v-last-wins", "Duplicate v: the last one (1) wins, so the v1 rules apply.",
+           '{"v":2,"v":1,"items":' + I1 + '}')
+    legacy("v1-legacy-v-float", '"v":1.0 equals 1 in JavaScript.', '{"v":1.0,"items":' + I1 + '}')
+    legacy("v1-legacy-v-exponent", '"v":1e0.', '{"v":1e0,"items":' + I1 + '}')
+    legacy("v1-legacy-bom", "One leading BOM (TextDecoder strips it).",
+           b"\xef\xbb\xbf" + b'{"v":1,"items":' + I1.encode() + b"}")
+
     # ------------------------------------------------------------ negative
     negative: list[dict] = []
 
@@ -290,8 +338,10 @@ def build() -> dict:
     neg("dup-member-n", "Duplicate n.", '{"v":2,"n":"a","n":"b","items":[]}')
     neg("dup-member-n-same-value", "Duplicate n with the same value.", '{"v":2,"n":"a","n":"a","items":[]}')
     neg("dup-member-v", "Duplicate v.", '{"v":2,"v":2,"items":[]}')
-    neg("dup-member-items", "Duplicate items.", '{"v":1,"items":' + I1 + ',"items":' + I1 + '}')
-    neg("dup-member-in-item", "Duplicate l inside an item.", '{"v":1,"items":[{"l":"a","l":"a","s":"b"}]}')
+    neg("dup-member-items", "Duplicate items in v2.", '{"v":2,"items":' + I1 + ',"items":' + I1 + '}')
+    neg("dup-member-in-item", "Duplicate l inside a v2 item.", '{"v":2,"items":[{"l":"a","l":"a","s":"b"}]}')
+    neg("dup-member-v-last-wins", "Duplicate v: the last one (2) wins, as in JSON.parse, so the strict v2 rules "
+        "apply and reject it.", '{"v":3,"v":2,"items":[]}')
     neg("a-false", '"a":false (absent means active).', '{"v":2,"a":false,"items":[]}')
     neg("a-one", '"a":1 (Python: 1 == True, so check type(a) is bool).', '{"v":2,"a":1,"items":[]}')
     neg("a-string", '"a":"true".', '{"v":2,"a":"true","items":[]}')
@@ -315,21 +365,23 @@ def build() -> dict:
     neg("n-bidi-2069", "Name with U+2069 PDI.", '{"v":2,"n":"a\u2069b","items":[]}')
     neg("lone-surrogate-escaped", "Escaped lone high surrogate in a name (JSON.parse accepts it).",
         '{"v":2,"n":"a\\ud800","items":[]}')
-    neg("lone-surrogate-escaped-low-in-secret", "Escaped lone low surrogate in a secret.",
-        '{"v":1,"items":[{"l":"a","s":"\\udc00"}]}')
+    neg("lone-surrogate-escaped-low-in-secret", "Escaped lone low surrogate in a v2 secret.",
+        '{"v":2,"items":[{"l":"a","s":"\\udc00"}]}')
     neg("lone-surrogate-raw-bytes", "UTF-8-encoded surrogate bytes ED A0 80 (ill-formed UTF-8).",
         b'{"v":1,"items":[{"l":"a","s":"\xed\xa0\x80"}]}')
-    neg("escaped-surrogate-pair", "A well-formed pair written as \\ud83d\\ude00 (canonical form is raw UTF-8).",
-        '{"v":1,"items":[{"l":"a","s":"\\ud83d\\ude00"}]}')
+    neg("escaped-surrogate-pair", "v2 with a well-formed pair written as \\ud83d\\ude00 (canonical form is "
+        "raw UTF-8).", '{"v":2,"items":[{"l":"a","s":"\\ud83d\\ude00"}]}')
     neg("invalid-utf8", "Byte 0xFF.", b'{"v":1,"items":[{"l":"a","s":"\xff"}]}')
     neg("overlong-utf8", "Overlong encoding C0 AF of '/'.", b'{"v":1,"items":[{"l":"a","s":"\xc0\xaf"}]}')
-    neg("utf8-bom", "Leading UTF-8 BOM (TextDecoder strips it by default: compare bytes, not text).",
-        b"\xef\xbb\xbf" + b'{"v":1,"items":' + I1.encode() + b"}")
-    neg("escape-solidus", "Non-canonical escape \\/.", '{"v":1,"items":[{"l":"a","s":"\\/"}]}')
-    neg("escape-unneeded-u", "Non-canonical escape \\u0041 for 'A'.", '{"v":1,"items":[{"l":"a","s":"\\u0041"}]}')
-    neg("escape-uppercase-hex", "\\u001F instead of \\u001f.", '{"v":1,"items":[{"l":"a","s":"\\u001F"}]}')
-    neg("escape-u-newline", "\\u000a instead of \\n.", '{"v":1,"items":[{"l":"a","s":"\\u000a"}]}')
-    neg("escape-non-ascii", "\\u00e9 instead of raw UTF-8.", '{"v":1,"items":[{"l":"a","s":"\\u00e9"}]}')
+    neg("utf8-bom", "v2 with a leading UTF-8 BOM (TextDecoder strips it: compare bytes, not text).",
+        b"\xef\xbb\xbf" + b'{"v":2,"items":' + I1.encode() + b"}")
+    neg("utf8-double-bom", "Two BOMs: only one is stripped, the second is not JSON.",
+        b"\xef\xbb\xbf\xef\xbb\xbf" + b'{"v":1,"items":' + I1.encode() + b"}")
+    neg("escape-solidus", "Non-canonical escape \\/.", '{"v":2,"items":[{"l":"a","s":"\\/"}]}')
+    neg("escape-unneeded-u", "Non-canonical escape \\u0041 for 'A'.", '{"v":2,"items":[{"l":"a","s":"\\u0041"}]}')
+    neg("escape-uppercase-hex", "\\u001F instead of \\u001f.", '{"v":2,"items":[{"l":"a","s":"\\u001F"}]}')
+    neg("escape-u-newline", "\\u000a instead of \\n.", '{"v":2,"items":[{"l":"a","s":"\\u000a"}]}')
+    neg("escape-non-ascii", "\\u00e9 instead of raw UTF-8.", '{"v":2,"items":[{"l":"a","s":"\\u00e9"}]}')
     neg("extra-member-top", "Unknown top-level key in v2.", '{"v":2,"items":[],"x":1}')
     neg("extra-member-item", "Unknown key in an item.", '{"v":1,"items":[{"l":"a","s":"b","t":"c"}]}')
     neg("v1-with-n", "v1 has no n.", '{"v":1,"n":"a","items":' + I1 + '}')
@@ -338,27 +390,28 @@ def build() -> dict:
     neg("whitespace-after-comma", "A space between members.", '{"v":2, "items":[]}')
     neg("whitespace-leading", "Leading space.", ' {"v":2,"items":[]}')
     neg("whitespace-trailing-newline", "Trailing newline.", '{"v":2,"items":[]}\n')
-    neg("whitespace-after-colon", "A space after a colon.", '{"v":1,"items": ' + I1 + '}')
+    neg("whitespace-after-colon", "A space after a colon in v2.", '{"v":2,"items": ' + I1 + '}')
     neg("member-order-a-before-n", "a before n.", '{"v":2,"a":true,"n":"x","items":[]}')
-    neg("member-order-items-before-v", "v1 with items before v.", '{"items":' + I1 + ',"v":1}')
+    neg("member-order-items-before-v", "v2 with items before v.", '{"items":' + I1 + ',"v":2}')
     neg("member-order-z-before-items", "z before items.", '{"v":2,"z":"0","items":[]}')
-    neg("member-order-s-before-l", "s before l in an item.", '{"v":1,"items":[{"s":"b","l":"a"}]}')
+    neg("member-order-s-before-l", "s before l in a v2 item.", '{"v":2,"items":[{"s":"b","l":"a"}]}')
     neg("v-string", '"v":"2".', '{"v":"2","items":[]}')
     neg("v-float", '"v":2.0.', '{"v":2.0,"items":[]}')
-    neg("v-exponent", '"v":1e0.', '{"v":1e0,"items":' + I1 + '}')
+    neg("v-exponent", '"v":2e0 (v2 is canonical).', '{"v":2e0,"items":' + I1 + '}')
     neg("v-true", '"v":true.', '{"v":true,"items":' + I1 + '}')
-    neg("v-zero", '"v":0 is not a newer version.', '{"v":0,"items":[]}')
-    neg("v-negative", '"v":-1.', '{"v":-1,"items":[]}')
+    neg("v-zero", '"v":0: a number other than 1 or 2 (the deployed rule).', '{"v":0,"items":[]}', UNKNOWN_VERSION)
+    neg("v-negative", '"v":-1.', '{"v":-1,"items":[]}', UNKNOWN_VERSION)
+    neg("v-fraction", '"v":2.5.', '{"v":2.5,"items":[]}', UNKNOWN_VERSION)
     neg("v-missing", "No v.", '{"items":' + I1 + '}')
     neg("v-3", '"v":3: a newer version.', '{"v":3,"items":[]}', UNKNOWN_VERSION)
     neg("v-3-unknown-fields", '"v":3 with fields this version does not know.',
         '{"v":3,"q":[1,2],"items":{}}', UNKNOWN_VERSION)
     neg("v-10", '"v":10.', '{"v":10}', UNKNOWN_VERSION)
-    neg("v-3-precedes-validation", "The version prefix is checked before parsing: a v3 prefix wins over a "
-        "later duplicate v.", '{"v":3,"v":2,"items":[]}', UNKNOWN_VERSION)
-    neg("v-3-not-first", '"v":3 not at the start: no version prefix, so MALFORMED.',
-        '{"items":[],"v":3}')
-    neg("v-3-whitespace", "Whitespace before a v3: no version prefix, so MALFORMED.", '{ "v":3,"items":[]}')
+    neg("v-3-not-first", '"v":3 anywhere in the object.', '{"items":[],"v":3}', UNKNOWN_VERSION)
+    neg("v-3-whitespace", '"v":3 with whitespace.', '{ "v" : 3 }', UNKNOWN_VERSION)
+    neg("v-3-float", '"v":3.0.', '{"v":3.0,"items":[]}', UNKNOWN_VERSION)
+    neg("v-3-deep", '"v":3 with deeply nested unknown content.',
+        '{"v":3,"x":' + "[" * 400 + "]" * 400 + "}", UNKNOWN_VERSION)
     neg("v-03", '"v":03 (leading zero, invalid JSON).', '{"v":03,"items":[]}')
     neg("z-non-zero", "z with a character other than 0.", '{"v":2,"a":true,"items":[],"z":"001"}')
     neg("z-empty", "Empty z.", '{"v":2,"a":true,"items":[],"z":""}')
@@ -378,8 +431,8 @@ def build() -> dict:
     neg("not-json", "Not JSON.", "abc")
     neg("nan", "NaN is not JSON (Python's json accepts it unless refused).", '{"v":NaN,"items":[]}')
     neg("trailing-garbage", "Bytes after the object.", '{"v":2,"items":[]}x')
-    neg("deep-nesting", "A deeply nested secret (must be rejected, never crash).",
-        '{"v":1,"items":[{"l":"a","s":' + "[" * 2000 + "]" * 2000 + "}]}")
+    neg("deep-nesting", "A deeply nested secret (must be rejected, never crash; within the 1022-byte limit).",
+        '{"v":1,"items":[{"l":"a","s":' + "[" * 400 + "]" * 400 + "}]}")
 
     # -------------------------------------------------------------- writer
     writer: list[dict] = []
@@ -394,6 +447,9 @@ def build() -> dict:
     wr("writer-unnamed-active-v1", "No name, active, items: v1, byte-identical to today's encoding (D2).",
        None, False, ITEMS_SINGLE, None)
     wr("writer-unnamed-active-multi-v1", "Same rule with two items.", None, False, ITEMS_MULTI, None)
+    wr("writer-v1-lone-surrogate", "v1 keeps today's encoding of an unpaired surrogate: the \\udc00 escape of "
+       "JSON.stringify. (A v2 writer refuses it: v2 strings must be well-formed.)",
+       None, False, [item("a", "\udc00")], None)
     wr("writer-named-v2", "A name forces v2.", "Family", False, ITEMS_MULTI, None)
     wr("writer-archived-v2", "The archived flag forces v2.", None, True, ITEMS_SINGLE, None)
     wr("writer-empty-items-v2", "No items forces v2 (v1 needs at least one).", None, False, [], None)
@@ -419,6 +475,9 @@ def build() -> dict:
     ac("clear-named-three-items", "Named vault with three items: same payload length.", three, 638, "exact")
     ac("clear-v1-two-items", "Unnamed v1 vault: v2 cleared payload of the same length.",
        write(None, False, ITEMS_MULTI, None), 638, "exact")
+    ac("clear-v1-legacy-whitespace", "A pretty-printed (legacy) v1 vault: sized from its actual byte length.",
+       b'{\n  "v": 1,\n  "items": [\n    { "l": "GitHub recovery codes", "s": "1a2b3-c4d5e" }\n  ]\n}', 638,
+       "exact")
     ac("clear-already-archived", "Named archived vault.", v2("Old", True, ITEMS_SINGLE), 638, "exact")
     # previous length = C0 + 8: z of exactly one 0
     c0_unnamed = len(write(None, True, [], None))
@@ -475,6 +534,8 @@ def build() -> dict:
 
     blob_vec("blob-v1-minimal", "v1 payload (the minimal-version writer's output for an unnamed active vault), "
              "keys A+B.", "v1-multi")
+    blob_vec("blob-v1-legacy-lone-surrogate", "Regression: a v1 payload with an escaped lone surrogate, as "
+             "JSON.stringify writes it, keys A+B. It must keep opening.", "v1-legacy-lone-surrogate-escaped")
     blob_vec("blob-v2-named", "Named v2 payload, keys A+B.", "v2-named")
     blob_vec("blob-v2-named-archived", "Named, archived v2 payload, keys A+B.", "v2-named-archived")
     blob_vec("blob-v2-name-non-bmp", "v2 payload with a non-BMP name, keys A+B.", "v2-name-non-bmp")
@@ -496,15 +557,16 @@ def build() -> dict:
         "generatedBy": "packages/vault-crypto/scripts/gen-payload-vectors.py",
         "encoding": ("hex: lowercase hex of the exact payload bytes. text: the same bytes as a string when they are "
                      "well-formed UTF-8, else null. decoded: {version, name|null, archived, items:[{l,s}], pad|null}. "
-                     "canonicalHex: the canonical re-encoding (equal to hex for positive vectors; for negative "
+                     "canonicalHex: what a writer emits for the decoded value (equal to hex for positive vectors, except "
+                     "v1-legacy-* ones, which the deployed v1 rules accept although not canonical; for negative "
                      "vectors that parse and validate but differ byte-wise, what the re-encoding produced, else "
-                     "null). Blob vectors use credentials A and B of packages/vault-crypto/test-vectors/v1.json."),
+                     "null). Some strings hold escaped unpaired surrogates: parse with JSON.parse or Python json. Blob vectors use credentials A and B of packages/vault-crypto/test-vectors/v1.json."),
         "errorClasses": [MALFORMED, UNKNOWN_VERSION],
         "constants": {
             "maxNameCodePoints": MAX_NAME_CPS, "maxLabelCodePoints": MAX_LABEL_CPS,
             "forbiddenNameRanges": ["U+0000-U+001F", "U+007F-U+009F", "U+2028-U+2029", "U+202A-U+202E",
                                     "U+2066-U+2069"],
-            "versionPrefixRegex": VERSION_PREFIX.pattern, "archiveReserveBytes": len(',"a":true'),
+            "unknownVersionRule": "v is a JSON number other than 1 or 2 (after JSON.parse)", "archiveReserveBytes": len(',"a":true'),
             "padMemberOverheadBytes": len(',"z":""'),
         },
         "positive": positive,

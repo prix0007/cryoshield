@@ -3,7 +3,7 @@
   "formatVersion": 2,
   "spec": "docs/spec/payload-v2.md",
   "generatedBy": "packages/vault-crypto/scripts/gen-payload-vectors.py",
-  "encoding": "hex: lowercase hex of the exact payload bytes. text: the same bytes as a string when they are well-formed UTF-8, else null. decoded: {version, name|null, archived, items:[{l,s}], pad|null}. canonicalHex: the canonical re-encoding (equal to hex for positive vectors; for negative vectors that parse and validate but differ byte-wise, what the re-encoding produced, else null). Blob vectors use credentials A and B of packages/vault-crypto/test-vectors/v1.json.",
+  "encoding": "hex: lowercase hex of the exact payload bytes. text: the same bytes as a string when they are well-formed UTF-8, else null. decoded: {version, name|null, archived, items:[{l,s}], pad|null}. canonicalHex: what a writer emits for the decoded value (equal to hex for positive vectors, except v1-legacy-* ones, which the deployed v1 rules accept although not canonical; for negative vectors that parse and validate but differ byte-wise, what the re-encoding produced, else null). Some strings hold escaped unpaired surrogates: parse with JSON.parse or Python json. Blob vectors use credentials A and B of packages/vault-crypto/test-vectors/v1.json.",
   "errorClasses": [
     "MALFORMED",
     "UNKNOWN_VERSION"
@@ -18,7 +18,7 @@
       "U+202A-U+202E",
       "U+2066-U+2069"
     ],
-    "versionPrefixRegex": "\\{\"v\":(0|[1-9][0-9]*)[,}]",
+    "unknownVersionRule": "v is a JSON number other than 1 or 2 (after JSON.parse)",
     "archiveReserveBytes": 9,
     "padMemberOverheadBytes": 7
   },
@@ -429,6 +429,310 @@
       "canonicalHex": "7b2276223a322c226974656d73223a5b7b226c223a22426974636f696e2073656564222c2273223a226162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e2061626f7574227d5d7d"
     },
     {
+      "id": "v1-legacy-lone-surrogate-escaped",
+      "description": "Regression: an escaped lone low surrogate in a v1 secret decodes as today (JSON.stringify writes it this way). Accepted by the deployed v1 rules; canonicalHex is what the writer would emit.",
+      "hex": "7b2276223a312c226974656d73223a5b7b226c223a2261222c2273223a225c7564633030227d5d7d",
+      "text": "{\"v\":1,\"items\":[{\"l\":\"a\",\"s\":\"\\udc00\"}]}",
+      "decoded": {
+        "version": 1,
+        "name": null,
+        "archived": false,
+        "items": [
+          {
+            "l": "a",
+            "s": "\udc00"
+          }
+        ],
+        "pad": null
+      },
+      "canonicalHex": "7b2276223a312c226974656d73223a5b7b226c223a2261222c2273223a225c7564633030227d5d7d"
+    },
+    {
+      "id": "v1-legacy-lone-surrogate-label",
+      "description": "An escaped lone high surrogate in a v1 label (one code point). Accepted by the deployed v1 rules; canonicalHex is what the writer would emit.",
+      "hex": "7b2276223a312c226974656d73223a5b7b226c223a22785c7564383030222c2273223a2262227d5d7d",
+      "text": "{\"v\":1,\"items\":[{\"l\":\"x\\ud800\",\"s\":\"b\"}]}",
+      "decoded": {
+        "version": 1,
+        "name": null,
+        "archived": false,
+        "items": [
+          {
+            "l": "x\ud800",
+            "s": "b"
+          }
+        ],
+        "pad": null
+      },
+      "canonicalHex": "7b2276223a312c226974656d73223a5b7b226c223a22785c7564383030222c2273223a2262227d5d7d"
+    },
+    {
+      "id": "v1-legacy-escaped-surrogate-pair",
+      "description": "A pair written as \\ud83d\\ude00. Accepted by the deployed v1 rules; canonicalHex is what the writer would emit.",
+      "hex": "7b2276223a312c226974656d73223a5b7b226c223a2261222c2273223a225c75643833645c7564653030227d5d7d",
+      "text": "{\"v\":1,\"items\":[{\"l\":\"a\",\"s\":\"\\ud83d\\ude00\"}]}",
+      "decoded": {
+        "version": 1,
+        "name": null,
+        "archived": false,
+        "items": [
+          {
+            "l": "a",
+            "s": "\ud83d\ude00"
+          }
+        ],
+        "pad": null
+      },
+      "canonicalHex": "7b2276223a312c226974656d73223a5b7b226c223a2261222c2273223a22f09f9880227d5d7d"
+    },
+    {
+      "id": "v1-legacy-escape-solidus",
+      "description": "Escape \\/. Accepted by the deployed v1 rules; canonicalHex is what the writer would emit.",
+      "hex": "7b2276223a312c226974656d73223a5b7b226c223a2261222c2273223a225c2f227d5d7d",
+      "text": "{\"v\":1,\"items\":[{\"l\":\"a\",\"s\":\"\\/\"}]}",
+      "decoded": {
+        "version": 1,
+        "name": null,
+        "archived": false,
+        "items": [
+          {
+            "l": "a",
+            "s": "/"
+          }
+        ],
+        "pad": null
+      },
+      "canonicalHex": "7b2276223a312c226974656d73223a5b7b226c223a2261222c2273223a222f227d5d7d"
+    },
+    {
+      "id": "v1-legacy-escape-unneeded-u",
+      "description": "Escape \\u0041. Accepted by the deployed v1 rules; canonicalHex is what the writer would emit.",
+      "hex": "7b2276223a312c226974656d73223a5b7b226c223a2261222c2273223a225c7530303431227d5d7d",
+      "text": "{\"v\":1,\"items\":[{\"l\":\"a\",\"s\":\"\\u0041\"}]}",
+      "decoded": {
+        "version": 1,
+        "name": null,
+        "archived": false,
+        "items": [
+          {
+            "l": "a",
+            "s": "A"
+          }
+        ],
+        "pad": null
+      },
+      "canonicalHex": "7b2276223a312c226974656d73223a5b7b226c223a2261222c2273223a2241227d5d7d"
+    },
+    {
+      "id": "v1-legacy-escape-uppercase-hex",
+      "description": "Escape \\u001F. Accepted by the deployed v1 rules; canonicalHex is what the writer would emit.",
+      "hex": "7b2276223a312c226974656d73223a5b7b226c223a2261222c2273223a225c7530303146227d5d7d",
+      "text": "{\"v\":1,\"items\":[{\"l\":\"a\",\"s\":\"\\u001F\"}]}",
+      "decoded": {
+        "version": 1,
+        "name": null,
+        "archived": false,
+        "items": [
+          {
+            "l": "a",
+            "s": "\u001f"
+          }
+        ],
+        "pad": null
+      },
+      "canonicalHex": "7b2276223a312c226974656d73223a5b7b226c223a2261222c2273223a225c7530303166227d5d7d"
+    },
+    {
+      "id": "v1-legacy-escape-non-ascii",
+      "description": "Escape \\u00e9. Accepted by the deployed v1 rules; canonicalHex is what the writer would emit.",
+      "hex": "7b2276223a312c226974656d73223a5b7b226c223a2261222c2273223a225c7530306539227d5d7d",
+      "text": "{\"v\":1,\"items\":[{\"l\":\"a\",\"s\":\"\\u00e9\"}]}",
+      "decoded": {
+        "version": 1,
+        "name": null,
+        "archived": false,
+        "items": [
+          {
+            "l": "a",
+            "s": "\u00e9"
+          }
+        ],
+        "pad": null
+      },
+      "canonicalHex": "7b2276223a312c226974656d73223a5b7b226c223a2261222c2273223a22c3a9227d5d7d"
+    },
+    {
+      "id": "v1-legacy-whitespace",
+      "description": "Pretty-printed with spaces and newlines. Accepted by the deployed v1 rules; canonicalHex is what the writer would emit.",
+      "hex": "7b0a20202276223a20312c0a2020226974656d73223a205b207b20226c223a202261222c202273223a20226222207d205d0a7d0a",
+      "text": "{\n  \"v\": 1,\n  \"items\": [ { \"l\": \"a\", \"s\": \"b\" } ]\n}\n",
+      "decoded": {
+        "version": 1,
+        "name": null,
+        "archived": false,
+        "items": [
+          {
+            "l": "a",
+            "s": "b"
+          }
+        ],
+        "pad": null
+      },
+      "canonicalHex": "7b2276223a312c226974656d73223a5b7b226c223a2261222c2273223a2262227d5d7d"
+    },
+    {
+      "id": "v1-legacy-member-order",
+      "description": "items before v. Accepted by the deployed v1 rules; canonicalHex is what the writer would emit.",
+      "hex": "7b226974656d73223a5b7b226c223a2261222c2273223a2262227d5d2c2276223a317d",
+      "text": "{\"items\":[{\"l\":\"a\",\"s\":\"b\"}],\"v\":1}",
+      "decoded": {
+        "version": 1,
+        "name": null,
+        "archived": false,
+        "items": [
+          {
+            "l": "a",
+            "s": "b"
+          }
+        ],
+        "pad": null
+      },
+      "canonicalHex": "7b2276223a312c226974656d73223a5b7b226c223a2261222c2273223a2262227d5d7d"
+    },
+    {
+      "id": "v1-legacy-item-member-order",
+      "description": "s before l in an item. Accepted by the deployed v1 rules; canonicalHex is what the writer would emit.",
+      "hex": "7b2276223a312c226974656d73223a5b7b2273223a2262222c226c223a2261227d5d7d",
+      "text": "{\"v\":1,\"items\":[{\"s\":\"b\",\"l\":\"a\"}]}",
+      "decoded": {
+        "version": 1,
+        "name": null,
+        "archived": false,
+        "items": [
+          {
+            "l": "a",
+            "s": "b"
+          }
+        ],
+        "pad": null
+      },
+      "canonicalHex": "7b2276223a312c226974656d73223a5b7b226c223a2261222c2273223a2262227d5d7d"
+    },
+    {
+      "id": "v1-legacy-dup-items",
+      "description": "Duplicate items: the last one wins, as in JSON.parse. Accepted by the deployed v1 rules; canonicalHex is what the writer would emit.",
+      "hex": "7b2276223a312c226974656d73223a5b7b226c223a2278222c2273223a2279227d5d2c226974656d73223a5b7b226c223a2261222c2273223a2262227d5d7d",
+      "text": "{\"v\":1,\"items\":[{\"l\":\"x\",\"s\":\"y\"}],\"items\":[{\"l\":\"a\",\"s\":\"b\"}]}",
+      "decoded": {
+        "version": 1,
+        "name": null,
+        "archived": false,
+        "items": [
+          {
+            "l": "a",
+            "s": "b"
+          }
+        ],
+        "pad": null
+      },
+      "canonicalHex": "7b2276223a312c226974656d73223a5b7b226c223a2261222c2273223a2262227d5d7d"
+    },
+    {
+      "id": "v1-legacy-dup-in-item",
+      "description": "Duplicate l in an item: the last one wins. Accepted by the deployed v1 rules; canonicalHex is what the writer would emit.",
+      "hex": "7b2276223a312c226974656d73223a5b7b226c223a2278222c226c223a2261222c2273223a2262227d5d7d",
+      "text": "{\"v\":1,\"items\":[{\"l\":\"x\",\"l\":\"a\",\"s\":\"b\"}]}",
+      "decoded": {
+        "version": 1,
+        "name": null,
+        "archived": false,
+        "items": [
+          {
+            "l": "a",
+            "s": "b"
+          }
+        ],
+        "pad": null
+      },
+      "canonicalHex": "7b2276223a312c226974656d73223a5b7b226c223a2261222c2273223a2262227d5d7d"
+    },
+    {
+      "id": "v1-legacy-dup-v-last-wins",
+      "description": "Duplicate v: the last one (1) wins, so the v1 rules apply. Accepted by the deployed v1 rules; canonicalHex is what the writer would emit.",
+      "hex": "7b2276223a322c2276223a312c226974656d73223a5b7b226c223a2261222c2273223a2262227d5d7d",
+      "text": "{\"v\":2,\"v\":1,\"items\":[{\"l\":\"a\",\"s\":\"b\"}]}",
+      "decoded": {
+        "version": 1,
+        "name": null,
+        "archived": false,
+        "items": [
+          {
+            "l": "a",
+            "s": "b"
+          }
+        ],
+        "pad": null
+      },
+      "canonicalHex": "7b2276223a312c226974656d73223a5b7b226c223a2261222c2273223a2262227d5d7d"
+    },
+    {
+      "id": "v1-legacy-v-float",
+      "description": "\"v\":1.0 equals 1 in JavaScript. Accepted by the deployed v1 rules; canonicalHex is what the writer would emit.",
+      "hex": "7b2276223a312e302c226974656d73223a5b7b226c223a2261222c2273223a2262227d5d7d",
+      "text": "{\"v\":1.0,\"items\":[{\"l\":\"a\",\"s\":\"b\"}]}",
+      "decoded": {
+        "version": 1,
+        "name": null,
+        "archived": false,
+        "items": [
+          {
+            "l": "a",
+            "s": "b"
+          }
+        ],
+        "pad": null
+      },
+      "canonicalHex": "7b2276223a312c226974656d73223a5b7b226c223a2261222c2273223a2262227d5d7d"
+    },
+    {
+      "id": "v1-legacy-v-exponent",
+      "description": "\"v\":1e0. Accepted by the deployed v1 rules; canonicalHex is what the writer would emit.",
+      "hex": "7b2276223a3165302c226974656d73223a5b7b226c223a2261222c2273223a2262227d5d7d",
+      "text": "{\"v\":1e0,\"items\":[{\"l\":\"a\",\"s\":\"b\"}]}",
+      "decoded": {
+        "version": 1,
+        "name": null,
+        "archived": false,
+        "items": [
+          {
+            "l": "a",
+            "s": "b"
+          }
+        ],
+        "pad": null
+      },
+      "canonicalHex": "7b2276223a312c226974656d73223a5b7b226c223a2261222c2273223a2262227d5d7d"
+    },
+    {
+      "id": "v1-legacy-bom",
+      "description": "One leading BOM (TextDecoder strips it). Accepted by the deployed v1 rules; canonicalHex is what the writer would emit.",
+      "hex": "efbbbf7b2276223a312c226974656d73223a5b7b226c223a2261222c2273223a2262227d5d7d",
+      "text": "\ufeff{\"v\":1,\"items\":[{\"l\":\"a\",\"s\":\"b\"}]}",
+      "decoded": {
+        "version": 1,
+        "name": null,
+        "archived": false,
+        "items": [
+          {
+            "l": "a",
+            "s": "b"
+          }
+        ],
+        "pad": null
+      },
+      "canonicalHex": "7b2276223a312c226974656d73223a5b7b226c223a2261222c2273223a2262227d5d7d"
+    },
+    {
       "id": "v2-named-three-items",
       "description": "Named vault with three items (the Archive and clear starting point).",
       "hex": "7b2276223a322c226e223a2246616d696c79222c226974656d73223a5b7b226c223a22476974487562207265636f7665727920636f646573222c2273223a2231613262332d63346435655c6e36663767382d683969306a227d2c7b226c223a22456d61696c20324641222c2273223a224a425357593344504548504b33505850227d2c7b226c223a22426974636f696e2073656564222c2273223a226162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e2061626f7574227d5d7d",
@@ -463,7 +767,7 @@
       "hex": "7b2276223a322c226e223a2261222c226e223a2262222c226974656d73223a5b5d7d",
       "text": "{\"v\":2,\"n\":\"a\",\"n\":\"b\",\"items\":[]}",
       "error": "MALFORMED",
-      "canonicalHex": null
+      "canonicalHex": "7b2276223a322c226e223a2262222c226974656d73223a5b5d7d"
     },
     {
       "id": "dup-member-n-same-value",
@@ -471,7 +775,7 @@
       "hex": "7b2276223a322c226e223a2261222c226e223a2261222c226974656d73223a5b5d7d",
       "text": "{\"v\":2,\"n\":\"a\",\"n\":\"a\",\"items\":[]}",
       "error": "MALFORMED",
-      "canonicalHex": null
+      "canonicalHex": "7b2276223a322c226e223a2261222c226974656d73223a5b5d7d"
     },
     {
       "id": "dup-member-v",
@@ -479,23 +783,31 @@
       "hex": "7b2276223a322c2276223a322c226974656d73223a5b5d7d",
       "text": "{\"v\":2,\"v\":2,\"items\":[]}",
       "error": "MALFORMED",
-      "canonicalHex": null
+      "canonicalHex": "7b2276223a322c226974656d73223a5b5d7d"
     },
     {
       "id": "dup-member-items",
-      "description": "Duplicate items.",
-      "hex": "7b2276223a312c226974656d73223a5b7b226c223a2261222c2273223a2262227d5d2c226974656d73223a5b7b226c223a2261222c2273223a2262227d5d7d",
-      "text": "{\"v\":1,\"items\":[{\"l\":\"a\",\"s\":\"b\"}],\"items\":[{\"l\":\"a\",\"s\":\"b\"}]}",
+      "description": "Duplicate items in v2.",
+      "hex": "7b2276223a322c226974656d73223a5b7b226c223a2261222c2273223a2262227d5d2c226974656d73223a5b7b226c223a2261222c2273223a2262227d5d7d",
+      "text": "{\"v\":2,\"items\":[{\"l\":\"a\",\"s\":\"b\"}],\"items\":[{\"l\":\"a\",\"s\":\"b\"}]}",
       "error": "MALFORMED",
-      "canonicalHex": null
+      "canonicalHex": "7b2276223a322c226974656d73223a5b7b226c223a2261222c2273223a2262227d5d7d"
     },
     {
       "id": "dup-member-in-item",
-      "description": "Duplicate l inside an item.",
-      "hex": "7b2276223a312c226974656d73223a5b7b226c223a2261222c226c223a2261222c2273223a2262227d5d7d",
-      "text": "{\"v\":1,\"items\":[{\"l\":\"a\",\"l\":\"a\",\"s\":\"b\"}]}",
+      "description": "Duplicate l inside a v2 item.",
+      "hex": "7b2276223a322c226974656d73223a5b7b226c223a2261222c226c223a2261222c2273223a2262227d5d7d",
+      "text": "{\"v\":2,\"items\":[{\"l\":\"a\",\"l\":\"a\",\"s\":\"b\"}]}",
       "error": "MALFORMED",
-      "canonicalHex": null
+      "canonicalHex": "7b2276223a322c226974656d73223a5b7b226c223a2261222c2273223a2262227d5d7d"
+    },
+    {
+      "id": "dup-member-v-last-wins",
+      "description": "Duplicate v: the last one (2) wins, as in JSON.parse, so the strict v2 rules apply and reject it.",
+      "hex": "7b2276223a332c2276223a322c226974656d73223a5b5d7d",
+      "text": "{\"v\":3,\"v\":2,\"items\":[]}",
+      "error": "MALFORMED",
+      "canonicalHex": "7b2276223a322c226974656d73223a5b5d7d"
     },
     {
       "id": "a-false",
@@ -659,9 +971,9 @@
     },
     {
       "id": "lone-surrogate-escaped-low-in-secret",
-      "description": "Escaped lone low surrogate in a secret.",
-      "hex": "7b2276223a312c226974656d73223a5b7b226c223a2261222c2273223a225c7564633030227d5d7d",
-      "text": "{\"v\":1,\"items\":[{\"l\":\"a\",\"s\":\"\\udc00\"}]}",
+      "description": "Escaped lone low surrogate in a v2 secret.",
+      "hex": "7b2276223a322c226974656d73223a5b7b226c223a2261222c2273223a225c7564633030227d5d7d",
+      "text": "{\"v\":2,\"items\":[{\"l\":\"a\",\"s\":\"\\udc00\"}]}",
       "error": "MALFORMED",
       "canonicalHex": null
     },
@@ -675,11 +987,11 @@
     },
     {
       "id": "escaped-surrogate-pair",
-      "description": "A well-formed pair written as \\ud83d\\ude00 (canonical form is raw UTF-8).",
-      "hex": "7b2276223a312c226974656d73223a5b7b226c223a2261222c2273223a225c75643833645c7564653030227d5d7d",
-      "text": "{\"v\":1,\"items\":[{\"l\":\"a\",\"s\":\"\\ud83d\\ude00\"}]}",
+      "description": "v2 with a well-formed pair written as \\ud83d\\ude00 (canonical form is raw UTF-8).",
+      "hex": "7b2276223a322c226974656d73223a5b7b226c223a2261222c2273223a225c75643833645c7564653030227d5d7d",
+      "text": "{\"v\":2,\"items\":[{\"l\":\"a\",\"s\":\"\\ud83d\\ude00\"}]}",
       "error": "MALFORMED",
-      "canonicalHex": "7b2276223a312c226974656d73223a5b7b226c223a2261222c2273223a22f09f9880227d5d7d"
+      "canonicalHex": "7b2276223a322c226974656d73223a5b7b226c223a2261222c2273223a22f09f9880227d5d7d"
     },
     {
       "id": "invalid-utf8",
@@ -699,51 +1011,59 @@
     },
     {
       "id": "utf8-bom",
-      "description": "Leading UTF-8 BOM (TextDecoder strips it by default: compare bytes, not text).",
-      "hex": "efbbbf7b2276223a312c226974656d73223a5b7b226c223a2261222c2273223a2262227d5d7d",
-      "text": "\ufeff{\"v\":1,\"items\":[{\"l\":\"a\",\"s\":\"b\"}]}",
+      "description": "v2 with a leading UTF-8 BOM (TextDecoder strips it: compare bytes, not text).",
+      "hex": "efbbbf7b2276223a322c226974656d73223a5b7b226c223a2261222c2273223a2262227d5d7d",
+      "text": "\ufeff{\"v\":2,\"items\":[{\"l\":\"a\",\"s\":\"b\"}]}",
+      "error": "MALFORMED",
+      "canonicalHex": "7b2276223a322c226974656d73223a5b7b226c223a2261222c2273223a2262227d5d7d"
+    },
+    {
+      "id": "utf8-double-bom",
+      "description": "Two BOMs: only one is stripped, the second is not JSON.",
+      "hex": "efbbbfefbbbf7b2276223a312c226974656d73223a5b7b226c223a2261222c2273223a2262227d5d7d",
+      "text": "\ufeff\ufeff{\"v\":1,\"items\":[{\"l\":\"a\",\"s\":\"b\"}]}",
       "error": "MALFORMED",
       "canonicalHex": null
     },
     {
       "id": "escape-solidus",
       "description": "Non-canonical escape \\/.",
-      "hex": "7b2276223a312c226974656d73223a5b7b226c223a2261222c2273223a225c2f227d5d7d",
-      "text": "{\"v\":1,\"items\":[{\"l\":\"a\",\"s\":\"\\/\"}]}",
+      "hex": "7b2276223a322c226974656d73223a5b7b226c223a2261222c2273223a225c2f227d5d7d",
+      "text": "{\"v\":2,\"items\":[{\"l\":\"a\",\"s\":\"\\/\"}]}",
       "error": "MALFORMED",
-      "canonicalHex": "7b2276223a312c226974656d73223a5b7b226c223a2261222c2273223a222f227d5d7d"
+      "canonicalHex": "7b2276223a322c226974656d73223a5b7b226c223a2261222c2273223a222f227d5d7d"
     },
     {
       "id": "escape-unneeded-u",
       "description": "Non-canonical escape \\u0041 for 'A'.",
-      "hex": "7b2276223a312c226974656d73223a5b7b226c223a2261222c2273223a225c7530303431227d5d7d",
-      "text": "{\"v\":1,\"items\":[{\"l\":\"a\",\"s\":\"\\u0041\"}]}",
+      "hex": "7b2276223a322c226974656d73223a5b7b226c223a2261222c2273223a225c7530303431227d5d7d",
+      "text": "{\"v\":2,\"items\":[{\"l\":\"a\",\"s\":\"\\u0041\"}]}",
       "error": "MALFORMED",
-      "canonicalHex": "7b2276223a312c226974656d73223a5b7b226c223a2261222c2273223a2241227d5d7d"
+      "canonicalHex": "7b2276223a322c226974656d73223a5b7b226c223a2261222c2273223a2241227d5d7d"
     },
     {
       "id": "escape-uppercase-hex",
       "description": "\\u001F instead of \\u001f.",
-      "hex": "7b2276223a312c226974656d73223a5b7b226c223a2261222c2273223a225c7530303146227d5d7d",
-      "text": "{\"v\":1,\"items\":[{\"l\":\"a\",\"s\":\"\\u001F\"}]}",
+      "hex": "7b2276223a322c226974656d73223a5b7b226c223a2261222c2273223a225c7530303146227d5d7d",
+      "text": "{\"v\":2,\"items\":[{\"l\":\"a\",\"s\":\"\\u001F\"}]}",
       "error": "MALFORMED",
-      "canonicalHex": "7b2276223a312c226974656d73223a5b7b226c223a2261222c2273223a225c7530303166227d5d7d"
+      "canonicalHex": "7b2276223a322c226974656d73223a5b7b226c223a2261222c2273223a225c7530303166227d5d7d"
     },
     {
       "id": "escape-u-newline",
       "description": "\\u000a instead of \\n.",
-      "hex": "7b2276223a312c226974656d73223a5b7b226c223a2261222c2273223a225c7530303061227d5d7d",
-      "text": "{\"v\":1,\"items\":[{\"l\":\"a\",\"s\":\"\\u000a\"}]}",
+      "hex": "7b2276223a322c226974656d73223a5b7b226c223a2261222c2273223a225c7530303061227d5d7d",
+      "text": "{\"v\":2,\"items\":[{\"l\":\"a\",\"s\":\"\\u000a\"}]}",
       "error": "MALFORMED",
-      "canonicalHex": "7b2276223a312c226974656d73223a5b7b226c223a2261222c2273223a225c6e227d5d7d"
+      "canonicalHex": "7b2276223a322c226974656d73223a5b7b226c223a2261222c2273223a225c6e227d5d7d"
     },
     {
       "id": "escape-non-ascii",
       "description": "\\u00e9 instead of raw UTF-8.",
-      "hex": "7b2276223a312c226974656d73223a5b7b226c223a2261222c2273223a225c7530306539227d5d7d",
-      "text": "{\"v\":1,\"items\":[{\"l\":\"a\",\"s\":\"\\u00e9\"}]}",
+      "hex": "7b2276223a322c226974656d73223a5b7b226c223a2261222c2273223a225c7530306539227d5d7d",
+      "text": "{\"v\":2,\"items\":[{\"l\":\"a\",\"s\":\"\\u00e9\"}]}",
       "error": "MALFORMED",
-      "canonicalHex": "7b2276223a312c226974656d73223a5b7b226c223a2261222c2273223a22c3a9227d5d7d"
+      "canonicalHex": "7b2276223a322c226974656d73223a5b7b226c223a2261222c2273223a22c3a9227d5d7d"
     },
     {
       "id": "extra-member-top",
@@ -811,11 +1131,11 @@
     },
     {
       "id": "whitespace-after-colon",
-      "description": "A space after a colon.",
-      "hex": "7b2276223a312c226974656d73223a205b7b226c223a2261222c2273223a2262227d5d7d",
-      "text": "{\"v\":1,\"items\": [{\"l\":\"a\",\"s\":\"b\"}]}",
+      "description": "A space after a colon in v2.",
+      "hex": "7b2276223a322c226974656d73223a205b7b226c223a2261222c2273223a2262227d5d7d",
+      "text": "{\"v\":2,\"items\": [{\"l\":\"a\",\"s\":\"b\"}]}",
       "error": "MALFORMED",
-      "canonicalHex": "7b2276223a312c226974656d73223a5b7b226c223a2261222c2273223a2262227d5d7d"
+      "canonicalHex": "7b2276223a322c226974656d73223a5b7b226c223a2261222c2273223a2262227d5d7d"
     },
     {
       "id": "member-order-a-before-n",
@@ -827,11 +1147,11 @@
     },
     {
       "id": "member-order-items-before-v",
-      "description": "v1 with items before v.",
-      "hex": "7b226974656d73223a5b7b226c223a2261222c2273223a2262227d5d2c2276223a317d",
-      "text": "{\"items\":[{\"l\":\"a\",\"s\":\"b\"}],\"v\":1}",
+      "description": "v2 with items before v.",
+      "hex": "7b226974656d73223a5b7b226c223a2261222c2273223a2262227d5d2c2276223a327d",
+      "text": "{\"items\":[{\"l\":\"a\",\"s\":\"b\"}],\"v\":2}",
       "error": "MALFORMED",
-      "canonicalHex": "7b2276223a312c226974656d73223a5b7b226c223a2261222c2273223a2262227d5d7d"
+      "canonicalHex": "7b2276223a322c226974656d73223a5b7b226c223a2261222c2273223a2262227d5d7d"
     },
     {
       "id": "member-order-z-before-items",
@@ -843,11 +1163,11 @@
     },
     {
       "id": "member-order-s-before-l",
-      "description": "s before l in an item.",
-      "hex": "7b2276223a312c226974656d73223a5b7b2273223a2262222c226c223a2261227d5d7d",
-      "text": "{\"v\":1,\"items\":[{\"s\":\"b\",\"l\":\"a\"}]}",
+      "description": "s before l in a v2 item.",
+      "hex": "7b2276223a322c226974656d73223a5b7b2273223a2262222c226c223a2261227d5d7d",
+      "text": "{\"v\":2,\"items\":[{\"s\":\"b\",\"l\":\"a\"}]}",
       "error": "MALFORMED",
-      "canonicalHex": null
+      "canonicalHex": "7b2276223a322c226974656d73223a5b7b226c223a2261222c2273223a2262227d5d7d"
     },
     {
       "id": "v-string",
@@ -863,15 +1183,15 @@
       "hex": "7b2276223a322e302c226974656d73223a5b5d7d",
       "text": "{\"v\":2.0,\"items\":[]}",
       "error": "MALFORMED",
-      "canonicalHex": null
+      "canonicalHex": "7b2276223a322c226974656d73223a5b5d7d"
     },
     {
       "id": "v-exponent",
-      "description": "\"v\":1e0.",
-      "hex": "7b2276223a3165302c226974656d73223a5b7b226c223a2261222c2273223a2262227d5d7d",
-      "text": "{\"v\":1e0,\"items\":[{\"l\":\"a\",\"s\":\"b\"}]}",
+      "description": "\"v\":2e0 (v2 is canonical).",
+      "hex": "7b2276223a3265302c226974656d73223a5b7b226c223a2261222c2273223a2262227d5d7d",
+      "text": "{\"v\":2e0,\"items\":[{\"l\":\"a\",\"s\":\"b\"}]}",
       "error": "MALFORMED",
-      "canonicalHex": null
+      "canonicalHex": "7b2276223a322c226974656d73223a5b7b226c223a2261222c2273223a2262227d5d7d"
     },
     {
       "id": "v-true",
@@ -883,10 +1203,10 @@
     },
     {
       "id": "v-zero",
-      "description": "\"v\":0 is not a newer version.",
+      "description": "\"v\":0: a number other than 1 or 2 (the deployed rule).",
       "hex": "7b2276223a302c226974656d73223a5b5d7d",
       "text": "{\"v\":0,\"items\":[]}",
-      "error": "MALFORMED",
+      "error": "UNKNOWN_VERSION",
       "canonicalHex": null
     },
     {
@@ -894,7 +1214,15 @@
       "description": "\"v\":-1.",
       "hex": "7b2276223a2d312c226974656d73223a5b5d7d",
       "text": "{\"v\":-1,\"items\":[]}",
-      "error": "MALFORMED",
+      "error": "UNKNOWN_VERSION",
+      "canonicalHex": null
+    },
+    {
+      "id": "v-fraction",
+      "description": "\"v\":2.5.",
+      "hex": "7b2276223a322e352c226974656d73223a5b5d7d",
+      "text": "{\"v\":2.5,\"items\":[]}",
+      "error": "UNKNOWN_VERSION",
       "canonicalHex": null
     },
     {
@@ -930,27 +1258,35 @@
       "canonicalHex": null
     },
     {
-      "id": "v-3-precedes-validation",
-      "description": "The version prefix is checked before parsing: a v3 prefix wins over a later duplicate v.",
-      "hex": "7b2276223a332c2276223a322c226974656d73223a5b5d7d",
-      "text": "{\"v\":3,\"v\":2,\"items\":[]}",
+      "id": "v-3-not-first",
+      "description": "\"v\":3 anywhere in the object.",
+      "hex": "7b226974656d73223a5b5d2c2276223a337d",
+      "text": "{\"items\":[],\"v\":3}",
       "error": "UNKNOWN_VERSION",
       "canonicalHex": null
     },
     {
-      "id": "v-3-not-first",
-      "description": "\"v\":3 not at the start: no version prefix, so MALFORMED.",
-      "hex": "7b226974656d73223a5b5d2c2276223a337d",
-      "text": "{\"items\":[],\"v\":3}",
-      "error": "MALFORMED",
+      "id": "v-3-whitespace",
+      "description": "\"v\":3 with whitespace.",
+      "hex": "7b20227622203a2033207d",
+      "text": "{ \"v\" : 3 }",
+      "error": "UNKNOWN_VERSION",
       "canonicalHex": null
     },
     {
-      "id": "v-3-whitespace",
-      "description": "Whitespace before a v3: no version prefix, so MALFORMED.",
-      "hex": "7b202276223a332c226974656d73223a5b5d7d",
-      "text": "{ \"v\":3,\"items\":[]}",
-      "error": "MALFORMED",
+      "id": "v-3-float",
+      "description": "\"v\":3.0.",
+      "hex": "7b2276223a332e302c226974656d73223a5b5d7d",
+      "text": "{\"v\":3.0,\"items\":[]}",
+      "error": "UNKNOWN_VERSION",
+      "canonicalHex": null
+    },
+    {
+      "id": "v-3-deep",
+      "description": "\"v\":3 with deeply nested unknown content.",
+      "hex": "7b2276223a332c2278223a5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d7d",
+      "text": "{\"v\":3,\"x\":[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]}",
+      "error": "UNKNOWN_VERSION",
       "canonicalHex": null
     },
     {
@@ -1107,9 +1443,9 @@
     },
     {
       "id": "deep-nesting",
-      "description": "A deeply nested secret (must be rejected, never crash).",
-      "hex": "7b2276223a312c226974656d73223a5b7b226c223a2261222c2273223a5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d7d5d7d",
-      "text": "{\"v\":1,\"items\":[{\"l\":\"a\",\"s\":[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]}]}",
+      "description": "A deeply nested secret (must be rejected, never crash; within the 1022-byte limit).",
+      "hex": "7b2276223a312c226974656d73223a5b7b226c223a2261222c2273223a5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d7d5d7d",
+      "text": "{\"v\":1,\"items\":[{\"l\":\"a\",\"s\":[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]}]}",
       "error": "MALFORMED",
       "canonicalHex": null
     }
@@ -1154,6 +1490,24 @@
       "expectedVersion": 1,
       "expectedHex": "7b2276223a312c226974656d73223a5b7b226c223a22476974487562207265636f7665727920636f646573222c2273223a2231613262332d63346435655c6e36663767382d683969306a227d2c7b226c223a22456d61696c20324641222c2273223a224a425357593344504548504b33505850227d5d7d",
       "expectedText": "{\"v\":1,\"items\":[{\"l\":\"GitHub recovery codes\",\"s\":\"1a2b3-c4d5e\\n6f7g8-h9i0j\"},{\"l\":\"Email 2FA\",\"s\":\"JBSWY3DPEHPK3PXP\"}]}"
+    },
+    {
+      "id": "writer-v1-lone-surrogate",
+      "description": "v1 keeps today's encoding of an unpaired surrogate: the \\udc00 escape of JSON.stringify. (A v2 writer refuses it: v2 strings must be well-formed.)",
+      "input": {
+        "name": null,
+        "archived": false,
+        "items": [
+          {
+            "l": "a",
+            "s": "\udc00"
+          }
+        ],
+        "pad": null
+      },
+      "expectedVersion": 1,
+      "expectedHex": "7b2276223a312c226974656d73223a5b7b226c223a2261222c2273223a225c7564633030227d5d7d",
+      "expectedText": "{\"v\":1,\"items\":[{\"l\":\"a\",\"s\":\"\\udc00\"}]}"
     },
     {
       "id": "writer-named-v2",
@@ -1263,6 +1617,19 @@
       "expectedPadLength": 85
     },
     {
+      "id": "clear-v1-legacy-whitespace",
+      "description": "A pretty-printed (legacy) v1 vault: sized from its actual byte length.",
+      "rule": "exact",
+      "previousHex": "7b0a20202276223a20312c0a2020226974656d73223a205b0a202020207b20226c223a2022476974487562207265636f7665727920636f646573222c202273223a202231613262332d633464356522207d0a20205d0a7d",
+      "previousLength": 87,
+      "maxPayloadBytes": 638,
+      "clearedWithoutPadLength": 27,
+      "expectedHex": "7b2276223a322c2261223a747275652c226974656d73223a5b5d2c227a223a223030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030227d",
+      "expectedText": "{\"v\":2,\"a\":true,\"items\":[],\"z\":\"00000000000000000000000000000000000000000000000000000\"}",
+      "expectedLength": 87,
+      "expectedPadLength": 53
+    },
+    {
       "id": "clear-already-archived",
       "description": "Named archived vault.",
       "rule": "exact",
@@ -1368,6 +1735,33 @@
       "rng": "a681a009c7cdb7d26606b250b599e83862e1152543507ff04ac50fb0ee9b71e9eb2e1f81e6124c133c05aeefbded01ea462a1324ca97b516485667e1092afc7fcb02f4a58f38b27489400d713da1d8a2117a8a7780e1c573e24def4ba6f108101930a410",
       "blob": "4352594f01010101020e6372796f736869656c642e617070a681a009c7cdb7d26606b250b599e83862e1152543507ff04ac50fb0ee9b71e940a847efefef0e5428cdd8ade8fb88fed66143e5ff70c92fb5fe4d578c7008866790bff107e574e76c7fde59c83d449ad57a5ce149a29f11831df297b0c2be59c5cb02f4a58f38b27489400d71972b69a58131308da384059854c288d7b4b11db7cbca1d2b7c1678d5118f1de6e93c8b709d7c1b9b5fdb00810358e380402a388c1dee7f7bd98056994f1dfd2b23f8963c9c0b53bbdb569ea39300a2014c225bde8145b00e6eeedd4035ad1153b1fe475408dca809fc4e9a191facd606793da1d8a2117a8a7780e1c57382ce84da656e2a4b8394a0844752fbbbf39c045d9ff0e4c631d8274ea962b3e83f3d7737bafa08011d36fe989da2c004e24def4ba6f108101930a4106fa535d8757429ae1a6e55d50ca47f41fb281eab3970c01ac1ec6b37f9266cd827ba6a95d3baa1cb2093d20dd96e4639a91c6046ef6bbfcfad718d1b76a268a65331f14a31467a75c69669b1476f14d6046408afcd0e87b5e9c5469302f631e7a8d80e916461b398558839717266d19cc1bdf1c7d1e64e7facdde2f60820b3538ca616ea9b8eff0a9cb0b969aee29d64",
       "blobLength": 462
+    },
+    {
+      "id": "blob-v1-legacy-lone-surrogate",
+      "description": "Regression: a v1 payload with an escaped lone surrogate, as JSON.stringify writes it, keys A+B. It must keep opening.",
+      "payloadVector": "v1-legacy-lone-surrogate-escaped",
+      "payloadHex": "7b2276223a312c226974656d73223a5b7b226c223a2261222c2273223a225c7564633030227d5d7d",
+      "vaultId": "8ec1a122c14ffe3e6a0f42b33d8c4bef8f8f0435358ad9501daa026b186ef362",
+      "rpId": "cryoshield.app",
+      "mode": 1,
+      "threshold": 1,
+      "credentials": [
+        {
+          "name": "A",
+          "id": "a847efefef0e5428cdd8ade8fb88fed66143e5ff70c92fb5fe4d578c7008866790bff107e574e76c7fde59c83d449ad57a5ce149a29f11831df297b0c2be59c5",
+          "prf": "b4a427e7ed5f551ac381630996917ccb70a2ea7a0b51630776d5f30ae57afcd3"
+        },
+        {
+          "name": "B",
+          "id": "2a388c1dee7f7bd98056994f1dfd2b23f8963c9c0b53bbdb569ea39300a2014c225bde8145b00e6eeedd4035ad1153b1fe475408dca809fc4e9a191facd60679",
+          "prf": "cf92232ec685baec0cb8be2f86f7454d71d77b4966325a7cda0d370d6cab6bf4"
+        }
+      ],
+      "updates": null,
+      "sameLengthAs": null,
+      "rng": "8bee8f145e3289b27d1a9524edee1024cbfe4b5565a4649d7cc8996a72a6ca13052b92925b8022929ba1ea2f2570ee7c0543ce844506b7b4a3fdec41a3874c7f4407fea0a4c1e4ddb62f49e9c2af81ad8bd0293771b3e641a21a37654bb9faf695a18efa",
+      "blob": "4352594f01010101020e6372796f736869656c642e6170708bee8f145e3289b27d1a9524edee1024cbfe4b5565a4649d7cc8996a72a6ca1340a847efefef0e5428cdd8ade8fb88fed66143e5ff70c92fb5fe4d578c7008866790bff107e574e76c7fde59c83d449ad57a5ce149a29f11831df297b0c2be59c54407fea0a4c1e4ddb62f49e9db55e75ef15a94a593f4b04d756e8bafee0e5edf343e65359d7156ea1954e75905796cfe381ca30b753299d68170417f402a388c1dee7f7bd98056994f1dfd2b23f8963c9c0b53bbdb569ea39300a2014c225bde8145b00e6eeedd4035ad1153b1fe475408dca809fc4e9a191facd60679c2af81ad8bd0293771b3e6411d26326ef5fe87e53ef61f2866b4a7f271fe821e56a18487629926d74ee9f1813929c77760981af27da0fa107c968231a21a37654bb9faf695a18efa7b317b51618623e7f4f11018f01daaed75fb8c9e5594d019249d84345b87fb061f9a046fadb36ea61c1297e2a0ea5e959ec41aecfd7248300f0bfd74593d45d2e4fd877318d4c3de68e058dab557e1c8",
+      "blobLength": 398
     },
     {
       "id": "blob-v2-named",

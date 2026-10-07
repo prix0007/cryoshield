@@ -14,8 +14,9 @@ The key words MUST, MUST NOT, SHALL, SHOULD and MAY are used as in RFC 2119.
 
 The payload is the plaintext that `@cryoshield/vault-crypto` encrypts as the vault *secret*
 (`docs/spec/vault-format-v1.md`, which is unchanged). This document defines payload versions 1 and 2. It
-replaces `apps/web/docs/payload-v1.md` as the reference for decoders. v1 *bytes* are unchanged, but v1
-decoding is now strict (section 7).
+replaces `apps/web/docs/payload-v1.md` as the reference for decoders. **v1 is unchanged:** v1 bytes are
+written exactly as today, and v1 payloads decode with the deployed v1 rules (section 7.1), so every vault that
+opens today keeps opening. The strict canonical rules (D3) apply to v2 payloads only.
 
 ## 2. Data model
 
@@ -35,7 +36,8 @@ The vectors write it as `decoded: {"version", "name", "archived", "items": [{"l"
 
 ## 3. Wire format
 
-The payload is UTF-8 JSON (RFC 8259): one object, no whitespace anywhere outside strings.
+The payload is UTF-8 JSON (RFC 8259): one object. Writers emit no whitespace outside strings (section 5).
+Payloads are at most `maxPayloadBytes` (under 1024 bytes, vault-format-v1), so every vector is within that.
 
 **v1** (exactly these members, in this order):
 
@@ -59,20 +61,26 @@ The payload is UTF-8 JSON (RFC 8259): one object, no whitespace anywhere outside
 
 **Item objects:** exactly `{"l":<label>,"s":<secret>}`, `l` before `s`, both strings, no other members.
 
-There are no other members at any level.
+There are no other members at any level. This table describes what writers emit and what a v2 decoder
+accepts. A v1 decoder accepts the wider set of section 7.1.
 
 ## 4. Strings
 
 ### 4.1 Well-formed Unicode
 
-Every string (`n`, `l`, `s`) MUST be well-formed Unicode: no unpaired surrogate code point (U+D800 to U+DFFF),
-whether written as raw bytes (which is ill-formed UTF-8 anyway) or as a `\uXXXX` escape. Note that
+In **v2**, every string (`n`, `l`, `s`) MUST be well-formed Unicode: no unpaired surrogate code point (U+D800
+to U+DFFF) written as a `\uXXXX` escape. (Raw surrogate bytes are ill-formed UTF-8 in every version.) Note that
 `JSON.parse` and Python's `json.loads` both accept `"\ud800"`, so the codec has to check this itself.
+
+**v1** strings MAY hold escaped unpaired surrogates, as today: `JSON.stringify` writes one as `\udxxx`, and the
+deployed v1 decoder accepts it (vector `v1-legacy-lone-surrogate-escaped`). Such a vault opens and can be saved
+as v1. It cannot be written as v2 (named, archived or cleared) until the user fixes that secret: the writer
+refuses, and the vault itself is not changed.
 
 ### 4.2 Labels and secrets
 
 - Label `l`: 0 to 64 Unicode code points (not UTF-16 units, not bytes). Unchanged from v1.
-- Secret `s`: any well-formed string, of any length that fits the vault.
+- Secret `s`: any string (well-formed in v2), of any length that fits the vault.
 - Labels and secrets MAY contain any character, including controls and bidi controls. Every display MUST make
   them inert (the recovery tool escapes them; the web app renders them as text).
 
@@ -96,9 +104,11 @@ refused in the form, never silently altered.
 
 ## 5. Canonical encoding
 
-There is exactly one valid byte string for each `VaultPayload`. It is what `JSON.stringify` produces in
-JavaScript, and what `json.dumps(obj, ensure_ascii=False, separators=(",", ":"))` produces in Python, for an
-object built in the member order of section 3, encoded as UTF-8 with no byte-order mark:
+Writers emit exactly one byte string for each `VaultPayload`. For v2 it is also the only byte string a decoder
+accepts. It is what `JSON.stringify` produces in JavaScript for an object built in the member order of
+section 3, encoded as UTF-8 with no byte-order mark. That is today's v1 encoder unchanged. In Python, it is
+`json.dumps(obj, ensure_ascii=False, separators=(",", ":"))`, followed by replacing each unpaired surrogate
+with its lowercase `\udxxx` escape, which only a v1 payload can contain:
 
 - No whitespace between tokens.
 - Members appear in the order `v`, `n`, `a`, `items`, `z`, and items in the order `l`, `s`. Absent members are
@@ -108,7 +118,8 @@ object built in the member order of section 3, encoded as UTF-8 with no byte-ord
   - U+0008, U+0009, U+000A, U+000C and U+000D become `\b`, `\t`, `\n`, `\f` and `\r`;
   - every other code point below U+0020 becomes `\u00xx`, with **lowercase** hex;
   - everything else is written as raw UTF-8: `/`, DEL, C1 controls, U+2028, U+2029, bidi controls, U+FEFF and
-    every non-ASCII character. Non-BMP characters are 4-byte UTF-8 sequences, never surrogate-pair escapes.
+    every non-ASCII character. Non-BMP characters are 4-byte UTF-8 sequences, never surrogate-pair escapes;
+  - an unpaired surrogate (v1 only) becomes `\udxxx`, with lowercase hex (well-formed `JSON.stringify`).
 - `v` is `1` or `2`, and `a` is `true`.
 
 ## 6. Writing: the minimal version (D2)
@@ -127,7 +138,7 @@ Writers also MUST:
 not archived, the editor reserves the 9 bytes of `"a":true,` on top of the encoded payload, so a full vault
 can still be archived. A v1 payload and the same items in v2 have the same length (`"v":1` and `"v":2`).
 
-## 7. Decoding (D3)
+## 7. Decoding
 
 A decoder MUST return either a `VaultPayload` or one of two error classes. It MUST NOT return a partial
 result.
@@ -137,41 +148,55 @@ result.
 | `UNKNOWN_VERSION` | Written by a newer CryoShield | "This vault was made by a newer version of CryoShield", and nothing else | The raw text, after the usual confirmation, with a "newer version" note |
 | `MALFORMED` | Anything else that isn't a valid v1 or v2 payload | Nothing | The raw text, after the usual confirmation |
 
-Run these steps in order; the first that fails decides the class.
+Run these steps in order; the first that fails decides the class. Steps 1 to 4 are the deployed v1 decoder
+(`apps/web/src/vault/payload.ts`, `decodePayload`, at commit `f2ce3da`), with `v` = 2 added as a known version.
 
 1. **UTF-8.** Decode the bytes as strict UTF-8, refusing ill-formed input (overlong forms, surrogates,
-   truncated sequences, `0xFF`). Do not strip a byte-order mark. Failure: `MALFORMED`.
-2. **Version prefix.** If the text matches `^\{"v":(0|[1-9][0-9]*)[,}]` and that integer is 3 or more, the
-   result is `UNKNOWN_VERSION`. Nothing after the prefix is examined, so a future version is free to change
-   everything after its `v`. (Compare lexically: one digit `3` to `9`, or two or more digits. Do not convert
-   to a floating-point number.) `v` of `0`, or a `v` that is not the first member, is not a newer version.
-3. **Parse.** Parse the text as JSON. Reject duplicate member names at any depth (Python:
-   `object_pairs_hook`), and `NaN`/`Infinity` (Python: `parse_constant`). Nesting MUST NOT crash the decoder:
-   a recursion error is `MALFORMED`.
-4. **Validate** the structure against sections 3 and 4:
-   - the top level is an object;
-   - `v` is the integer 1 or 2 (in Python, `type(v) is int`, which excludes `True`);
-   - the members are the allowed ones for that version;
-   - `a`, when present, is the boolean `true` (in Python, `type(a) is bool and a is True`, because `1 == True`);
-   - `n`, labels, secrets and `z` follow their rules;
-   - every string is well-formed (section 4.1).
-5. **Re-encode and compare.** Encode the validated `VaultPayload` canonically (section 5) with its own
-   `version`, and compare the result with the **input bytes** (not with the decoded text). Any difference is
-   `MALFORMED`.
+   truncated sequences, `0xFF`): `MALFORMED`. Then strip exactly one leading U+FEFF, as `TextDecoder` does by
+   default. Python: `data.decode("utf-8")`, then drop one leading `"\ufeff"`.
+2. **Parse** the text with `JSON.parse` semantics: RFC 8259 JSON; whitespace allowed; for **duplicate member
+   names, the last one wins**. Python's `json.loads` does the same by default: do **not** add a
+   duplicate-rejecting `object_pairs_hook`, or v1 decoding would become stricter than today. Refuse
+   `NaN`/`Infinity` (Python: `parse_constant`). Failure: `MALFORMED`. Nesting MUST NOT crash the decoder: a
+   recursion error is `MALFORMED`.
+3. **Version.** The top level MUST be an object whose `v` member is a JSON number. In Python, `type(v) in
+   (int, float)`; this excludes `True`, which Python treats as equal to 1. Otherwise: `MALFORMED`. If `v`
+   equals 1 (as a number: `1`, `1.0` and `1e0` all count), go to 7.1. If it equals 2, go to 7.2. Any other
+   number (`0`, `-1`, `2.5`, `3`, wherever `v` sits in the object): `UNKNOWN_VERSION`.
 
-Step 5 is what makes the TypeScript and Python decoders agree. It rejects whitespace, reordered members,
+### 7.1 v1: the deployed rules, unchanged
+
+4. The object has exactly two members, `v` and `items`, in any order. `items` is a non-empty array. Each item
+   is an object with exactly two members, `l` and `s`, in any order, both strings, with `l` at most 64 code
+   points; an unpaired surrogate counts as one. Otherwise: `MALFORMED`.
+
+Nothing else is checked. Whitespace, member order, any valid escape (`\/`, `\u0041`, `\u001F`, escaped
+surrogate pairs, escaped unpaired surrogates), number spellings of `v` (`1.0`, `1e0`), duplicate members (last
+wins) and one leading BOM are all accepted, as they are today. Vectors: every `v1-legacy-*` positive. Their
+`canonicalHex` is what a writer emits when it saves the vault again, which can differ from `hex`.
+
+### 7.2 v2: strict and canonical (D3)
+
+4. **Validate** the structure against sections 3 and 4:
+   - only the members `v`, `n`, `a`, `items` and `z` appear, and `items` is present;
+   - `a`, when present, is the boolean `true` (in Python, `type(a) is bool and a is True`, because `1 == True`);
+   - `n`, items, labels, secrets and `z` follow their rules;
+   - every string is well-formed (section 4.1).
+5. **Re-encode and compare.** Encode the validated `VaultPayload` canonically (section 5), with `"v":2`, and
+   compare the result with the **input bytes** (not with the decoded text). Any difference is `MALFORMED`.
+
+Step 5 is what makes the TypeScript and Python decoders agree on v2. It rejects whitespace, reordered members,
 non-canonical escapes (`\/`, `\u0041`, `\u001F`, `\u000a`, `\u00e9`, escaped surrogate pairs), number
-spellings (`2.0`, `1e0`), duplicate members that a lenient parser would have merged, and a leading BOM (which
-`TextDecoder` strips by default).
+spellings (`2.0`, `2e0`), duplicate members (which the parser merged), and a leading BOM (which step 1
+stripped from the text, but not from the bytes).
 
 A v2 payload that the writer would have written as v1 (unnamed, active, no `z`, at least one item) is
 **valid**: it decodes, with `version: 2`, and re-encodes to itself. The minimal-version rule binds writers,
 not decoders (vector `v2-non-minimal`).
 
-**Change from v1:** `apps/web/docs/payload-v1.md` said that decoders must not depend on key order or whitespace.
-That leniency is withdrawn. Every v1 payload ever written by CryoShield came from `JSON.stringify`, so it is
-already canonical. The one exception is a v1 secret holding an unpaired surrogate, which `JSON.stringify`
-writes as `\udXXX`; it is now `MALFORMED`. The recovery tool still prints such a vault as raw text.
+**Regression guarantee:** `apps/web/test/vault/payload-v2.test.ts` runs every v1 positive vector through
+today's `decodePayload` (it must decode) and every negative vector (it must be refused). So no vector can make
+v1 stricter than the deployed decoder.
 
 ## 8. Archive and clear (D4)
 
@@ -206,11 +231,15 @@ one of the vault's keys and its PIN can read them. The UI copy says so (design D
 
 | Section | Each case has | A codec MUST |
 |---|---|---|
-| `positive` | `id`, `hex`, `text`, `decoded`, `canonicalHex` (= `hex`) | decode `hex` to `decoded`, and re-encode `decoded` to `hex` byte for byte |
+| `positive` | `id`, `hex`, `text`, `decoded`, `canonicalHex` (= `hex`, except for `v1-legacy-*`) | decode `hex` to `decoded`, and write `decoded` as `canonicalHex` byte for byte |
 | `negative` | `id`, `hex`, `text` (`null` if not UTF-8), `error`, `canonicalHex` (the differing re-encoding, if one exists) | reject `hex` with exactly `error` |
 | `writer` | `input` (a `VaultPayload` without `version`), `expectedVersion`, `expectedHex` | write `input` as `expectedHex` |
 | `archiveClear` | `previousHex`, `maxPayloadBytes`, `expectedHex`, `expectedLength`, `expectedPadLength`, `rule` | produce `expectedHex` from `previousHex` |
 | `blobs` | `payloadVector`, `payloadHex`, `vaultId`, `credentials` (test keys A and B of `test-vectors/v1.json`: `id`, `prf`), `rng`, `blob`; `updates` names the blob an update starts from | open `blob` with each credential's PRF under `vaultId` to `payloadHex`, then decode it as the referenced vector. vault-crypto rebuilds each blob byte for byte from `rng` |
+
+Some strings hold escaped unpaired surrogates (v1 legacy vectors). Parse the file with `JSON.parse` or
+Python's `json`. Some bundlers' JSON module loaders (Vite) reject such strings, so the TypeScript tests import
+the file as text (`?raw`).
 
 The generator has no clock and no randomness; `--check` verifies that the committed file is byte-identical to
 a fresh run. The recovery tool pins the file's SHA-256 (task 1.3). Changing the file is a format change: it

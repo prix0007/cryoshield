@@ -13,9 +13,51 @@
  * same vectors. Runs in Node and in headless Chromium.
  */
 import { describe, expect, it } from 'vitest';
-import vectors from '../../../docs/spec/payload-vectors.json' with { type: 'json' };
+import vectorsText from '../../../docs/spec/payload-vectors.json?raw';
 import { createVault, openVault, updatePayload, type Credential } from '../src/index.js';
 import { replayRng } from '../src/testing.js';
+
+interface VDecoded {
+  version: number;
+  name: string | null;
+  archived: boolean;
+  items: { l: string; s: string }[];
+  pad: string | null;
+}
+interface Vectors {
+  name: string;
+  spec: string;
+  generatedBy: string;
+  errorClasses: string[];
+  positive: { id: string; hex: string; text: string | null; decoded: VDecoded; canonicalHex: string }[];
+  negative: { id: string; hex: string; text: string | null; error: string; canonicalHex: string | null }[];
+  writer: { id: string; input: Omit<VDecoded, 'version'>; expectedVersion: number; expectedHex: string }[];
+  archiveClear: {
+    id: string;
+    rule: string;
+    previousHex: string;
+    previousLength: number;
+    maxPayloadBytes: number;
+    expectedHex: string;
+    expectedLength: number;
+  }[];
+  blobs: {
+    id: string;
+    payloadVector: string;
+    payloadHex: string;
+    vaultId: string;
+    rpId: string;
+    credentials: { name: string; id: string; prf: string }[];
+    updates: string | null;
+    sameLengthAs: string | null;
+    rng: string;
+    blob: string;
+    blobLength: number;
+  }[];
+}
+// Loaded as text and parsed with JSON.parse: some vectors hold escaped unpaired surrogates (v1 legacy), which
+// JSON.parse accepts but Vite's JSON module loader rejects.
+const vectors = JSON.parse(vectorsText) as Vectors;
 
 const hex = (s: string): Uint8Array => {
   const out = new Uint8Array(s.length / 2);
@@ -51,22 +93,26 @@ const cps = (s: string): number => [...s].length;
 function validName(n: unknown): n is string {
   return typeof n === 'string' && !LONE_SURROGATE.test(n) && cps(n) >= 1 && cps(n) <= 40 && !FORBIDDEN_IN_NAME.test(n);
 }
-function validItem(x: unknown): x is Item {
+/** The deployed v1 item rule (apps/web/src/vault/payload.ts at f2ce3da): l and s in any order, label <= 64. */
+function validItemV1(x: unknown): x is Item {
   if (typeof x !== 'object' || x === null || Array.isArray(x)) return false;
   const keys = Object.keys(x);
-  if (keys.length !== 2 || keys[0] !== 'l' || keys[1] !== 's') return false;
+  if (keys.length !== 2 || !keys.includes('l') || !keys.includes('s')) return false;
   const { l, s } = x as Record<string, unknown>;
-  return (
-    typeof l === 'string' && typeof s === 'string' && !LONE_SURROGATE.test(l) && !LONE_SURROGATE.test(s) && cps(l) <= 64
-  );
+  return typeof l === 'string' && typeof s === 'string' && cps(l) <= 64;
+}
+function validItemV2(x: unknown): x is Item {
+  return validItemV1(x) && !LONE_SURROGATE.test(x.l) && !LONE_SURROGATE.test(x.s);
 }
 
 function validate(p: Decoded): void {
-  if (!p.items.every(validItem)) MALFORMED();
   if (p.version === 1) {
-    if (p.name !== null || p.archived || p.pad !== null || p.items.length === 0) MALFORMED();
+    if (p.name !== null || p.archived || p.pad !== null || p.items.length === 0 || !p.items.every(validItemV1)) {
+      MALFORMED();
+    }
     return;
   }
+  if (!p.items.every(validItemV2)) MALFORMED();
   if (p.name !== null && !validName(p.name)) MALFORMED();
   if (p.pad !== null && (p.items.length !== 0 || !/^0+$/.test(p.pad))) MALFORMED();
 }
@@ -87,15 +133,14 @@ function write(p: Omit<Decoded, 'version'>): Uint8Array {
   return encode({ ...p, version: v1 ? 1 : 2 });
 }
 
+/** Spec section 7: v1 with the deployed rules (lenient), v2 strict and canonical. */
 function decode(bytes: Uint8Array): Decoded {
   let text: string;
   try {
-    text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes);
+    text = new TextDecoder('utf-8', { fatal: true }).decode(bytes); // strips one BOM, as payload.ts does
   } catch {
     return MALFORMED();
   }
-  const m = /^\{"v":(0|[1-9][0-9]*)[,}]/.exec(text);
-  if (m && (m[1]!.length > 1 || m[1]! >= '3')) throw new RefError('UNKNOWN_VERSION');
   let obj: unknown;
   try {
     obj = JSON.parse(text);
@@ -104,21 +149,28 @@ function decode(bytes: Uint8Array): Decoded {
   }
   if (typeof obj !== 'object' || obj === null || Array.isArray(obj)) MALFORMED();
   const o = obj as Record<string, unknown>;
-  if (o.v !== 1 && o.v !== 2) MALFORMED();
-  const allowed = o.v === 1 ? ['v', 'items'] : ['v', 'n', 'a', 'items', 'z'];
+  if (typeof o.v !== 'number') MALFORMED();
+  if (o.v === 1) {
+    if (Object.keys(o).length !== 2 || !Array.isArray(o.items) || o.items.length === 0) MALFORMED();
+    if (!(o.items as unknown[]).every(validItemV1)) MALFORMED();
+    const items = (o.items as Item[]).map((i) => ({ l: i.l, s: i.s }));
+    return { version: 1, name: null, archived: false, items, pad: null };
+  }
+  if (o.v !== 2) throw new RefError('UNKNOWN_VERSION');
+  const allowed = ['v', 'n', 'a', 'items', 'z'];
   if (!Object.keys(o).every((k) => allowed.includes(k)) || !Array.isArray(o.items)) MALFORMED();
   if ('n' in o && typeof o.n !== 'string') MALFORMED();
   if ('a' in o && o.a !== true) MALFORMED();
   if ('z' in o && typeof o.z !== 'string') MALFORMED();
   const p: Decoded = {
-    version: o.v as 1 | 2,
+    version: 2,
     name: 'n' in o ? (o.n as string) : null,
     archived: 'a' in o,
     items: o.items as Item[],
     pad: 'z' in o ? (o.z as string) : null,
   };
   const again = encode(p);
-  if (toHex(again) !== toHex(bytes)) MALFORMED();
+  if (toHex(again) !== toHex(bytes)) MALFORMED(); // compare with the input BYTES (a BOM fails here)
   return { ...p, items: p.items.map((i) => ({ l: i.l, s: i.s })) };
 }
 
@@ -149,7 +201,7 @@ const errorOf = (bytes: Uint8Array): string | null => {
 };
 
 // ------------------------------------------------------------------ tests
-const V = vectors;
+const V: Vectors = vectors;
 
 describe('payload-vectors.json: structure', () => {
   it('names the spec, the generator and the two error classes', () => {
@@ -175,7 +227,7 @@ describe('payload-vectors.json: structure', () => {
     const pos = new Set(V.positive.map((c) => c.id));
     for (const id of [
       'v1-single', 'v1-multi', 'v1-unicode', 'v2-named', 'v2-archived', 'v2-cleared', 'v2-name-non-bmp',
-      'v2-escapes', 'v2-empty-items',
+      'v2-escapes', 'v2-empty-items', 'v1-legacy-lone-surrogate-escaped',
     ]) expect(pos, id).toContain(id);
     expect(V.blobs.length).toBeGreaterThanOrEqual(4);
   });
@@ -190,10 +242,11 @@ describe('payload-vectors.json: structure', () => {
 
 describe('payload-vectors.json: reference codec agrees', () => {
   it.each(V.positive.map((c) => [c.id, c] as const))('positive %s decodes and re-encodes byte-for-byte', (_id, c) => {
-    expect(c.canonicalHex).toBe(c.hex);
     const d = decode(hex(c.hex));
     expect(d).toEqual(c.decoded);
-    expect(toHex(encode(d))).toBe(c.hex);
+    expect(toHex(encode(d))).toBe(c.canonicalHex);
+    // v2 is canonical; only v1 (deployed, lenient rules) may differ from its re-encoding.
+    if (c.decoded.version === 2 || !c.id.startsWith('v1-legacy-')) expect(c.canonicalHex).toBe(c.hex);
   });
 
   it.each(V.negative.map((c) => [c.id, c] as const))('negative %s is rejected', (_id, c) => {

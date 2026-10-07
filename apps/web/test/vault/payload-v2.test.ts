@@ -13,7 +13,7 @@
  * VaultPayload = { version: 1 | 2; name?: string; archived: boolean; items: SecretItem[]; pad?: string }.
  */
 import { describe, expect, it } from 'vitest';
-import vectors from '../../../../docs/spec/payload-vectors.json' with { type: 'json' };
+import vectorsText from '../../../../docs/spec/payload-vectors.json?raw';
 import * as payload from '../../src/vault/payload';
 
 interface Item {
@@ -50,6 +50,41 @@ interface VectorDecoded {
   items: { l: string; s: string }[];
   pad: string | null;
 }
+interface Vectors {
+  name: string;
+  spec: string;
+  generatedBy: string;
+  errorClasses: string[];
+  positive: { id: string; hex: string; text: string | null; decoded: VectorDecoded; canonicalHex: string }[];
+  negative: { id: string; hex: string; text: string | null; error: string; canonicalHex: string | null }[];
+  writer: { id: string; input: Omit<VectorDecoded, 'version'>; expectedVersion: number; expectedHex: string }[];
+  archiveClear: {
+    id: string;
+    rule: string;
+    previousHex: string;
+    previousLength: number;
+    maxPayloadBytes: number;
+    expectedHex: string;
+    expectedLength: number;
+  }[];
+  blobs: {
+    id: string;
+    payloadVector: string;
+    payloadHex: string;
+    vaultId: string;
+    rpId: string;
+    credentials: { name: string; id: string; prf: string }[];
+    updates: string | null;
+    sameLengthAs: string | null;
+    rng: string;
+    blob: string;
+    blobLength: number;
+  }[];
+}
+// Loaded as text and parsed with JSON.parse: some vectors hold escaped unpaired surrogates (v1 legacy), which
+// JSON.parse accepts but Vite's JSON module loader rejects.
+const vectors = JSON.parse(vectorsText) as Vectors;
+
 const fromVector = (d: VectorDecoded): Omit<VaultPayloadShape, 'version'> => ({
   ...(d.name === null ? {} : { name: d.name }),
   archived: d.archived,
@@ -76,6 +111,21 @@ function errorCode(fn: () => unknown): string | null {
     return (e as payload.PayloadError).code;
   }
 }
+
+// Not todo: runs today against the deployed v1 decoder. It proves the vectors never make v1 stricter than what
+// ships (design A7, reversed): every v1 positive opens with today's decodePayload, every negative is refused.
+describe('payload vectors vs the deployed v1 decoder (regression)', () => {
+  for (const c of vectors.positive.filter((p) => p.decoded.version === 1)) {
+    it(`${c.id} decodes with today's decodePayload`, () => {
+      expect(payload.decodePayload(hex(c.hex))).toEqual(c.decoded.items.map((i) => ({ label: i.l, secret: i.s })));
+    });
+  }
+  for (const c of vectors.negative) {
+    it(`${c.id} is refused by today's decodePayload`, () => {
+      expect(() => payload.decodePayload(hex(c.hex))).toThrow(payload.PayloadError);
+    });
+  }
+});
 
 describe('payload v2: positive vectors', () => {
   for (const c of vectors.positive) {
