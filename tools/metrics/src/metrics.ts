@@ -6,7 +6,19 @@ import { MAX_BATCH_IDS, REGISTRY_ABI, TOPIC } from './abi.ts';
 import { keyCount } from './blob.ts';
 import type { GasConfig, Network, RegistrySpec } from './config.ts';
 import { DEFAULT_GATEWAYS, mirrorOutcomes, type MirrorTarget } from './mirror.ts';
-import { buildReport, isoWeek, weekStart, type GasOp, type MirrorOutcome, type Report, type VaultEvent, type VaultFacts } from './report.ts';
+import {
+  buildReport,
+  creationCohorts,
+  isoWeek,
+  MIRROR_WINDOW_DAYS,
+  weekStart,
+  type FrozenFacts,
+  type GasOp,
+  type MirrorOutcome,
+  type Report,
+  type VaultEvent,
+  type VaultFacts,
+} from './report.ts';
 import { Rpc } from './rpc.ts';
 
 export interface CollectOptions {
@@ -27,6 +39,8 @@ interface Latest {
   owner: Hex | null;
   version: number;
   blobHash: Hex;
+  /** Every VaultCreated/VaultUpdated of the vault: (block, version, blobHash). */
+  history: { block: bigint; version: number; blobHash: Hex }[];
 }
 
 const SENDER_CHUNK = 50;
@@ -58,6 +72,7 @@ async function readRegistry(rpc: Rpc, reg: RegistrySpec, toBlock: bigint) {
     const [version, blobHash] = decodeAbiParameters([{ type: 'uint32' }, { type: 'bytes32' }], l.data);
     events.push({ kind: created ? 'created' : 'updated', registry: reg.version, vault, block: l.blockNumber });
     const prev = latest.get(vault);
+    const entry = { block: l.blockNumber, version, blobHash: blobHash.toLowerCase() as Hex };
     if (!prev || version >= prev.version) {
       latest.set(vault, {
         key: vault,
@@ -65,10 +80,12 @@ async function readRegistry(rpc: Rpc, reg: RegistrySpec, toBlock: bigint) {
         vaultId,
         owner: created ? topicAddress(l.topics[2]) : (prev?.owner ?? null),
         version,
-        blobHash: blobHash.toLowerCase() as Hex,
+        blobHash: entry.blobHash,
+        history: [...(prev?.history ?? []), entry],
       });
-    } else if (created) {
-      prev.owner = topicAddress(l.topics[2]);
+    } else {
+      prev.history.push(entry);
+      if (created) prev.owner = topicAddress(l.topics[2]);
     }
   }
   return { events, latest };
@@ -157,7 +174,8 @@ export async function collect(net: Network, opts: CollectOptions = {}): Promise<
     if (reg.deployBlock > toBlock) continue;
     const r = await readRegistry(rpc, reg, toBlock);
     for (const e of r.events) events.push({ kind: e.kind, registry: e.registry, vault: e.vault, ts: await rpc.blockTimestamp(e.block) });
-    const counts = await keyCounts(rpc, reg, [...r.latest.values()].map((l) => l.vaultId), toBlock);
+    // latest key counts are a local-chain metric; public networks read them per cohort, frozen at its close
+    const counts = net.public ? new Map<Hex, number | null>() : await keyCounts(rpc, reg, [...r.latest.values()].map((l) => l.vaultId), toBlock);
     for (const [key, l] of r.latest) {
       vaults.set(key, { registry: reg.version, keys: counts.get(l.vaultId) ?? null });
       latestAll.push(l);
@@ -165,13 +183,44 @@ export async function collect(net: Network, opts: CollectOptions = {}): Promise<
   }
 
   let mirror: Map<string, MirrorOutcome> | null = null;
-  if (opts.mirror !== false) {
-    const gateways = opts.mirror?.gateways ?? DEFAULT_GATEWAYS;
+  let frozen: Map<string, FrozenFacts> | null = null;
+  const gateways = opts.mirror === false ? null : (opts.mirror?.gateways ?? DEFAULT_GATEWAYS);
+  if (!gateways) notes.push('mirror coverage not checked');
+  if (net.public && toBlock >= 0n) {
+    // Freeze each closed creation cohort at its close (design D2): key counts at the cohort's last block, and mirror
+    // coverage of the version current then, counting only items mined within MIRROR_WINDOW_DAYS of the close.
+    frozen = new Map();
+    const reportEnd = weekStart(await rpc.blockTimestamp(toBlock)) + 7 * 86_400;
+    const byKey = new Map(latestAll.map((l) => [l.key, l]));
+    for (const cohort of creationCohorts(events, true)) {
+      const last = cohort.weeks[cohort.weeks.length - 1] as string;
+      const memberTs = events.find((e) => e.kind === 'created' && isoWeek(e.ts) === last)?.ts ?? 0;
+      const closeTs = weekStart(memberTs) + 7 * 86_400;
+      const closeBlock = await lastBlockBefore(rpc, closeTs, toBlock);
+      const members = [...cohort.members].map((k) => byKey.get(k)).filter((l): l is Latest => l !== undefined);
+      for (const reg of net.registries) {
+        const mine = members.filter((m) => m.registry === reg);
+        if (mine.length === 0) continue;
+        const counts = await keyCounts(rpc, reg, mine.map((m) => m.vaultId), closeBlock);
+        for (const m of mine) frozen.set(m.key, { keys: counts.get(m.vaultId) ?? null, mirror: gateways ? 'pending' : null });
+      }
+      const deadline = closeTs + MIRROR_WINDOW_DAYS * 86_400;
+      if (gateways && deadline <= reportEnd) {
+        const targets: MirrorTarget[] = members.map((m) => {
+          const at = m.history.filter((h) => h.block <= closeBlock).sort((a, b) => b.version - a.version)[0] ?? m.history[0];
+          return { vaultId: m.vaultId, version: at?.version ?? m.version, blobHash: at?.blobHash ?? m.blobHash, deadline };
+        });
+        log(`checking Arweave mirror coverage of cohort ${cohort.label}`);
+        const outcomes = await mirrorOutcomes(targets, gateways, fetchFn);
+        members.forEach((m, i) => frozen?.set(m.key, { keys: frozen?.get(m.key)?.keys ?? null, mirror: outcomes[i] as MirrorOutcome }));
+      }
+    }
+  } else if (gateways) {
     log(`checking Arweave mirror coverage of ${latestAll.length} vault(s)`);
     const targets: MirrorTarget[] = latestAll.map((l) => ({ vaultId: l.vaultId, version: l.version, blobHash: l.blobHash }));
     const outcomes = await mirrorOutcomes(targets, gateways, fetchFn);
     mirror = new Map(latestAll.map((l, i) => [l.key, outcomes[i] as MirrorOutcome]));
-  } else notes.push('mirror coverage not checked');
+  }
 
   let gas: { ops: GasOp[]; paymasters: number } | null = null;
   if (opts.gas && toBlock >= 0n) {
@@ -190,6 +239,7 @@ export async function collect(net: Network, opts: CollectOptions = {}): Promise<
     events,
     vaults,
     mirror,
+    frozen,
     gas,
     notes,
     now: opts.now ?? new Date(),

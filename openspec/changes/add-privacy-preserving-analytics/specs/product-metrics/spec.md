@@ -24,7 +24,13 @@ endpoints of the selected chain preset and SHALL need no secret, API key, wallet
 ### Requirement: Aggregate metrics report
 The tool SHALL output one JSON report with: total vaults, vaults created per ISO week, `VaultUpdated` count per week,
 the distribution of keys per vault (from the cleartext key count N in each latest blob), weekly active vaults
-(distinct vaults with any event in the week), and the chain, registry address and block range read.
+(distinct vaults with any event in the week), and the chain, registry address and block range read. On public networks
+the per-vault snapshots (keys per vault, vaults per registry, mirror coverage) SHALL be reported per closed creation
+cohort and frozen at that cohort's close (key count N at the cohort's last block), so a published cohort never changes.
+
+#### Scenario: Frozen cohort
+- **WHEN** on a public network a vault of an already published cohort later adds a key
+- **THEN** the next report shows that cohort's snapshot unchanged, and reads its key counts at the cohort's last block
 
 #### Scenario: Known fixture
 - **WHEN** the tool runs against a local anvil chain seeded with 3 vaults (2, 2 and 3 keys), one updated twice in week W
@@ -50,7 +56,12 @@ public on-chain.
 ### Requirement: Arweave mirror coverage metric
 The report SHALL include mirror coverage: the share of vaults whose latest on-chain version has an Arweave item tagged
 with the same `CryoShield-Vault-Id` and `CryoShield-Version`. An item counts only when its data hash equals the on-chain
-`blobHash`.
+`blobHash`. On public networks coverage SHALL be per creation cohort: the version current at the cohort's close, counting
+only items mined within 28 days of it, and reported as `"pending"` until those 28 days have passed.
+
+#### Scenario: Cohort mirror window
+- **WHEN** an item for a cohort's vault was mined more than 28 days after the cohort closed
+- **THEN** that vault is counted as not mirrored in the cohort's coverage
 
 #### Scenario: Missing mirror
 - **WHEN** one of three fixture vaults has no Arweave item for its latest version

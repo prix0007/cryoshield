@@ -31,6 +31,8 @@ interface VaultState {
   owner: Hex;
   blob: Uint8Array;
   version: number;
+  /** Earlier states, for eth_call at a past block. */
+  history?: { block: bigint; owner: Hex; blob: Uint8Array; version: number }[];
 }
 
 export class FakeChain {
@@ -71,7 +73,12 @@ export class FakeChain {
         data: '0x',
       });
     }
-    this.vaults.set(`${registry.toLowerCase()}:${p.vaultId}`, { owner: p.owner, blob: p.blob, version: 1 });
+    this.vaults.set(`${registry.toLowerCase()}:${p.vaultId}`, {
+      owner: p.owner,
+      blob: p.blob,
+      version: 1,
+      history: [{ block: p.block, owner: p.owner, blob: p.blob, version: 1 }],
+    });
   }
 
   update(registry: Hex, p: { vaultId: Hex; blob: Uint8Array; block: bigint; ts: number }) {
@@ -84,7 +91,7 @@ export class FakeChain {
       topics: encodeEventTopics({ abi: REGISTRY_EVENTS, eventName: 'VaultUpdated', args: { vaultId: p.vaultId } }) as Hex[],
       data: encodeAbiParameters([{ type: 'uint32' }, { type: 'bytes32' }], [version, keccak256(p.blob)]),
     });
-    this.vaults.set(key, { owner: v.owner, blob: p.blob, version });
+    this.vaults.set(key, { owner: v.owner, blob: p.blob, version, history: [...(v.history ?? []), { block: p.block, owner: v.owner, blob: p.blob, version }] });
   }
 
   addLocator(registry: Hex, p: { vaultId: Hex; locator: Hex; block: bigint; ts: number }) {
@@ -155,9 +162,13 @@ export class FakeChain {
       }
       case 'eth_call': {
         const tx = params[0] as { to: Hex; data: Hex };
+        const at = typeof params[1] === 'string' && params[1].startsWith('0x') ? BigInt(params[1]) : this.head;
         const call = decodeFunctionData({ abi: REGISTRY_ABI, data: tx.data });
         const read = (id: Hex) => {
-          const v = this.vaults.get(`${tx.to.toLowerCase()}:${id}`);
+          const cur = this.vaults.get(`${tx.to.toLowerCase()}:${id}`);
+          // state as of block `at` (a test may replace the current state without history: then it is used as is)
+          const past = cur?.history?.filter((h) => h.block <= at).pop();
+          const v = cur && cur.history && cur.blob === cur.history[cur.history.length - 1]?.blob ? past : cur;
           return v
             ? { owner: v.owner, blob: toHex(v.blob), version: v.version }
             : { owner: '0x0000000000000000000000000000000000000000' as Hex, blob: '0x' as Hex, version: 0 };

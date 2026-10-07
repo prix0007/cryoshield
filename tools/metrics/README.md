@@ -67,11 +67,12 @@ One JSON object (`schema: cryoshield-metrics/1`): the network, chain ID and each
     such as `2026-W40..2026-W42` until a range covers at least 3; a range depends only on data up to its own last
     week, so it is identical in every later report. The open trailing range is shown only as `*_pending: "<3"` and is
     in no total;
-  - `vaults_total`, `vaults_by_registry`, `keys_per_vault` and `mirror_coverage` cover only vaults created in closed
-    ranges, with small categories merged (`"2-3"`, `"v1+v2"`); 1 or 2 unmirrored vaults are shown only as bounds.
-- Residual, accepted: snapshot metrics (keys per vault, mirror coverage) reflect each vault's latest state, so two
-  reports can differ when an existing vault adds a key or gets mirrored. Both facts are public on-chain/Arweave data
-  and the report never links them to a vault.
+  - per-vault snapshots are published per closed creation **cohort** (`cohorts[]`) and frozen at its close: key
+    counts and registry split read at the cohort's last block, categories merged within the cohort (`"2-3"`,
+    `"v1+v2"`), and mirror coverage of the version current then, counting only items mined within 28 days of the close
+    (`"pending"` until then; 1 or 2 unmirrored vaults are shown only as bounds). `vaults_total` is the sum of closed
+    cohorts. The running `keys_per_vault`, `vaults_by_registry` and `mirror_coverage` fields are filled on the local
+    chain only (`null` on public networks).
 
 ## Scheduled run
 

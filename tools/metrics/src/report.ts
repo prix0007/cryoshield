@@ -64,6 +64,8 @@ export interface Merged<V> {
   pending: Cell;
   /** Keys (weeks) inside closed ranges. */
   closed: Set<string>;
+  /** The closed ranges, oldest first. */
+  ranges: { label: string; weeks: string[]; members: Set<string> }[];
 }
 
 /**
@@ -74,6 +76,7 @@ export function mergeSeries<V>(byWeek: Map<string, Bucket<V>>, add: (a: V, b: V)
   const weeks = [...byWeek.keys()].sort();
   const cells: Record<string, V> = {};
   const closed = new Set<string>();
+  const ranges: Merged<V>['ranges'] = [];
   type Open = { first: string; last: string; value: V; members: Set<string>; weeks: string[] };
   let open: Open | null = null;
   for (const w of weeks) {
@@ -82,13 +85,15 @@ export function mergeSeries<V>(byWeek: Map<string, Bucket<V>>, add: (a: V, b: V)
       ? { first: open.first, last: w, value: add(open.value, b.value), members: new Set([...open.members, ...b.members]), weeks: [...open.weeks, w] }
       : { first: w, last: w, value: b.value, members: new Set(b.members), weeks: [w] };
     if (!applied || cur.members.size >= MIN_CELL) {
-      cells[cur.first === cur.last ? cur.first : `${cur.first}..${cur.last}`] = cur.value;
+      const label = cur.first === cur.last ? cur.first : `${cur.first}..${cur.last}`;
+      cells[label] = cur.value;
+      ranges.push({ label, weeks: cur.weeks, members: cur.members });
       for (const x of cur.weeks) closed.add(x);
       open = null;
     } else open = cur;
   }
   const rest = open as Open | null;
-  return { cells, pending: rest && rest.members.size > 0 ? SUPPRESSED : 0, closed };
+  return { cells, pending: rest && rest.members.size > 0 ? SUPPRESSED : 0, closed, ranges };
 }
 
 /**
@@ -175,6 +180,24 @@ export interface SponsoredGas {
   paymasters_configured: number;
 }
 
+/** A closed creation range ("cohort") and its snapshot, frozen at the cohort's last block on public networks. */
+export interface Cohort {
+  weeks: string;
+  vaults: number;
+  vaults_by_registry: Record<string, number>;
+  keys_per_vault: Record<string, number>;
+  /** Public networks: items mirrored within MIRROR_WINDOW_DAYS of the cohort's close; "pending" until measurable. */
+  mirror_coverage: MirrorReport | 'pending' | null;
+}
+
+/** A vault's snapshot as of its cohort's close (public networks). */
+export interface FrozenFacts {
+  keys: number | null;
+  mirror: MirrorOutcome | 'pending' | null;
+}
+
+export const MIRROR_WINDOW_DAYS = 28;
+
 export interface Report {
   schema: typeof SCHEMA;
   generated_at: string;
@@ -186,15 +209,17 @@ export interface Report {
   suppression: { min_cell: number; applied: boolean };
   vaults_total: number;
   vaults_pending: Cell;
-  vaults_by_registry: Record<string, number>;
+  vaults_by_registry: Record<string, number> | null;
   created: Record<string, number>;
   updates_total: number;
   updates: Record<string, number>;
   updates_pending: Cell;
   weekly_active: Record<string, number>;
   weekly_active_pending: Cell;
-  keys_per_vault: Record<string, number>;
+  /** Local chain only (exact, latest state); null on public networks, where `cohorts` carries the snapshots. */
+  keys_per_vault: Record<string, number> | null;
   mirror_coverage: MirrorReport | null;
+  cohorts: Cohort[];
   sponsored_gas: SponsoredGas | null;
   notes: string[];
 }
@@ -207,8 +232,10 @@ export interface ReportInput {
   throughWeek: string | null;
   events: VaultEvent[];
   vaults: Map<string, VaultFacts>;
-  /** Per-vault mirror outcome (opaque vault keys), or null when not checked. */
+  /** Per-vault mirror outcome (opaque vault keys), or null when not checked. Local chain. */
   mirror: Map<string, MirrorOutcome> | null;
+  /** Per-vault snapshot at its cohort's close. Public networks. */
+  frozen: Map<string, FrozenFacts> | null;
   gas: { ops: GasOp[]; paymasters: number } | null;
   notes: string[];
   now: Date;
@@ -241,7 +268,12 @@ function activeSeries(events: VaultEvent[], applied: boolean): Merged<number> {
     byWeek.set(w, b);
   }
   const m = mergeSeries(byWeek, (a, b) => new Set([...a, ...b]), applied);
-  return { cells: Object.fromEntries(Object.entries(m.cells).map(([k, v]) => [k, v.size])), pending: m.pending, closed: m.closed };
+  return { cells: Object.fromEntries(Object.entries(m.cells).map(([k, v]) => [k, v.size])), pending: m.pending, closed: m.closed, ranges: m.ranges };
+}
+
+/** The closed creation ranges ("cohorts") and their vaults; a cohort never changes once closed. */
+export function creationCohorts(events: VaultEvent[], applied: boolean): Merged<number>['ranges'] {
+  return mergeSeries(series(events, ['created'], 'vaults'), addN, applied).ranges;
 }
 
 const eth = (wei: bigint) => formatEther(wei);
@@ -312,27 +344,46 @@ export function buildReport(input: ReportInput): Report {
   const updates = mergeSeries(series(input.events, ['updated'], 'events'), addN, applied);
   const active = activeSeries(input.events, applied);
 
-  // the published population: vaults created inside closed creation ranges
-  const createdWeek = new Map<string, string>();
-  for (const e of input.events) if (e.kind === 'created') createdWeek.set(e.vault, isoWeek(e.ts));
-  const population = [...input.vaults.entries()].filter(([k]) => !applied || created.closed.has(createdWeek.get(k) ?? ''));
-  const facts = population.map(([, f]) => f);
-
-  const byRegistry = new Map<number, number>();
-  for (const f of facts) byRegistry.set(f.registry, (byRegistry.get(f.registry) ?? 0) + 1);
-  const registries = [...byRegistry.entries()].sort(([a], [b]) => a - b).map(([v, c]) => [`v${v}`, c] as [string, number]);
-
-  const keys = new Map<string, number>();
-  for (const f of facts) {
-    const k = f.keys === null ? 'unknown' : String(f.keys);
-    keys.set(k, (keys.get(k) ?? 0) + 1);
-  }
-  // key counts ascending, then "unknown" (an unreadable header) last; small groups merge with their neighbour
-  const ordered = [...keys.entries()].sort(([a], [b]) => (a === 'unknown' ? 1 : b === 'unknown' ? -1 : Number(a) - Number(b)));
-  const keysPerVault = mergeCategories(ordered, applied, (a, b) => `${a}-${b}`);
-
-  const populationKeys = new Set(population.map(([k]) => k));
-  const mirror = input.mirror ? mirrorReport([...input.mirror.entries()].filter(([k]) => populationKeys.has(k)).map(([, o]) => o), applied) : null;
+  // Snapshots per closed creation cohort. On public networks each cohort's values are frozen at its close (key
+  // counts at its last block, mirror status within MIRROR_WINDOW_DAYS of it), so a cohort never changes once
+  // published and two reports differ only by whole new cohorts of at least MIN_CELL vaults.
+  const snapshot = (members: string[], keyOf: (k: string) => number | null) => {
+    const byRegistry = new Map<number, number>();
+    const keys = new Map<string, number>();
+    for (const k of members) {
+      const f = input.vaults.get(k);
+      if (!f) continue;
+      byRegistry.set(f.registry, (byRegistry.get(f.registry) ?? 0) + 1);
+      const n = keyOf(k);
+      const label = n === null ? 'unknown' : String(n);
+      keys.set(label, (keys.get(label) ?? 0) + 1);
+    }
+    const registries = [...byRegistry.entries()].sort(([x], [y]) => x - y).map(([v, c]) => [`v${v}`, c] as [string, number]);
+    // key counts ascending, then "unknown" (an unreadable header) last; small groups merge with their neighbour
+    const ordered = [...keys.entries()].sort(([x], [y]) => (x === 'unknown' ? 1 : y === 'unknown' ? -1 : Number(x) - Number(y)));
+    return {
+      vaults_by_registry: mergeCategories(registries, applied, (x, y) => `${x}+${y}`),
+      keys_per_vault: mergeCategories(ordered, applied, (x, y) => `${x}-${y}`),
+    };
+  };
+  const latestKeys = (k: string) => input.vaults.get(k)?.keys ?? null;
+  const cohorts: Cohort[] = creationCohorts(input.events, applied).map((r) => {
+    const members = [...r.members].filter((k) => input.vaults.has(k));
+    let mirror: Cohort['mirror_coverage'] = null;
+    if (applied && input.frozen) {
+      const outcomes = members.map((k) => input.frozen?.get(k)?.mirror ?? null);
+      if (outcomes.some((o) => o === 'pending')) mirror = 'pending';
+      else if (outcomes.every((o) => o !== null)) mirror = mirrorReport(outcomes as MirrorOutcome[], true);
+    } else if (!applied && input.mirror) {
+      mirror = mirrorReport(members.map((k) => input.mirror?.get(k) ?? 'lookup_failed'), false);
+    }
+    const keyOf = applied ? (k: string) => input.frozen?.get(k)?.keys ?? null : latestKeys;
+    return { weeks: r.label, vaults: members.length, ...snapshot(members, keyOf), mirror_coverage: mirror };
+  });
+  const all = [...input.vaults.keys()];
+  const local = applied ? null : snapshot(all, latestKeys);
+  const mirror = !applied && input.mirror ? mirrorReport(all.map((k) => input.mirror?.get(k) ?? 'lookup_failed'), false) : null;
+  const vaultsTotal = applied ? cohorts.reduce((n, c) => n + c.vaults, 0) : all.length;
 
   const sum = (r: Record<string, number>) => Object.values(r).reduce(addN, 0);
   const report: Report = {
@@ -348,17 +399,18 @@ export function buildReport(input: ReportInput): Report {
     })),
     through_week: input.throughWeek,
     suppression: { min_cell: MIN_CELL, applied },
-    vaults_total: facts.length,
+    vaults_total: vaultsTotal,
     vaults_pending: created.pending,
-    vaults_by_registry: mergeCategories(registries, applied, (a, b) => `${a}+${b}`),
+    vaults_by_registry: local?.vaults_by_registry ?? null,
     created: created.cells,
     updates_total: sum(updates.cells),
     updates: updates.cells,
     updates_pending: updates.pending,
     weekly_active: active.cells,
     weekly_active_pending: active.pending,
-    keys_per_vault: keysPerVault,
+    keys_per_vault: local?.keys_per_vault ?? null,
     mirror_coverage: mirror,
+    cohorts,
     sponsored_gas: input.gas ? sponsoredGas(input.gas, applied) : null,
     notes: input.notes,
   };

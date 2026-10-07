@@ -541,22 +541,34 @@ const SCHEDULED_TRIGGERS = ['schedule', 'workflow_dispatch'];
 // Allow-lists rather than block-lists (security review LOW-4): the only actions, and the only programs a run step may
 // start (shell grouping braces aside). No command substitution, no inline node code, no pnpm dlx/exec.
 const SCHEDULED_ACTIONS = ['actions/checkout', 'pnpm/action-setup', 'actions/setup-node', 'actions/upload-artifact'];
-const SCHEDULED_PROGRAMS = ['pnpm', 'node', 'echo', 'cat'];
-const SCHEDULED_FORBIDDEN_ARGS = /(^|\s)(-e|--eval|-p|--print|dlx|exec)(\s|$)/;
+const SCHEDULED_PROGRAMS = ['pnpm', 'node', 'echo'];
+// node: only a script file, no flags (no --eval/--import/-r in any form, no script from stdin).
+const NODE_SCRIPT = /^[\w@][\w@./-]*\.(m?js|ts)$/;
+// pnpm: only a locked install, or a named script of a filtered workspace package.
+const PNPM_SCRIPTS = ['metrics', 'test', 'typecheck'];
+function pnpmOk(args) {
+  if (args[0] === 'install') return args.includes('--frozen-lockfile') && args.slice(1).every((a, i, all) => a === '--frozen-lockfile' || a === '--filter' || all[i - 1] === '--filter');
+  return args[0] === '--filter' && /^@cryoshield\/[\w-]+$/.test(args[1] ?? '') && PNPM_SCRIPTS.includes(args[2] ?? '');
+}
 function scheduledRunProblems(run) {
   const text = withoutComments(run);
   const problems = [];
   if (/\$\(|`|<\(|>\(/.test(text)) problems.push('command substitution');
-  for (const raw of text.split(/\n|;|&&|\|\||\|/)) {
+  if (/[<>]/.test(text)) problems.push('redirection');
+  if (/GITHUB_(ENV|PATH|OUTPUT|STATE)/.test(text)) problems.push('writing GITHUB_ENV/GITHUB_PATH/GITHUB_OUTPUT');
+  for (const raw of text.split(/\n|;|&&|\|\||\||&/)) {
     const words = raw.trim().split(/\s+/).filter((w) => w && !/^[{}()]$/.test(w));
     if (words.length === 0) continue;
-    if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(words[0])) problems.push(`environment assignment '${words[0]}'`);
-    else if (!SCHEDULED_PROGRAMS.includes(words[0])) problems.push(`program '${words[0]}'`);
-    else if (['node', 'pnpm'].includes(words[0]) && SCHEDULED_FORBIDDEN_ARGS.test(words.slice(1).join(' '))) problems.push(`'${words.slice(0, 2).join(' ')}'`);
+    const [cmd, ...args] = words;
+    if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(cmd)) problems.push(`environment assignment '${cmd}'`);
+    else if (!SCHEDULED_PROGRAMS.includes(cmd)) problems.push(`program '${cmd}'`);
+    else if (cmd === 'node' && !(args.length >= 1 && NODE_SCRIPT.test(args[0]))) problems.push(`'node ${args.join(' ')}' (only node <script file>)`);
+    else if (cmd === 'pnpm' && !pnpmOk(args)) problems.push(`'pnpm ${args.join(' ')}' (only pnpm install --frozen-lockfile, or pnpm --filter @cryoshield/<pkg> ${PNPM_SCRIPTS.join('|')})`);
   }
   return problems;
 }
-// Writes anywhere: commits, pushes, tags, the gh CLI, GitHub API writes, any HTTP write verb, deploy tooling.
+
+// Belt and braces next to the allow-list: commits, pushes, tags, the gh CLI, GitHub API writes, HTTP write verbs, deploys.
 const WRITES_SOMEWHERE = /\bgit\s+(push|commit|tag|remote)\b|(^|[\s;&|(])gh\s+\S|api\.github\.com|-X\s*(POST|PUT|PATCH|DELETE)\b|--request\s+(POST|PUT|PATCH|DELETE)\b|\bfly(ctl)?\s+deploy\b|\bflyctl\b/m;
 
 function checkScheduled(file, name, wf, on) {
@@ -570,8 +582,11 @@ function checkScheduled(file, name, wf, on) {
   if (secretRefs) err(`secrets must not be referenced in a read-only scheduled workflow, GITHUB_TOKEN included (${secretRefs} reference(s))`);
   if (exprsOf(wf).some((e) => /\bgithub\s*\.\s*token\b|\bgithub\s*\[\s*['"]token['"]\s*\]/i.test(e))) err('github.token must not be referenced in a read-only scheduled workflow');
   const uploads = [];
+  for (const k of hijackKeys(wf.env)) err(`workflow env must not set ${k}`);
   for (const [id, job] of Object.entries(isObj(wf.jobs) ? wf.jobs : {})) {
     if (!isObj(job)) continue;
+    for (const k of hijackKeys(job.env)) err(`job '${id}': env must not set ${k}`);
+    for (const st of Array.isArray(job.steps) ? job.steps.filter(isObj) : []) for (const k of hijackKeys(st.env)) err(`job '${id}' step '${st.name ?? st.uses ?? '?'}': env must not set ${k}`);
     if (job.environment !== undefined) err(`job '${id}' may not use an environment`);
     if (job.uses !== undefined) err(`job '${id}' may not call a reusable workflow`);
     const perms = isObj(job.permissions) ? job.permissions : {};

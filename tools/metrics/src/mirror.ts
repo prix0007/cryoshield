@@ -18,6 +18,8 @@ export interface MirrorTarget {
   vaultId: Hex;
   version: number;
   blobHash: Hex;
+  /** Count only items mined at or before this UNIX time (a frozen, cohort-level measure); none: any item. */
+  deadline?: number;
 }
 
 /** Arweave serves item data from sandbox subdomains of the gateway: allow only https on the gateway or below it. */
@@ -29,11 +31,12 @@ function sameSite(host: string) {
 interface Node {
   id: string;
   size: number;
+  minedAt: number | null;
   tags: Map<string, string[]>;
 }
 
 async function lookup(host: string, t: MirrorTarget, fetchFn: typeof fetch): Promise<Node[]> {
-  const query = 'query($tags:[TagFilter!]){transactions(tags:$tags,first:50,sort:HEIGHT_DESC){edges{node{id data{size} tags{name value}}}}}';
+  const query = 'query($tags:[TagFilter!]){transactions(tags:$tags,first:50,sort:HEIGHT_DESC){edges{node{id data{size} tags{name value} block{timestamp}}}}}';
   const variables = {
     tags: [
       { name: 'App-Name', values: ['CryoShield'] },
@@ -51,7 +54,7 @@ async function lookup(host: string, t: MirrorTarget, fetchFn: typeof fetch): Pro
   const body = res.body;
   if (!body) throw new Error('GraphQL response too large');
   const json = JSON.parse(new TextDecoder().decode(body)) as {
-    data?: { transactions?: { edges?: { node?: { id?: unknown; data?: { size?: unknown }; tags?: { name?: unknown; value?: unknown }[] } }[] } };
+    data?: { transactions?: { edges?: { node?: { id?: unknown; data?: { size?: unknown }; tags?: { name?: unknown; value?: unknown }[]; block?: { timestamp?: unknown } | null } }[] } };
   };
   const edges = json.data?.transactions?.edges;
   if (!Array.isArray(edges)) throw new Error('GraphQL response has no transactions');
@@ -61,7 +64,8 @@ async function lookup(host: string, t: MirrorTarget, fetchFn: typeof fetch): Pro
       const name = String(tag.name ?? '');
       tags.set(name, [...(tags.get(name) ?? []), String(tag.value ?? '')]);
     }
-    return { id: String(e.node?.id ?? ''), size: Number(e.node?.data?.size ?? NaN), tags };
+    const mined = Number(e.node?.block?.timestamp ?? NaN);
+    return { id: String(e.node?.id ?? ''), size: Number(e.node?.data?.size ?? NaN), minedAt: Number.isFinite(mined) ? mined : null, tags };
   });
 }
 
@@ -82,6 +86,7 @@ async function check(t: MirrorTarget, gateways: string[], fetchFn: typeof fetch)
     }
     for (const n of nodes) {
       if (!ITEM_ID.test(n.id) || !Number.isFinite(n.size) || n.size < 1 || n.size > MAX_BLOB || !tagsMatch(n, t)) continue;
+      if (t.deadline !== undefined && (n.minedAt === null || n.minedAt > t.deadline)) continue;
       try {
         const res = await fetchCapped(fetchFn, `${host}/${n.id}`, {}, { cap: MAX_BLOB, timeoutMs: TIMEOUT_MS, allowRedirect: sameSite(host), maxRedirects: 3 });
         const data = res.ok ? res.body : null;

@@ -70,10 +70,27 @@ test('evasions are caught: allow-listed commands and actions only, no github.tok
     'node -e "require(1)"',
     'pnpm dlx something',
     'X=1 bash -c id',
+    'echo x & curl https://evil.example',
+    'echo x & bash s.sh',
+    'cat payload.js | node',
+    'node --eval=1',
+    'node --import=data:x apps/web/scripts/beacon-drift.mjs',
+    'node -r ./x.js apps/web/scripts/beacon-drift.mjs',
+    'pnpm create vite',
+    'pnpm run anything',
+    'pnpm --filter @cryoshield/metrics exec sh',
+    'echo NODE_OPTIONS=--import=x >> "$GITHUB_ENV"',
+    'echo /tmp > "${GITHUB_PATH}"',
   ]) {
     expectError(step(JSON.stringify(cmd)), /not allowed in a read-only scheduled workflow|never commit/);
   }
   expectError(step('echo ${{ github.token }}'), /github\.token/);
+  expectError(metrics.replace('        run: pnpm --filter @cryoshield/metrics metrics', '        env:\n          NODE_OPTIONS: --import=data:x\n        run: pnpm --filter @cryoshield/metrics metrics'), /NODE_OPTIONS/);
+  expectError(metrics.replace('    steps:', '    env:\n      PATH: /tmp\n    steps:'), /PATH/);
+  // the allowed forms still pass
+  assert.deepEqual(errs(step('node apps/web/scripts/beacon-drift.mjs')), []);
+  assert.deepEqual(errs(step('pnpm install --frozen-lockfile --filter @cryoshield/metrics')), []);
+  assert.deepEqual(errs(step('pnpm --filter @cryoshield/metrics test')), []);
   expectError(
     metrics.replace('      - name: Compute the metrics', '      - name: Script\n        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7\n      - name: Compute the metrics'),
     /action 'actions\/github-script' is not allowed/,
