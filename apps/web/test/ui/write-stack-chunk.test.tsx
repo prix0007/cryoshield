@@ -27,7 +27,7 @@ beforeEach(async () => {
 afterEach(() => vi.restoreAllMocks());
 
 describe('the save code fails to load', () => {
-  it('create: a plain retryable error, the secrets are kept, and Save works again', async () => {
+  it('create: a plain retryable error, the secrets are kept, and pressing Save again retries the load without crashing (success on retry: write-stack-retry.test.tsx)', async () => {
     const u = userEvent.setup();
     const sponsor = { send: vi.fn() };
     vi.spyOn(ops, 'enrollWithPrf').mockImplementation(async (_s, n) => key(n));
@@ -44,7 +44,9 @@ describe('the save code fails to load', () => {
     await acknowledge(u);
     await u.click(screen.getByRole('button', { name: 'Save' }));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(S.save.loadFailed);
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('Nothing was saved'); // the notice title (ceremony.ts)
+    expect(alert).toHaveTextContent(S.save.loadFailed);
     expect(screen.getByLabelText('Secret')).toHaveValue('abandon art');
     expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled();
     expect(sponsor.send).not.toHaveBeenCalled();

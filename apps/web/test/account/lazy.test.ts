@@ -28,6 +28,35 @@ describe('writeStackLoader', () => {
     expect(importer).toHaveBeenCalledTimes(2);
   });
 
+  it('concurrent loads share one import; its failure fails both with LOAD_FAILED; a later load re-imports', async () => {
+    let reject!: (e: unknown) => void;
+    const mod = { tag: 'stack' } as unknown as WriteStack;
+    const importer = vi
+      .fn<() => Promise<WriteStack>>()
+      .mockImplementationOnce(() => new Promise<WriteStack>((_r, j) => (reject = j)))
+      .mockResolvedValueOnce(mod);
+    const load = writeStackLoader(importer);
+    const a = load();
+    const b = load();
+    await Promise.resolve(); // let the deferred importer start
+    expect(importer).toHaveBeenCalledTimes(1);
+    reject(chunkError());
+    const [ea, eb] = await Promise.all([a.catch((e: unknown) => e), b.catch((e: unknown) => e)]);
+    expect(ea).toBeInstanceOf(WriteError);
+    expect((ea as WriteError).code).toBe('LOAD_FAILED');
+    expect((eb as WriteError).code).toBe('LOAD_FAILED');
+    expect(await load()).toBe(mod);
+    expect(importer).toHaveBeenCalledTimes(2);
+  });
+
+  it('an importer that throws synchronously is a LOAD_FAILED rejection, not a throw', async () => {
+    const load = writeStackLoader(() => {
+      throw chunkError();
+    });
+    const p = load(); // must not throw here
+    await expect(p).rejects.toMatchObject({ code: 'LOAD_FAILED' });
+  });
+
   it('the default loader resolves the real write stack', async () => {
     const m = await writeStackLoader()();
     expect(typeof m.createVaultOnChain).toBe('function');
@@ -53,6 +82,21 @@ describe('lazySponsor', () => {
     expect(createSponsor).toHaveBeenCalledTimes(1);
     expect(createSponsor).toHaveBeenCalledWith(client);
     expect(send).toHaveBeenNthCalledWith(1, account, calls, onProgress);
+    expect(send).toHaveBeenCalledTimes(2);
+  });
+
+  it('concurrent first sends share one load and one real sponsor', async () => {
+    let resolve!: (m: WriteStack) => void;
+    const send = vi.fn(async () => ({ userOpHash: '0xaa' as Hex, success: true }));
+    const createSponsor = vi.fn(() => ({ send }));
+    const load = vi.fn(() => new Promise<WriteStack>((r) => (resolve = r)));
+    const sponsor = lazySponsor(client, load);
+    const a = sponsor.send(account, calls);
+    const b = sponsor.send(account, calls);
+    resolve({ createSponsor } as unknown as WriteStack);
+    await Promise.all([a, b]);
+    expect(load).toHaveBeenCalledTimes(1);
+    expect(createSponsor).toHaveBeenCalledTimes(1);
     expect(send).toHaveBeenCalledTimes(2);
   });
 

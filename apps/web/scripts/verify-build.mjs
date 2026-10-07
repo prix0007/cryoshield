@@ -269,6 +269,7 @@ const gz = (f) => gzipSync(readFileSync(join(dist, f)), { level: 9 }).length;
 // can't be silently spent: 194,689 - 12 KB = 182,401 B.
 const APP_BASELINE = 194_689 - 12 * 1024;
 const APP_ALLOWANCE = 20 * KB;
+const WRITE_STACK_MARKERS = ['eth_sendUserOperation', 'pimlico_getUserOperationGasPrice', 'WalletConfigError'];
 function appBudget(label) {
   const { initial, lazy } = splitGraph(join('app', 'index.html'));
   const bytes = [...initial].reduce((n, f) => n + gz(f), 0);
@@ -277,6 +278,16 @@ function appBudget(label) {
   console.log(
     `info [${label}] /app initial JS gzip: ${bytes} B (baseline ${APP_BASELINE} B, ${delta >= 0 ? '+' : ''}${delta} B; allowance +${APP_ALLOWANCE} B); lazy ${lazyBytes} B`,
   );
+  // harden-gas-sponsorship 5.5: the write stack is a lazy chunk. Strings that survive minification and exist only in it
+  // (the bundler and Pimlico RPC method names, our wallet wrapper's error name) must be absent from the initial graph
+  // and present in a lazily imported chunk.
+  const read = (f) => readFileSync(join(dist, f), 'utf8');
+  for (const marker of WRITE_STACK_MARKERS) {
+    const early = [...initial].filter((f) => read(f).includes(marker));
+    if (early.length) fail(`[${label}] write-stack marker "${marker}" is in the initial /app graph: ${early.join(', ')}`);
+    if (![...lazy].some((f) => read(f).includes(marker))) fail(`[${label}] write-stack marker "${marker}" is in no lazy /app chunk`);
+  }
+  console.log(`ok   [${label}] the write stack is only in a lazy /app chunk (${WRITE_STACK_MARKERS.join(', ')})`);
   if (bytes > APP_BASELINE + APP_ALLOWANCE) fail(`[${label}] /app initial JS ${bytes} B exceeds baseline + 20 KB (${APP_BASELINE + APP_ALLOWANCE} B)`);
   // The landing bundle stays unchanged: /app's Motion for React never shares a chunk with the landing page
   // (vite-plugins/app-motion-isolation.ts). Only Vite's tiny preload helper is common to both.

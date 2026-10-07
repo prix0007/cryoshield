@@ -17,7 +17,7 @@ const TITLES: [string, readonly (string | undefined)[]][] = [
   ['Setup needs your keys again', [S.create.idleReset]],
   ['This vault can’t be changed', [S.vault.legacyReadOnly]],
   ['Too much to store', [S.save.tooLarge, S.save.tooMany]],
-  ['Nothing was saved', [S.save.nothingSaved, S.save.notConfirmed, S.keyErrors.PRF_UNAVAILABLE]],
+  ['Nothing was saved', [S.save.nothingSaved, S.save.notConfirmed, S.save.loadFailed, S.keyErrors.PRF_UNAVAILABLE]],
 ];
 
 export const ERROR_FALLBACK_TITLE = 'Something went wrong';
