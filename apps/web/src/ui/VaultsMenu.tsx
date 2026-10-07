@@ -122,6 +122,7 @@ export default function VaultsMenu(props: {
   );
 
   async function another() {
+    if (busy) return; // not `disabled`: disabling the pressed button mid-press would leave its press animation stuck
     setBusy(true);
     setNote(null);
     try {
@@ -158,7 +159,7 @@ export default function VaultsMenu(props: {
           </Disclosure>
         ))}
       <ActionBar>
-        <Btn className="secondary" onClick={another} disabled={busy}>
+        <Btn className="secondary" onClick={another} aria-disabled={busy || undefined}>
           {V.checkAnother}
         </Btn>
         <Btn className="secondary" onClick={props.onBack} disabled={busy}>

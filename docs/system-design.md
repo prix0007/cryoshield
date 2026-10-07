@@ -109,6 +109,7 @@ sequenceDiagram
   W->>W: Zeroize PRF outputs and keys
 ```
 
+- **Vault names stay encrypted.** An optional name typed at creation is part of the encrypted payload (payload v2, `docs/spec/payload-v2.md`) and of the same single create write. Credentials are labelled with the month only, "CryoShield vault · Oct 2026 (key 1)": credential labels are stored unencrypted on the key and shown by browsers, so they never carry the name.
 - **No front-running failures (VaultRegistry v2).** The registry derives the vaultId from the account address, so copying a pending create gives the copier a different id, and locators have no entry cap, so filling one cannot block a registration.
 
 ## 4. Unlock or recover
@@ -138,7 +139,12 @@ sequenceDiagram
 
 - No account, no gas and no wallet are needed to read.
 - **v2 is authoritative.** A v1 entry whose vaultId also exists in v2 is ignored (v1 accepts any id, so it could hold a stale copy). If v2 can't be read, nothing opens: the app says it couldn't confirm the latest version, rather than falling back to v1.
-- **Legacy v1 vaults** (OP Sepolia only) open read-only. When a key opens one v2 vault, it opens directly, with v1 copies behind "Open an older test vault".
+- **Legacy v1 vaults** (OP Sepolia only) open read-only, as "older test vaults" in the vault list.
+- **Your vaults.** When a tap opens exactly one active v2 vault, it opens directly; otherwise the app shows the vault list (a lazily loaded chunk): active vaults, then archived ones behind "Show archived (N)", then older test vaults. Each row shows the encrypted name, status, counts, up to three labels and the key count, never a secret value. "Check another key" taps again and merges by vaultId; nothing about credentials or vaults is stored. A key whose only vault is archived shows the list with a note: archiving never hides a vault from its owner.
+- **Dates are display only.** Created and last-saved dates come from `VaultCreated`/`VaultUpdated` logs (paged `eth_getLogs` from the deploy block) and block timestamps; "Last saved" is shown only when the latest event's `blobHash` matches the blob that decrypted. They never order, select or refresh anything.
+- **Names and archive.** The payload carries the name and an archived flag inside the ciphertext. "Edit vault" changes both in one update (nothing changed: nothing is sent). "Archive and clear" saves the vault with no secrets, padded to the same length, behind a confirmation that says earlier versions stay readable on-chain and on Arweave by anyone with a key and its PIN.
+- **Writes start from the current blob.** Before any update the app re-reads the vault and stops with "This vault changed since you opened it" if it differs from what it decrypted, before any key tap and again before signing.
+- **Testnet save budget.** Every user operation uses EntryPoint nonce key 0, so `getNonce(account, 0)` counts the account's sponsored operations; on testnet the editor shows "About N free saves left" from 10 down, and pauses saving at the 50-operation cap.
 - **Where your vault is stored:** once a vault is open, a collapsed panel shows its public coordinates: network and chain ID, registry address (v1 or v2), vault ID, owner account, version, and, when this session saved or verified them, the last save's transaction hash and the Arweave item ID. Each value can be copied, and addresses link to the network's Blockscout explorer (`apps/web/src/config/networks.ts`). It never shows locators or key material and makes no request of its own, so anyone can check the vault independently, with or without the recovery tool.
 - **Web app guard:** the web app checks the RPC's `eth_chainId` before any registry read, and refuses with "wrong network" rather than a misleading "no vault".
 - **Recovery CLI hardening:**

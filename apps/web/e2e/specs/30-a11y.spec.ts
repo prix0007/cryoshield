@@ -61,6 +61,8 @@ test('keyboard-only create and unlock; every screen passes axe', async ({ page }
   await expect(page.getByText('Key 2 is ready.')).toBeVisible();
   await press('Continue');
   await expect(page.getByRole('heading', { name: 'Add your secrets' })).toBeFocused();
+  await page.keyboard.press('Tab'); // the optional vault name (vault-list-labels-archive 3.4): left empty
+  await expect(page.getByLabel('Vault name (optional)')).toBeFocused();
   await page.keyboard.press('Tab');
   await page.keyboard.type('Seed');
   await page.keyboard.press('Tab');

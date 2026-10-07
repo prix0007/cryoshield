@@ -47,7 +47,7 @@
 - [x] 3.2 [fe] Write failing tests, then route `UnlockFlow.tsx` (design D5 auto-open rule, D13 archived-only note, "Check another key" merge by vault ID, D6) and `App.tsx` (the `vaults` screen, `Shell`'s single `vaults: VaultSession[]` state replacing `current`/`older`/`choices`, auto-lock while `session || vaults.length` with the 60-second hidden rule, Suspense fallback). Verify: unit tests, including "auto-lock wipes every listed vault" and "storage stays empty".
 - [x] 3.3 [fe] Write failing tests, then update `VaultView.tsx` (name heading, Archived notice with Unarchive, "All vaults (N)", the Edit vault sheet, the save-budget hint on testnet) and `strings.ts` (all new copy, including the 1-of-N "any key can rename or archive" note). Verify: unit tests and the jargon scan. *Writer: release rule applies.*
 - [x] 3.4 [fe] Write failing tests, then add the optional name field to `CreateFlow.tsx` (name rules from D3) and the month-only credential label in `src/webauthn/index.ts` (D12). Verify: unit tests asserting the label format and that the label never contains the name. *Writer: release rule applies.*
-- [ ] 3.5 [fe] Add E2E coverage: axe on every new screen, keyboard-only navigation of the list and the Edit vault sheet, and a scan proving names and labels never reach the console, `document.title`, the URL, analytics or storage. Verify: `test:e2e`.
+- [x] 3.5 [fe] Add E2E coverage: axe on every new screen, keyboard-only navigation of the list and the Edit vault sheet, and a scan proving names and labels never reach the console, `document.title`, the URL, analytics or storage. Verify: `test:e2e`.
 
 ## 4. Archive and clear [fe]
 
