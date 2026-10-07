@@ -42,6 +42,36 @@ test('create with two keys, unlock with either, edit, add a third key; every ver
   await expect(page.getByText('Saved.', { exact: true })).toBeVisible({ timeout: 60_000 });
   await expect(page.getByText('Backup copy saved.')).toBeVisible({ timeout: 15_000 });
 
+  // show-vault-onchain-location 2.4: the public location panel loads lazily under the strict CSP, shows only public
+  // facts (vault ID, last save, Arweave copy), makes no request beyond its own same-origin chunk, and goes on lock.
+  const requests: string[] = [];
+  const onRequest = (r: { url: () => string }) => requests.push(r.url());
+  page.on('request', onRequest);
+  const toggle = page.getByRole('button', { name: 'Where your vault is stored' });
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await toggle.click();
+  const panel = page.locator('.vault-location');
+  await expect(panel.getByText('Anyone can see that this encrypted vault exists at this address; only your keys can open it.')).toBeVisible();
+  await expect(panel.getByText('local test chain (chain ID 31337)')).toBeVisible();
+  const vaultId = created.tags.find((t) => t.name === 'CryoShield-Vault-Id')!.value;
+  await expect(panel.locator('.sr-only', { hasText: vaultId })).toHaveCount(1);
+  const lastSave = panel.locator('.loc-row', { has: page.locator('dt', { hasText: 'Last save' }) });
+  await expect(lastSave.locator('.sr-only').first()).toHaveText(/^0x[0-9a-f]{64}$/);
+  const v2Item = arweave.items.find((i) => i.tags.some((t) => t.name === 'CryoShield-Version' && t.value === '2'))!;
+  const arLink = panel.getByRole('link', { name: new RegExp(`^Arweave copy: ${v2Item.id}`) });
+  await expect(arLink).toHaveAttribute('href', `https://arweave.net/${v2Item.id}`);
+  await expect(arLink).toHaveAttribute('target', '_blank');
+  await expect(arLink).toHaveAttribute('rel', 'noopener noreferrer');
+  // No locator (public, but it links the vault to a key) appears anywhere in the panel.
+  const panelHtml = (await panel.innerHTML()).toLowerCase();
+  for (const t of v2Item.tags.filter((x) => x.name === 'CryoShield-Locator')) expect(panelHtml).not.toContain(t.value.slice(2));
+  await panel.screenshot({ path: test.info().outputPath('vault-location.png') });
+  page.off('request', onRequest);
+  expect(requests.filter((u) => !u.startsWith('http://localhost:4173/'))).toEqual([]);
+  await page.getByRole('button', { name: 'Lock' }).click();
+  await expect(page.locator('.vault-location')).toHaveCount(0);
+  expect(await page.content()).not.toContain(vaultId.slice(2));
+
   await unlockWith(page, keys, 0);
   await expect(page.getByRole('heading', { name: 'Email 2FA' })).toBeVisible();
 

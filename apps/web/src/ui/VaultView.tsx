@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import type { SecretItem } from '../vault/payload';
 import { cleanItems, KeyPrompt, Notice, SecretsEditor, StepHeading } from './components';
 import { MirrorLine } from './CreateFlow';
@@ -8,8 +8,11 @@ import { S } from './strings';
 import { ActionBar, EmptyState } from './chrome';
 import { copySecret, forgetClearListener } from './clipboard';
 import type { SaveStage } from '../account/writes';
-import { AnimatePresence, Btn, CeremonyPresence, Collapse, CopyFeedback, m, SaveProgress, StepTransition, useDirection, useReduced } from './motionkit';
+import { AnimatePresence, Btn, CeremonyPresence, Collapse, CopyFeedback, Disclosure, m, SaveProgress, StepTransition, useDirection, useReduced } from './motionkit';
 import { reveal } from './motion';
+
+/** show-vault-onchain-location D3: the panel content is a separate chunk, fetched when the disclosure first opens. */
+const VaultLocation = lazy(() => import('./VaultLocation'));
 
 type Mode = 'view' | 'edit' | 'addKey' | 'details';
 const MODE_ORDER: readonly Mode[] = ['view', 'edit', 'addKey', 'details'];
@@ -47,6 +50,11 @@ export function VaultView(props: {
   const [draft, setDraft] = useState<SecretItem[]>(s.items);
   const [busy, setBusy] = useState(false);
   const [mirror, setMirror] = useState<MirrorResult | { status: 'pending' } | null>(null);
+  // The Arweave item this session uploaded or byte-verified, for the version it belongs to (show-vault-onchain-location).
+  const [mirrorItem, setMirrorItem] = useState<{ version: number; id: string } | null>(s.mirrorItem ?? null);
+  const noteMirror = (version: number, r: MirrorResult) => {
+    if (r.status === 'saved' && r.itemId) setMirrorItem({ version, id: r.itemId });
+  };
   const healed = useRef(false);
   const dir = useDirection(MODE_ORDER, mode);
   const reduced = useReduced();
@@ -78,6 +86,7 @@ export function VaultView(props: {
     healed.current = true;
     void ensureMirror(svc, { vaultId: s.vaultId, version: s.version, blob: s.blob, locator: props.locator, registry: s.registry }).then((m) => {
       if (m.status === 'failed') setMirror(m);
+      else noteMirror(s.version, m);
     });
   }, [svc, s.vaultId, s.version, s.blob, s.registry, props.locator, props.freshMirror]);
 
@@ -85,7 +94,10 @@ export function VaultView(props: {
     props.onChange(next);
     setStatus(S.save.saved);
     setMirror({ status: 'pending' });
-    void mirrorWrite(svc, { vaultId: next.vaultId, version: next.version, blob: next.blob, locators: [props.locator, ...extraLocators] }).then(setMirror);
+    void mirrorWrite(svc, { vaultId: next.vaultId, version: next.version, blob: next.blob, locators: [props.locator, ...extraLocators] }).then((r) => {
+      setMirror(r);
+      noteMirror(next.version, r);
+    });
   }
 
   async function saveDraft() {
@@ -165,7 +177,10 @@ export function VaultView(props: {
       {progress && <SaveProgress reached={progress} {...(mirror && progress.has('confirmed') ? { arweave: mirror.status } : {})} />}
       {mirror && <MirrorLine result={mirror} fastIndexUrl={svc.fastIndexUrl} onRetry={() => {
         setMirror({ status: 'pending' });
-        void mirrorWrite(svc, { vaultId: s.vaultId, version: s.version, blob: s.blob, locators: [props.locator], registry: s.registry }).then(setMirror);
+        void mirrorWrite(svc, { vaultId: s.vaultId, version: s.version, blob: s.blob, locators: [props.locator], registry: s.registry }).then((r) => {
+          setMirror(r);
+          noteMirror(s.version, r);
+        });
       }} />}
 
       <StepTransition id={mode} dir={dir}>
@@ -238,6 +253,23 @@ export function VaultView(props: {
                 {S.vault.backToCurrent}
               </Btn>
             )}
+            <div className="vault-location-disclosure">
+              <Disclosure label={S.location.title}>
+                <Suspense fallback={<p className="hint">{S.location.loading}</p>}>
+                  <VaultLocation
+                    network={svc.network}
+                    chainId={svc.chainId}
+                    registry={{ address: s.registry === 'v2' ? svc.registries.v2 : svc.registries.v1, version: s.registry }}
+                    vaultId={s.vaultId}
+                    owner={s.owner}
+                    version={s.version}
+                    lastSaveTx={s.lastSave?.version === s.version ? s.lastSave.txHash : undefined}
+                    mirrorId={mirrorItem?.version === s.version ? mirrorItem.id : undefined}
+                    arweaveGatewayUrl={svc.arweaveGatewayUrl}
+                  />
+                </Suspense>
+              </Disclosure>
+            </div>
           </div>
         )}
 

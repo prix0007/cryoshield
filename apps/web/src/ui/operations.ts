@@ -41,7 +41,15 @@ export interface VaultSession {
   credIds: Uint8Array[];
   /** Where the vault lives. 'v1' (legacy testnet) is read-only: clients never write to VaultRegistry v1. */
   registry: RegistryVersion;
+  /**
+   * show-vault-onchain-location D2: public facts this session learnt while saving, each tagged with the version it
+   * belongs to (shown only while that is still the current version). Never looked up after a plain unlock.
+   */
+  lastSave?: { version: number; txHash: Hex };
+  mirrorItem?: { version: number; id: string };
 }
+
+const lastSaveOf = (r: { version: number; txHash?: Hex }) => (r.txHash ? { lastSave: { version: r.version, txHash: r.txHash } } : {});
 
 /** harden-gas-sponsorship: only VaultRegistry v2 vaults can be edited or given a new key. */
 export const isReadOnly = (s: Pick<VaultSession, 'registry'>) => s.registry === 'v1';
@@ -87,8 +95,8 @@ export async function ensureMirror(svc: Services, s: { vaultId: Hex; version: nu
     /* keep the known locator */
   }
   try {
-    await svc.mirror.ensure({ vaultId: s.vaultId, version: s.version, blob: s.blob, locators: locators.slice(0, 8) });
-    return { status: 'saved' };
+    const { id } = await svc.mirror.ensure({ vaultId: s.vaultId, version: s.version, blob: s.blob, locators: locators.slice(0, 8) });
+    return { status: 'saved', itemId: id };
   } catch (e) {
     return { status: 'failed', ref: mirrorRef(e) };
   }
@@ -116,7 +124,7 @@ export async function saveNewVault(
     };
     const res = await createVaultOnChain({ account, build }, { client: svc.client, sponsor: svc.sponsor, reader: svc.reader, onSign, ...(onProgress ? { onProgress } : {}) });
     return {
-      session: { vaultId: res.vaultId, owner: res.owner, version: res.version, blob: res.blob, items, credIds: keys.map((k) => k.credId), registry: 'v2' },
+      session: { vaultId: res.vaultId, owner: res.owner, version: res.version, blob: res.blob, items, credIds: keys.map((k) => k.credId), registry: 'v2', ...lastSaveOf(res) },
       locators: res.locators,
     };
   } finally {
@@ -138,7 +146,7 @@ export async function saveEdit(svc: Services, s: VaultSession, items: SecretItem
     notify(onProgress, 'encrypted');
     const account = await existingVaultAccount({ client: svc.client, address: s.owner, entryIndex, credId, expectedLocator: locator, ...(svc.credentials ? { credentials: svc.credentials } : {}) });
     const res = await updateVaultOnChain({ account, vaultId: s.vaultId, blob }, { client: svc.client, sponsor: svc.sponsor, reader: svc.reader, onSign, ...(onProgress ? { onProgress } : {}) });
-    return { ...s, version: res.version, blob, items };
+    return { ...s, version: res.version, blob, items, ...lastSaveOf(res) };
   } finally {
     wipe(prf, locator);
   }
@@ -169,7 +177,7 @@ export async function saveAddKey(
       { client: svc.client, sponsor: svc.sponsor, reader: svc.reader, onSign: steps.onSign, ...(steps.onProgress ? { onProgress: steps.onProgress } : {}) },
     );
     return {
-      session: { ...s, version: res.version, blob: added.blob, credIds: [...s.credIds, fresh.credId] },
+      session: { ...s, version: res.version, blob: added.blob, credIds: [...s.credIds, fresh.credId], ...lastSaveOf(res) },
       newLocator: toHex(added.locator),
     };
   } finally {

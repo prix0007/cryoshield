@@ -139,6 +139,7 @@ sequenceDiagram
 - No account, no gas and no wallet are needed to read.
 - **v2 is authoritative.** A v1 entry whose vaultId also exists in v2 is ignored (v1 accepts any id, so it could hold a stale copy). If v2 can't be read, nothing opens: the app says it couldn't confirm the latest version, rather than falling back to v1.
 - **Legacy v1 vaults** (OP Sepolia only) open read-only. When a key opens one v2 vault, it opens directly, with v1 copies behind "Open an older test vault".
+- **Where your vault is stored:** once a vault is open, a collapsed panel shows its public coordinates: network and chain ID, registry address (v1 or v2), vault ID, owner account, version, and, when this session saved or verified them, the last save's transaction hash and the Arweave item ID. Each value can be copied, and addresses link to the network's Blockscout explorer (`apps/web/src/config/networks.ts`). It never shows locators or key material and makes no request of its own, so anyone can check the vault independently, with or without the recovery tool.
 - **Web app guard:** the web app checks the RPC's `eth_chainId` before any registry read, and refuses with "wrong network" rather than a misleading "no vault".
 - **Recovery CLI hardening:**
   - hostile JSON from a server is discarded and recovery continues;

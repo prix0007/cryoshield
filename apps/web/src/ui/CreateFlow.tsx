@@ -206,7 +206,9 @@ export function CreateFlow(props: { onDone: (s: VaultSession) => void; onCancel:
               void mirrorWrite(svc, { vaultId: session.vaultId, version: session.version, blob: session.blob, locators: knownLocators }).then(setMirror);
             }} />
             <ActionBar>
-              <Btn onClick={() => props.onDone(session)}>{S.create.continue}</Btn>
+              <Btn onClick={() => props.onDone(mirror.status === 'saved' && 'itemId' in mirror && mirror.itemId ? { ...session, mirrorItem: { version: session.version, id: mirror.itemId } } : session)}>
+                {S.create.continue}
+              </Btn>
             </ActionBar>
           </div>
         )}

@@ -42,3 +42,17 @@ export async function copySecret(
   }, CLIPBOARD_CLEAR_MS);
   return true;
 }
+
+/**
+ * Copies public, non-secret text (show-vault-onchain-location D4): no auto-clear, and it leaves the secret clear timer
+ * and its callback untouched, so a pending clear of a copied secret still runs.
+ */
+export async function copyPublic(text: string, clip: Pick<Clipboard, 'writeText'> | undefined = globalThis.navigator?.clipboard): Promise<boolean> {
+  if (!clip) return false;
+  try {
+    await clip.writeText(text);
+    return true;
+  } catch {
+    return false;
+  }
+}

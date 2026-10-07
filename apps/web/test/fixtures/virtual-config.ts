@@ -34,6 +34,7 @@ export const config = Object.freeze({
   appOnlyOrigins: [] as string[],
   registryV1: { address: record.address ?? ('0xB43f58cF17e64B603aE5588a1DD17E96a0849e44' as const), deployBlock: record.deployBlock ?? 1 },
   registryV2: { address: v2?.address ?? ('0x00000000000000000000000000000000000000a2' as const), deployBlock: v2?.deployBlock ?? 1 },
+  network: { name: 'local test chain', explorerUrl: null as string | null },
   wallet: {
     factory: wallet?.factory ?? ('0x00000000000000000000000000000000000000f1' as const),
     implementation: wallet?.implementation ?? ('0x00000000000000000000000000000000000000e1' as const),
