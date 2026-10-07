@@ -51,7 +51,7 @@ async function setup(opts: { name?: string; archived?: boolean; items?: { label:
   });
   f.use(0);
   f.calls.length = 0;
-  const chain = { blob, version: 1, reads: 0 };
+  const chain = { blob, version: 1, reads: 0, nonce: 1n };
   const sponsor = {
     send: vi.fn(async (_acct: unknown, calls: readonly { data: Hex }[]) => {
       for (const c of calls) {
@@ -59,6 +59,7 @@ async function setup(opts: { name?: string; archived?: boolean; items?: { label:
         if (d.functionName === 'updateVault') {
           chain.blob = fromHex((d.args as [Hex, Hex])[1]);
           chain.version++;
+          chain.nonce++;
         }
       }
       return { userOpHash: '0x01' as Hex, success: true };
@@ -70,7 +71,7 @@ async function setup(opts: { name?: string; archived?: boolean; items?: { label:
       return { vaultId, owner: OWNER, blob: chain.blob, version: chain.version, registry: 'v2' as const };
     }),
   };
-  const client = { getChainId: async () => 31337, call: vi.fn(async () => ({ data: '0x' })) };
+  const client = { getChainId: async () => 31337, call: vi.fn(async () => ({ data: '0x' })), readContract: vi.fn(async () => chain.nonce) };
   const svc = fakeServices({ credentials: f.credentials, sponsor, reader: reader as never, client: client as never });
   const session: VaultSession = {
     vaultId: VAULT_ID,
@@ -209,5 +210,31 @@ describe('4.1 Archive and clear', () => {
     const before = t.chain.blob.length;
     await archiveAndClear(t.svc, t.session, () => {});
     expect(t.chain.blob.length).toBeGreaterThanOrEqual(before);
+  });
+});
+
+describe('review M1: the nonce is pinned per session and per write', () => {
+  it('the user operation carries the nonce read before the vault; the session then expects the next one', async () => {
+    const t = await setup();
+    const next = await saveEdit(t.svc, { ...t.session, nonce: 1n }, [{ label: 'a', secret: 'b' }], () => {});
+    expect((t.sponsor.send.mock.calls[0] as unknown as unknown[])[3]).toBe(1n);
+    expect(next.nonce).toBe(2n);
+    await saveEdit(t.svc, next, [{ label: 'a', secret: 'c' }], () => {});
+    expect((t.sponsor.send.mock.calls[1] as unknown as unknown[])[3]).toBe(2n);
+  });
+
+  it('a session whose pinned nonce moved (another tab saved) is STALE before any key tap', async () => {
+    const t = await setup();
+    t.chain.nonce = 3n;
+    await expect(saveEdit(t.svc, { ...t.session, nonce: 2n }, [{ label: 'a', secret: 'b' }], () => {})).rejects.toMatchObject({ code: 'STALE' });
+    expect(t.gets()).toBe(0);
+  });
+
+  it('a vault that could not be decoded is never written (READ_ONLY)', async () => {
+    const t = await setup();
+    const bad = { ...t.session, payloadError: 'UNKNOWN_VERSION' as const };
+    await expect(saveEdit(t.svc, bad, [{ label: 'a', secret: 'b' }], () => {})).rejects.toMatchObject({ code: 'READ_ONLY' });
+    await expect(saveAddKey(t.svc, bad, { onInsertNew: () => {}, onNewAgain: () => {}, onSign: () => {} })).rejects.toMatchObject({ code: 'READ_ONLY' });
+    expect(t.gets()).toBe(0);
   });
 });

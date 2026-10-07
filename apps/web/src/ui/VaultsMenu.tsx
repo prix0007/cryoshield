@@ -18,7 +18,13 @@ import { VAULTS as V } from './strings-vaults';
 export { archiveAndClear, saveVaultMeta } from './vault-meta';
 
 export const vaultKey = (v: Pick<VaultSession, 'registry' | 'vaultId'>) => datesKey(v.registry, v.vaultId);
-const fmt = (sec: number | null | undefined) => (sec ? new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(sec * 1000)) : V.unavailable);
+const fmt = (sec: number | null | undefined) => {
+  try {
+    return sec ? new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(sec * 1000)) : V.unavailable;
+  } catch {
+    return V.unavailable; // review M3: whatever an RPC returns, a date never breaks the list
+  }
+};
 
 /** The vault name, isolated; "Unnamed vault" when it has no visible glyph. */
 export function VaultName({ name }: { name: string | undefined }) {
@@ -26,10 +32,10 @@ export function VaultName({ name }: { name: string | undefined }) {
   return n === undefined ? <>{V.unnamed}</> : <bdi>{n}</bdi>;
 }
 
-function Row(props: { v: VaultSession; dates: Map<string, VaultDates> | null; onOpen: () => void; onEdit?: (() => void) | undefined }) {
+function Row(props: { v: VaultSession; dates: ReadonlyMap<string, VaultDates>; onOpen: () => void; onEdit?: (() => void) | undefined }) {
   const { v } = props;
   const s = summarize({ ...v, keyCount: v.credIds.length });
-  const d = props.dates?.get(vaultKey(v));
+  const d = props.dates.get(vaultKey(v));
   const status = v.payloadError ? V.newer : s.status === 'active' ? V.active : s.status === 'archived' ? V.archived : V.older;
   return (
     <li className="card vault-row">
@@ -53,7 +59,7 @@ function Row(props: { v: VaultSession; dates: Map<string, VaultDates> | null; on
         </p>
       )}
       <p className="hint" aria-live="polite">
-        {props.dates === null ? V.loadingDates : `${V.created} ${fmt(d?.created)} · ${V.saved} ${fmt(d?.saved)}`}
+        {d === undefined ? V.loadingDates : `${V.created} ${fmt(d.created)} · ${V.saved} ${fmt(d.saved)}`}
       </p>
       {!v.payloadError && (
         <div className="actions">
@@ -95,26 +101,47 @@ export default function VaultsMenu(props: {
   /** Public RPC, keccak-256 and registries for the dates (D9); passed in, see chain/history.ts. */
   history: HistorySource;
 }) {
-  const [dates, setDates] = useState<Map<string, VaultDates> | null>(null);
+  const [dates, setDates] = useState<ReadonlyMap<string, VaultDates>>(new Map());
+  /** Which `registry:vaultId` has been fetched (or is being fetched), at which version. */
+  const fetched = useRef(new Map<string, number>());
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => heading.current?.focus(), []);
 
-  // D9: fetched after the list renders; a failure leaves "Date unavailable". Never used for order or selection.
+  // D9: fetched after the list renders, only for vaults (or versions) not fetched yet, so "Check another key" adds one
+  // lookup instead of repeating all of them. Public data only, never the decrypted session. Aborted when the list closes
+  // (lock, unmount). A failure leaves "Date unavailable". Never used for order or selection.
   const list = props.vaults;
   const { history } = props;
+  const listRef = useRef(list);
+  listRef.current = list;
+  const want = list.map((v) => `${vaultKey(v)}:${v.version}`).join('|');
   useEffect(() => {
-    let live = true;
-    setDates(null);
-    void vaultDates(history, list).then((d) => live && setDates(d));
-    return () => {
-      live = false;
+    const missing = listRef.current.filter((v) => fetched.current.get(vaultKey(v)) !== v.version);
+    if (missing.length === 0) return;
+    for (const v of missing) fetched.current.set(vaultKey(v), v.version);
+    const ctl = new AbortController();
+    const pub = missing.map(({ vaultId, version, blob, registry }) => ({ vaultId, version, blob, registry }));
+    let done = false;
+    const forget = () => {
+      for (const v of missing) fetched.current.delete(vaultKey(v)); // fetch again next time
     };
-  }, [history, list]);
+    vaultDates(history, pub, { signal: ctl.signal })
+      .then((d) => {
+        done = true;
+        setDates((prev) => new Map([...prev, ...d]));
+      })
+      .catch(forget);
+    return () => {
+      ctl.abort();
+      if (!done) forget(); // synchronously, so an immediate re-run (StrictMode, a new key) fetches them again
+    };
+  }, [history, want]);
 
-  const active = list.filter((v) => v.registry === 'v2' && (!v.archived || v.payloadError));
+  const active = list.filter((v) => v.registry === 'v2' && !v.archived && !v.payloadError);
   const archived = list.filter((v) => v.registry === 'v2' && v.archived && !v.payloadError);
+  const newer = list.filter((v) => v.payloadError);
   const older = list.filter((v) => v.registry === 'v1');
   const expand = props.mode === 'menu' || active.length === 0;
   const row = (v: VaultSession) => (
@@ -150,6 +177,7 @@ export default function VaultsMenu(props: {
             <ul className="plain-list vault-list">{archived.map(row)}</ul>
           </Disclosure>
         ))}
+      {newer.length > 0 && <Group title={V.groupNewer}>{newer.map(row)}</Group>}
       {older.length > 0 &&
         (expand ? (
           <Group title={V.groupOlder}>{older.map(row)}</Group>
@@ -177,6 +205,8 @@ export default function VaultsMenu(props: {
 export function EditVaultSheet(props: {
   session: VaultSession;
   busy: boolean;
+  /** Review M5: no free saves left (testnet). Blocks Save and Archive and clear; Cancel stays available. */
+  saveBlocked?: boolean;
   onSave: (meta: { name?: string; archived: boolean }) => void;
   onClear: () => void;
   onCancel: () => void;
@@ -234,7 +264,7 @@ export function EditVaultSheet(props: {
         <p className="hint">{V.sheet.archiveHint}</p>
         <p className="hint">{V.sheet.anyKey}</p>
         <ActionBar>
-          <Btn type="submit" disabled={invalid || props.busy}>
+          <Btn type="submit" disabled={invalid || props.busy || props.saveBlocked}>
             {V.sheet.save}
           </Btn>
           <Btn type="button" className="secondary" onClick={props.onCancel} disabled={props.busy}>
@@ -242,8 +272,8 @@ export function EditVaultSheet(props: {
           </Btn>
         </ActionBar>
       </form>
-      {!clearing ? (
-        <Btn type="button" className="link-button" onClick={() => setClearing(true)} disabled={props.busy}>
+      {s.archived && s.items.length === 0 ? null : !clearing ? (
+        <Btn type="button" className="link-button" onClick={() => setClearing(true)} disabled={props.busy || props.saveBlocked}>
           {V.clear.open}
         </Btn>
       ) : (
@@ -260,7 +290,7 @@ export function EditVaultSheet(props: {
             <span>{V.clear.confirm}</span>
           </label>
           <ActionBar>
-            <Btn type="button" onClick={props.onClear} disabled={!understood || props.busy}>
+            <Btn type="button" onClick={props.onClear} disabled={!understood || props.busy || props.saveBlocked}>
               {V.clear.button}
             </Btn>
             <Btn type="button" className="secondary" onClick={() => { setClearing(false); setUnderstood(false); }} disabled={props.busy}>

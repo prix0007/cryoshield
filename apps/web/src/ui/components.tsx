@@ -1,4 +1,4 @@
-import { Component, useEffect, useId, useRef, type ReactNode } from 'react';
+import { Component, useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { capacity } from '../vault/adapter';
 import { MAX_LABEL_CHARS, type SecretItem } from '../vault/payload';
 import { S } from './strings';
@@ -18,6 +18,48 @@ export class ChunkBoundary extends Component<{ fallback: ReactNode; children: Re
   override render() {
     return this.state.failed ? this.props.fallback : this.props.children;
   }
+}
+
+/**
+ * A lazily loaded module, fetched once `enabled` (review M6). A failed load is not cached: `retry` imports again, which
+ * fixes a dropped connection (after a redeploy only a reload helps; the fallback copy says so).
+ */
+export function useLazyModule<T>(load: () => Promise<T>, enabled: boolean): { mod: T | null; failed: boolean; retry: () => void } {
+  const [state, setState] = useState<{ mod: T | null; failed: boolean }>({ mod: null, failed: false });
+  const [attempt, setAttempt] = useState(0);
+  const loaded = state.mod !== null;
+  useEffect(() => {
+    if (!enabled || loaded) return;
+    let live = true;
+    load().then(
+      (mod) => live && setState({ mod, failed: false }),
+      () => live && setState({ mod: null, failed: true }),
+    );
+    return () => {
+      live = false;
+    };
+  }, [load, enabled, loaded, attempt]);
+  return { ...state, retry: () => (setState({ mod: null, failed: false }), setAttempt((n) => n + 1)) };
+}
+
+/** The fallback for a lazily loaded screen that failed to load (review M6): try again, go back, or lock. */
+export function ChunkFailed(props: { onRetry: () => void; back?: { label: string; onClick: () => void } | undefined; onLock: () => void }) {
+  return (
+    <div>
+      <Notice kind="error">{S.chunkFailed}</Notice>
+      <ActionBar>
+        <Btn onClick={props.onRetry}>{S.save.retry}</Btn>
+        {props.back && (
+          <Btn className="secondary" onClick={props.back.onClick}>
+            {props.back.label}
+          </Btn>
+        )}
+        <Btn className="secondary" onClick={props.onLock}>
+          {S.vault.lock}
+        </Btn>
+      </ActionBar>
+    </div>
+  );
 }
 
 /** Step heading that receives focus when the step appears (WCAG 2.4.3 focus order). */

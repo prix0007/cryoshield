@@ -186,7 +186,7 @@ export const S = {
     retry: 'Try again',
     stale: 'This vault changed since you opened it. Unlock again.',
     budget: (n: number) => `About ${n} free saves left`,
-    nonceConflict: 'Another save for this vault happened at the same moment, so nothing was saved. Please try again.',
+    nonceConflict: 'Nothing was saved. Another save for this vault happened at the same moment, or a previous save may still be finishing. Wait a minute, then try again.',
   },
 
   mirror: {
@@ -214,6 +214,7 @@ export const S = {
     close: 'Close',
   },
 
+  chunkFailed: 'This part of the app didn’t load. Check your connection and try again, or reload the page.',
   continue: 'Continue',
   back: 'Back',
   busy: 'Working…',

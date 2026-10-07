@@ -683,3 +683,18 @@ button.loc-copy {
   align-items: center;
   min-height: 24px;
 }
+
+/* vault-list-labels-archive: names and labels are isolated (<bdi>) and can never push or paint outside their row,
+   whatever they contain (very long words, stacked marks). */
+bdi {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  vertical-align: bottom;
+}
+.vault-row {
+  max-width: 100%;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}

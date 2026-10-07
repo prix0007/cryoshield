@@ -3,6 +3,9 @@
  * status, counts and up to three truncated labels. Never a secret value.
  */
 import type { SecretItem } from './payload';
+import { capMarks, INVISIBLE, visibleName } from './name';
+
+export { visibleName };
 
 export type VaultStatus = 'active' | 'archived' | 'older';
 
@@ -21,15 +24,6 @@ export interface VaultSummary {
 const LABEL_MAX = 24;
 const SHOWN = 3;
 
-/**
- * Nothing visible left: only white space, format controls (joiners, marks), combining marks, controls, or the
- * blank-looking fillers (Hangul fillers, the braille blank).
- */
-const INVISIBLE = /^[\p{White_Space}\p{Cf}\p{M}\p{Cc}\u115f\u1160\u3164\uffa0\u2800]*$/u;
-
-/** The name as typed, or undefined when it has no visible glyph (shown as "Unnamed vault"). */
-export const visibleName = (name: string | undefined): string | undefined => (name === undefined || INVISIBLE.test(name) ? undefined : name);
-
 /** At most 24 code points, never splitting a surrogate pair (iterates code points, not UTF-16 units). */
 export function truncateLabel(label: string): string {
   const cps = [...label];
@@ -41,7 +35,7 @@ export function summarize(v: { name?: string; archived: boolean; items: readonly
     name: visibleName(v.name),
     status: v.registry === 'v1' ? 'older' : v.archived ? 'archived' : 'active',
     count: v.items.length,
-    labels: v.items.slice(0, SHOWN).map((it, i) => (INVISIBLE.test(it.label) ? `Secret ${i + 1}` : truncateLabel(it.label))),
+    labels: v.items.slice(0, SHOWN).map((it, i) => (INVISIBLE.test(it.label) ? `Secret ${i + 1}` : truncateLabel(capMarks(it.label)))),
     more: Math.max(0, v.items.length - SHOWN),
     keys: v.keyCount,
   };

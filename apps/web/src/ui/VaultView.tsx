@@ -1,12 +1,11 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import type { SecretItem } from '../vault/payload';
-import { visibleName } from '../vault/summary';
-import { ChunkBoundary, cleanItems, KeyPrompt, Notice, SecretsEditor, StepHeading } from './components';
+import { visibleName } from '../vault/name';
+import { ChunkBoundary, ChunkFailed, cleanItems, useLazyModule, KeyPrompt, Notice, SecretsEditor, StepHeading } from './components';
 import { MirrorLine } from './CreateFlow';
 import { ensureMirror, errorReference, isReadOnly, messageFor, mirrorWrite, rewrite, saveAddKey, saveEdit, withPayload, type MirrorItem, type MirrorResult, type VaultSession } from './operations';
 import { testnetName, useServices } from './services';
-import { loadWriteStack } from '../account/lazy';
-import { BUDGET_HINT_AT, savesLeft } from '../account/budget';
+import { BUDGET_HINT_AT, readNonce, savesLeft } from '../account/budget';
 import { S } from './strings';
 import { ActionBar, EmptyState } from './chrome';
 import { copySecret, forgetClearListener } from './clipboard';
@@ -19,7 +18,6 @@ const VaultLocation = lazy(() => import('./VaultLocation'));
 /** vault-list-labels-archive: the Edit vault sheet ships in the vault list's chunk. */
 const menu = () => import('./VaultsMenu');
 const ops = { rewrite, withPayload };
-const EditVaultSheet = lazy(() => menu().then((m) => ({ default: m.EditVaultSheet })));
 
 type Mode = 'view' | 'edit' | 'meta' | 'addKey' | 'details';
 const MODE_ORDER: readonly Mode[] = ['view', 'edit', 'meta', 'addKey', 'details'];
@@ -35,6 +33,8 @@ export function VaultView(props: {
   /** How many vaults are open (the "All vaults (N)" button), and the way there. */
   vaultCount?: number;
   onAllVaults?: () => void;
+  /** The account nonce read at open (D8): App stores it on the session. */
+  onNonce?: (vaultId: `0x${string}`, nonce: bigint) => void;
   /** This vault's Arweave copy known to the session (App state, so it survives a remount; wiped on lock). */
   mirrorItem?: MirrorItem | undefined;
   /** Reports every mirror result with the version it is for; App validates it and keeps the newest version. */
@@ -44,6 +44,8 @@ export function VaultView(props: {
   const s = props.session;
   const readOnly = isReadOnly(s);
   const [mode, setMode] = useState<Mode>(props.initialMode ?? 'view');
+  // Review M6: the Edit vault sheet ships in the vault list chunk; a failed load can be retried.
+  const sheet = useLazyModule(menu, mode === 'meta');
   const [shown, setShown] = useState<Set<number>>(new Set());
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -110,21 +112,20 @@ export function VaultView(props: {
     });
   }
 
-  // D10: on testnet, "About N free saves left" next to Save (N <= 10); Save is disabled at 0. Read when an editor opens
-  // (the write stack is needed for the save anyway); any failure just shows no hint.
-  const [left, setLeft] = useState<number | null>(null);
-  const editing = mode === 'edit' || mode === 'meta';
+  // D8/D10: when the vault opens, read and pin the account's EntryPoint nonce (one eth_call; no write stack).
+  // It is the base every write of this session is checked against, and it feeds the testnet save-budget hint.
+  const { onNonce } = props;
   useEffect(() => {
-    if (!editing || readOnly || !testnetName(svc.chainId)) return;
+    if (readOnly || s.nonce !== undefined || !onNonce) return;
     let live = true;
-    loadWriteStack()
-      .then((m) => m.sponsoredOpsUsed(svc.client, s.owner))
-      .then((n) => live && setLeft(savesLeft(n)))
+    readNonce(svc.client, s.owner)
+      .then((n) => live && onNonce(s.vaultId, n))
       .catch(() => undefined);
     return () => {
       live = false;
     };
-  }, [editing, readOnly, svc.chainId, svc.client, s.owner]);
+  }, [readOnly, s.nonce, s.vaultId, svc.client, s.owner, onNonce]);
+  const left = testnetName(svc.chainId) && s.nonce !== undefined ? savesLeft(Number(s.nonce)) : null;
   const budget = left !== null && left <= BUDGET_HINT_AT ? { text: left === 0 ? S.save.paused : S.save.budget(left), blocked: left === 0 } : undefined;
 
   /** One write with the usual taps, prompts and checklist. `next === s` (nothing changed) closes without a save. */
@@ -196,7 +197,7 @@ export function VaultView(props: {
   return (
     <section aria-labelledby="vault-title" className="step">
       <h1 id="vault-title" ref={title} tabIndex={-1}>
-        {visibleName(s.name) === undefined ? S.vault.title : <bdi>{s.name}</bdi>}
+        {visibleName(s.name) === undefined ? S.vault.title : <bdi>{visibleName(s.name)}</bdi>}
       </h1>
       {error && (
         <Notice kind="error" reference={errorRef}>
@@ -316,18 +317,25 @@ export function VaultView(props: {
         )}
 
         {mode === 'meta' && (
-          <ChunkBoundary fallback={<Notice kind="error">{S.save.loadFailed}</Notice>}>
-            <Suspense fallback={<p className="hint" role="status">{S.location.loading}</p>}>
-              <EditVaultSheet
+          sheet.failed ? (
+            <ChunkFailed onRetry={sheet.retry} back={{ label: S.editor.cancel, onClick: () => setMode('view') }} onLock={props.onLock} />
+          ) : sheet.mod ? (
+            <>
+              <sheet.mod.EditVaultSheet
                 session={s}
-                busy={busy || (budget?.blocked ?? false)}
+                busy={busy}
+                saveBlocked={budget?.blocked ?? false}
                 onSave={(meta) => run((sign) => menu().then((m) => m.saveVaultMeta(ops, svc, s, meta, sign, onProgress)))}
                 onClear={() => run((sign) => menu().then((m) => m.archiveAndClear(ops, svc, s, sign, onProgress)))}
                 onCancel={() => setMode('view')}
               />
               {budget && <p className="hint">{budget.text}</p>}
-            </Suspense>
-          </ChunkBoundary>
+            </>
+          ) : (
+            <p className="hint" role="status">
+              {S.location.loading}
+            </p>
+          )
         )}
 
         {mode === 'addKey' && (

@@ -13,12 +13,12 @@ import { S } from '../../src/ui/strings';
 import { VAULTS } from '../../src/ui/strings-vaults';
 import { credentialLabel } from '../../src/webauthn';
 import { HIDDEN_MS } from '../../src/ui/useAutoLock';
+import * as historyMod from '../../src/chain/history';
 import { acknowledge, fakeServices, renderApp } from './helpers';
 
 const stack = vi.hoisted(() => ({ nonce: 0, metaCalls: [] as unknown[][], clearCalls: [] as unknown[][] }));
 vi.mock('../../src/account/stack', async (orig) => ({
   ...(await orig<typeof import('../../src/account/stack')>()),
-  sponsoredOpsUsed: async () => stack.nonce,
 }));
 vi.mock('../../src/ui/vault-meta', async (orig) => {
   const real = await orig<typeof import('../../src/ui/vault-meta')>();
@@ -42,6 +42,8 @@ vi.mock('../../src/ui/vault-meta', async (orig) => {
 });
 
 const id = (n: number) => new Uint8Array(48).fill(n);
+/** An RPC that answers the EntryPoint nonce read (eth_call) with `stack.nonce`, and nothing else. */
+const nonceClient = () => ({ request: async ({ method }: { method: string }) => (method === 'eth_call' ? '0x' + stack.nonce.toString(16) : Promise.reject(new Error(method))) }) as never;
 const hex = (n: number) => ('0x' + n.toString(16).padStart(2, '0').repeat(32)) as `0x${string}`;
 const vault = (n: number, over: Partial<unlockMod.OpenedVault> = {}): unlockMod.OpenedVault => ({
   vaultId: hex(n),
@@ -136,10 +138,11 @@ describe('3.1 the vault list (picker mode)', () => {
   it('a vault made by a newer version is listed without an Open action', async () => {
     unlockReturns([vault(1, { name: 'A' }), vault(2, { name: 'B' }), vault(3, { items: null, payloadError: 'UNKNOWN_VERSION' })]);
     await unlockApp();
-    const rows = within(await screen.findByRole('region', { name: VAULTS.groupActive })).getAllByRole('listitem');
-    expect(rows).toHaveLength(3);
-    expect(rows[2]).toHaveTextContent(VAULTS.newer);
-    expect(within(rows[2]!).queryByRole('button')).toBeNull();
+    expect(within(await screen.findByRole('region', { name: VAULTS.groupActive })).getAllByRole('listitem')).toHaveLength(2);
+    const rows = within(screen.getByRole('region', { name: VAULTS.groupNewer })).getAllByRole('listitem');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toHaveTextContent(VAULTS.newer);
+    expect(within(rows[0]!).queryByRole('button')).toBeNull();
   });
 
   it('dates come lazily from the chain; a refused query leaves "Date unavailable" and every vault listed', async () => {
@@ -313,7 +316,7 @@ describe('4.1 Archive and clear', () => {
 describe('3.3 testnet save-budget hint (D10)', () => {
   async function editOn(chainId: number) {
     unlockReturns([vault(1)]);
-    const { u } = await unlockApp({ chainId });
+    const { u } = await unlockApp({ chainId, client: nonceClient() });
     await u.click(await screen.findByRole('button', { name: S.vault.edit }));
   }
   it('nonce 43 on OP Sepolia: "About 7 free saves left"', async () => {
@@ -445,5 +448,93 @@ describe('the vault list chunk fails to load', () => {
       </ChunkBoundary>,
     );
     expect(screen.getByText(S.save.loadFailed)).toBeInTheDocument();
+  });
+});
+
+describe('review M2/M3: the dates lookup', () => {
+  const chainRpc = (timestamp: () => unknown = () => '0x6a9b0f00') => {
+    const logsFor: string[][] = [];
+    const request = vi.fn(async ({ method, params }: { method: string; params: any[] }) => {
+      if (method === 'eth_blockNumber') return '0x10';
+      if (method === 'eth_getLogs') {
+        logsFor.push(params[0].topics[1]);
+        return params[0].topics[1].map((vid: string, i: number) => ({
+          topics: [historyMod.CREATED, vid],
+          data: '0x' + '00'.repeat(31) + '01' + '11'.repeat(32),
+          blockNumber: '0x5',
+          logIndex: '0x' + i.toString(16),
+        }));
+      }
+      if (method === 'eth_getBlockByNumber') return { timestamp: timestamp() };
+      throw new Error(method);
+    });
+    return { request, logsFor };
+  };
+
+  it('sends only public fields, and "Check another key" looks up only the new vault', async () => {
+    const spy = vi.spyOn(historyMod, 'vaultDates');
+    const rpc = chainRpc();
+    unlockReturns([vault(1, { name: 'One' }), vault(2, { name: 'Two' })], [vault(2, { name: 'Two' }), vault(3, { name: 'Three' })]);
+    const { u } = await unlockApp({ client: { request: rpc.request } as never });
+    await waitFor(() => expect(rpc.logsFor).toHaveLength(1));
+    for (const v of spy.mock.calls[0]![1]) expect(Object.keys(v).sort()).toEqual(['blob', 'registry', 'vaultId', 'version']);
+    await u.click(screen.getByRole('button', { name: VAULTS.checkAnother }));
+    await screen.findByRole('heading', { name: 'Three' });
+    await waitFor(() => expect(rpc.logsFor).toHaveLength(2));
+    expect(rpc.logsFor[1]).toEqual([hex(3)]);
+    await waitFor(() => expect(screen.getAllByText(/^Created /)).toHaveLength(3));
+  });
+
+  it('a hostile block timestamp shows "Date unavailable"', async () => {
+    const rpc = chainRpc(() => '0x' + 'f'.repeat(30));
+    unlockReturns([vault(1), vault(2)]);
+    await unlockApp({ client: { request: rpc.request } as never });
+    await waitFor(() => expect(screen.getAllByText('Created Date unavailable · Last saved Date unavailable')).toHaveLength(2));
+  });
+
+  it('locking aborts a lookup in flight', async () => {
+    const spy = vi.spyOn(historyMod, 'vaultDates');
+    const request = vi.fn(() => new Promise(() => undefined));
+    unlockReturns([vault(1), vault(2)]);
+    await unlockApp({ client: { request } as never });
+    await waitFor(() => expect(spy).toHaveBeenCalled());
+    const signal = spy.mock.calls[0]![2]!.signal!;
+    expect(signal.aborted).toBe(false);
+    act(() => {
+      window.dispatchEvent(new Event('pagehide'));
+    });
+    expect(signal.aborted).toBe(true);
+  });
+});
+
+describe('review LOW items', () => {
+  it('one key reads "1 key"', async () => {
+    vi.spyOn(await import('@cryoshield/vault-crypto'), 'decodeVault').mockReturnValue({ entries: [{ credId: id(1) }], keyCount: 1 } as never);
+    unlockReturns([vault(1), vault(2)]);
+    await unlockApp();
+    expect((await screen.findAllByText(/· 1 key$/)).length).toBe(2);
+  });
+
+  it('Archive and clear is not offered on a vault that is already archived and empty', async () => {
+    unlockReturns([vault(1, { name: 'Done', archived: true, items: [] })]);
+    const { u } = await unlockApp();
+    await u.click(await screen.findByRole('button', { name: 'Open Done' }));
+    await u.click(await screen.findByRole('button', { name: S.vault.editVault }));
+    await screen.findByLabelText(VAULTS.sheet.name);
+    expect(screen.queryByRole('button', { name: VAULTS.clear.open })).toBeNull();
+  });
+
+  it('review M5: at 0 free saves the sheet blocks Save and Archive and clear, but Cancel still works', async () => {
+    stack.nonce = 50;
+    unlockReturns([vault(1, { name: 'Family' })]);
+    const { u } = await unlockApp({ chainId: 11155420, client: nonceClient() });
+    await screen.findByRole('heading', { name: 'Family', level: 1 });
+    await waitFor(() => expect(stack.nonce).toBe(50));
+    await u.click(screen.getByRole('button', { name: S.vault.editVault }));
+    await waitFor(() => expect(screen.getByRole('button', { name: VAULTS.sheet.save })).toBeDisabled());
+    expect(screen.getByRole('button', { name: VAULTS.clear.open })).toBeDisabled();
+    expect(screen.getByText(S.save.paused)).toBeInTheDocument();
+    await u.click(screen.getByRole('button', { name: VAULTS.sheet.cancel }));
+    expect(await screen.findByRole('button', { name: S.vault.editVault })).toBeInTheDocument();
   });
 });

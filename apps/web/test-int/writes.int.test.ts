@@ -111,19 +111,26 @@ describe('sponsored writes against EntryPoint v0.6 + Coinbase Smart Wallet (6.1,
     expect((await unlock({ rpId: 'localhost' }, { credentials: f.credentials, reader })).matches[0]).toMatchObject({ name: 'Family', archived: true, version: 3 });
   });
 
-  it('vault-list-labels-archive D10: a second save with the same key-0 nonce is NONCE_CONFLICT, not "paused"', async () => {
-    const { f, b, client, reader, res } = await createOne();
+  it('review M1, two tabs: B passes its checks, A saves during B\'s signing tap, B fails with NONCE_CONFLICT and A\'s save stands', async () => {
+    const { f, b, client, reader, sponsor, res } = await createOne();
     f.use(1);
     const opened = await unlock({ rpId: 'localhost' }, { credentials: f.credentials, reader });
     const m = opened.matches[0]!;
     const account = await existingVaultAccount({ client, address: m.owner, entryIndex: 1, credId: b.credId, expectedLocator: opened.locator, credentials: f.credentials });
-    // A sponsor whose account reports an already-used nonce, as a second tab would after the first save landed.
-    const stalled = { ...account, getNonce: async () => 0n } as typeof account;
-    const blob = await editVaultBlob(m.blob, await f.prfFor(b.credId, locatorSalt()), m.vaultId, { archived: false, items: m.items! });
-    const err = await updateVaultOnChain({ account: stalled, vaultId: res.vaultId, blob, base: m.blob }, { client, sponsor: createSponsor(client), reader }).catch((e) => e);
+    const fromA = await editVaultBlob(m.blob, await f.prfFor(b.credId, locatorSalt()), m.vaultId, { archived: false, items: [{ label: 'Seed', secret: 'tab A' }] });
+    const fromB = await editVaultBlob(m.blob, await f.prfFor(b.credId, locatorSalt()), m.vaultId, { archived: false, items: [{ label: 'Seed', secret: 'tab B' }] });
+    const pinned = await sponsoredOpsUsed(client, m.owner);
+    // Tab B: its pre-write checks pass (same nonce, same blob); while B waits for its signing tap, tab A saves.
+    const err = await updateVaultOnChain(
+      { account, vaultId: res.vaultId, blob: fromB, base: m.blob, nonce: BigInt(pinned) },
+      { client, sponsor, reader, onSign: async () => void (await updateVaultOnChain({ account, vaultId: res.vaultId, blob: fromA, base: m.blob }, { client, sponsor, reader })) },
+    ).catch((e) => e);
     expect(err).toBeInstanceOf(WriteError);
     expect(err.code).toBe('NONCE_CONFLICT');
-    expect((await reader.getVault(res.vaultId))!.version).toBe(1);
+    const v = (await reader.getVault(res.vaultId))!;
+    expect(v.version).toBe(2);
+    expect(toHex(v.blob)).toBe(toHex(fromA));
+    expect(await sponsoredOpsUsed(client, m.owner)).toBe(pinned + 1);
   });
 
   it('adds key C atomically with one existing key; C alone unlocks; account has 3 owners', async () => {

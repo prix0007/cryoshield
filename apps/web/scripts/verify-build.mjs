@@ -267,7 +267,14 @@ const gz = (f) => gzipSync(readFileSync(join(dist, f)), { level: 9 }).length;
 // before 216,554 B (e2e) / 216,559 B (production), after 200,242 B / 200,239 B: -16,312 B. The +2 KB above is removed
 // and the baseline lowered by a further 12 KB (whole KB, below the saving, about 2.6 KB of headroom left) so the saving
 // can't be silently spent: 194,689 - 12 KB = 182,401 B.
-const APP_BASELINE = 194_689 - 12 * 1024;
+// vault-list-labels-archive (2026-10-08, ECC review of feat/vlla-web): +1 KB, deliberately. Measured gzip: main 200,311 B
+// (2da09c9) -> 202,980 B (+2,669 B), all of it in the initial chunk on purpose: the payload v2 codec (the decoder must be
+// there to open any vault, ~1 KB), the single vault-list owner in Shell with the unlock routing and Check another key,
+// the vault name heading, Archived notice and Unarchive, the name field at create, the STALE check,
+// the nonce pin at vault open (one raw eth_call, so unlocking still never fetches the write stack), and the retryable
+// chunk fallbacks. The list, the dates, the Edit vault sheet and the name/archive/clear writes are a lazy chunk
+// (VAULT_LIST_MARKERS below). Headroom without this: under 0 B; with it: about 0.9 KB.
+const APP_BASELINE = 194_689 - 12 * 1024 + 1024;
 const APP_ALLOWANCE = 20 * KB;
 const WRITE_STACK_MARKERS = ['eth_sendUserOperation', 'pimlico_getUserOperationGasPrice', 'WalletConfigError'];
 // vault-list-labels-archive 3.1 (design D5): the vault list, the Edit vault sheet, Archive and clear and the dates

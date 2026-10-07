@@ -3,8 +3,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { encodeAbiParameters, keccak256, toEventSelector, toHex as hexOf, type Hex } from 'viem';
 import { vaultDates as dates } from '../../src/chain/history';
 
-const vaultDates = (rpc: never, vaults: Parameters<typeof dates>[1], registries: Parameters<typeof dates>[0]['registries'], range?: bigint) =>
-  dates({ rpc, keccak256: (b) => keccak256(toHex(b)), registries }, vaults, range);
+const vaultDates = (rpc: never, vaults: Parameters<typeof dates>[1], registries: Parameters<typeof dates>[0]['registries'], range?: bigint, signal?: AbortSignal) =>
+  dates({ rpc, keccak256: (b) => keccak256(toHex(b)), registries }, vaults, { ...(range ? { range } : {}), ...(signal ? { signal } : {}) });
 import { toHex } from '../../src/lib/bytes';
 
 const V2 = { address: '0x00000000000000000000000000000000000000a2' as Hex, deployBlock: 0 };
@@ -35,11 +35,14 @@ const updated = (address: Hex, vaultId: Hex, block: number, version: number, blo
   data: encodeAbiParameters([{ type: 'uint32' }, { type: 'bytes32' }], [version, keccak256(toHex(blob))]),
 });
 
-function rpc(logs: Log[], opts: { latest?: number; refuse?: boolean } = {}) {
+function rpc(logs: Log[], opts: { latest?: number | string; refuse?: boolean; timestamp?: (block: number) => unknown } = {}) {
   const queries: { address: Hex; from: number; to: number; topics: unknown }[] = [];
   const request = vi.fn(async ({ method, params }: { method: string; params: any[] }) => {
-    if (method === 'eth_blockNumber') return hexOf(opts.latest ?? 250);
-    if (method === 'eth_getBlockByNumber') return { timestamp: hexOf(1_790_000_000 + Number(BigInt(params[0])) * 2) };
+    if (method === 'eth_blockNumber') return typeof opts.latest === 'string' ? opts.latest : hexOf(opts.latest ?? 250);
+    if (method === 'eth_getBlockByNumber') {
+      const n = Number(BigInt(params[0]));
+      return { timestamp: opts.timestamp ? opts.timestamp(n) : hexOf(1_790_000_000 + n * 2) };
+    }
     if (method === 'eth_getLogs') {
       if (opts.refuse) throw new Error('query returned more than 10000 results');
       const f = params[0];
@@ -110,5 +113,54 @@ describe('vaultDates', () => {
       { vaultId: id(2), version: 1, blob: blobA, registry: 'v2' },
     ], { v1: null, v2: V2 }, 1000n);
     expect(r.request.mock.calls.filter((c) => c[0].method === 'eth_getBlockByNumber')).toHaveLength(1);
+  });
+});
+
+describe('review M2/M3: bounded, abortable, and hostile-RPC-proof', () => {
+  const one = [{ vaultId: id(1), version: 1, blob: blobA, registry: 'v2' as const }];
+
+  it.each([
+    ['zero', () => '0x0'],
+    ['beyond 4e9', () => hexOf(5_000_000_000)],
+    ['huge', () => '0x' + 'f'.repeat(40)],
+    ['not hex', () => 'yesterday'],
+    ['missing', () => undefined],
+  ])('a %s block timestamp is "Date unavailable", never a crash', async (_, timestamp) => {
+    const r = rpc([created(V2.address, id(1), 10, 1, blobA)], { timestamp });
+    const out = await vaultDates(r.client, one, { v1: null, v2: V2 }, 1000n);
+    expect(out.get(`v2:${id(1)}`)).toEqual({ created: null, saved: null });
+  });
+
+  it('a timestamp at the bounds is accepted', async () => {
+    const r = rpc([created(V2.address, id(1), 10, 1, blobA)], { timestamp: () => hexOf(4_000_000_000) });
+    expect((await vaultDates(r.client, one, { v1: null, v2: V2 }, 1000n)).get(`v2:${id(1)}`)!.created).toBe(4_000_000_000);
+  });
+
+  it('more than 200 pages (or an absurd latest block): no query at all, dates unavailable', async () => {
+    const r = rpc([created(V2.address, id(1), 10, 1, blobA)], { latest: 201 * 100 });
+    const out = await vaultDates(r.client, one, { v1: null, v2: V2 }, 100n);
+    expect(r.queries).toHaveLength(0);
+    expect(out.get(`v2:${id(1)}`)).toEqual({ created: null, saved: null });
+    const absurd = rpc([], { latest: '0x' + 'f'.repeat(30) });
+    await vaultDates(absurd.client, one, { v1: null, v2: V2 }, 1000n);
+    expect(absurd.queries).toHaveLength(0);
+  });
+
+  it('exactly 200 pages are still read', async () => {
+    const r = rpc([created(V2.address, id(1), 10, 1, blobA)], { latest: 200 * 100 - 1 });
+    await vaultDates(r.client, one, { v1: null, v2: V2 }, 100n);
+    expect(r.queries).toHaveLength(200);
+  });
+
+  it('an aborted lookup stops querying and rejects', async () => {
+    const ctl = new AbortController();
+    const r = rpc([created(V2.address, id(1), 10, 1, blobA)]);
+    const req = r.request.getMockImplementation()!;
+    r.request.mockImplementation(async (a) => {
+      if (a.method === 'eth_getLogs' && r.queries.length === 1) ctl.abort();
+      return req(a);
+    });
+    await expect(vaultDates(r.client, one, { v1: null, v2: V2 }, 100n, ctl.signal)).rejects.toThrow();
+    expect(r.queries).toHaveLength(2); // the in-flight page, then nothing more
   });
 });

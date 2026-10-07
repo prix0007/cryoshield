@@ -61,3 +61,32 @@ describe('visibleName', () => {
     expect(visibleName(n)).toBe(want);
   });
 });
+
+describe('display-only cap on combining marks (review LOW)', () => {
+  const marks = '\u0301'.repeat(50);
+  it('a name keeps at most 3 combining marks in a row when shown', () => {
+    expect(visibleName(`e${marks}x`)).toBe('e\u0301\u0301\u0301x');
+  });
+  it('labels in a row summary too', () => {
+    expect(summarize({ archived: false, items: [{ label: `a${marks}`, secret: 's' }], registry: 'v2', keyCount: 2 }).labels).toEqual(['a\u0301\u0301\u0301']);
+  });
+  it('3 or fewer are left alone', () => {
+    expect(visibleName('Cafe\u0301')).toBe('Cafe\u0301');
+  });
+});
+
+describe('names and labels stay inside their row (review LOW, CSS)', () => {
+  it('bdi and .vault-row clip and wrap', async () => {
+    const { readFileSync } = await import('node:fs');
+    const css = readFileSync(`${process.cwd()}/src/ui/global.css`, 'utf8').replace(/\s+/g, ' ');
+    const rule = (sel: string) => {
+      const at = css.indexOf(`${sel} {`);
+      return at < 0 ? '' : css.slice(at, css.indexOf('}', at));
+    };
+    for (const decl of ['max-width: 100%', 'overflow: hidden', 'overflow-wrap: anywhere']) {
+      expect(rule('bdi')).toContain(decl);
+      expect(rule('.vault-row')).toContain(decl);
+    }
+    expect(rule('bdi')).toContain('display: inline-block');
+  });
+});

@@ -89,7 +89,8 @@ export async function preflight(client: PublicClient, from: Hex, calls: readonly
 const guarded = (listener: ProgressListener | undefined): ProgressListener | undefined => (listener ? (stage) => notify(listener, stage) : undefined);
 
 export interface Sponsor {
-  send(account: SmartAccount, calls: readonly Call[], onProgress?: ProgressListener): Promise<{ userOpHash: Hex; success: boolean; reason?: Hex; txHash?: Hex }>;
+  /** `nonce`: the EntryPoint key-0 nonce pinned by assertCurrent (D8); the user operation carries exactly it. */
+  send(account: SmartAccount, calls: readonly Call[], onProgress?: ProgressListener, nonce?: bigint): Promise<{ userOpHash: Hex; success: boolean; reason?: Hex; txHash?: Hex }>;
 }
 
 /** Bundler + ERC-7677 paymaster (Pimlico in production; the dev bundler in E2E). */
@@ -100,7 +101,7 @@ export function createSponsor(client: PublicClient, bundlerUrl = config.bundlerU
   });
   const bundlerChain = { getChainId: async () => Number(await pimlico.request({ method: 'eth_chainId' } as never)) };
   return {
-    async send(account, calls, onProgress) {
+    async send(account, calls, onProgress, nonce) {
       // The bundler/paymaster must serve the configured chain too (checked once per session).
       await ensureChain(bundlerChain, config.chainId, 'bundler');
       const address = await account.getAddress();
@@ -142,7 +143,7 @@ export function createSponsor(client: PublicClient, bundlerUrl = config.bundlerU
       });
       let userOpHash: Hex;
       try {
-        userOpHash = await bundler.sendUserOperation({ calls: calls.map((c) => ({ to: c.to, value: 0n, data: c.data })) });
+        userOpHash = await bundler.sendUserOperation({ calls: calls.map((c) => ({ to: c.to, value: 0n, data: c.data })), ...(nonce !== undefined ? { nonce } : {}) });
       } catch (e) {
         throw classify(e);
       }
@@ -165,10 +166,12 @@ export function createSponsor(client: PublicClient, bundlerUrl = config.bundlerU
 
 /** EntryPoint AA25: the account's key-0 nonce was already used (a concurrent save from another tab or device). */
 export function isNonceConflict(e: unknown): boolean {
+  // Only the RPC's short text (viem: `details`, `shortMessage`), case-sensitive: a full `message` can carry hex calldata
+  // in which "aa25" appears by chance (review M4).
   let cur: unknown = e;
   for (let i = 0; i < 10 && cur && typeof cur === 'object'; i++) {
-    const c = cur as { message?: unknown; details?: unknown; shortMessage?: unknown; cause?: unknown };
-    if ([c.message, c.details, c.shortMessage].some((m) => typeof m === 'string' && /AA25|invalid account nonce/i.test(m))) return true;
+    const c = cur as { details?: unknown; shortMessage?: unknown; cause?: unknown };
+    if ([c.details, c.shortMessage].some((m) => typeof m === 'string' && /\bAA25\b|invalid account nonce/.test(m))) return true;
     cur = c.cause;
   }
   return false;
@@ -194,26 +197,39 @@ function revertOf(reason: Hex | undefined): WriteError {
 }
 
 /**
- * vault-list-labels-archive D8: every update starts from the current blob. Re-reads the vault and throws STALE when it
- * is gone or differs from `base` (the blob this session decrypted), so nothing is signed over a newer version.
+ * vault-list-labels-archive D8: every update starts from the current blob, pinned to a nonce.
+ * 1. Reads the account's EntryPoint key-0 nonce FIRST (and, when the session pinned one, requires the same value).
+ * 2. Then re-reads the vault; it must still be `base`, the blob this session decrypted.
+ * Returns the nonce, which the caller pins into the user operation: any write from this account that lands after step 1
+ * (another tab, another device) consumes that nonce, so this operation then fails validation (AA25, NONCE_CONFLICT)
+ * instead of silently overwriting it; one that landed before step 2 changed the blob (STALE).
  */
-export async function assertCurrent(reader: Pick<RegistryReader, 'getVault'>, vaultId: Hex, base: Uint8Array): Promise<void> {
+export async function assertCurrent(
+  deps: { reader: Pick<RegistryReader, 'getVault'>; client: Pick<PublicClient, 'readContract'> },
+  p: { vaultId: Hex; base: Uint8Array; owner: Hex; nonce?: bigint | undefined },
+): Promise<bigint> {
+  let nonce: bigint;
   let v;
   try {
-    v = await reader.getVault(vaultId);
+    nonce = await accountNonce(deps.client, p.owner);
+    v = await deps.reader.getVault(p.vaultId);
   } catch (e) {
     throw new WriteError('NETWORK', { cause: e });
   }
-  if (!v || !bytesEqual(v.blob, base)) throw new WriteError('STALE');
+  if ((p.nonce !== undefined && nonce !== p.nonce) || !v || !bytesEqual(v.blob, p.base)) throw new WriteError('STALE');
+  return nonce;
 }
 
 /** EntryPoint v0.6 `getNonce`, beside the bundler's EntryPoint use above (D10: the testnet save-budget hint). */
 const entryPointNonceAbi = parseAbi(['function getNonce(address sender, uint192 key) view returns (uint256 nonce)']);
 
 /** Sponsored operations this account has used: its EntryPoint nonce for key 0 (one per included user operation). */
+/** The account's EntryPoint key-0 nonce (D8 pin, D10 hint). */
+export const accountNonce = async (client: Pick<PublicClient, 'readContract'>, owner: Hex): Promise<bigint> =>
+  (await client.readContract({ address: entryPoint06Address, abi: entryPointNonceAbi, functionName: 'getNonce', args: [owner, 0n] })) as bigint;
+
 export async function sponsoredOpsUsed(client: Pick<PublicClient, 'readContract'>, owner: Hex): Promise<number> {
-  const n = await client.readContract({ address: entryPoint06Address, abi: entryPointNonceAbi, functionName: 'getNonce', args: [owner, 0n] });
-  return Number(n);
+  return Number(await accountNonce(client, owner));
 }
 
 async function confirm(reader: RegistryReader, vaultId: Hex, owner: Hex, blob: Uint8Array) {
@@ -292,15 +308,15 @@ export async function createVaultOnChain(
 }
 
 export async function updateVaultOnChain(
-  p: { account: SmartAccount; vaultId: Hex; blob: Uint8Array; /** The blob this session decrypted (D8). */ base: Uint8Array },
+  p: { account: SmartAccount; vaultId: Hex; blob: Uint8Array; /** The blob this session decrypted (D8). */ base: Uint8Array; /** Pinned earlier (D8). */ nonce?: bigint | undefined },
   deps: WriteDeps,
 ): Promise<Omit<WriteResult, 'locators'>> {
-  await assertCurrent(deps.reader, p.vaultId, p.base);
   const owner = await p.account.getAddress();
+  const nonce = await assertCurrent(deps, { vaultId: p.vaultId, base: p.base, owner, nonce: p.nonce });
   const calls: Call[] = [registryCall(encodeFunctionData({ abi: registryV2Abi, functionName: 'updateVault', args: [p.vaultId, toHex(p.blob)] }))];
   await preflight(deps.client, owner, calls);
   await deps.onSign?.();
-  const r = await deps.sponsor.send(p.account, calls, guarded(deps.onProgress));
+  const r = await deps.sponsor.send(p.account, calls, guarded(deps.onProgress), nonce);
   if (!r.success) throw revertOf(r.reason);
   const v = await confirm(deps.reader, p.vaultId, owner, p.blob);
   notify(deps.onProgress, 'confirmed');
@@ -309,11 +325,11 @@ export async function updateVaultOnChain(
 
 /** Atomic add-key: addOwnerPublicKey (self) + addLocators + updateVault in one executeBatch. */
 export async function addKeyOnChain(
-  p: { account: SmartAccount; vaultId: Hex; blob: Uint8Array; base: Uint8Array; newLocator: Hex; newPublicKey: Hex; keyCountBefore: number },
+  p: { account: SmartAccount; vaultId: Hex; blob: Uint8Array; base: Uint8Array; nonce?: bigint | undefined; newLocator: Hex; newPublicKey: Hex; keyCountBefore: number },
   deps: WriteDeps,
 ): Promise<Omit<WriteResult, 'locators'>> {
-  await assertCurrent(deps.reader, p.vaultId, p.base);
   const owner = await p.account.getAddress();
+  const nonce = await assertCurrent(deps, { vaultId: p.vaultId, base: p.base, owner, nonce: p.nonce });
   // The new owner will land at nextOwnerIndex; the new blob entry at keyCountBefore. They must match, or
   // owner index == entry index (design D2) breaks and later signatures would use the wrong owner.
   const next = (await deps.client.readContract({ address: owner, abi: smartWalletAbi, functionName: 'nextOwnerIndex' })) as bigint;
@@ -327,7 +343,7 @@ export async function addKeyOnChain(
   ];
   await preflight(deps.client, owner, calls);
   await deps.onSign?.();
-  const r = await deps.sponsor.send(p.account, calls, guarded(deps.onProgress));
+  const r = await deps.sponsor.send(p.account, calls, guarded(deps.onProgress), nonce);
   if (!r.success) throw revertOf(r.reason);
   const v = await confirm(deps.reader, p.vaultId, owner, p.blob);
   notify(deps.onProgress, 'confirmed');

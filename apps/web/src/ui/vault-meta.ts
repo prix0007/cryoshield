@@ -54,6 +54,7 @@ export async function archiveAndClear(ops: WritePath, svc: Services, s: VaultSes
     payload = r.payload;
     return r.blob;
   }, onSign, onProgress);
-  return ops.withPayload(s, payload!, res, blob);
+  if (!payload) throw new WriteError('NOT_CONFIRMED'); // unreachable: the build step always sets it
+  return ops.withPayload(s, payload, res, blob);
 }
 

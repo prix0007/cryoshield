@@ -1,7 +1,7 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { detectPrfSupport, rpIdAllowed } from '../webauthn';
 import { CreateFlow } from './CreateFlow';
-import { ChunkBoundary, Notice } from './components';
+import { ChunkFailed, Notice, useLazyModule } from './components';
 import type { MirrorItem, MirrorResult, VaultSession } from './operations';
 import { isArweaveId } from '../config/networks';
 import { ServicesProvider, testnetName, useServices, type Services } from './services';
@@ -16,7 +16,7 @@ import { VaultView } from './VaultView';
 import { Btn, MotionRoot, ScreenTransition, useDirection } from './motionkit';
 
 /** vault-list-labels-archive D5: the vault list (and the Edit vault sheet) are one lazily loaded chunk. */
-const VaultsMenu = lazy(() => import('./VaultsMenu'));
+const loadMenu = () => import('./VaultsMenu');
 
 type Screen =
   | { name: 'home' }
@@ -95,7 +95,13 @@ function Shell() {
     else setScreen({ name: 'vaults', mode: 'picker' });
   };
   // D6: one more key ceremony; its vaults are merged by vault ID, never duplicated, and nothing is stored.
+  // D8: the nonce read when a vault opens; a later write (which sets its own) is never overwritten.
+  const pinNonce = useCallback(
+    (vaultId: string, n: bigint) => setVaults((vs) => vs.map((v) => (v.registry === 'v2' && v.vaultId === vaultId && v.nonce === undefined ? { ...v, nonce: n } : v))),
+    [],
+  );
   const history = useMemo(() => ({ rpc: svc.client, keccak256: (b: Uint8Array) => keccak256(b), registries: { v1: config.registryV1, v2: config.registryV2 } }), [svc.client]);
+  const menu = useLazyModule(loadMenu, screen.name === 'vaults');
   const vaultsRef = useRef(vaults);
   vaultsRef.current = vaults;
   const checkAnother = async (): Promise<string | null> => {
@@ -180,9 +186,14 @@ function Shell() {
             <UnlockFlow onUnlocked={onUnlocked} onCreate={() => setScreen({ name: 'create' })} onCancel={() => setScreen({ name: 'home' })} />
           )}
           {screen.name === 'vaults' && unlocked && (
-            <ChunkBoundary fallback={<Notice kind="error">{S.save.loadFailed}</Notice>}>
-              <Suspense fallback={<p className="hint" role="status">{S.vault.loadingList}</p>}>
-                <VaultsMenu
+            menu.failed ? (
+              <ChunkFailed
+                onRetry={menu.retry}
+                back={session ? { label: S.back, onClick: () => setScreen({ name: 'vault', fresh: false }) } : undefined}
+                onLock={lock}
+              />
+            ) : menu.mod ? (
+              <menu.mod.default
                   mode={screen.mode}
                   vaults={vaults}
                   onOpen={(v) => open(v)}
@@ -191,8 +202,11 @@ function Shell() {
                   history={history}
                   onBack={screen.mode === 'menu' && session ? () => setScreen({ name: 'vault', fresh: false }) : lock}
                 />
-              </Suspense>
-            </ChunkBoundary>
+            ) : (
+              <p className="hint" role="status">
+                {S.vault.loadingList}
+              </p>
+            )
           )}
           {screen.name === 'vault' && session && (
             <VaultView
@@ -205,6 +219,7 @@ function Shell() {
               onLock={lock}
               vaultCount={vaults.length}
               onAllVaults={() => setScreen({ name: 'vaults', mode: 'menu' })}
+              onNonce={pinNonce}
               mirrorItem={mirrorItems[vaultKey(session.registry, session.vaultId)]}
               onMirror={(version, r) => recordMirror(vaultKey(session.registry, session.vaultId), version, r)}
             />
