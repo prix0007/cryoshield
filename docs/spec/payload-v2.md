@@ -37,7 +37,8 @@ The vectors write it as `decoded: {"version", "name", "archived", "items": [{"l"
 ## 3. Wire format
 
 The payload is UTF-8 JSON (RFC 8259): one object. Writers emit no whitespace outside strings (section 5).
-Payloads are at most `maxPayloadBytes` (under 1024 bytes, vault-format-v1), so every vector is within that.
+Payloads are at most `maxPayloadBytes` (under 1024 bytes, vault-format-v1). Decoders still handle longer input
+safely: the `nesting-*-depth-900` vectors are longer on purpose.
 
 **v1** (exactly these members, in this order):
 
@@ -93,9 +94,18 @@ refuses, and the vault itself is not changed.
 | U+0000 to U+001F | C0 controls (includes tab, newline, carriage return) |
 | U+007F | DEL (assumption A1; see design.md, "Assumptions recorded at task 1.1") |
 | U+0080 to U+009F | C1 controls |
+| U+061C | ARABIC LETTER MARK (ALM), an invisible direction mark |
+| U+200E, U+200F | LEFT-TO-RIGHT and RIGHT-TO-LEFT MARK (LRM, RLM), invisible direction marks |
 | U+2028, U+2029 | line and paragraph separators |
 | U+202A to U+202E | bidi embeddings and overrides (LRE, RLE, PDF, LRO, RLO) |
 | U+2066 to U+2069 | bidi isolates (LRI, RLI, FSI, PDI) |
+| U+206A to U+206F | deprecated format controls (ISS, ASS, IAFS, AAFS, NADS, NODS) |
+
+**Why:** the name is shown above the secrets and in the vault list, often next to other text. Invisible
+direction marks and format controls can reorder or disguise what the user sees (for example, make "Work" look
+like another vault's name) without any visible character. They have no use in a 40-character vault name. ZERO
+WIDTH JOINER (U+200D) and ZERO WIDTH NON-JOINER (U+200C) stay allowed, because emoji sequences and several
+scripts need them. Boundary vectors: `v2-name-boundary-*` (allowed) and `n-*` (refused).
 
 Code points are counted after JSON unescaping: `"\ud83d\ude00"` would be one code point, but that escaped
 form is not canonical anyway (section 5). Names are not normalised (NFC or otherwise) and not trimmed: the
@@ -148,25 +158,31 @@ result.
 | `UNKNOWN_VERSION` | Written by a newer CryoShield | "This vault was made by a newer version of CryoShield", and nothing else | The raw text, after the usual confirmation, with a "newer version" note |
 | `MALFORMED` | Anything else that isn't a valid v1 or v2 payload | Nothing | The raw text, after the usual confirmation |
 
-Run these steps in order; the first that fails decides the class. Steps 1 to 4 are the deployed v1 decoder
-(`apps/web/src/vault/payload.ts`, `decodePayload`, at commit `f2ce3da`), with `v` = 2 added as a known version.
+Run these steps in order; the first that fails decides the class. Steps 1, 3, 4 and 5 (7.1) are the deployed v1
+decoder (`apps/web/src/vault/payload.ts`, `decodePayload`, at commit `f2ce3da`), with `v` = 2 added as a known
+version. Step 2 adds a nesting limit that no valid payload reaches.
 
 1. **UTF-8.** Decode the bytes as strict UTF-8, refusing ill-formed input (overlong forms, surrogates,
    truncated sequences, `0xFF`): `MALFORMED`. Then strip exactly one leading U+FEFF, as `TextDecoder` does by
    default. Python: `data.decode("utf-8")`, then drop one leading `"\ufeff"`.
-2. **Parse** the text with `JSON.parse` semantics: RFC 8259 JSON; whitespace allowed; for **duplicate member
+2. **Nesting depth.** Before parsing, scan the text and count the arrays and objects that are open at the same
+   time, ignoring brackets inside strings (a backslash inside a string escapes the next character). If the
+   count is ever more than **64**, the result is `MALFORMED`, whatever `v` says. This keeps Python's
+   recursive parser and `JSON.parse` in agreement on any input. No valid v1 or v2 payload is deeper than 3,
+   so this refuses nothing that opens today. Vectors: `nesting-v3-depth-64` (`UNKNOWN_VERSION`),
+   `nesting-v3-depth-65`, `nesting-*-depth-900`.
+3. **Parse** the text with `JSON.parse` semantics: RFC 8259 JSON; whitespace allowed; for **duplicate member
    names, the last one wins**. Python's `json.loads` does the same by default: do **not** add a
    duplicate-rejecting `object_pairs_hook`, or v1 decoding would become stricter than today. Refuse
-   `NaN`/`Infinity` (Python: `parse_constant`). Failure: `MALFORMED`. Nesting MUST NOT crash the decoder: a
-   recursion error is `MALFORMED`.
-3. **Version.** The top level MUST be an object whose `v` member is a JSON number. In Python, `type(v) in
+   `NaN`/`Infinity` (Python: `parse_constant`). Failure: `MALFORMED`.
+4. **Version.** The top level MUST be an object whose `v` member is a JSON number. In Python, `type(v) in
    (int, float)`; this excludes `True`, which Python treats as equal to 1. Otherwise: `MALFORMED`. If `v`
    equals 1 (as a number: `1`, `1.0` and `1e0` all count), go to 7.1. If it equals 2, go to 7.2. Any other
    number (`0`, `-1`, `2.5`, `3`, wherever `v` sits in the object): `UNKNOWN_VERSION`.
 
 ### 7.1 v1: the deployed rules, unchanged
 
-4. The object has exactly two members, `v` and `items`, in any order. `items` is a non-empty array. Each item
+5. The object has exactly two members, `v` and `items`, in any order. `items` is a non-empty array. Each item
    is an object with exactly two members, `l` and `s`, in any order, both strings, with `l` at most 64 code
    points; an unpaired surrogate counts as one. Otherwise: `MALFORMED`.
 
@@ -177,15 +193,15 @@ wins) and one leading BOM are all accepted, as they are today. Vectors: every `v
 
 ### 7.2 v2: strict and canonical (D3)
 
-4. **Validate** the structure against sections 3 and 4:
+5. **Validate** the structure against sections 3 and 4:
    - only the members `v`, `n`, `a`, `items` and `z` appear, and `items` is present;
    - `a`, when present, is the boolean `true` (in Python, `type(a) is bool and a is True`, because `1 == True`);
    - `n`, items, labels, secrets and `z` follow their rules;
    - every string is well-formed (section 4.1).
-5. **Re-encode and compare.** Encode the validated `VaultPayload` canonically (section 5), with `"v":2`, and
+6. **Re-encode and compare.** Encode the validated `VaultPayload` canonically (section 5), with `"v":2`, and
    compare the result with the **input bytes** (not with the decoded text). Any difference is `MALFORMED`.
 
-Step 5 is what makes the TypeScript and Python decoders agree on v2. It rejects whitespace, reordered members,
+Step 6 is what makes the TypeScript and Python decoders agree on v2. It rejects whitespace, reordered members,
 non-canonical escapes (`\/`, `\u0041`, `\u001F`, `\u000a`, `\u00e9`, escaped surrogate pairs), number
 spellings (`2.0`, `2e0`), duplicate members (which the parser merged), and a leading BOM (which step 1
 stripped from the text, but not from the bytes).
@@ -201,25 +217,33 @@ v1 stricter than the deployed decoder.
 ## 8. Archive and clear (D4)
 
 Archive and clear replaces the payload with one that keeps the name, sets `a`, holds no items, and is padded
-with `z` so that the payload, and therefore the blob, does not shrink. Inputs: the previous decrypted payload
-bytes `prev` (length `P`), and `maxPayloadBytes` for the vault's keys.
+with `z` so that the blob keeps its length. Inputs: the previous decrypted payload bytes `prev` (length `P`),
+and `maxPayloadBytes` for the vault's keys.
+
+**Precondition:** `maxPayloadBytes` = `64k - 2` for some whole number `k`. vault-format-v1 always produces such
+a value (`floor(avail / 64) * 64 - 2`), so the capacity is the end of a 64-byte padding block. Let
+`B(n) = 64 * ceil((n + 2) / 64) - 2` be the largest payload length in the same block as a payload of `n`
+bytes. Then `P <= maxPayloadBytes` implies `B(P) <= maxPayloadBytes`.
 
 1. Decode `prev` (section 7). It MUST be a valid v1 or v2 payload. Take its `name`.
-2. Let `base` = the canonical v2 encoding of `{name, archived: true, items: [], pad: null}`, and `C0 = len(base)`.
-   `z` adds `len(',"z":"') + len('"') = 7` bytes plus one byte for each `0`.
+2. Let `base` be the canonical v2 encoding of `{name, archived: true, items: [], pad: null}`, and `C0 = len(base)`.
+   `z` adds `len(',"z":"') + len('"') = 7` bytes, plus one byte for each `0`.
 3. Choose `z`:
-   - **Exact.** If `P - C0 - 7 >= 1`, then `z` = `P - C0 - 7` zeros. The new payload is exactly `P` bytes.
+   - **Exact.** If `P - C0 - 7 >= 1`, then `z` is `P - C0 - 7` zeros, and the new payload is exactly `P`
+     bytes.
    - **Tiny vault, no padding** (the rule recorded in design D4). If `C0 >= P`, write no `z`. The payload
-     is `C0 >= P` bytes.
-   - **Tiny vault, gap.** Otherwise (`C0 < P < C0 + 8`, which happens only when the previous items held
-     a few bytes), `z` = one `0`, and the payload is `C0 + 8` bytes, a few bytes longer than `P`. If
-     `C0 + 8 > maxPayloadBytes`, write no `z` instead. In that case `C0` and `P` lie in the same 64-byte
-     padding block, so the blob length is still unchanged (vector `clear-gap-at-capacity`).
-4. If the result is longer than `maxPayloadBytes`, refuse (vault too large). The D11 reserve makes this
-   impossible for vaults written under it.
+     is `C0` bytes, which is at least `P`.
+   - **Tiny vault, gap.** Otherwise `C0 < P < C0 + 8`, which happens only when the previous items held a few
+     bytes. If `C0 + 8 <= B(P)`, `z` is one `0`: the payload is `C0 + 8` bytes, a few more than `P`, but in
+     the same block (vector `clear-tiny-gap`). If not, write no `z`. `C0 > B(P) - 8` then puts `C0` in the
+     same block as `P` (vectors `clear-gap-block-boundary` and `clear-gap-at-capacity`; the rule before
+     review L1 added a `z` there and grew the blob by a block).
+4. If the result is longer than `maxPayloadBytes`, refuse (vault too large). Only the "no padding" case can
+   reach this. The D11 reserve makes it impossible for vaults written under that reserve.
 
-In every case the new blob is at least as long as the previous blob (vault-format-v1 pads the payload to
-64-byte blocks), and never longer than the capacity allows. Vectors: `archiveClear` cases, and blob vectors
+**Result:** the blob never shrinks. In the exact and gap cases its length is unchanged. It grows only in
+the "no padding" case, when the cleared payload without `z` is itself longer than the previous payload and
+crosses into the next block (archiving adds `"a":true`). Vectors: the `archiveClear` cases, and blob vectors
 `blob-clear-before` and `blob-clear-after`, which have equal lengths.
 
 Archive and clear does not erase anything. Earlier blobs stay in chain history and on Arweave, and anyone with

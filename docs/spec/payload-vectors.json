@@ -353,6 +353,177 @@
       "canonicalHex": "7b2276223a322c226e223a224d79205c226d61696e5c22205c5c207661756c74222c226974656d73223a5b7b226c223a22426974636f696e2073656564222c2273223a226162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e2061626f7574227d5d7d"
     },
     {
+      "id": "v2-name-boundary-0020",
+      "description": "Name boundary: U+0020 SPACE, first code point after C0 is allowed.",
+      "hex": "7b2276223a322c226e223a22612062222c226974656d73223a5b7b226c223a22426974636f696e2073656564222c2273223a226162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e2061626f7574227d5d7d",
+      "text": "{\"v\":2,\"n\":\"a b\",\"items\":[{\"l\":\"Bitcoin seed\",\"s\":\"abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about\"}]}",
+      "decoded": {
+        "version": 2,
+        "name": "a b",
+        "archived": false,
+        "items": [
+          {
+            "l": "Bitcoin seed",
+            "s": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+          }
+        ],
+        "pad": null
+      },
+      "canonicalHex": "7b2276223a322c226e223a22612062222c226974656d73223a5b7b226c223a22426974636f696e2073656564222c2273223a226162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e2061626f7574227d5d7d"
+    },
+    {
+      "id": "v2-name-boundary-00a0",
+      "description": "Name boundary: U+00A0 NO-BREAK SPACE, first after C1 is allowed.",
+      "hex": "7b2276223a322c226e223a2261c2a062222c226974656d73223a5b7b226c223a22426974636f696e2073656564222c2273223a226162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e2061626f7574227d5d7d",
+      "text": "{\"v\":2,\"n\":\"a\u00a0b\",\"items\":[{\"l\":\"Bitcoin seed\",\"s\":\"abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about\"}]}",
+      "decoded": {
+        "version": 2,
+        "name": "a\u00a0b",
+        "archived": false,
+        "items": [
+          {
+            "l": "Bitcoin seed",
+            "s": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+          }
+        ],
+        "pad": null
+      },
+      "canonicalHex": "7b2276223a322c226e223a2261c2a062222c226974656d73223a5b7b226c223a22426974636f696e2073656564222c2273223a226162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e2061626f7574227d5d7d"
+    },
+    {
+      "id": "v2-name-boundary-2027",
+      "description": "Name boundary: U+2027 HYPHENATION POINT, just below U+2028 is allowed.",
+      "hex": "7b2276223a322c226e223a2261e280a762222c226974656d73223a5b7b226c223a22426974636f696e2073656564222c2273223a226162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e2061626f7574227d5d7d",
+      "text": "{\"v\":2,\"n\":\"a\u2027b\",\"items\":[{\"l\":\"Bitcoin seed\",\"s\":\"abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about\"}]}",
+      "decoded": {
+        "version": 2,
+        "name": "a\u2027b",
+        "archived": false,
+        "items": [
+          {
+            "l": "Bitcoin seed",
+            "s": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+          }
+        ],
+        "pad": null
+      },
+      "canonicalHex": "7b2276223a322c226e223a2261e280a762222c226974656d73223a5b7b226c223a22426974636f696e2073656564222c2273223a226162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e2061626f7574227d5d7d"
+    },
+    {
+      "id": "v2-name-boundary-202f",
+      "description": "Name boundary: U+202F NARROW NO-BREAK SPACE, just above U+202E is allowed.",
+      "hex": "7b2276223a322c226e223a2261e280af62222c226974656d73223a5b7b226c223a22426974636f696e2073656564222c2273223a226162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e2061626f7574227d5d7d",
+      "text": "{\"v\":2,\"n\":\"a\u202fb\",\"items\":[{\"l\":\"Bitcoin seed\",\"s\":\"abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about\"}]}",
+      "decoded": {
+        "version": 2,
+        "name": "a\u202fb",
+        "archived": false,
+        "items": [
+          {
+            "l": "Bitcoin seed",
+            "s": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+          }
+        ],
+        "pad": null
+      },
+      "canonicalHex": "7b2276223a322c226e223a2261e280af62222c226974656d73223a5b7b226c223a22426974636f696e2073656564222c2273223a226162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e2061626f7574227d5d7d"
+    },
+    {
+      "id": "v2-name-boundary-2065",
+      "description": "Name boundary: U+2065 unassigned, just below U+2066 is allowed.",
+      "hex": "7b2276223a322c226e223a2261e281a562222c226974656d73223a5b7b226c223a22426974636f696e2073656564222c2273223a226162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e2061626f7574227d5d7d",
+      "text": "{\"v\":2,\"n\":\"a\u2065b\",\"items\":[{\"l\":\"Bitcoin seed\",\"s\":\"abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about\"}]}",
+      "decoded": {
+        "version": 2,
+        "name": "a\u2065b",
+        "archived": false,
+        "items": [
+          {
+            "l": "Bitcoin seed",
+            "s": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+          }
+        ],
+        "pad": null
+      },
+      "canonicalHex": "7b2276223a322c226e223a2261e281a562222c226974656d73223a5b7b226c223a22426974636f696e2073656564222c2273223a226162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e2061626f7574227d5d7d"
+    },
+    {
+      "id": "v2-name-boundary-2070",
+      "description": "Name boundary: U+2070 SUPERSCRIPT ZERO, just above U+206F is allowed.",
+      "hex": "7b2276223a322c226e223a2261e281b062222c226974656d73223a5b7b226c223a22426974636f696e2073656564222c2273223a226162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e2061626f7574227d5d7d",
+      "text": "{\"v\":2,\"n\":\"a\u2070b\",\"items\":[{\"l\":\"Bitcoin seed\",\"s\":\"abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about\"}]}",
+      "decoded": {
+        "version": 2,
+        "name": "a\u2070b",
+        "archived": false,
+        "items": [
+          {
+            "l": "Bitcoin seed",
+            "s": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+          }
+        ],
+        "pad": null
+      },
+      "canonicalHex": "7b2276223a322c226e223a2261e281b062222c226974656d73223a5b7b226c223a22426974636f696e2073656564222c2273223a226162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e2061626f7574227d5d7d"
+    },
+    {
+      "id": "v2-name-boundary-200d",
+      "description": "Name boundary: U+200D ZERO WIDTH JOINER, kept for emoji is allowed.",
+      "hex": "7b2276223a322c226e223a2261e2808d62222c226974656d73223a5b7b226c223a22426974636f696e2073656564222c2273223a226162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e2061626f7574227d5d7d",
+      "text": "{\"v\":2,\"n\":\"a\u200db\",\"items\":[{\"l\":\"Bitcoin seed\",\"s\":\"abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about\"}]}",
+      "decoded": {
+        "version": 2,
+        "name": "a\u200db",
+        "archived": false,
+        "items": [
+          {
+            "l": "Bitcoin seed",
+            "s": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+          }
+        ],
+        "pad": null
+      },
+      "canonicalHex": "7b2276223a322c226e223a2261e2808d62222c226974656d73223a5b7b226c223a22426974636f696e2073656564222c2273223a226162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e2061626f7574227d5d7d"
+    },
+    {
+      "id": "v2-name-boundary-061b",
+      "description": "Name boundary: U+061B ARABIC SEMICOLON, just below U+061C is allowed.",
+      "hex": "7b2276223a322c226e223a2261d89b62222c226974656d73223a5b7b226c223a22426974636f696e2073656564222c2273223a226162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e2061626f7574227d5d7d",
+      "text": "{\"v\":2,\"n\":\"a\u061bb\",\"items\":[{\"l\":\"Bitcoin seed\",\"s\":\"abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about\"}]}",
+      "decoded": {
+        "version": 2,
+        "name": "a\u061bb",
+        "archived": false,
+        "items": [
+          {
+            "l": "Bitcoin seed",
+            "s": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+          }
+        ],
+        "pad": null
+      },
+      "canonicalHex": "7b2276223a322c226e223a2261d89b62222c226974656d73223a5b7b226c223a22426974636f696e2073656564222c2273223a226162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e2061626f7574227d5d7d"
+    },
+    {
+      "id": "v2-name-boundary-200c",
+      "description": "Name boundary: U+200C ZERO WIDTH NON-JOINER, just below U+200D is allowed.",
+      "hex": "7b2276223a322c226e223a2261e2808c62222c226974656d73223a5b7b226c223a22426974636f696e2073656564222c2273223a226162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e2061626f7574227d5d7d",
+      "text": "{\"v\":2,\"n\":\"a\u200cb\",\"items\":[{\"l\":\"Bitcoin seed\",\"s\":\"abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about\"}]}",
+      "decoded": {
+        "version": 2,
+        "name": "a\u200cb",
+        "archived": false,
+        "items": [
+          {
+            "l": "Bitcoin seed",
+            "s": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+          }
+        ],
+        "pad": null
+      },
+      "canonicalHex": "7b2276223a322c226e223a2261e2808c62222c226974656d73223a5b7b226c223a22426974636f696e2073656564222c2273223a226162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e2061626f7574227d5d7d"
+    },
+    {
       "id": "v2-name-spaces",
       "description": "Leading and trailing spaces are kept as-is (no trimming in the codec).",
       "hex": "7b2276223a322c226e223a222073706163656420222c226974656d73223a5b7b226c223a22426974636f696e2073656564222c2273223a226162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e2061626f7574227d5d7d",
@@ -802,6 +973,14 @@
       "canonicalHex": "7b2276223a322c226974656d73223a5b7b226c223a2261222c2273223a2262227d5d7d"
     },
     {
+      "id": "dup-member-v-last-wins-unknown",
+      "description": "Duplicate v: the last one (3) wins, so it is a newer version.",
+      "hex": "7b2276223a322c2276223a332c226974656d73223a5b5d7d",
+      "text": "{\"v\":2,\"v\":3,\"items\":[]}",
+      "error": "UNKNOWN_VERSION",
+      "canonicalHex": null
+    },
+    {
       "id": "dup-member-v-last-wins",
       "description": "Duplicate v: the last one (2) wins, as in JSON.parse, so the strict v2 rules apply and reject it.",
       "hex": "7b2276223a332c2276223a322c226974656d73223a5b5d7d",
@@ -938,6 +1117,30 @@
       "canonicalHex": null
     },
     {
+      "id": "n-bidi-202b",
+      "description": "Name with U+202B RLE.",
+      "hex": "7b2276223a322c226e223a2261e280ab62222c226974656d73223a5b5d7d",
+      "text": "{\"v\":2,\"n\":\"a\u202bb\",\"items\":[]}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "n-bidi-202c",
+      "description": "Name with U+202C PDF.",
+      "hex": "7b2276223a322c226e223a2261e280ac62222c226974656d73223a5b5d7d",
+      "text": "{\"v\":2,\"n\":\"a\u202cb\",\"items\":[]}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "n-bidi-202d",
+      "description": "Name with U+202D LRO.",
+      "hex": "7b2276223a322c226e223a2261e280ad62222c226974656d73223a5b5d7d",
+      "text": "{\"v\":2,\"n\":\"a\u202db\",\"items\":[]}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
       "id": "n-bidi-202e",
       "description": "Name with U+202E RLO.",
       "hex": "7b2276223a322c226e223a2261e280ae62222c226974656d73223a5b5d7d",
@@ -954,10 +1157,90 @@
       "canonicalHex": null
     },
     {
+      "id": "n-bidi-2067",
+      "description": "Name with U+2067 RLI.",
+      "hex": "7b2276223a322c226e223a2261e281a762222c226974656d73223a5b5d7d",
+      "text": "{\"v\":2,\"n\":\"a\u2067b\",\"items\":[]}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "n-bidi-2068",
+      "description": "Name with U+2068 FSI.",
+      "hex": "7b2276223a322c226e223a2261e281a862222c226974656d73223a5b5d7d",
+      "text": "{\"v\":2,\"n\":\"a\u2068b\",\"items\":[]}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
       "id": "n-bidi-2069",
       "description": "Name with U+2069 PDI.",
       "hex": "7b2276223a322c226e223a2261e281a962222c226974656d73223a5b5d7d",
       "text": "{\"v\":2,\"n\":\"a\u2069b\",\"items\":[]}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "n-001f",
+      "description": "Name with U+001F (top of C0), escaped as JSON requires.",
+      "hex": "7b2276223a322c226e223a22615c753030316662222c226974656d73223a5b5d7d",
+      "text": "{\"v\":2,\"n\":\"a\\u001fb\",\"items\":[]}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "n-009f",
+      "description": "Name with U+009F (top of C1).",
+      "hex": "7b2276223a322c226e223a2261c29f62222c226974656d73223a5b5d7d",
+      "text": "{\"v\":2,\"n\":\"a\u009fb\",\"items\":[]}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "n-lrm-200e",
+      "description": "Name with U+200E LEFT-TO-RIGHT MARK (invisible direction control).",
+      "hex": "7b2276223a322c226e223a2261e2808e62222c226974656d73223a5b5d7d",
+      "text": "{\"v\":2,\"n\":\"a\u200eb\",\"items\":[]}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "n-rlm-200f",
+      "description": "Name with U+200F RIGHT-TO-LEFT MARK.",
+      "hex": "7b2276223a322c226e223a2261e2808f62222c226974656d73223a5b5d7d",
+      "text": "{\"v\":2,\"n\":\"a\u200fb\",\"items\":[]}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "n-alm-061c",
+      "description": "Name with U+061C ARABIC LETTER MARK.",
+      "hex": "7b2276223a322c226e223a2261d89c62222c226974656d73223a5b5d7d",
+      "text": "{\"v\":2,\"n\":\"a\u061cb\",\"items\":[]}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "n-206a",
+      "description": "Name with U+206A INHIBIT SYMMETRIC SWAPPING (deprecated format control).",
+      "hex": "7b2276223a322c226e223a2261e281aa62222c226974656d73223a5b5d7d",
+      "text": "{\"v\":2,\"n\":\"a\u206ab\",\"items\":[]}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "n-206c",
+      "description": "Name with U+206C INHIBIT ARABIC FORM SHAPING.",
+      "hex": "7b2276223a322c226e223a2261e281ac62222c226974656d73223a5b5d7d",
+      "text": "{\"v\":2,\"n\":\"a\u206cb\",\"items\":[]}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "n-206f",
+      "description": "Name with U+206F NOMINAL DIGIT SHAPES.",
+      "hex": "7b2276223a322c226e223a2261e281af62222c226974656d73223a5b5d7d",
+      "text": "{\"v\":2,\"n\":\"a\u206fb\",\"items\":[]}",
       "error": "MALFORMED",
       "canonicalHex": null
     },
@@ -1282,11 +1565,35 @@
       "canonicalHex": null
     },
     {
-      "id": "v-3-deep",
-      "description": "\"v\":3 with deeply nested unknown content.",
-      "hex": "7b2276223a332c2278223a5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d7d",
-      "text": "{\"v\":3,\"x\":[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]}",
+      "id": "nesting-v3-depth-64",
+      "description": "\"v\":3 with nesting depth exactly 64: the version decides.",
+      "hex": "7b2276223a332c2278223a5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d7d",
+      "text": "{\"v\":3,\"x\":[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]}",
       "error": "UNKNOWN_VERSION",
+      "canonicalHex": null
+    },
+    {
+      "id": "nesting-v3-depth-65",
+      "description": "\"v\":3 with nesting depth 65: MALFORMED before the version is read.",
+      "hex": "7b2276223a332c2278223a5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d7d",
+      "text": "{\"v\":3,\"x\":[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "nesting-v3-depth-900",
+      "description": "\"v\":3 with nesting depth 900 (longer than any payload; must not crash).",
+      "hex": "7b2276223a332c2278223a5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d7d",
+      "text": "{\"v\":3,\"x\":[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "nesting-brackets-in-string",
+      "description": "Brackets inside a string do not count (depth 3), but the v1 label has 65 code points.",
+      "hex": "7b2276223a312c226974656d73223a5b7b226c223a225b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b222c2273223a2262227d5d7d",
+      "text": "{\"v\":1,\"items\":[{\"l\":\"[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[\",\"s\":\"b\"}]}",
+      "error": "MALFORMED",
       "canonicalHex": null
     },
     {
@@ -1443,9 +1750,81 @@
     },
     {
       "id": "deep-nesting",
-      "description": "A deeply nested secret (must be rejected, never crash; within the 1022-byte limit).",
+      "description": "A secret nested 400 deep (within the 1022-byte limit).",
       "hex": "7b2276223a312c226974656d73223a5b7b226c223a2261222c2273223a5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d7d5d7d",
       "text": "{\"v\":1,\"items\":[{\"l\":\"a\",\"s\":[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]}]}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "nesting-v1-depth-65",
+      "description": "A v1 secret nested to depth 65.",
+      "hex": "7b2276223a312c226974656d73223a5b7b226c223a2261222c2273223a5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d7d5d7d",
+      "text": "{\"v\":1,\"items\":[{\"l\":\"a\",\"s\":[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]}]}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "nesting-v1-depth-900",
+      "description": "A v1 secret nested to depth 900.",
+      "hex": "7b2276223a312c226974656d73223a5b7b226c223a2261222c2273223a5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d7d5d7d",
+      "text": "{\"v\":1,\"items\":[{\"l\":\"a\",\"s\":[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]}]}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "v2-label-65-code-points",
+      "description": "v2 label of 65 ASCII code points.",
+      "hex": "7b2276223a322c226974656d73223a5b7b226c223a227878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878222c2273223a2262227d5d7d",
+      "text": "{\"v\":2,\"items\":[{\"l\":\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\",\"s\":\"b\"}]}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "v2-label-65-code-points-non-bmp",
+      "description": "v2 label of 65 four-byte code points.",
+      "hex": "7b2276223a322c226974656d73223a5b7b226c223a22f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491222c2273223a2262227d5d7d",
+      "text": "{\"v\":2,\"items\":[{\"l\":\"\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\",\"s\":\"b\"}]}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "v2-label-lone-surrogate",
+      "description": "v2 label with an escaped lone surrogate.",
+      "hex": "7b2276223a322c226974656d73223a5b7b226c223a22615c7564383030222c2273223a2262227d5d7d",
+      "text": "{\"v\":2,\"items\":[{\"l\":\"a\\ud800\",\"s\":\"b\"}]}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "v2-label-number",
+      "description": "v2 non-string label.",
+      "hex": "7b2276223a322c226974656d73223a5b7b226c223a312c2273223a2262227d5d7d",
+      "text": "{\"v\":2,\"items\":[{\"l\":1,\"s\":\"b\"}]}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "v2-secret-null",
+      "description": "v2 null s.",
+      "hex": "7b2276223a322c226974656d73223a5b7b226c223a2261222c2273223a6e756c6c7d5d7d",
+      "text": "{\"v\":2,\"items\":[{\"l\":\"a\",\"s\":null}]}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "v2-item-missing-s",
+      "description": "v2 item without s.",
+      "hex": "7b2276223a322c226974656d73223a5b7b226c223a2261227d5d7d",
+      "text": "{\"v\":2,\"items\":[{\"l\":\"a\"}]}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "v2-extra-member-item",
+      "description": "v2 item with an extra member.",
+      "hex": "7b2276223a322c226974656d73223a5b7b226c223a2261222c2273223a2262222c2274223a2263227d5d7d",
+      "text": "{\"v\":2,\"items\":[{\"l\":\"a\",\"s\":\"b\",\"t\":\"c\"}]}",
       "error": "MALFORMED",
       "canonicalHex": null
     }
@@ -1657,7 +2036,7 @@
     },
     {
       "id": "clear-tiny-gap",
-      "description": "Tiny v1 vault, C0 < previous < C0 + 8: z of one 0, so the payload is slightly longer, never shorter.",
+      "description": "Tiny v1 vault, C0 < previous < C0 + 8: z of one 0 fits in the previous block, so the payload is slightly longer and the blob length is unchanged.",
       "rule": "gap-one-zero",
       "previousHex": "7b2276223a312c226974656d73223a5b7b226c223a22222c2273223a22227d5d7d",
       "previousLength": 33,
@@ -1695,9 +2074,22 @@
       "expectedPadLength": 0
     },
     {
+      "id": "clear-gap-block-boundary",
+      "description": "Previous payload fills its 64-byte block (62 bytes), C0 = 56: z of one 0 (64 bytes) would grow the blob by a block (the rule before review L1), so no z.",
+      "rule": "gap-block-boundary",
+      "previousHex": "7b2276223a322c226e223a224e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e222c226974656d73223a5b7b226c223a22222c2273223a22227d5d7d",
+      "previousLength": 62,
+      "maxPayloadBytes": 638,
+      "clearedWithoutPadLength": 56,
+      "expectedHex": "7b2276223a322c226e223a224e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e222c2261223a747275652c226974656d73223a5b5d7d",
+      "expectedText": "{\"v\":2,\"n\":\"NNNNNNNNNNNNNNNNNNNNNN\",\"a\":true,\"items\":[]}",
+      "expectedLength": 56,
+      "expectedPadLength": 0
+    },
+    {
       "id": "clear-gap-at-capacity",
-      "description": "Hypothetical 62-byte capacity, previous at capacity: C0 + 8 does not fit, so no z; the padded length is unchanged.",
-      "rule": "gap-no-room",
+      "description": "Same payload in a vault whose capacity is 62 bytes: no z, the blob length is unchanged.",
+      "rule": "gap-block-boundary",
       "previousHex": "7b2276223a322c226e223a224e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e222c226974656d73223a5b7b226c223a22222c2273223a22227d5d7d",
       "previousLength": 62,
       "maxPayloadBytes": 62,

@@ -40,10 +40,12 @@ MALFORMED = "MALFORMED"
 UNKNOWN_VERSION = "UNKNOWN_VERSION"
 MAX_LABEL_CPS = 64
 MAX_NAME_CPS = 40
-# C0, DEL, C1, U+2028/U+2029, bidi embeddings/overrides U+202A-202E, isolates U+2066-2069 (spec 4.3).
+MAX_DEPTH = 64  # deeper JSON nesting is MALFORMED (spec 7, step 2)
+# Spec 4.3: C0, DEL, C1, ALM U+061C, LRM/RLM U+200E-200F, U+2028/U+2029, bidi embeddings/overrides U+202A-202E,
+# isolates U+2066-2069 and the deprecated format controls U+206A-206F. ZWJ U+200D stays allowed (emoji).
 FORBIDDEN_NAME_CPS = frozenset(
-    list(range(0x00, 0x20)) + [0x7F] + list(range(0x80, 0xA0)) + [0x2028, 0x2029]
-    + list(range(0x202A, 0x202F)) + list(range(0x2066, 0x206A))
+    list(range(0x00, 0x20)) + [0x7F] + list(range(0x80, 0xA0)) + [0x061C, 0x200E, 0x200F, 0x2028, 0x2029]
+    + list(range(0x202A, 0x202F)) + list(range(0x2066, 0x2070))
 )
 LONE_SURROGATE = re.compile("[\ud800-\udfff]")
 
@@ -130,6 +132,28 @@ def write(name: str | None, archived: bool, items: list[dict], pad: str | None) 
     return encode({"version": 1 if v1 else 2, "name": name, "archived": archived, "items": items, "pad": pad})
 
 
+def nesting_depth(text: str) -> int:
+    """Maximum number of simultaneously open arrays and objects, counted outside strings (spec 7, step 2)."""
+    depth = deepest = 0
+    in_string = escaped = False
+    for c in text:
+        if in_string:
+            if escaped:
+                escaped = False
+            elif c == "\\":
+                escaped = True
+            elif c == '"':
+                in_string = False
+        elif c == '"':
+            in_string = True
+        elif c in "[{":
+            depth += 1
+            deepest = max(deepest, depth)
+        elif c in "]}":
+            depth -= 1
+    return deepest
+
+
 def _reject_constant(_: str) -> Any:
     raise PayloadError(MALFORMED)
 
@@ -142,6 +166,8 @@ def decode(data: bytes) -> dict:
         raise PayloadError(MALFORMED) from None
     if text.startswith("\ufeff"):  # TextDecoder (fatal, BOM not ignored) strips exactly one BOM
         text = text[1:]
+    if nesting_depth(text) > MAX_DEPTH:  # before parsing: Python never recurses deeply, JS and Python agree
+        raise PayloadError(MALFORMED)
     try:
         # json.loads keeps the LAST of duplicate members, like JSON.parse. NaN/Infinity are not JSON.
         obj = json.loads(text, parse_constant=_reject_constant)
@@ -176,20 +202,26 @@ def decode(data: bytes) -> dict:
     return p
 
 
+def block_capacity(n: int) -> int:
+    """The largest payload length in the same 64-byte padding block as a payload of n bytes."""
+    return padded_len(n) - 2
+
+
 def clear(previous: bytes, max_payload_bytes: int) -> bytes:
-    """Archive and clear (design D4, spec section 8)."""
+    """Archive and clear (design D4, spec section 8). Precondition: maxPayloadBytes = 64k - 2."""
+    assert max_payload_bytes % 64 == 62, "maxPayloadBytes is always 64k - 2 (vault-format-v1)"
     prev = decode(previous)
     c0 = len(write(prev["name"], True, [], None))
     p_len = len(previous)
     k = p_len - c0 - 7  # len(',"z":""') == 7
     if k >= 1:
-        pad: str | None = "0" * k
+        pad: str | None = "0" * k  # exact: same length
     elif c0 >= p_len:
-        pad = None
-    elif c0 + 8 <= max_payload_bytes:
-        pad = "0"
+        pad = None  # tiny vault: the cleared payload is already at least as long
+    elif c0 + 8 <= block_capacity(p_len):
+        pad = "0"  # gap: one 0 keeps the payload in the previous block
     else:
-        pad = None
+        pad = None  # gap at a block boundary: no z, still the same block
     out = write(prev["name"], True, [], pad)
     if len(out) > max_payload_bytes:
         raise PayloadError("VAULT_TOO_LARGE")
@@ -283,6 +315,13 @@ def build() -> dict:
         v2("Cafe\u0301", items=ITEMS_SINGLE))
     pos("v2-name-quote-backslash", "Name with a quote and a backslash (escaped as \\\" and \\\\).",
         v2('My "main" \\ vault', items=ITEMS_SINGLE))
+    for cp, what in [(0x0020, "SPACE, first code point after C0"), (0x00A0, "NO-BREAK SPACE, first after C1"),
+                     (0x2027, "HYPHENATION POINT, just below U+2028"), (0x202F, "NARROW NO-BREAK SPACE, just above "
+                     "U+202E"), (0x2065, "unassigned, just below U+2066"), (0x2070, "SUPERSCRIPT ZERO, just above "
+                     "U+206F"), (0x200D, "ZERO WIDTH JOINER, kept for emoji"), (0x061B, "ARABIC SEMICOLON, just "
+                     "below U+061C"), (0x200C, "ZERO WIDTH NON-JOINER, just below U+200D")]:
+        pos(f"v2-name-boundary-{cp:04x}", f"Name boundary: U+{cp:04X} {what} is allowed.",
+            v2("a" + chr(cp) + "b", items=ITEMS_SINGLE))
     pos("v2-name-spaces", "Leading and trailing spaces are kept as-is (no trimming in the codec).",
         v2(" spaced ", items=ITEMS_SINGLE))
     pos("v2-escapes", "Canonical escapes in a secret: \\\" \\\\ \\n \\r \\t \\b \\f, \\u0000 and \\u001f "
@@ -340,6 +379,8 @@ def build() -> dict:
     neg("dup-member-v", "Duplicate v.", '{"v":2,"v":2,"items":[]}')
     neg("dup-member-items", "Duplicate items in v2.", '{"v":2,"items":' + I1 + ',"items":' + I1 + '}')
     neg("dup-member-in-item", "Duplicate l inside a v2 item.", '{"v":2,"items":[{"l":"a","l":"a","s":"b"}]}')
+    neg("dup-member-v-last-wins-unknown", "Duplicate v: the last one (3) wins, so it is a newer version.",
+        '{"v":2,"v":3,"items":[]}', UNKNOWN_VERSION)
     neg("dup-member-v-last-wins", "Duplicate v: the last one (2) wins, as in JSON.parse, so the strict v2 rules "
         "apply and reject it.", '{"v":3,"v":2,"items":[]}')
     neg("a-false", '"a":false (absent means active).', '{"v":2,"a":false,"items":[]}')
@@ -360,9 +401,24 @@ def build() -> dict:
     neg("n-2028", "Name with U+2028 LINE SEPARATOR.", '{"v":2,"n":"a\u2028b","items":[]}')
     neg("n-2029", "Name with U+2029 PARAGRAPH SEPARATOR.", '{"v":2,"n":"a\u2029b","items":[]}')
     neg("n-bidi-202a", "Name with U+202A LRE.", '{"v":2,"n":"a\u202ab","items":[]}')
+    neg("n-bidi-202b", "Name with U+202B RLE.", '{"v":2,"n":"a\u202bb","items":[]}')
+    neg("n-bidi-202c", "Name with U+202C PDF.", '{"v":2,"n":"a\u202cb","items":[]}')
+    neg("n-bidi-202d", "Name with U+202D LRO.", '{"v":2,"n":"a\u202db","items":[]}')
     neg("n-bidi-202e", "Name with U+202E RLO.", '{"v":2,"n":"a\u202eb","items":[]}')
     neg("n-bidi-2066", "Name with U+2066 LRI.", '{"v":2,"n":"a\u2066b","items":[]}')
+    neg("n-bidi-2067", "Name with U+2067 RLI.", '{"v":2,"n":"a\u2067b","items":[]}')
+    neg("n-bidi-2068", "Name with U+2068 FSI.", '{"v":2,"n":"a\u2068b","items":[]}')
     neg("n-bidi-2069", "Name with U+2069 PDI.", '{"v":2,"n":"a\u2069b","items":[]}')
+    neg("n-001f", "Name with U+001F (top of C0), escaped as JSON requires.", '{"v":2,"n":"a\\u001fb","items":[]}')
+    neg("n-009f", "Name with U+009F (top of C1).", '{"v":2,"n":"a\u009fb","items":[]}')
+    neg("n-lrm-200e", "Name with U+200E LEFT-TO-RIGHT MARK (invisible direction control).",
+        '{"v":2,"n":"a\u200eb","items":[]}')
+    neg("n-rlm-200f", "Name with U+200F RIGHT-TO-LEFT MARK.", '{"v":2,"n":"a\u200fb","items":[]}')
+    neg("n-alm-061c", "Name with U+061C ARABIC LETTER MARK.", '{"v":2,"n":"a\u061cb","items":[]}')
+    neg("n-206a", "Name with U+206A INHIBIT SYMMETRIC SWAPPING (deprecated format control).",
+        '{"v":2,"n":"a\u206ab","items":[]}')
+    neg("n-206c", "Name with U+206C INHIBIT ARABIC FORM SHAPING.", '{"v":2,"n":"a\u206cb","items":[]}')
+    neg("n-206f", "Name with U+206F NOMINAL DIGIT SHAPES.", '{"v":2,"n":"a\u206fb","items":[]}')
     neg("lone-surrogate-escaped", "Escaped lone high surrogate in a name (JSON.parse accepts it).",
         '{"v":2,"n":"a\\ud800","items":[]}')
     neg("lone-surrogate-escaped-low-in-secret", "Escaped lone low surrogate in a v2 secret.",
@@ -410,8 +466,14 @@ def build() -> dict:
     neg("v-3-not-first", '"v":3 anywhere in the object.', '{"items":[],"v":3}', UNKNOWN_VERSION)
     neg("v-3-whitespace", '"v":3 with whitespace.', '{ "v" : 3 }', UNKNOWN_VERSION)
     neg("v-3-float", '"v":3.0.', '{"v":3.0,"items":[]}', UNKNOWN_VERSION)
-    neg("v-3-deep", '"v":3 with deeply nested unknown content.',
-        '{"v":3,"x":' + "[" * 400 + "]" * 400 + "}", UNKNOWN_VERSION)
+    neg("nesting-v3-depth-64", '"v":3 with nesting depth exactly 64: the version decides.',
+        '{"v":3,"x":' + "[" * 63 + "]" * 63 + "}", UNKNOWN_VERSION)
+    neg("nesting-v3-depth-65", '"v":3 with nesting depth 65: MALFORMED before the version is read.',
+        '{"v":3,"x":' + "[" * 64 + "]" * 64 + "}")
+    neg("nesting-v3-depth-900", '"v":3 with nesting depth 900 (longer than any payload; must not crash).',
+        '{"v":3,"x":' + "[" * 899 + "]" * 899 + "}")
+    neg("nesting-brackets-in-string", "Brackets inside a string do not count (depth 3), but the v1 label has 65 "
+        "code points.", '{"v":1,"items":[{"l":"' + "[" * 65 + '","s":"b"}]}')
     neg("v-03", '"v":03 (leading zero, invalid JSON).', '{"v":03,"items":[]}')
     neg("z-non-zero", "z with a character other than 0.", '{"v":2,"a":true,"items":[],"z":"001"}')
     neg("z-empty", "Empty z.", '{"v":2,"a":true,"items":[],"z":""}')
@@ -431,8 +493,24 @@ def build() -> dict:
     neg("not-json", "Not JSON.", "abc")
     neg("nan", "NaN is not JSON (Python's json accepts it unless refused).", '{"v":NaN,"items":[]}')
     neg("trailing-garbage", "Bytes after the object.", '{"v":2,"items":[]}x')
-    neg("deep-nesting", "A deeply nested secret (must be rejected, never crash; within the 1022-byte limit).",
+    neg("deep-nesting", "A secret nested 400 deep (within the 1022-byte limit).",
         '{"v":1,"items":[{"l":"a","s":' + "[" * 400 + "]" * 400 + "}]}")
+    neg("nesting-v1-depth-65", "A v1 secret nested to depth 65.",
+        '{"v":1,"items":[{"l":"a","s":' + "[" * 62 + "]" * 62 + "}]}")
+    neg("nesting-v1-depth-900", "A v1 secret nested to depth 900.",
+        '{"v":1,"items":[{"l":"a","s":' + "[" * 897 + "]" * 897 + "}]}")
+
+    # v2 item-level rules (labels and secrets keep the v1 rules, plus well-formed Unicode)
+    neg("v2-label-65-code-points", "v2 label of 65 ASCII code points.",
+        '{"v":2,"items":[{"l":"' + "x" * 65 + '","s":"b"}]}')
+    neg("v2-label-65-code-points-non-bmp", "v2 label of 65 four-byte code points.",
+        '{"v":2,"items":[{"l":"' + "\U0001F511" * 65 + '","s":"b"}]}')
+    neg("v2-label-lone-surrogate", "v2 label with an escaped lone surrogate.",
+        '{"v":2,"items":[{"l":"a\\ud800","s":"b"}]}')
+    neg("v2-label-number", "v2 non-string label.", '{"v":2,"items":[{"l":1,"s":"b"}]}')
+    neg("v2-secret-null", "v2 null s.", '{"v":2,"items":[{"l":"a","s":null}]}')
+    neg("v2-item-missing-s", "v2 item without s.", '{"v":2,"items":[{"l":"a"}]}')
+    neg("v2-extra-member-item", "v2 item with an extra member.", '{"v":2,"items":[{"l":"a","s":"b","t":"c"}]}')
 
     # -------------------------------------------------------------- writer
     writer: list[dict] = []
@@ -484,18 +562,22 @@ def build() -> dict:
     prev_k1 = write(None, False, [item("", "x" * (c0_unnamed + 8 - 33))], None)
     assert len(prev_k1) == c0_unnamed + 8
     ac("clear-exact-one-zero", "Previous length is C0 + 8: z is a single 0.", prev_k1, 638, "exact")
-    ac("clear-tiny-gap", "Tiny v1 vault, C0 < previous < C0 + 8: z of one 0, so the payload is slightly longer, never shorter.",
+    ac("clear-tiny-gap", "Tiny v1 vault, C0 < previous < C0 + 8: z of one 0 fits in the previous block, so the "
+       "payload is slightly longer and the blob length is unchanged.",
        write(None, False, [item("", "")], None), 638, "gap-one-zero")
     ac("clear-recleared-unarchived", "An unarchived cleared vault with z of one 0: C0 >= previous, no z.",
        v2(None, False, [], "0"), 638, "no-pad")
     ac("clear-recleared-equal", "An unarchived cleared vault with z of two 0s: C0 == previous, no z.",
        v2(None, False, [], "00"), 638, "no-pad")
-    # Capacity fallback (spec 8, step 4): C0 < previous < C0 + 8 and C0 + 8 > maxPayloadBytes.
+    # Gap at a block boundary (spec 8): C0 < previous < C0 + 8 and C0 + 8 > 64*ceil((P+2)/64) - 2.
     nm = "N" * 22
     prev_cap = v2(nm, False, [item("", "")])
     assert len(prev_cap) == 62 and len(write(nm, True, [], None)) == 56
-    ac("clear-gap-at-capacity", "Hypothetical 62-byte capacity, previous at capacity: C0 + 8 does not fit, so no z; "
-       "the padded length is unchanged.", prev_cap, 62, "gap-no-room")
+    ac("clear-gap-block-boundary", "Previous payload fills its 64-byte block (62 bytes), C0 = 56: z of one 0 (64 "
+       "bytes) would grow the blob by a block (the rule before review L1), so no z.", prev_cap, 638,
+       "gap-block-boundary")
+    ac("clear-gap-at-capacity", "Same payload in a vault whose capacity is 62 bytes: no z, the blob length is "
+       "unchanged.", prev_cap, 62, "gap-block-boundary")
 
     # ------------------------------------------------------------- blobs
     A, B = gv.CREDS["A"], gv.CREDS["B"]
@@ -588,14 +670,14 @@ def main() -> int:
         sys.stdout.write(text)
         return 0
     if "--check" in args:
-        current = OUT.read_text(encoding="utf-8") if OUT.exists() else ""
-        if current != text:
+        current = OUT.read_bytes() if OUT.exists() else b""
+        if current != text.encode("ascii"):  # raw bytes: no newline translation, no decoding
             print(f"MISMATCH: {OUT} differs from a fresh generation", file=sys.stderr)
             return 1
         print(f"OK: {OUT} is byte-identical to a fresh generation")
         return 0
     OUT.parent.mkdir(parents=True, exist_ok=True)
-    OUT.write_text(text, encoding="utf-8")
+    OUT.write_bytes(text.encode("ascii"))
     print(f"wrote {OUT} ({len(text)} bytes)")
     return 0
 

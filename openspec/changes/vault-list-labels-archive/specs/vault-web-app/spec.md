@@ -88,7 +88,7 @@ Decrypted secrets, vault names, labels and every opened vault in the vault list 
 
 ### Requirement: Vault payload encoding v2
 The app SHALL decode payload v2: UTF-8 JSON with keys in the fixed order `v`, `n`, `a`, `items`, `z`, as `{"v":2,"n":<name>?,"a":true?,"items":[{"l":<label>,"s":<secret>}...],"z":<padding>?}`.
-- `n` is present only when the vault has a name of 1–40 code points with no C0 or C1 control characters, no U+2028 or U+2029, and no bidi controls U+202A–U+202E or U+2066–U+2069.
+- `n` is present only when the vault has a name of 1–40 code points with no C0 or C1 control characters, no U+2028 or U+2029, no bidi controls U+202A–U+202E or U+2066–U+2069, no direction marks U+200E, U+200F or U+061C, and no format controls U+206A–U+206F.
 - `a` is present only when the vault is archived, with the value `true`.
 - `items` MAY be empty.
 - `z` is present only when `items` is empty, as a non-empty string of ASCII `0`.

@@ -1,0 +1,2 @@
+# Generated test vectors are compared byte for byte (gen-payload-vectors.py --check): never normalise line endings.
+docs/spec/payload-vectors.json -text

@@ -86,8 +86,27 @@ const MALFORMED = (): never => {
 };
 
 const LONE_SURROGATE = /\p{Cs}/u;
-// C0, DEL, C1, U+2028/2029, U+202A-202E, U+2066-2069 (spec section 4.3)
-const FORBIDDEN_IN_NAME = /[\u0000-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069]/u;
+// C0, DEL, C1, U+061C, U+200E-200F, U+2028/2029, U+202A-202E, U+2066-206F (spec section 4.3); U+200D allowed
+const FORBIDDEN_IN_NAME = /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u2028\u2029\u202a-\u202e\u2066-\u206f]/u;
+const MAX_DEPTH = 64;
+
+/** Maximum number of open arrays and objects, counted outside strings (spec section 7, step 2). */
+function nestingDepth(text: string): number {
+  let depth = 0;
+  let deepest = 0;
+  let inString = false;
+  let escaped = false;
+  for (const c of text) {
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (c === '\\') escaped = true;
+      else if (c === '"') inString = false;
+    } else if (c === '"') inString = true;
+    else if (c === '[' || c === '{') deepest = Math.max(deepest, ++depth);
+    else if (c === ']' || c === '}') depth--;
+  }
+  return deepest;
+}
 const cps = (s: string): number => [...s].length;
 
 function validName(n: unknown): n is string {
@@ -141,6 +160,7 @@ function decode(bytes: Uint8Array): Decoded {
   } catch {
     return MALFORMED();
   }
+  if (nestingDepth(text) > MAX_DEPTH) MALFORMED();
   let obj: unknown;
   try {
     obj = JSON.parse(text);
@@ -183,7 +203,7 @@ function clear(previous: Uint8Array, maxPayloadBytes: number): Uint8Array {
   let pad: string | null;
   if (p - c0 - 7 >= 1) pad = '0'.repeat(p - c0 - 7);
   else if (c0 >= p) pad = null;
-  else if (c0 + 8 <= maxPayloadBytes) pad = '0';
+  else if (c0 + 8 <= 64 * Math.ceil((p + 2) / 64) - 2) pad = '0'; // stays in the previous 64-byte block
   else pad = null;
   const out = write({ ...base, pad });
   if (out.length > maxPayloadBytes) throw new Error('VAULT_TOO_LARGE');
@@ -223,6 +243,9 @@ describe('payload-vectors.json: structure', () => {
       'dup-member-n', 'a-false', 'a-one', 'n-empty', 'n-41-code-points', 'n-bidi-202e', 'n-c0', 'n-c1', 'n-2028',
       'lone-surrogate-escaped', 'extra-member-top', 'whitespace-after-comma', 'member-order-a-before-n',
       'v-string', 'v-3', 'z-non-zero', 'z-with-items', 'v1-empty-items', 'escape-solidus',
+      'v2-label-65-code-points', 'v2-label-lone-surrogate', 'v2-extra-member-item', 'dup-member-v-last-wins-unknown',
+      'n-lrm-200e', 'n-rlm-200f', 'n-alm-061c', 'n-206a', 'nesting-v3-depth-64', 'nesting-v3-depth-65',
+      'nesting-v3-depth-900',
     ]) expect(neg, id).toContain(id);
     const pos = new Set(V.positive.map((c) => c.id));
     for (const id of [
@@ -265,9 +288,11 @@ describe('payload-vectors.json: reference codec agrees', () => {
     const out = clear(hex(c.previousHex), c.maxPayloadBytes);
     expect(toHex(out)).toBe(c.expectedHex);
     expect(out.length).toBe(c.expectedLength);
-    expect(out.length).toBeGreaterThanOrEqual(c.previousLength - 7);
+    expect(c.maxPayloadBytes % 64).toBe(62); // precondition: maxPayloadBytes = 64k - 2
     const padLen = (b: number): number => 64 * Math.ceil((2 + b) / 64);
-    expect(padLen(out.length)).toBeGreaterThanOrEqual(padLen(c.previousLength));
+    // Never shrinks; grows only when the cleared payload without z is longer than the previous one (rule no-pad).
+    if (c.rule === 'no-pad') expect(padLen(out.length)).toBeGreaterThanOrEqual(padLen(c.previousLength));
+    else expect(padLen(out.length)).toBe(padLen(c.previousLength));
   });
 });
 
