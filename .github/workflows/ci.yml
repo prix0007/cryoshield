@@ -318,6 +318,7 @@ jobs:
     env:
       UV_PYTHON: ${{ matrix.python }}
       EXPECTED_PYTHON: ${{ matrix.python }}
+      CRYOSHIELD_REQUIRE_FOUNDRY: "1" # the anvil v2 tests fail instead of skipping if Foundry is missing
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
