@@ -58,4 +58,4 @@ pages from `add-privacy-and-compliance` (its group 3). Groups 1–2 (metrics) ca
 - [x] 6.1 SR: security review of the CSP split, the beacon loader and pinning, the reviewed beacon bytes, the landing Permissions-Policy, the opener guard, and the Caddy matchers (path normalisation, `/app` vs `/app/` vs `/App/`, `/index.html`), recorded in `apps/web/docs/security-review-analytics.md`; verify all findings are fixed or accepted
 - [ ] 6.2 OW: deploy, then verify `curl -sI https://cryoshield.app/` vs `/app/` CSP and Permissions-Policy headers, and a live browser network log on `/app/` with zero Cloudflare requests
 - [ ] 6.3 F: after 30 days, confirm the dashboard shows no query strings or fragments in paths; record in `docs/metrics/sponsorship-log.md`
-- [ ] 6.4 OW: when `add-fly-hosting` is archived, reconcile `web-hosting` with the per-route CSP requirement and verify `openspec validate --all --strict` passes
+- [x] 6.4 OW: when `add-fly-hosting` is archived, reconcile `web-hosting` with the per-route CSP requirement and verify `openspec validate --all --strict` passes
