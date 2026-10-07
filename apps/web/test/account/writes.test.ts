@@ -97,7 +97,8 @@ describe('harden-gas-sponsorship 5.2: salt-based create on VaultRegistry v2', ()
   const cases = vectors ? (Array.isArray(vectors) ? vectors : (vectors.cases ?? [])) : [];
   // The vector file stores hex without 0x (the v1.json convention); accept either.
   const hex = (h: string) => (`0x${h.replace(/^0x/i, '').toLowerCase()}`) as Hex;
-  it.skipIf(cases.length === 0)('matches every vaultIdDerivation vector (packages/vault-crypto task 3.1)', () => {
+  it('matches every vaultIdDerivation vector (packages/vault-crypto task 3.1; the vector is required, never skipped)', () => {
+    expect(cases.length).toBeGreaterThan(0);
     for (const c of cases) expect(deriveVaultIdV2(getAddress(hex(c.owner)), hex(c.salt))).toBe(hex(c.vaultId));
   });
 

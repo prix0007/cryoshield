@@ -2,9 +2,9 @@
 import { createContext, useContext, useMemo, type ReactNode } from 'react';
 import type { Hex, PublicClient } from 'viem';
 import { config } from '../config';
-import { createRegistryReader, type RegistryReader } from '../chain/registry';
-import { makePublicClient } from '../account/account';
-import { createSponsor, type Sponsor } from '../account/writes';
+import { createRegistryReader, makePublicClient, type RegistryReader } from '../chain/registry';
+import { lazySponsor } from '../account/lazy';
+import type { Sponsor } from '../account/writes';
 import { createMirror } from '../mirror/mirror';
 import type { CredentialsApi } from '../webauthn';
 
@@ -40,7 +40,8 @@ export function defaultServices(): Services {
     chainId: config.chainId,
     reader: createRegistryReader(),
     client,
-    sponsor: createSponsor(client),
+    // The write stack (viem account abstraction, Pimlico) loads on the first save (harden-gas-sponsorship 5.5).
+    sponsor: lazySponsor(client),
     mirror: createMirror({ turboUploadUrl: config.turboUploadUrl, arweaveGatewayUrl: config.arweaveGatewayUrl, fastIndexUrl: config.arweaveFastIndexUrl }),
     fastIndexUrl: config.arweaveFastIndexUrl,
     host: typeof location === 'undefined' ? '' : location.hostname,

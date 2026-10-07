@@ -7,7 +7,7 @@ import { useServices } from './services';
 import { S } from './strings';
 import { ActionBar, EmptyState } from './chrome';
 import { copySecret, forgetClearListener } from './clipboard';
-import type { SaveStage } from '../account/writes';
+import type { SaveStage } from '../account/errors';
 import { AnimatePresence, Btn, CeremonyPresence, Collapse, CopyFeedback, Disclosure, m, SaveProgress, StepTransition, useDirection, useReduced } from './motionkit';
 import { reveal } from './motion';
 

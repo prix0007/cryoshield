@@ -34,13 +34,26 @@ test('every flow: only configured origins, nothing stored, PRF outputs never sen
   const keys = await VirtualKeys.attach(page);
   await keys.add();
   await keys.add();
+  // harden-gas-sponsorship 5.5: the write stack is a lazy chunk, not fetched until the first save.
+  const stackChunk = /^http:\/\/localhost:4173\/assets\/stack-[\w-]+\.js$/;
+  const stackResponses: number[] = [];
+  page.on('response', (r) => {
+    if (stackChunk.test(r.url())) stackResponses.push(r.status());
+  });
+  expect(requests.filter((r) => stackChunk.test(r.url))).toEqual([]);
   await createVault(page, keys, [{ label: 'Seed', secret: 'correct horse battery staple' }]);
   await expect(page.getByText('Backup copy saved.')).toBeVisible({ timeout: 15_000 });
-  await unlockWith(page, keys, 1);
+  expect(stackResponses).toEqual([200]); // fetched by the create's save
+  await unlockWith(page, keys, 1); // a fresh page load
+  expect(stackResponses).toEqual([200]); // unlocking never fetches the write stack
   await page.getByRole('button', { name: 'Edit secrets' }).click();
   await page.locator('#secret-0').fill('correct horse battery staple 2');
   await page.getByRole('button', { name: 'Save' }).click();
   await expect(page.getByText('Saved.', { exact: true })).toBeVisible({ timeout: 60_000 });
+  // The real chunk loaded once per page (create, then the edit after the reload), same-origin, under the real CSP, and
+  // nothing was blocked before the injection test below.
+  expect(stackResponses).toEqual([200, 200]);
+  expect(violations).toEqual([]);
 
   // 1. Network allowlist.
   for (const r of requests) {

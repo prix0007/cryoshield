@@ -55,6 +55,8 @@ contract VaultRegistryTest is RegistryTestBase {
 
     /// Front-run: mallory copies alice's pending vaultId and lands first.
     /// Alice's create reverts, mallory's vault is untouched, and alice retries with a fresh id.
+    /// v1 only (client-chosen vaultId). The app no longer creates on v1: VaultRegistry v2 derives the id from
+    /// (owner, salt), so it cannot be squatted and the web app has no "taken" retry (harden-gas-sponsorship 5.2).
     function test_create_frontRunVaultIdRevertsAndRetrySucceeds() public {
         bytes32[] memory aliceLocs = _locators(2, "alice");
         _create(mallory, ALICE_VAULT, hex"bad0", _locators(2, "mallory"));

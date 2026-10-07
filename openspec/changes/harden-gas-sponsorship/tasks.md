@@ -118,13 +118,17 @@
   - signing keeps `userVerification: 'required'`.
 
   Then implement. Verify: unit tests.
-- [ ] 5.2 [fe] Write failing tests for the salt-based create: the client-computed `vaultId` equals the registry's (vector 3.1), and the `VAULT_ID_TAKEN` retry path is removed. Update `policy.ts` to target v2. Verify: unit tests and `test:int` against the local stack.
+- [x] 5.2 [fe] Write failing tests for the salt-based create: the client-computed `vaultId` equals the registry's (vector 3.1), and the `VAULT_ID_TAKEN` retry path is removed. Update `policy.ts` to target v2. Verify: unit tests and `test:int` against the local stack.
+
+  2026-10-08: the code landed in PR #41. The vector check is now mandatory (no skip), and the v1 contract test's retry comment is marked v1-only.
 - [x] 5.3 [fe] Write failing tests: reads page v2 then v1 and use `getVaults`, and a v1-only vault still unlocks. Then implement in `src/chain/registry.ts`. Verify: unit tests, `test:int` and `test:e2e`.
 - [x] 5.4 [ow] Regenerate the presets from the deployment records (`config/chain-presets.json` consumers). Verify: the parity tests in contracts, web and recover pass.
 
   Recovery tool: the anvil and op-sepolia presets carry VaultRegistry v2 from `deployments/31337.json` and `11155420.json`; `test_built_in_registry_matches_deployment_records` checks v1 and `contracts.vaultRegistryV2` (PR #40). Ticked at the overwatcher's request; the contracts and web parity checks are verified in their own PRs.
 
-- [ ] 5.5 [fe] Follow-up (overwatcher, 2026-10-06): lazy-load the write stack (viem account abstraction, the Pimlico client, `src/account/*`) on the first save instead of in the initial /app chunk. Verify: `/app` initial JS gzip drops by at least 10 KB in `pnpm --filter @cryoshield/web verify-build`, then lower `APP_BASELINE` in `apps/web/scripts/verify-build.mjs` back by the 2 KB raised for this change; unit, `test:int` and `test:e2e` green.
+- [x] 5.5 [fe] Follow-up (overwatcher, 2026-10-06): lazy-load the write stack (viem account abstraction, the Pimlico client, `src/account/*`) on the first save instead of in the initial /app chunk. Verify: `/app` initial JS gzip drops by at least 10 KB in `pnpm --filter @cryoshield/web verify-build`, then lower `APP_BASELINE` in `apps/web/scripts/verify-build.mjs` back by the 2 KB raised for this change; unit, `test:int` and `test:e2e` green.
+
+  2026-10-08: `/app` initial JS gzip went from 216,554 B to 200,242 B (e2e), which is 16,312 B less. `APP_BASELINE` drops the 2 KB and a further 12 KB. A failed chunk load shows a retryable "Nothing was saved" message (design → Implementation notes, web).
 
 ## 6. Testnet (OP Sepolia only) [ow] [sol] [fe]
 

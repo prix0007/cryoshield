@@ -10,7 +10,7 @@
  * If v2 can't be confirmed (an RPC error, or v2 contradicting itself), the read fails with RegistryUnconfirmedError;
  * it never falls back to v1.
  */
-import { createPublicClient, http, type Abi, type Hex, type Transport } from 'viem';
+import { createPublicClient, http, type Abi, type Hex, type PublicClient, type Transport } from 'viem';
 import { config } from '../config';
 import type { Candidate, RegistryVersion } from '../vault/adapter';
 import { fromHex } from '../lib/bytes';
@@ -33,6 +33,11 @@ export function chainOf() {
 
 export function defaultTransport(): Transport {
   return http(config.rpcUrl, { timeout: 15_000, retryCount: 2 });
+}
+
+/** The public read client for the configured chain (also used by the lazily loaded write stack). */
+export function makePublicClient(transport: Transport = defaultTransport()): PublicClient {
+  return createPublicClient({ chain: chainOf(), transport }) as PublicClient;
 }
 
 export class RegistryUnconfirmedError extends Error {
