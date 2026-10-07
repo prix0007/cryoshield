@@ -88,12 +88,12 @@ Decrypted secrets, vault names, labels and every opened vault in the vault list 
 
 ### Requirement: Vault payload encoding v2
 The app SHALL decode payload v2: UTF-8 JSON with keys in the fixed order `v`, `n`, `a`, `items`, `z`, as `{"v":2,"n":<name>?,"a":true?,"items":[{"l":<label>,"s":<secret>}...],"z":<padding>?}`.
-- `n` is present only when the vault has a name of 1–40 code points with no C0 or C1 control characters, no U+2028 or U+2029, and no bidi controls U+202A–U+202E or U+2066–U+2069.
+- `n` is present only when the vault has a name of 1–40 code points with no C0 or C1 control characters, no U+2028 or U+2029, no bidi controls U+202A–U+202E or U+2066–U+2069, no direction marks U+200E, U+200F or U+061C, and no format controls U+206A–U+206F.
 - `a` is present only when the vault is archived, with the value `true`.
 - `items` MAY be empty.
 - `z` is present only when `items` is empty, as a non-empty string of ASCII `0`.
 
-Decoders SHALL accept v1 and v2, and SHALL be strict and canonical: they MUST re-encode the decoded value and treat any byte difference (duplicate keys, whitespace, key order, `"a":false`, a non-boolean `a`, non-canonical escapes, ill-formed Unicode) as malformed. The encoding SHALL be published in `docs/spec/payload-v2.md`, with positive, negative and blob test vectors in `docs/spec/payload-vectors.json` that are generated deterministically and that the TypeScript and Python codecs both pass.
+Decoders SHALL accept v1 and v2. They SHALL decode v1 payloads with the deployed v1 rules, unchanged, so a vault that opens today never stops opening. For v2 payloads they SHALL be strict and canonical: they MUST re-encode the decoded value and treat any byte difference (duplicate keys, whitespace, key order, `"a":false`, a non-boolean `a`, non-canonical escapes, ill-formed Unicode) as malformed. The encoding SHALL be published in `docs/spec/payload-v2.md`, with positive, negative and blob test vectors in `docs/spec/payload-vectors.json` that are generated deterministically and that the TypeScript and Python codecs both pass.
 
 #### Scenario: Positive vectors
 - **WHEN** the web codec runs every positive vector in `docs/spec/payload-vectors.json`
@@ -102,6 +102,10 @@ Decoders SHALL accept v1 and v2, and SHALL be strict and canonical: they MUST re
 #### Scenario: Negative vectors
 - **WHEN** the web codec decodes each negative vector (for example `"a":false`, `"a":1`, a duplicate `"n"`, reordered keys, or a name containing U+202E)
 - **THEN** each is rejected as malformed and nothing is displayed
+
+#### Scenario: Existing v1 vaults still open
+- **WHEN** a v1 payload that today's decoder accepts, such as one with an escaped lone surrogate in a secret, is decoded by the v2 codec
+- **THEN** it decodes to the same items as today
 
 #### Scenario: Deterministic vectors
 - **WHEN** the vector generator is run again

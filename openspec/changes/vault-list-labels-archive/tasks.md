@@ -24,14 +24,14 @@
 
 ## 1. Payload v2 codec and vectors [cry] [fe] [rec]
 
-- [ ] 1.1 [cry] Freeze the format first. Write `docs/spec/payload-v2.md` (design D1–D3: key order, field rules, name rules, escaping, minimal-version writer, `z` rules, strict canonical decoding) and a deterministic generator that writes `docs/spec/payload-vectors.json`:
+- [x] 1.1 [cry] Freeze the format first. Write `docs/spec/payload-v2.md` (design D1–D3: key order, field rules, name rules, escaping, minimal-version writer, `z` rules, strict canonical decoding) and a deterministic generator that writes `docs/spec/payload-vectors.json`:
   - positive vectors (v1 and v2 bytes ↔ structure, including the D2 minimal-version cases and a cleared vault with `z`);
   - negative vectors (duplicate keys, whitespace, reordered keys, `"a":false`, `"a":1`, `z` with items, `z` with a non-`0` character, a 41-code-point name, names with C0, C1, U+2028 and U+202E, a lone surrogate, non-canonical escapes, an empty v1 `items`, `"v":3`);
   - blob vectors (each encrypted with the vault-crypto test keys and vault IDs).
 
   Point `apps/web/docs/payload-v1.md` at the v2 spec. Verify: running the generator twice gives a byte-identical file (a CI check), and `packages/vault-crypto/test-vectors/v1.json` and `docs/spec/vault-format-v1.md` are unchanged.
 - [ ] 1.2 [fe] Write failing tests in `apps/web/test/vault/payload.test.ts` that run every vector, then implement the v2 codec in `apps/web/src/vault/payload.ts`: a single `VaultPayload` type, v1 + v2 decoding, strict canonical decoding (decode, validate, re-encode, byte-compare), and the minimal-version writer. Verify: `pnpm --filter web test`. **This is the decoder release** (see the release rule).
-- [ ] 1.3 [rec] In parallel with 1.2: write failing tests in `tools/recover/tests/test_payload.py` that run every vector and check the file's SHA-256 pin, then implement `tools/recover/src/cryoshield_recover/payload.py` (`type(a) is bool`, a duplicate-key-rejecting `object_pairs_hook`, `ensure_ascii=False` with compact separators, well-formed Unicode). Verify: `pytest`.
+- [ ] 1.3 [rec] In parallel with 1.2: write failing tests in `tools/recover/tests/test_payload.py` that run every vector and check the file's SHA-256 pin, then implement `tools/recover/src/cryoshield_recover/payload.py` (v1 with the deployed lenient rules, last duplicate wins as in `JSON.parse`, one leading BOM stripped; v2 strict: `type(a) is bool`, `ensure_ascii=False` with compact separators, well-formed Unicode, byte compare; see `docs/spec/payload-v2.md` section 7). Verify: `pytest`.
 
 ## 2. Web data layer (no UI change) [fe]
 

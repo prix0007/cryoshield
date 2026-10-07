@@ -91,16 +91,19 @@ jobs:
               - *ci
               - *pnpm
               - packages/vault-crypto/**
+              - docs/spec/** # payload-v2 spec and vectors, checked by the vault-crypto suite (vault-list-labels-archive 1.1)
             recover:
               - *ci
               - tools/recover/**
               - packages/vault-crypto/test-vectors/**
+              - docs/spec/** # payload-v2 spec and vectors, pinned by the Python codec (vault-list-labels-archive 1.3)
               - contracts/src/**
               - contracts/foundry.toml
             web:
               - *ci
               - *pnpm
               - apps/web/**
+              - docs/spec/** # payload-v2 spec and vectors, run by the web codec tests (vault-list-labels-archive 1.2)
               - docs/supported-devices.md # rendered into /devices (add-supported-devices-page)
               - config/donation.json # the donation address, built into /support (add-donation)
               - README.md # must publish the same donation address (add-donation)
@@ -293,7 +296,24 @@ jobs:
           package-manager-cache: false
       - name: Install (frozen lockfile)
         run: pnpm install --frozen-lockfile
+      # The vector generators' pinned Python environment (scripts/requirements.txt), so the Node suite can prove that
+      # docs/spec/payload-vectors.json and test-vectors/v1.json regenerate byte-identically (vault-list-labels-archive 1.1).
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: false
+      - name: Install the vector generators' hash-pinned dependencies
+        working-directory: packages/vault-crypto/scripts
+        run: |
+          uv venv --python 3.12.11 .venv
+          uv pip install --python .venv/bin/python --require-hashes --no-cache -r requirements.txt
+      - name: Test vectors regenerate byte-identically (v1.json)
+        working-directory: packages/vault-crypto
+        run: scripts/.venv/bin/python scripts/gen-vectors.py --check
       - name: Unit, vector and property tests (Node)
+        env:
+          CRYOSHIELD_REQUIRE_PY_VECTORS: "1" # the payload-vector regeneration test fails instead of skipping
         run: pnpm --filter @cryoshield/vault-crypto test
       - name: Install Playwright Chromium
         run: pnpm --filter @cryoshield/vault-crypto exec playwright install --with-deps chromium
