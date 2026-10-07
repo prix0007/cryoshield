@@ -582,11 +582,13 @@ function checkScheduled(file, name, wf, on) {
   if (secretRefs) err(`secrets must not be referenced in a read-only scheduled workflow, GITHUB_TOKEN included (${secretRefs} reference(s))`);
   if (exprsOf(wf).some((e) => /\bgithub\s*\.\s*token\b|\bgithub\s*\[\s*['"]token['"]\s*\]/i.test(e))) err('github.token must not be referenced in a read-only scheduled workflow');
   const uploads = [];
-  for (const k of hijackKeys(wf.env)) err(`workflow env must not set ${k}`);
+  // interpreter hijacks, plus package-manager config that reaches node (npm_config_node_options -> NODE_OPTIONS)
+  const envKeys = (env) => [...hijackKeys(env), ...(isObj(env) ? Object.keys(env).filter((k) => /^(npm|pnpm)_config_|^NODE_EXTRA_CA_CERTS$/i.test(k)) : [])];
+  for (const k of envKeys(wf.env)) err(`workflow env must not set ${k}`);
   for (const [id, job] of Object.entries(isObj(wf.jobs) ? wf.jobs : {})) {
     if (!isObj(job)) continue;
-    for (const k of hijackKeys(job.env)) err(`job '${id}': env must not set ${k}`);
-    for (const st of Array.isArray(job.steps) ? job.steps.filter(isObj) : []) for (const k of hijackKeys(st.env)) err(`job '${id}' step '${st.name ?? st.uses ?? '?'}': env must not set ${k}`);
+    for (const k of envKeys(job.env)) err(`job '${id}': env must not set ${k}`);
+    for (const st of Array.isArray(job.steps) ? job.steps.filter(isObj) : []) for (const k of envKeys(st.env)) err(`job '${id}' step '${st.name ?? st.uses ?? '?'}': env must not set ${k}`);
     if (job.environment !== undefined) err(`job '${id}' may not use an environment`);
     if (job.uses !== undefined) err(`job '${id}' may not call a reusable workflow`);
     const perms = isObj(job.permissions) ? job.permissions : {};

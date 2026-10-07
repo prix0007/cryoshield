@@ -20,6 +20,7 @@ pages from `add-privacy-and-compliance` (its group 3). Groups 1–2 (metrics) ca
 - [x] 2.2 Add `.github/workflows/metrics.yml` (weekly cron + manual dispatch, `permissions: contents: read`, SHA-pinned actions, no secrets, `actions/upload-artifact` with 90-day retention); verify the `workflow-lint` job (zizmor) passes and a test asserts no `secrets.` reference
 - [ ] 2.3 OW: run it once on OP Sepolia via `workflow_dispatch` and verify the artifact contains only aggregates
 - [ ] 2.4 F: monthly, export Pimlico dashboard spend for the sponsorship policy and reconcile it with the on-chain gas total in `docs/metrics/sponsorship-log.md` (USD bill vs ETH gas; note Pimlico's surcharge); verify the first entry exists
+- [x] 2.5 SR: security review of the metrics tool, the metrics workflow and the `SCHEDULED_READ_ONLY` policy profile (small-cell and differencing protection, untrusted RPC/gateway input, workflow hardening), recorded in `docs/reviews/product-metrics.md`; verify all findings are fixed or accepted
 
 ## 3. Vendor setup (P1, F)
 

@@ -87,6 +87,9 @@ test('evasions are caught: allow-listed commands and actions only, no github.tok
   expectError(step('echo ${{ github.token }}'), /github\.token/);
   expectError(metrics.replace('        run: pnpm --filter @cryoshield/metrics metrics', '        env:\n          NODE_OPTIONS: --import=data:x\n        run: pnpm --filter @cryoshield/metrics metrics'), /NODE_OPTIONS/);
   expectError(metrics.replace('    steps:', '    env:\n      PATH: /tmp\n    steps:'), /PATH/);
+  for (const k of ['npm_config_node_options', 'NPM_CONFIG_SCRIPT_SHELL', 'pnpm_config_node_options', 'NODE_EXTRA_CA_CERTS']) {
+    expectError(metrics.replace('        run: pnpm --filter @cryoshield/metrics metrics', `        env:\n          ${k}: x\n        run: pnpm --filter @cryoshield/metrics metrics`), new RegExp(k));
+  }
   // the allowed forms still pass
   assert.deepEqual(errs(step('node apps/web/scripts/beacon-drift.mjs')), []);
   assert.deepEqual(errs(step('pnpm install --frozen-lockfile --filter @cryoshield/metrics')), []);
