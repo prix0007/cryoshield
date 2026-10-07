@@ -82,7 +82,7 @@ flowchart LR
   - Every key is enrolled with credProtect level 3 (`userVerificationRequired`, requested with enforcement and confirmed from the authenticator data). A stolen key will not produce *any* assertion without its PIN, even though credential IDs are public.
 - **The account enforces it too (audit AA-H1).** `CryoShieldSmartWallet` is the Coinbase Smart Wallet v1.1 code with two changes. Every signature it accepts (user operations, the cross-chain owner path, ERC-1271) must carry the UV flag and `sha256(rpId)` of its RP ID, and owners are P-256 keys only, at most 8. New accounts come from our own factory, one per RP ID; there is no admin key.
   - Keys enrolled before this rule must be re-created; that is only the founder's test vault.
-  - A contract-level validator that checks UV, rpId and origin is planned, and it is a hard gate for mainnet. It also closes the U2F/CTAP1 path, where a key that accepts a CTAP2 credential ID over U2F could sign without its PIN.
+  - Because UV is required, this also closes the U2F/CTAP1 path (U2F never sets UV), where a key that accepts a CTAP2 credential ID over U2F could otherwise sign without its PIN. `origin` is not checked on-chain (anyone holding the key can write any `clientDataJSON`); `rpIdHash` is stamped by the authenticator and is checked.
 - **Desktop salt mapping.** CTAP salt = `SHA-256("WebAuthn PRF" || 0x00 || input)`. This lets the browser and the desktop tool derive identical outputs.
 
 ## 3. Create a vault

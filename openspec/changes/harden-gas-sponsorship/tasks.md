@@ -141,7 +141,7 @@
 
 ## 7. Security review [sec]
 
-- [ ] 7.1 [sec] Security review of sections 1–6. Check:
+- [x] 7.1 [sec] Security review of sections 1–6. Check:
   - the UV and rpIdHash override binding on every validation path (userOp, replayable path, ERC-1271);
   - the owner guards and that the constructor still deploys;
   - the storage-layout equality;
@@ -155,12 +155,14 @@
 
   Record it in `docs/reviews/harden-gas-sponsorship.md`. Verify: no open CRITICAL or HIGH findings.
 
+  2026-10-08: recorded in `docs/reviews/harden-gas-sponsorship.md`. No open CRITICAL or HIGH; APPROVE for OP Sepolia, not a mainnet approval. Open MEDIUMs and owner/hardware tasks (1.1, 1.2, 6.2–6.4, 8.x) are listed there.
+
 ## 8. Mainnet gate [ow]
 
 - [ ] 8.1 [ow] Founder approval to deploy to OP Mainnet, recorded in design.md. Preconditions:
   - 7.1 is clean;
   - 6.2 and 6.3 passed;
-  - the mainnet Pimlico policy is set to design D2 (a $20/day global cap, $0.10 per operation, 50 operations and $1 per sender lifetime);
+  - the mainnet Pimlico policy is set to design D2 (a $20/day global cap, $0.10 per operation, 50 operations and $1.00 per sender per month (design D2; corrected from "lifetime" at the 7.1 review));
   - the mainnet key is restricted per D3;
   - the account is prepaid at about $140 with no card;
   - the D6 trigger is reviewed against the testnet usage data.

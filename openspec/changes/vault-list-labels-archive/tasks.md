@@ -64,7 +64,7 @@
 - [ ] 6.1 [fe] Update `docs/system-design.md` (payload v2, the vault list, staleness check, dates) and `docs/compliance/data-inventory.md` (vault names: client-side only, inside the ciphertext; month-only credential labels). Verify: docs review in 6.4.
 - [ ] 6.2 [fe] Add a two-YubiKey checklist to `apps/web/docs/hardware-test.md`: create a named vault, create a second vault, unlock and see the list, Check another key, rename + archive in one save, archive and clear, STALE from a second browser, recovery `--list` and choose. Verify: the checklist is run on OP Sepolia and recorded.
 - [ ] 6.3 [ow] Release the decoder (1.2) to production and confirm it is live before releasing any writer task. Verify: the release notes name the decoder release and the later writer release.
-- [ ] 6.4 [sec] Security review of sections 1–5. Check:
+- [x] 6.4 [sec] Security review of sections 1–5. Check:
   - the strict canonical codecs agree (vectors, negative cases, the Python bool check, the SHA-256 pin);
   - no edit path can drop `n` or `a`;
   - the STALE check runs before every signature;
@@ -77,3 +77,5 @@
   - no new runtime dependency and no CryoShield server.
 
   Record it in `docs/reviews/vault-list-labels-archive.md`. Verify: no open CRITICAL or HIGH findings.
+
+  2026-10-08: recorded in `docs/reviews/vault-list-labels-archive.md`. No open CRITICAL or HIGH; APPROVE. Open MEDIUMs (including the WEB-M2 "saved" screen, N1) and tasks 0.2, 6.1–6.3 are listed there.
