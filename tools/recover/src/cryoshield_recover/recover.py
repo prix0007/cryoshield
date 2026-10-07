@@ -5,16 +5,18 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
+from functools import partial
 from typing import Protocol
 
 from .arweave import Arweave, ArweaveTx
 from .authenticator import Assertion, PrfSource
 from .candidates import Candidate, Freshness, ranked
-from .chain import Registry, classify
-from .config import Config
+from .chain import Registries, Registry, classify
+from .config import Config, is_placeholder
 from .derive import derive_locator
 from .errors import ExitCode, RecoveryError, VaultError
 from .format import MAX_BLOB, DecodedVault, decode_blob
+from .rpc import JsonRpcClient
 from .secure import wipe
 from .vault import UnlockKey, matching_entries, open_decoded
 
@@ -44,20 +46,18 @@ class Result:
     warnings: list[str] = field(default_factory=list)
 
 
-RegistryFactory = Callable[[Config], Registry]
+# A single Registry (tests, legacy callers) or v2-then-v1 Registries; both expose the same reads.
+RegistryFactory = Callable[[Config], "Registry | Registries"]
 ArweaveFactory = Callable[[Config], Arweave]
 
 
-def _default_registry(cfg: Config) -> Registry:
-    from functools import partial
-
-    from .rpc import JsonRpcClient
-
-    return Registry(
+def _default_registry(cfg: Config) -> Registries:
+    """VaultRegistry v2 then v1, whichever this chain has (harden-gas-sponsorship D9)."""
+    return Registries.build(
         cfg.rpcs,
-        cfg.registry,
         cfg.chain_id,
-        cfg.deploy_block,
+        v2=None if is_placeholder(cfg.registry_v2) else (cfg.registry_v2, cfg.deploy_block_v2),
+        v1=None if is_placeholder(cfg.registry) else (cfg.registry, cfg.deploy_block),
         client_factory=partial(JsonRpcClient, timeout=cfg.timeout),
     )
 
@@ -81,14 +81,14 @@ class Recovery:
         self.ui = ui
         self._registry_factory = registry_factory
         self._arweave_factory = arweave_factory
-        self._registry: Registry | None = None
+        self._registry: Registry | Registries | None = None
         self._arweave: Arweave | None = None
         self.assertions: list[Assertion] = []
         self._notes: list[str] = []
 
     # ------------------------------------------------------------------ sources
     @property
-    def registry(self) -> Registry | None:
+    def registry(self) -> Registry | Registries | None:
         if self._registry is None and self.cfg.chain_configured:
             self._registry = self._registry_factory(self.cfg)
         return self._registry
@@ -306,6 +306,8 @@ class Recovery:
             for r in rivals
             if r.rank == chosen.rank
             or (r.freshness == chosen.freshness and "arweave" in (r.source, chosen.source))
+            or r.contested
+            or chosen.contested
         ]
         if not tied:
             self._notes.append(
@@ -473,6 +475,13 @@ class Recovery:
         if result is None:
             ar_cands = self._arweave_by_locators(locators)
             result = self._finish(ar_cands) if ar_cands else None  # chain copies already failed
+        elif result.candidate.freshness in (Freshness.OUTDATED, Freshness.UNMATCHED):
+            # The best chain copy is known NOT to be current (e.g. a v1 plant while the v2 read failed):
+            # the current copy may be mirrored on Arweave, so look there too and re-rank everything.
+            ar_cands = self._arweave_by_locators(locators)
+            if ar_cands:
+                wipe(result.secret)
+                result = self._finish(chain_cands + ar_cands)
         if result is not None:
             return result
 

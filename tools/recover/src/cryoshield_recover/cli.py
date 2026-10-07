@@ -68,13 +68,15 @@ def build_parser() -> argparse.ArgumentParser:
     g.add_argument(
         "--rpc", action="append", metavar="URL", help="JSON-RPC endpoint (repeatable; replaces defaults)"
     )
-    g.add_argument("--registry", metavar="ADDRESS", help="VaultRegistry contract address")
+    g.add_argument("--registry", metavar="ADDRESS", help="VaultRegistry (v1) contract address")
+    g.add_argument("--registry-v2", metavar="ADDRESS", help="VaultRegistry v2 contract address")
     g.add_argument(
         "--chain-id",
         type=int,
         help="expected chain ID; alone, selects the preset with that ID; otherwise overrides it",
     )
     g.add_argument("--deploy-block", type=int, help="registry deployment block (for event history)")
+    g.add_argument("--deploy-block-v2", type=int, help="VaultRegistry v2 deployment block")
     g.add_argument(
         "--arweave-graphql", action="append", metavar="URL", help="Arweave GraphQL endpoint (repeatable)"
     )
@@ -137,6 +139,8 @@ def _select_network(a: argparse.Namespace) -> Config:
             chain_id=a.chain_id,
             registry=PLACEHOLDER_ADDRESS,
             deploy_block=0,
+            registry_v2=PLACEHOLDER_ADDRESS,
+            deploy_block_v2=0,
             rpcs=[],
             timeout=a.timeout,
             verbose=a.verbose,
@@ -146,6 +150,8 @@ def _select_network(a: argparse.Namespace) -> Config:
         chain_id=preset.chain_id,
         registry=preset.registry,
         deploy_block=preset.deploy_block,
+        registry_v2=preset.registry_v2,
+        deploy_block_v2=preset.deploy_block_v2,
         rpcs=list(preset.rpcs),
         timeout=a.timeout,
         verbose=a.verbose,
@@ -160,12 +166,25 @@ def config_from_args(a: argparse.Namespace) -> Config:
         if a.rpc:
             cfg.rpcs = [check_url(u) for u in a.rpc]
             cfg.rpcs_user_supplied = True
+        # A preset's deploy block belongs to the preset's address. For another address without its own
+        # --deploy-block*, scan from block 0 (slower, never wrong) rather than possibly skipping that
+        # deployment's first events, which would make its history look empty (ECC review, PR #40).
         if a.registry:
-            cfg.registry = parse_address(a.registry)
+            new = parse_address(a.registry)
+            if new != cfg.registry and a.deploy_block is None:
+                cfg.deploy_block, cfg.deploy_block_unknown = 0, True
+            cfg.registry = new
+        if a.registry_v2:
+            new = parse_address(a.registry_v2)
+            if new != cfg.registry_v2 and a.deploy_block_v2 is None:
+                cfg.deploy_block_v2, cfg.deploy_block_v2_unknown = 0, True
+            cfg.registry_v2 = new
         if a.chain_id is not None:
             cfg.chain_id = a.chain_id
         if a.deploy_block is not None:
             cfg.deploy_block = a.deploy_block
+        if a.deploy_block_v2 is not None:
+            cfg.deploy_block_v2 = a.deploy_block_v2
         if a.arweave_graphql:
             cfg.arweave_graphql = [check_url(u) for u in a.arweave_graphql]
         if a.arweave_gateway:
@@ -204,17 +223,32 @@ def startup_summary(cfg: Config, ui: Console) -> None:
     ui.info(f"Network: {cfg.network} (chain {cfg.chain_id})")
     contacts = []
     if cfg.use_chain:
-        if is_placeholder(cfg.registry):
+        if not cfg.has_registry:
             where = f"custom chain {cfg.chain_id}" if cfg.network == CUSTOM_NETWORK else cfg.network
             ui.warn(
                 f"No VaultRegistry deployment is built in for {where} in this release, so blockchain "
-                "lookup is off. Pass --registry <address> (and --deploy-block) to use a known deployment, "
-                "or --network for another chain."
+                "lookup is off. Pass --registry-v2 <address> and/or --registry <address> (and "
+                "--deploy-block-v2/--deploy-block) to use a known deployment, or --network for another chain."
             )
         else:
             source = "user-supplied" if cfg.rpcs_user_supplied else "built-in"
+            regs = [
+                f"registry {name} {addr}"
+                for name, addr in (("v2", cfg.registry_v2), ("v1", cfg.registry))
+                if not is_placeholder(addr)
+            ]
+            for flag, unknown in (
+                ("--deploy-block-v2", cfg.deploy_block_v2_unknown),
+                ("--deploy-block", cfg.deploy_block_unknown),
+            ):
+                if unknown:
+                    ui.warn(
+                        f"No deployment block is known for that registry address, so update history is "
+                        f"searched from block 0, which can be slow or fail on public servers. Pass {flag} "
+                        "if you know it."
+                    )
             contacts.append(
-                f"blockchain ({cfg.network}, chain {cfg.chain_id}, registry {cfg.registry}), "
+                f"blockchain ({cfg.network}, chain {cfg.chain_id}, {', '.join(regs)}), "
                 f"{source} endpoints: " + ", ".join(host_of(u) for u in cfg.rpcs)
             )
     if cfg.arweave_configured:
@@ -326,7 +360,7 @@ def _report(result: Result, ui: Console) -> None:
     notes = {
         Freshness.OUTDATED: "This is an OLDER version of your vault; a newer one exists on-chain.",
         Freshness.UNVERIFIABLE: "Could not confirm that this is the latest version of your vault (no agreed on-chain record).",
-        Freshness.UNMATCHED: "This Arweave copy does not match any on-chain version record; it may be outdated.",
+        Freshness.UNMATCHED: "This copy does not match any on-chain version record; it may be outdated.",
     }
     if c.freshness in notes:
         ui.warn(notes[c.freshness])
