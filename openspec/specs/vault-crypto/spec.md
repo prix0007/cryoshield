@@ -191,7 +191,9 @@ Before using any PRF output from `create()` or `get()`, the client SHALL verify 
 
 Every CTAP2 `hmac-secret` evaluation MUST be made with user verification (a PIN or built-in UV), so that the authenticator uses its UV-bound `CredRandomWithUV`.
 
-The reason: CTAP2 authenticators hold two independent secrets per credential, `CredRandomWithUV` and `CredRandomWithoutUV`, and the UV state of the ceremony picks which one is used. A browser using `"preferred"` or `"discouraged"` can therefore get a different PRF output than the recovery tool, and derive keys that can never be reproduced. The library exports separate create and get option fragments with this setting fixed, and an `assertUserVerified` check.
+UV SHALL also be enforced by the authenticator. The create options SHALL request CTAP 2.1 credProtect level 3 (`credentialProtectionPolicy: "userVerificationRequired"` with `enforceCredentialProtectionPolicy: true`). Before a new credential is used for a vault, the client SHALL confirm level 3 from the `credProtect` extension output in the registration `authenticatorData`. A missing, lower or unparsable level SHALL fail with `CRED_PROTECT_UNSUPPORTED`, and the key MUST NOT be enrolled. The reason: credential IDs are public in the blob, and the smart wallet does not itself require UV or check rpId and origin, so only a key that refuses every assertion without UV stops a stolen key from signing.
+
+The reason for requiring UV at all: CTAP2 authenticators hold two independent secrets per credential, `CredRandomWithUV` and `CredRandomWithoutUV`, and the UV state of the ceremony picks which one is used. A browser using `"preferred"` or `"discouraged"` can therefore get a different PRF output than the recovery tool, and derive keys that can never be reproduced. The library exports separate create and get option fragments with this setting fixed, an `assertUserVerified` check, and an `assertCredProtectUvRequired` check.
 
 #### Scenario: Browser and desktop derive the same keys
 - **WHEN** a vault is created in the browser with `userVerification: "required"`, and later recovered by the desktop tool using `hmac-secret` with PIN/UV
@@ -204,6 +206,18 @@ The reason: CTAP2 authenticators hold two independent secrets per credential, `C
 #### Scenario: PRF output without UV rejected
 - **WHEN** a create or get response's `authenticatorData` has the UV flag clear (for example, flags 0x01, user presence only)
 - **THEN** the UV check fails with `USER_NOT_VERIFIED` and the PRF output is not used (verified by the `authenticatorDataCases` vectors)
+
+#### Scenario: credProtect level 3 requested with enforcement
+- **WHEN** a client builds its create options with the library's helper
+- **THEN** the extensions contain `credentialProtectionPolicy: "userVerificationRequired"` and `enforceCredentialProtectionPolicy: true` next to the PRF input
+
+#### Scenario: Key without credProtect level 3 refused
+- **WHEN** a registration `authenticatorData` reports credProtect 1 or 2, reports none (ED flag clear or no `credProtect` entry), or cannot be parsed exactly
+- **THEN** `assertCredProtectUvRequired` fails with `CRED_PROTECT_UNSUPPORTED` and the credential is not used for a vault
+
+#### Scenario: Recovery tool unaffected
+- **WHEN** the desktop tool evaluates `hmac-secret` with PIN/UV on a credProtect-3 credential
+- **THEN** the authenticator returns the assertion and the same PRF output as before
 
 ### Requirement: Single-tap unlock
 Creating or unlocking a vault SHALL need exactly one ceremony per key. The client keeps that key's PRF output in memory, derives the locator, fetches the blob, then derives the wrapping key from the blob's wrap salt without touching the authenticator again.
@@ -240,7 +254,8 @@ Each failure SHALL be reported with one of these stable error codes, which the t
 - `VAULT_TOO_LARGE`, `TOO_FEW_KEYS`, `TOO_MANY_KEYS`, `INVALID_ARGUMENT`: creation;
 - `NO_MATCHING_KEY`, `INSUFFICIENT_SHARES`, `AUTH_FAILED`: opening;
 - `NO_MATCHING_VAULT`: candidate selection;
-- `USER_NOT_VERIFIED`: the user-verification check on `authenticatorData`.
+- `USER_NOT_VERIFIED`: the user-verification check on `authenticatorData`;
+- `CRED_PROTECT_UNSUPPORTED`: the credProtect level 3 check on a registration's `authenticatorData`.
 
 Authentication failures MUST surface only as these codes: `NO_MATCHING_KEY` when no entry unwraps, and `AUTH_FAILED` when the payload does not authenticate. They MUST carry no further detail.
 
@@ -269,3 +284,10 @@ Every blob SHALL be cryptographically bound to the 32-byte `vaultId` under which
 #### Scenario: Invalid vaultId rejected
 - **WHEN** a caller supplies a `vaultId` that is not 32 bytes, or is all zeros
 - **THEN** the operation fails with `INVALID_ARGUMENT`
+
+### Requirement: Distinct key material at creation
+Creating a vault SHALL fail with `INVALID_ARGUMENT` when any two credentials have equal PRF outputs, which also means equal locators. This keeps "N enrolled keys" from secretly being one key. The check MUST run after the credential-ID and PRF-length checks and before the secret and size checks, so existing error precedence is unchanged (verified by the `duplicate-prf` create vector).
+
+#### Scenario: Same PRF output under two credential IDs
+- **WHEN** a caller creates a vault with credentials A and B that have different IDs but identical PRF outputs
+- **THEN** creation fails with `INVALID_ARGUMENT` and no blob is produced (the `duplicate-prf` vector)

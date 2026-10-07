@@ -1,6 +1,6 @@
 # Security review: desktop recovery tool v1
 
-- **Change:** `openspec/changes/add-desktop-recovery-tool`
+- **Change:** `openspec/changes/archive/2026-10-08-add-desktop-recovery-tool`
 - **Scope:** `tools/recover/` (the `cryoshield-recover` Python CLI)
 - **Reviewer:** `ecc:security-reviewer`, run by the overwatcher
 - **Outcome:** APPROVED in round 2

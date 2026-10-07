@@ -14,9 +14,9 @@ Permanent, non-custodial backup for the secrets you can't afford to lose (seed p
 | Path | What | Spec |
 |---|---|---|
 | `packages/vault-crypto` | Vault format v1: PRF → HKDF-SHA256 → AES-256-GCM envelope encryption, vaultId-bound AAD, Shamir option, test vectors | `openspec/specs/vault-crypto` · `docs/spec/vault-format-v1.md` |
-| `contracts` | `VaultRegistry` (Foundry): no admin, no upgrades, append-only locator index | `openspec/changes/add-vault-registry-contract` |
-| `apps/web` | Static web app: WebAuthn PRF, ERC-4337 passkey smart account, sponsored gas, Arweave mirror | `openspec/changes/add-web-app` |
-| `tools/recover` | `cryoshield-recover` Python CLI (CTAP2 hmac-secret), an independent second implementation of the format | `openspec/changes/add-desktop-recovery-tool` |
+| `contracts` | `VaultRegistry` (Foundry): no admin, no upgrades, append-only locator index | `openspec/specs/vault-registry` |
+| `apps/web` | Static web app: WebAuthn PRF, ERC-4337 passkey smart account, sponsored gas, Arweave mirror | `openspec/specs/vault-web-app` |
+| `tools/recover` | `cryoshield-recover` Python CLI (CTAP2 hmac-secret), an independent second implementation of the format | `openspec/specs/vault-recovery` |
 | `docs/reviews` | Security review records | |
 
 The system design (architecture, key derivation, flows, delivery pipeline) is in [`docs/system-design.md`](docs/system-design.md). The product requirements live in `.claude/PRPs/prds/cryoshield.prd.md`.

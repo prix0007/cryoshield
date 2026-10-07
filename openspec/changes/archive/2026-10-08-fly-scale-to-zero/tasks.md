@@ -6,4 +6,4 @@
 - [ ] 1.3 After merge and deploy, confirm machines show `suspended` when idle and that a request resumes one with all security headers present. Verify: `fly machines list` and `curl -sI https://cryoshield.app/`.
 
 ## 2. Review
-- [ ] 2.1 Security review: the change touches no headers, CSP or secrets, and keeps auto-start behaviour. Verify: reviewer note in the PR.
+- [x] 2.1 Security review: the change touches no headers, CSP or secrets, and keeps auto-start behaviour. Verify: reviewer note in the PR. (Done: "Security review" note in PR #10.)
