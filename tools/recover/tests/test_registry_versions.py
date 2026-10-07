@@ -22,8 +22,9 @@ from cryoshield_recover.config import (
     RegistrySpec,
     UnknownRegistryVersion,
     abi_kind_for,
-    apply_registry_flags,
+    combine_registries,
     parse_registry_flag,
+    resolve_flags,
     sort_registries,
 )
 from cryoshield_recover.keccak import keccak256
@@ -58,32 +59,46 @@ def test_parse_registry_flag_accepts(text: str, expected: RegistryFlag) -> None:
     assert parse_registry_flag(text) == expected
 
 
+FORM = "Expected --registry ADDRESS[@DEPLOY_BLOCK][:vN[:abi=vK]]"
+
+
 @pytest.mark.parametrize(
-    "text",
+    ("text", "message"),
     [
-        "0x1234",
-        A1 + "@-5",
-        A1 + "@0x10",
-        A1 + "@" + "9" * 19 + "0",  # far above 2**63
-        A1 + "@" + str(2**63),
-        A1 + ":v0",
-        A1 + ":v01",
-        A1 + ":v1000",
-        A1 + ":2",
-        A1 + ":v2:abi=v1",  # a known version has its own ABI
-        A1 + ":v1:abi=v2",
-        A1 + ":v3:abi=v3",  # no such ABI kind
-        A1 + ":v3:abi=v0",
-        A1 + ":abi=v2",
-        A1 + "@5@6",
-        A1 + " :v2",
-        "",
+        ("0x1234", FORM),
+        (A1 + "@-5", FORM),
+        (A1 + "@0x10", FORM),
+        (A1 + "@" + "9" * 19 + "0", FORM),  # far above 2**63: 20 digits
+        (A1 + "@" + str(2**63), "too large"),
+        (A1 + ":v0", FORM),
+        (A1 + ":v01", FORM),
+        (A1 + ":v1000", FORM),
+        (A1 + ":2", FORM),
+        (A1 + ":v2:abi=v1", "always uses the v2 ABI"),  # a known version has its own ABI
+        (A1 + ":v1:abi=v2", "always uses the v1 ABI"),
+        (A1 + ":v3:abi=v3", "unknown ABI kind abi=v3"),  # no such ABI kind
+        (A1 + ":v3:abi=v0", "unknown ABI kind abi=v0"),
+        (A1 + ":abi=v2", FORM),
+        (A1 + "@5@6", FORM),
+        (A1 + " :v2", FORM),
+        (A1 + ":v2\n", FORM),  # "$" would accept a trailing newline; fullmatch does not
+        (A1 + "\n", FORM),
+        ("", FORM),
     ],
 )
-def test_parse_registry_flag_rejects(text: str) -> None:
+def test_parse_registry_flag_rejects(text: str, message: str) -> None:
     with pytest.raises(ValueError) as ei:
         parse_registry_flag(text)
-    assert "ADDRESS[@DEPLOY_BLOCK][:vN" in str(ei.value) or "ABI" in str(ei.value)
+    assert message in str(ei.value)
+
+
+def test_addresses_and_ids_refuse_a_trailing_newline() -> None:
+    with pytest.raises(ValueError):
+        config.parse_address(A1 + "\n")
+    with pytest.raises(ValueError):
+        config.parse_bytes32("11" * 32 + "\n")
+    with pytest.raises(ValueError):
+        RegistrySpec(1, A1 + "\n")
 
 
 def test_unknown_version_without_abi_is_refused_with_update_hint() -> None:
@@ -132,6 +147,8 @@ def test_abi_kind_for() -> None:
 def test_sort_registries_newest_first_unique_and_bounded() -> None:
     out = sort_registries([RegistrySpec(1, A1), RegistrySpec(3, A3, abi_kind=2), RegistrySpec(2, A2)])
     assert [s.version for s in out] == [3, 2, 1]
+    mixed = sort_registries([RegistrySpec(9, A3, abi_kind=2, trusted=False), RegistrySpec(1, A1)])
+    assert [s.version for s in mixed] == [1, 9]  # untrusted after every trusted entry
     with pytest.raises(ValueError, match="twice"):
         sort_registries([RegistrySpec(2, A1), RegistrySpec(2, A2)])
     with pytest.raises(ValueError, match="twice"):
@@ -141,57 +158,106 @@ def test_sort_registries_newest_first_unique_and_bounded() -> None:
         sort_registries(many)
 
 
-# ------------------------------------------------------------------ 1.1 merge rules (D7)
-BASE = [RegistrySpec(2, A2, 200), RegistrySpec(1, A1, 100)]
+# ------------------------------------------------------------------ 1.1 flags and trust (D7, D10, D11)
+BUILTIN = [RegistrySpec(2, A2, 200), RegistrySpec(1, A1, 100)]
 
 
-def merge(*texts: str, only: bool = False) -> tuple[list[RegistrySpec], list[str]]:
-    return apply_registry_flags(BASE, [parse_registry_flag(t) for t in texts], only=only)
+def flags(*texts: str) -> tuple[list[RegistrySpec], list[str]]:
+    return resolve_flags(BUILTIN, [parse_registry_flag(t) for t in texts])
 
 
-def test_merge_adds_a_new_version_newest_first() -> None:
-    out, notes = merge(A3 + "@500:v3:abi=v2")
-    assert specs_key(out) == [(3, A3, 500, 2), (2, A2, 200, 2), (1, A1, 100, 1)]
-    assert out[0].source == "--registry" and out[1].source == "built-in"
-    assert notes == []
+def combine(*texts: str, only: bool = False, trust: bool = False, builtin: Any = None) -> list[RegistrySpec]:
+    base = BUILTIN if builtin is None else builtin
+    supplied = resolve_flags(base, [parse_registry_flag(t) for t in texts])[0]
+    return combine_registries(base, supplied, only=only, trust_custom=trust)
 
 
-def test_merge_replaces_same_version_and_scans_from_zero_without_block() -> None:
-    other = "0x" + "b2" * 20
-    out, _ = merge(other + ":v2")
-    assert specs_key(out) == [(2, other, 0, 2), (1, A1, 100, 1)]
-    assert out[0].block_known is False and out[1].block_known is True
+def trust_key(specs: list[RegistrySpec]) -> list[tuple[int, str, int, bool]]:
+    return [(s.version, s.address, s.deploy_block, s.trusted) for s in specs]
 
 
-def test_restating_a_built_in_keeps_its_block_and_source() -> None:
-    out, _ = merge(A2 + ":v2")
-    assert out == BASE
-    out, _ = merge(A2)  # no version: the known entry's version
-    assert out == BASE
+def test_supplied_newer_version_ranks_below_every_built_in() -> None:
+    """HIGH 1: a phished --registry …:v99:abi=v2 must never outrank the built-in registries."""
+    out = combine(A3 + "@500:v99:abi=v2")
+    assert trust_key(out) == [(2, A2, 200, True), (1, A1, 100, True), (99, A3, 500, False)]
+    assert out[2].source == "--registry" and out[2].label == "v99 (supplied)"
+
+
+def test_supplied_same_version_is_added_beside_the_built_in() -> None:
+    """MEDIUM (M3): --registry X:v1 keeps the built-in v1 too, so a genuine v1 vault is never hidden."""
+    other = "0x" + "b1" * 20
+    out = combine(other + "@5:v1")
+    assert trust_key(out) == [(2, A2, 200, True), (1, A1, 100, True), (1, other, 5, False)]
+
+
+def test_exact_built_in_entry_is_built_in() -> None:
+    """M2: a supplied entry equal to a built-in one IS the built-in one (no warning)."""
+    assert combine(A2 + "@200:v2") == BUILTIN
+    assert combine(A2 + ":v2") == BUILTIN
+
+
+def test_lower_built_in_block_is_allowed_and_stays_trusted() -> None:
+    out = combine(A2 + "@150:v2")
+    assert trust_key(out)[0] == (2, A2, 150, True) and out[0].source == "built-in"
+
+
+def test_raised_built_in_block_is_refused() -> None:
+    """HIGH 2: a later start block could hide the genuine vault's first events."""
+    with pytest.raises(ValueError, match="block 200"):
+        combine(A2 + "@201:v2")
+
+
+def test_registries_only_uses_just_the_supplied_entries() -> None:
+    out = combine(A3 + "@1:v3:abi=v2", only=True)
+    assert trust_key(out) == [(3, A3, 1, False)]
+
+
+def test_no_built_in_registry_means_supplied_is_trusted() -> None:
+    out = combine(A3 + "@1:v3:abi=v2", A2 + "@2:v2", builtin=[])
+    assert trust_key(out) == [(3, A3, 1, True), (2, A2, 2, True)]
+
+
+def test_trust_custom_ranks_supplied_by_version() -> None:
+    out = combine(A3 + "@1:v3:abi=v2", trust=True)
+    assert trust_key(out) == [(3, A3, 1, True), (2, A2, 200, True), (1, A1, 100, True)]
+    with pytest.raises(ValueError, match="--registries-only"):
+        combine("0x" + "b2" * 20 + "@1:v2", trust=True)
+
+
+def test_supplied_entries_are_capped() -> None:
+    texts = [f"0x{n:040x}@1:v{n}:abi=v2" for n in range(3, 4 + config.MAX_SUPPLIED)]
+    with pytest.raises(ValueError, match="at most"):
+        combine(*texts)
+
+
+def test_bare_known_address_gets_its_version_with_a_note() -> None:
+    out, notes = flags(A2)
+    assert [(s.version, s.address, s.deploy_block) for s in out] == [(2, A2, 200)]
+    assert len(notes) == 1 and ":v2" in notes[0] and "known registry v2" in notes[0]
 
 
 def test_bare_unknown_address_means_v1_with_a_note() -> None:
     other = "0x" + "c1" * 20
-    out, notes = merge(other + "@9")
-    assert specs_key(out) == [(2, A2, 200, 2), (1, other, 9, 1)]
+    out, notes = flags(other + "@9")
+    assert [(s.version, s.address, s.deploy_block) for s in out] == [(1, other, 9)]
     assert len(notes) == 1 and ":v2" in notes[0] and "v1" in notes[0]
 
 
-def test_registries_only_uses_just_the_flags() -> None:
-    out, _ = merge(A3 + "@1:v3:abi=v2", only=True)
-    assert specs_key(out) == [(3, A3, 1, 2)]
+def test_flag_without_block_scans_from_zero() -> None:
+    out, _ = flags("0x" + "b2" * 20 + ":v2")
+    assert out[0].deploy_block == 0 and out[0].block_known is False
 
 
-def test_merge_refuses_duplicates() -> None:
+def test_flags_refuse_duplicates() -> None:
     with pytest.raises(ValueError, match="twice"):
-        merge(A3 + ":v2", "0x" + "d2" * 20 + ":v2")
+        flags(A3 + ":v2", "0x" + "d2" * 20 + ":v2")
     with pytest.raises(ValueError, match="twice"):
-        merge(A1 + ":v3:abi=v2")  # A1 is still v1 in the list
+        combine(A1 + "@1:v3:abi=v2")  # A1 is the built-in v1's address
 
 
-def test_merge_keeps_a_base_entry_s_abi_kind_from_its_record() -> None:
-    base = [RegistrySpec(3, A3, 50, abi_kind=2, source="from 10.json")]
-    out, _ = apply_registry_flags(base, [parse_registry_flag(A3)], only=False)
+def test_flag_keeps_a_known_entry_s_abi_kind() -> None:
+    known = [RegistrySpec(3, A3, 50, abi_kind=2, source="from x", trusted=False)]
+    out, _ = resolve_flags(known, [parse_registry_flag(A3)])
     assert specs_key(out) == [(3, A3, 50, 2)]
 
 
@@ -347,7 +413,7 @@ def test_load_file_limits_and_errors(tmp_path: Path) -> None:
     good = tmp_path / "11155420.json"
     good.write_text(json.dumps(record()))
     chain_id, specs = deployments.load_file(good)
-    assert chain_id == 10 and specs[0].source == "from 11155420.json"
+    assert chain_id == 10 and specs[0].source == "from '11155420.json'" and not specs[0].trusted
     big = tmp_path / "big.json"
     big.write_bytes(b" " * (deployments.MAX_FILE_BYTES + 1))
     with pytest.raises(ValueError, match="larger"):
@@ -358,6 +424,56 @@ def test_load_file_limits_and_errors(tmp_path: Path) -> None:
         deployments.load_file(bad)
     with pytest.raises(ValueError, match="read"):
         deployments.load_file(tmp_path / "missing.json")
+
+
+def test_load_file_refuses_duplicate_keys(tmp_path: Path) -> None:
+    p = tmp_path / "dup.json"
+    p.write_text(
+        '{"chainId": 10, "chainId": 11155420, "contracts": {"vaultRegistryV2": {"address": "' + A2 + '"}}}'
+    )
+    with pytest.raises(ValueError, match="twice"):
+        deployments.load_file(p)
+
+
+def test_load_file_refuses_deep_nesting(tmp_path: Path) -> None:
+    p = tmp_path / "deep.json"
+    p.write_text("[" * 200_000 + "]" * 200_000)
+    with pytest.raises(ValueError, match="nested too deeply"):
+        deployments.load_file(p)
+
+
+def test_file_names_are_inert(tmp_path: Path) -> None:
+    p = tmp_path / "evil\x1b[31m\u202e.json"
+    p.write_text(json.dumps(record()))
+    _, specs = deployments.load_file(p)
+    assert "\x1b" not in specs[0].source and "\u202e" not in specs[0].source
+    assert specs[0].source == "from 'evil[31m.json'"
+
+
+def test_read_error_without_strerror(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import builtins
+
+    def boom(*_a: Any, **_k: Any) -> Any:
+        raise OSError()
+
+    monkeypatch.setattr(builtins, "open", boom)
+    with pytest.raises(ValueError, match="OSError"):
+        deployments.load_file(tmp_path / "x.json")
+
+
+@pytest.mark.parametrize(
+    "doc",
+    [
+        {"chainId": 10, "contracts": {"vaultRegistries": {"v3\n": {"address": A3, "abiHash": V2_HASH}}}},
+        {"chainId": 10, "contracts": {"vaultRegistryV2": {"address": A2 + "\n"}}},
+        {"chainId": 10, "contracts": {"vaultRegistryV2": {"address": A2, "abiHash": V2_HASH + "\n"}}},
+        {"chainId": 10, "contracts": {"vaultRegistryV2\n": {"address": A2}}},  # not a registry key at all
+        {"config": {"chainId": 10, "registryV2\n": {"address": A2}}},
+    ],
+)
+def test_file_values_refuse_a_trailing_newline(doc: Any) -> None:
+    with pytest.raises(ValueError):
+        deployments.parse_document(doc, source="x")
 
 
 # ------------------------------------------------------------------ 2.2 parity (D4)

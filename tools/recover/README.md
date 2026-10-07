@@ -129,7 +129,13 @@ You normally need none of this: the built-in list is the project's latest deploy
 - `:vN` is the registry version (`v1`, `v2`, `v3`, …). Without it, an address that matches a built-in entry keeps that entry's version, and any other address is read as **v1** (what `--registry` meant before versions), with a note.
 - `:abi=vK` says which known read functions a newer version uses (`v1` or `v2`). The tool knows the v1 and v2 registries. For an unknown version without `abi=`, it stops with "this tool doesn't know registry vN; update cryoshield-recover" and contacts nothing. It never guesses.
 
-By default each `--registry` **replaces the built-in entry with the same version, or adds a new version**. With **`--registries-only`**, only your `--registry` entries are used.
+**How a registry you supply is treated:**
+- If its version and address equal a built-in entry's, it *is* that built-in entry. You may give a lower start block (it only searches more), but not a higher one: that could skip your vault's first records, so the tool refuses it.
+- Any other registry is **added next to the built-in ones, never instead of them**. It is read *after* them, and it can never make a copy count as current. A copy found only there opens with a warning, and a copy in a built-in registry is always preferred. So a wrong address, for example one from a phishing message, cannot make the tool show you an older version of your secrets in place of the current one.
+- **`--registries-only`** reads only the registries you supply (and warns about each built-in one left out).
+- **`--trust-custom-registries`** lets supplied registries rank by version and vouch for a copy, as if they were built in. Use it only for a newer official deployment that this release doesn't know yet, with the address from the project's own deployment records. The tool prints a SECURITY warning.
+- On a network with no built-in registry (for example OP Mainnet in this release), the registries you supply are all there is, so they are trusted, with the same warning.
+- At most 4 supplied registries that differ from the built-ins per run.
 
 ```sh
 # A v3 registry was deployed after this release; its read functions match v2's:
@@ -142,23 +148,25 @@ cryoshield-recover --registries-only --registry 0x000000000000000000000000000000
 - a deployment record from the source repository (`contracts/deployments/<chainId>.json`), or
 - the web app's `/release.json` saved to disk.
 
-The file's chain ID selects the network. A newer version in a record is read only when its `abiHash` equals the v1 or v2 ABI's, byte for byte; otherwise the tool asks you to update it. `--registry` entries still apply on top.
+The file's chain ID selects the network. Entries equal to the built-in ones count as built-in (no warning); any other entry is treated like a `--registry` you supplied. A newer version in a record is read only when its `abiHash` equals the v1 or v2 ABI's, byte for byte; otherwise the tool asks you to update it. The `abiHash` only tells the tool which read functions to use: it is **not checked against the contract on-chain**, and a wrong one just makes the reads fail or find nothing. `--registry` entries still apply on top. The file must be plain JSON under 1 MiB, with no repeated keys.
 
 ```text
 cryoshield-recover --deployment-file ./11155420.json
 cryoshield-recover --deployment-file ./release.json --registry 0x…@123:v3:abi=v2
 ```
 
-**Deprecated, still working:** `--registry-v2 ADDRESS` (now `--registry ADDRESS:v2`), `--deploy-block-v2 N` and `--deploy-block N` (now `@N` on the entry for v2 or v1). Each prints the new form.
+**Deprecated, still working:** `--registry-v2 ADDRESS` (now `--registry ADDRESS:v2`), `--deploy-block-v2 N` and `--deploy-block N` (now `@N` on the entry for v2 or v1). Each prints the new form. Note that a `--registry-v2` address that differs from the built-in one is now read *next to* the built-in v2, as a supplied registry; it no longer replaces it (use `--registries-only` for that).
 
-At startup the tool prints every registry it will read, newest first, with its first block and where it came from (built-in, `--registry`, or the file's name). **Security:** the newest registry that holds your vault decides which copy is current. So a wrong address, for example one from a phishing message, could show you an *older* version of your secrets. It can never decrypt anything or learn anything. The tool prints a SECURITY note whenever a registry is not built in, and a warning when a built-in one is left out. Use only addresses from the project's deployment records or a source you trust.
+At startup the tool prints every registry it will read (built-in first, then supplied ones marked "(supplied)"), with its first block and where it came from (built-in, `--registry`, or the file's name). It prints a SECURITY note whenever a supplied registry differs from the built-in ones, and repeats it next to the result, and next to the `--output` and `--save-blob` messages, if your vault came from one.
+
+**Time limits.** Each registry has its own time limits for looking up and reading vaults. The search of update records (event history) has **one 60-second limit shared by every registry** in the run. With several registries, that limit can run out: the tool then can't confirm which copy is current. It says so and asks you to choose when copies disagree; it never guesses. Retry with fewer registries or a faster `--rpc`.
 
 ### How a new registry version gets picked up
 
 1. The project deploys the new registry next to the old ones and adds it to `contracts/deployments/<chainId>.json`. Until the contracts side decides otherwise, the proposed key is `contracts.vaultRegistries.v3`.
 2. A test in this tool compares every preset with those records. It fails, printing the exact entry to add, until the preset lists the new version. So a release can't ship without the latest deployment.
 3. A new release of this tool reads the new version by default.
-4. Older releases can read it too, with `--registry ADDRESS@BLOCK:v3:abi=v2`, or with `--deployment-file` and the new record. The record needs no `abi=` when its `abiHash` shows the v2 ABI.
+4. Older releases can read it too, with `--registry ADDRESS@BLOCK:v3:abi=v2`, or with `--deployment-file` and the new record. The record needs no `abi=` when its `abiHash` shows the v2 ABI. Because such a release doesn't know the new registry, it treats it as supplied: the vault opens with a warning but is never called current. Add `--trust-custom-registries` only if the address comes from the project's records.
 
 ### Shamir (M-of-N) vaults
 
@@ -210,7 +218,7 @@ Public servers are untrusted, and a lying or stale server can serve an *older* g
 
 Versions reported by a server are never trusted for ranking. If servers disagree and the chain can't settle it, the tool prefers the copy more servers returned and warns you. On an exact tie it asks you to choose, showing only where each copy came from (never the secret). In a non-interactive run it stops with exit code 12.
 
-A vault ID found in several registry versions is settled by the **newest registry that holds it**. Anyone can register any ID in v1, and a vault that moved to a newer registry leaves its old copy behind. So every copy from an older registry is checked against each newer registry's on-chain history, newest first, even when no copy could be read from the newer one:
+A vault ID found in several registry versions is settled by the **newest built-in registry that holds it** (registries you supply come after all built-in ones; see "Override registries"). Anyone can register any ID in v1, and a vault that moved to a newer registry leaves its old copy behind. So every copy from an older registry is checked against each newer registry's on-chain history, newest first, even when no copy could be read from the newer one:
 - if a newer registry has a history for that ID, it decides: an older copy is shown as an older (or unmatched) copy, with a security warning;
 - if a newer registry's history can't be confirmed, no copy of that vault is called current. When copies come from more than one registry, you are asked to choose;
 - a copy a server claims is in a newer registry, while that registry's history shows no such vault, is ignored.

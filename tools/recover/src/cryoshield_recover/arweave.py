@@ -186,7 +186,7 @@ class Arweave:
     @staticmethod
     def _parse_node(node: Any, server: str = "") -> ArweaveTx | None:
         txid = node["id"]
-        if not isinstance(txid, str) or not _TXID.match(txid):
+        if not isinstance(txid, str) or not _TXID.fullmatch(txid):
             return None
         tags: dict[str, list[str]] = {}
         for t in (node.get("tags") or [])[:64]:
@@ -197,7 +197,7 @@ class Arweave:
             return None
         data = node.get("data")
         size = _as_int(data.get("size")) if isinstance(data, dict) else None  # informational only
-        vid = next((v for v in tags.get("CryoShield-Vault-Id", []) if _HEX32.match(v)), None)
+        vid = next((v for v in tags.get("CryoShield-Vault-Id", []) if _HEX32.fullmatch(v)), None)
         ver = next((v for v in tags.get("CryoShield-Version", []) if _as_int(v) is not None), None)
         block = node.get("block")
         height = _as_int(block.get("height")) if isinstance(block, dict) else None
@@ -207,7 +207,9 @@ class Arweave:
             height=height,
             vault_id=bytes.fromhex(vid[2:]) if vid else None,
             version=_as_int(ver) if ver else None,
-            locators=[bytes.fromhex(x[2:]) for x in tags.get("CryoShield-Locator", []) if _HEX32.match(x)],
+            locators=[
+                bytes.fromhex(x[2:]) for x in tags.get("CryoShield-Locator", []) if _HEX32.fullmatch(x)
+            ],
             server=server,
         )
 

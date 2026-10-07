@@ -33,9 +33,11 @@ from .config import (
 )
 
 MAX_FILE_BYTES = 1 << 20
-_VERSION_KEY = re.compile(r"^v([1-9][0-9]{0,2})$")
-_RECORD_KEY = re.compile(r"^vaultRegistryV([1-9][0-9]{0,2})$")
-_HASH = re.compile(r"^0x[0-9a-fA-F]{64}$")
+# Always used with fullmatch: "$" also matches before a trailing newline.
+_VERSION_KEY = re.compile(r"v([1-9][0-9]{0,2})")
+_RECORD_KEY = re.compile(r"vaultRegistryV([1-9][0-9]{0,2})")
+_RELEASE_KEY = re.compile(r"registryV([1-9][0-9]{0,2})")
+_HASH = re.compile(r"0x[0-9a-fA-F]{64}")
 
 
 class DeploymentError(ValueError):
@@ -48,11 +50,10 @@ def _shown(value: object) -> str:
 
 
 def _version_of(key: object, where: str) -> int:
-    m = _VERSION_KEY.match(key) if isinstance(key, str) else None
-    if m is None:
+    m = _VERSION_KEY.fullmatch(key) if isinstance(key, str) else None
+    version = int(m.group(1)) if m is not None else 0
+    if not 1 <= version <= MAX_VERSION:
         raise DeploymentError(f"{where}: registry version {_shown(key)} must look like v2 or v3")
-    version = int(m.group(1))
-    assert version <= MAX_VERSION
     return version
 
 
@@ -78,7 +79,7 @@ def _entry(version: int, entry: object, where: str, source: str) -> RegistrySpec
     ):
         raise DeploymentError(f"{where}: registry v{version} deployBlock must be a whole number >= 0")
     abi_hash = entry.get("abiHash")
-    if abi_hash is not None and not (isinstance(abi_hash, str) and _HASH.match(abi_hash)):
+    if abi_hash is not None and not (isinstance(abi_hash, str) and _HASH.fullmatch(abi_hash)):
         raise DeploymentError(f"{where}: registry v{version} abiHash must be 32 bytes of 0x-hex")
     kind = abi_kind_for(version, abi_hash=abi_hash, address=address)  # UnknownRegistryVersion: refused
     return RegistrySpec(
@@ -88,6 +89,7 @@ def _entry(version: int, entry: object, where: str, source: str) -> RegistrySpec
         abi_kind=kind,
         block_known=block is not None,
         source=source,
+        trusted=source == BUILT_IN,  # a user's file is supplied data until it matches a built-in (D10)
     )
 
 
@@ -121,7 +123,7 @@ def parse_record(
     if not isinstance(contracts, dict):
         raise DeploymentError(f"{where}: contracts must be an object")
     for key, entry in contracts.items():
-        m = _RECORD_KEY.match(key)
+        m = _RECORD_KEY.fullmatch(key)
         if m is not None:
             found.append((int(m.group(1)), entry))
     registries = contracts.get("vaultRegistries")
@@ -143,7 +145,7 @@ def parse_release(doc: Any, source: str, where: str = "release file") -> tuple[i
     if cfg.get("registry") is not None:
         found.append((1, cfg["registry"]))
     for key, entry in cfg.items():
-        m = re.match(r"^registryV([1-9][0-9]{0,2})$", key)
+        m = _RELEASE_KEY.fullmatch(key)
         if m is not None and entry is not None:
             found.append((int(m.group(1)), entry))
     listed = cfg.get("registries")
@@ -169,17 +171,39 @@ def parse_document(doc: Any, source: str) -> tuple[int, list[RegistrySpec]]:
     )
 
 
+def _no_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    for k, v in pairs:
+        if k in out:
+            raise DeploymentError(
+                f"the key {_shown(k)} appears twice in one object; refusing an ambiguous file"
+            )
+        out[k] = v
+    return out
+
+
+def display_name(path: Path) -> str:
+    """The file's name for messages: control and other non-printable characters removed, then quoted."""
+    return repr("".join(ch for ch in path.name if ch.isprintable())[:80])
+
+
 def load_file(path: Path) -> tuple[int, list[RegistrySpec]]:
-    """Read ``path`` (at most MAX_FILE_BYTES of UTF-8 JSON) and parse it with ``parse_document``."""
+    """Read ``path`` (at most MAX_FILE_BYTES of UTF-8 JSON) and parse it with ``parse_document``.
+    Duplicate keys and nesting deep enough to exhaust the parser are refused."""
+    name = display_name(path)
     try:
         with open(path, "rb") as f:
             data = f.read(MAX_FILE_BYTES + 1)
     except OSError as e:
-        raise DeploymentError(f"cannot read {path.name}: {e.strerror}") from None
+        raise DeploymentError(f"cannot read {name}: {e.strerror or type(e).__name__}") from None
     if len(data) > MAX_FILE_BYTES:
-        raise DeploymentError(f"{path.name} is larger than {MAX_FILE_BYTES} bytes; not a deployment file")
+        raise DeploymentError(f"{name} is larger than {MAX_FILE_BYTES} bytes; not a deployment file")
     try:
-        doc = json.loads(data.decode("utf-8"))
+        doc = json.loads(data.decode("utf-8"), object_pairs_hook=_no_duplicate_keys)
+    except DeploymentError:
+        raise
+    except RecursionError:
+        raise DeploymentError(f"{name} is nested too deeply; not a deployment file") from None
     except (UnicodeDecodeError, ValueError):
-        raise DeploymentError(f"{path.name} is not valid JSON") from None
-    return parse_document(doc, source=f"from {path.name}")
+        raise DeploymentError(f"{name} is not valid JSON") from None
+    return parse_document(doc, source=f"from {name}")

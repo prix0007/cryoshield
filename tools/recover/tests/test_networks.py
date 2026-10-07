@@ -233,8 +233,10 @@ def test_presets_match_presets_json() -> None:
 
 def test_registry_v2_flags() -> None:
     c = cfg("--registry-v2", "0x" + "2B" * 20, "--deploy-block-v2", "123")
-    assert (c.registries[0].address, c.registries[0].deploy_block) == ("0x" + "2b" * 20, 123)
-    assert c.registries[1] == NETWORKS["op-sepolia"].registries[1]  # v1 untouched
+    assert c.registries[:2] == list(NETWORKS["op-sepolia"].registries)  # built-ins kept, first
+    supplied = c.registries[2]
+    assert (supplied.version, supplied.address, supplied.deploy_block) == (2, "0x" + "2b" * 20, 123)
+    assert not supplied.trusted
 
 
 def test_registry_v2_flag_rejects_bad_address() -> None:
@@ -267,15 +269,16 @@ def test_both_registries_announced() -> None:
     console, err = term()
     cli.startup_summary(cfg("--registry-v2", "0x" + "2b" * 20), console)
     text = err.getvalue()
-    assert "registry v2 0x" + "2b" * 20 in text and "registry v1 0xb43f58cf" in text
+    assert "registry v2 (supplied) 0x" + "2b" * 20 in text and "registry v1 0xb43f58cf" in text
 
 
 def test_overriding_a_registry_without_its_deploy_block_scans_from_genesis() -> None:
     """A preset's deploy block belongs to the preset's address: with another address it could skip that
     deployment's first events and make its history look empty. Use 0 (slower, never wrong) and warn."""
     c = cfg("--registry-v2", "0x" + "2b" * 20, "--registry", "0x" + "3c" * 20)
-    assert [s.deploy_block for s in c.registries] == [0, 0]
-    assert not any(s.block_known for s in c.registries)
+    supplied = [s for s in c.registries if not s.trusted]
+    assert [s.deploy_block for s in supplied] == [0, 0]
+    assert not any(s.block_known for s in supplied)
     console, err = term()
     cli.startup_summary(c, console)
     text = err.getvalue()
@@ -285,6 +288,6 @@ def test_overriding_a_registry_without_its_deploy_block_scans_from_genesis() -> 
         and f"--registry {'0x' + '3c' * 20}@BLOCK:v1" in text
     )
     kept = cfg("--registry-v2", "0x" + "2b" * 20, "--deploy-block-v2", "7")
-    assert kept.registries[0].deploy_block == 7
+    assert kept.registries[-1].deploy_block == 7
     same = cfg("--registry-v2", NETWORKS["op-sepolia"].registries[0].address)
     assert same.registries[0] == NETWORKS["op-sepolia"].registries[0]

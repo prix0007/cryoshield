@@ -290,3 +290,93 @@ def test_hung_v3_cannot_starve_v2_or_v1(monkeypatch: pytest.MonkeyPatch) -> None
         c.add_vault(VID, BLOB, [LOC_A, LOC_B])
         res = run(cfg3(c, timeout=2, use_arweave=False))
     assert bytes(res.secret) == SECRET
+
+
+def test_v3_empty_v2_unverifiable_v1_held() -> None:
+    """The walk stops at the first unverifiable history: v1's lone copy is not current, not contested."""
+    v2_addr = "0x" + "2d" * 20
+    specs = [
+        RegistrySpec(3, REGISTRY_V3, 0, abi_kind=2),
+        RegistrySpec(2, v2_addr, 0),
+        RegistrySpec(1, REGISTRY, 0),
+    ]
+    with FakeChain() as c:
+        c.add_registry(REGISTRY_V3)
+        v2 = c.add_registry(v2_addr)
+        v2.logs_error = True
+        c.add_vault(VID, BLOB, [LOC_A, LOC_B])
+        reg = regs(c, specs=specs)
+        got = by_registry(reg.fetch(reg.resolve([LOC_A, LOC_B])))
+    assert got["v1"].freshness is Freshness.UNVERIFIABLE and not got["v1"].contested
+    assert any("v2" in w and "could not be confirmed" in w for w in reg.warnings)
+
+
+# ------------------------------------------------------------------ supplied registries (D10, D11)
+SUPPLIED_V9 = RegistrySpec(9, REGISTRY_V3, 0, abi_kind=2, source="--registry", trusted=False)
+
+
+def test_supplied_registry_is_walked_after_every_built_in() -> None:
+    with FakeChain() as c:
+        setup(c)
+        reg = regs(c, specs=[SUPPLIED_V9, RegistrySpec(2, REGISTRY_V2, 0), RegistrySpec(1, REGISTRY, 0)])
+    assert [(r.version, r.trusted) for r in reg.registries] == [(2, True), (1, True), (9, False)]
+
+
+def test_supplied_registry_cannot_roll_back_a_built_in_vault() -> None:
+    """HIGH 1: an attacker registry with a higher version serves an OLD genuine blob and its history."""
+    with FakeChain() as c:
+        v9 = setup(c)
+        c.add_vault_v2(VID, BLOB, [LOC_A, LOC_B])
+        c.update_vault_v2(VID, NEW)
+        v9.add_vault_v2(VID, BLOB, [LOC_A, LOC_B])
+        reg = regs(c, specs=[SUPPLIED_V9, RegistrySpec(2, REGISTRY_V2, 0), RegistrySpec(1, REGISTRY, 0)])
+        got = by_registry(reg.fetch(reg.resolve([LOC_A, LOC_B])))
+        res = run(cfg_for(c, registries=list(reg_specs(reg)), use_arweave=False))
+    assert got["v2"].freshness is Freshness.CURRENT and got["v2"].blob == NEW
+    assert got["v9 (supplied)"].freshness is Freshness.OUTDATED and got["v9 (supplied)"].contested
+    assert got["v9 (supplied)"].untrusted == f"registry v9 {REGISTRY_V3}"
+    assert res.candidate.blob == NEW
+
+
+def reg_specs(reg: Registries) -> list[RegistrySpec]:
+    return [
+        RegistrySpec(r.version, r.address, r.deploy_block, abi_kind=r.kind, trusted=r.trusted)
+        for r in reg.registries
+    ]
+
+
+def test_supplied_copy_is_never_current() -> None:
+    with FakeChain() as c:
+        v9 = setup(c)
+        v9.add_vault_v2(VID, BLOB, [LOC_A, LOC_B])
+        reg = regs(c, specs=[SUPPLIED_V9, RegistrySpec(2, REGISTRY_V2, 0), RegistrySpec(1, REGISTRY, 0)])
+        (cand,) = reg.fetch(reg.resolve([LOC_A, LOC_B]))
+    assert cand.freshness is Freshness.UNVERIFIABLE and cand.contested
+    assert any("SECURITY" in w and "you supplied" in w for w in reg.warnings)
+
+
+def test_supplied_empty_history_is_unverifiable_never_agreed_empty() -> None:
+    """HIGH 2: a supplied start block can hide events, so an empty supplied history proves nothing."""
+    with FakeChain() as c:
+        setup(c)
+        reg = regs(c, specs=[SUPPLIED_V9, RegistrySpec(2, REGISTRY_V2, 0)])
+        assert reg._history(1, VID) is None  # the supplied registry (walked last)
+        assert reg.registries[0].event_hashes(VID) == []
+        assert reg.event_hashes(VID) is None
+
+
+def test_supplied_history_never_verifies_an_arweave_copy() -> None:
+    with FakeChain() as c:
+        v9 = setup(c)
+        v9.add_vault_v2(VID, BLOB, [LOC_A])
+        reg = regs(c, specs=[SUPPLIED_V9, RegistrySpec(2, REGISTRY_V2, 0)])
+        assert reg.event_hashes(VID) is None
+
+
+def test_supplied_empty_registry_cannot_demote_a_built_in_copy() -> None:
+    with FakeChain() as c:
+        setup(c)
+        c.add_vault_v2(VID, BLOB, [LOC_A, LOC_B])
+        reg = regs(c, specs=[SUPPLIED_V9, RegistrySpec(2, REGISTRY_V2, 0), RegistrySpec(1, REGISTRY, 0)])
+        got = by_registry(reg.fetch(reg.resolve([LOC_A, LOC_B])))
+    assert got["v2"].freshness is Freshness.CURRENT

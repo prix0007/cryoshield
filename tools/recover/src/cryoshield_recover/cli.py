@@ -13,7 +13,7 @@ from typing import Any, TextIO
 
 from . import FORMAT_VERSIONS, __version__
 from .authenticator import Fido2PrfSource, PrfSource
-from .candidates import Freshness
+from .candidates import Candidate, Freshness
 from .config import (
     BUILT_IN,
     CUSTOM_NETWORK,
@@ -27,12 +27,13 @@ from .config import (
     NetworkPreset,
     RegistryFlag,
     RegistrySpec,
-    apply_registry_flags,
+    combine_registries,
     parse_address,
     parse_bytes32,
     parse_credential_id,
     parse_registry_flag,
     preset_for_chain_id,
+    resolve_flags,
 )
 from .deployments import load_file
 from .errors import ExitCode, RecoveryError
@@ -80,13 +81,19 @@ def build_parser() -> argparse.ArgumentParser:
         "--registry",
         action="append",
         metavar="ADDRESS[@DEPLOY_BLOCK][:vN[:abi=vK]]",
-        help="a VaultRegistry deployment (repeatable): replaces the built-in entry of the same version, or "
-        "adds one; e.g. 0x…@123:v3:abi=v2. Without :vN an unknown address is read as v1",
+        help="also read this VaultRegistry deployment (repeatable), e.g. 0x…@123:v3:abi=v2. It ranks below "
+        "the built-in registries unless it equals one. Without :vN an unknown address is read as v1",
     )
     g.add_argument(
         "--registries-only",
         action="store_true",
-        help="use only the --registry entries, not the network's built-in registries",
+        help="use only the --registry and --deployment-file entries, not the network's built-in registries",
+    )
+    g.add_argument(
+        "--trust-custom-registries",
+        action="store_true",
+        help="let supplied registries rank by version and vouch for a copy (only for a newer official "
+        "deployment this release does not know; see the README)",
     )
     g.add_argument(
         "--deployment-file",
@@ -174,7 +181,8 @@ def _select_network(
                 f"Chain {chain_id} is not a built-in network; pass --rpc <url> for it (and --registry), "
                 "or choose --network.",
             )
-        assert chain_id is not None
+        if chain_id is None:  # unreachable: no preset only with --chain-id or a deployment file
+            raise RecoveryError(ExitCode.USAGE, "Pass --network or --chain-id.")
         return (
             Config(
                 network=CUSTOM_NETWORK,
@@ -200,19 +208,26 @@ def _select_network(
 
 
 def _registries(a: argparse.Namespace, cfg: Config, file_specs: list[RegistrySpec] | None) -> None:
-    """The final registry list (recover-registry-versions D7, D8): base list (deployment file, else the
-    preset), merged with --registry entries by version or replaced by them (--registries-only), then the
-    deprecated block flags. Raises ValueError (a usage error) on any invalid or conflicting input."""
-    if a.registries_only and not (a.registry or a.registry_v2):
-        raise ValueError("--registries-only needs at least one --registry ADDRESS[@DEPLOY_BLOCK]:vN")
-    if a.registries_only and a.deployment_file is not None:
-        raise ValueError("--registries-only cannot be combined with --deployment-file (its list is explicit)")
+    """The final registry list (recover-registry-versions D7, D8, D10, D11).
+
+    Supplied entries are the deployment file's, overlaid by --registry entries of the same version, then
+    the deprecated block flags. ``combine_registries`` keeps every built-in entry (unless
+    --registries-only), turns a supplied entry equal to a built-in one into that built-in entry, refuses
+    a raised built-in block, and adds the rest untrusted. Raises ValueError (a usage error)."""
     builtin = list(cfg.registries)
-    base = file_specs if file_specs is not None else builtin
+    if a.registries_only and not (a.registry or a.registry_v2 or file_specs):
+        raise ValueError(
+            "--registries-only needs at least one --registry ADDRESS[@DEPLOY_BLOCK]:vN or a --deployment-file"
+        )
+    supplied: dict[int, RegistrySpec] = {s.version: s for s in file_specs or []}
     flags: list[RegistryFlag] = [parse_registry_flag(text) for text in a.registry or []]
     if a.registry_v2:
-        flags.append(RegistryFlag(parse_address(a.registry_v2), None, 2, None))
-    specs, notes = apply_registry_flags(base, flags, only=a.registries_only)
+        try:
+            flags.append(RegistryFlag(parse_address(a.registry_v2), None, 2, None))
+        except ValueError as e:
+            raise ValueError(f"--registry-v2: {e}") from None
+    from_flags, notes = resolve_flags([*builtin, *supplied.values()], flags)
+    supplied.update({s.version: s for s in from_flags})
     for flag, version, block in (
         ("--deploy-block-v2", 2, a.deploy_block_v2),
         ("--deploy-block", 1, a.deploy_block),
@@ -221,29 +236,21 @@ def _registries(a: argparse.Namespace, cfg: Config, file_specs: list[RegistrySpe
             continue
         if not 0 <= block < MAX_BLOCK:
             raise ValueError(f"{flag} must be a whole number from 0 to {MAX_BLOCK - 1}")
-        index = next((i for i, s in enumerate(specs) if s.version == version), None)
-        if index is None:
+        target = supplied.get(version) or next((s for s in builtin if s.version == version), None)
+        if target is None or (a.registries_only and version not in supplied):
             raise ValueError(f"{flag} sets registry v{version}'s block, but no registry v{version} is in use")
-        old = specs[index]
-        specs[index] = dataclasses.replace(
-            old,
-            deploy_block=block,
-            block_known=True,
-            source=old.source if block == old.deploy_block else FLAG_SOURCE,
+        supplied[version] = dataclasses.replace(
+            target, deploy_block=block, block_known=True, source=FLAG_SOURCE, trusted=False
         )
-    for flag, version, used in (
-        ("--registry-v2", 2, a.registry_v2),
-        ("--deploy-block-v2", 2, a.deploy_block_v2 is not None),
-        ("--deploy-block", 1, a.deploy_block is not None),
-    ):
-        if used:
-            spec = next(s for s in specs if s.version == version)
-            notes.append(
-                f"{flag} is deprecated; use --registry {spec.address}@{spec.deploy_block}:v{version} instead."
-            )
-    cfg.registries = specs
+        notes.append(f"{flag} is deprecated; use --registry {target.address}@{block}:v{version} instead.")
+    if a.registry_v2 and a.deploy_block_v2 is None:
+        notes.append(f"--registry-v2 is deprecated; use --registry {supplied[2].address}@BLOCK:v2 instead.")
+    cfg.registries = combine_registries(
+        builtin, list(supplied.values()), only=a.registries_only, trust_custom=a.trust_custom_registries
+    )
+    cfg.trust_custom = a.trust_custom_registries
     cfg.notes.extend(notes)
-    kept = {(s.version, s.address) for s in specs}
+    kept = {(s.version, s.address) for s in cfg.registries}
     cfg.dropped_builtin = [s.version for s in builtin if (s.version, s.address) not in kept]
 
 
@@ -334,9 +341,9 @@ def startup_summary(cfg: Config, ui: Console) -> None:
 def _registry_summary(cfg: Config, ui: Console) -> None:
     """Every registry, newest first, with its source (D9). Public values only."""
     ui.info(
-        "Registries (newest first):\n  "
+        "Registries (built-in first, newest first):\n  "
         + "\n  ".join(
-            f"registry {s.name} {s.address} from block {s.deploy_block} "
+            f"registry {s.label} {s.address} from block {s.deploy_block} "
             f"({s.source if s.source.startswith('from ') or s.source == BUILT_IN else 'from ' + s.source})"
             + (f", read with the v{s.abi_kind} ABI" if s.abi_kind != s.version else "")
             for s in cfg.registries
@@ -357,12 +364,24 @@ def _registry_summary(cfg: Config, ui: Console) -> None:
             f"Built-in registry {names} of {cfg.network} is not used in this run, so copies elsewhere cannot "
             "be checked against it and an older copy may look current."
         )
-    if any(s.source != BUILT_IN for s in cfg.registries):
+    supplied = [s for s in cfg.registries if s.source != BUILT_IN]
+    if any(not s.trusted for s in supplied):
         ui.warn(
-            "SECURITY: you supplied a registry that is not built into this release. The newest registry "
-            "holding your vault decides which copy is current, so a wrong address can show you an OLDER "
-            "version of your secrets. Use only addresses from a source you trust (the project's deployment "
-            "records or the CryoShield /architecture page you saved)."
+            "SECURITY: you supplied a registry that is not built into this release. It is read AFTER the "
+            "built-in registries and can never make a copy count as current: a wrong address (for example "
+            "from a phishing message) could otherwise show you an OLDER version of your secrets. A copy found "
+            "only there is shown with a warning."
+        )
+    if any(s.trusted for s in supplied):
+        why = (
+            "--trust-custom-registries is set"
+            if cfg.trust_custom
+            else f"this release has no built-in registry for {cfg.network}"
+        )
+        ui.warn(
+            f"SECURITY: {why}, so the registries you supplied decide which copy of your vault is current. "
+            "A wrong address can show you an OLDER version of your secrets. Use only addresses from the "
+            "project's deployment records or another source you trust."
         )
 
 
@@ -440,12 +459,17 @@ def _emit(result: Result, cfg: Config, ui: Console) -> None:
     for w in result.warnings:
         ui.warn(w)
     _report(result, ui)
+    caveat = _untrusted_caveat(result.candidate)
     if cfg.save_blob is not None:
         write_new_file(cfg.save_blob, result.candidate.blob, 0o644)
         ui.info(f"Encrypted vault saved to {cfg.save_blob} (safe to keep; useless without your key).")
+        if caveat:
+            ui.warn(f"The saved copy {caveat}")
     if cfg.output is not None:
         write_new_file(cfg.output, result.secret, 0o600)
         ui.info(f"Secret written to {cfg.output} (readable only by you). Delete it when done.")
+        if caveat:
+            ui.warn(f"The secret written {caveat}")
     elif ui.confirm_show():
         ui.show_secret(result.secret)
     else:
@@ -471,6 +495,19 @@ def _report(result: Result, ui: Console) -> None:
     }
     if c.freshness in notes:
         ui.warn(notes[c.freshness])
+    caveat = _untrusted_caveat(c)
+    if caveat:
+        ui.warn(f"SECURITY: this copy {caveat}")
+
+
+def _untrusted_caveat(c: Candidate) -> str:
+    """The result-time warning for a copy from a supplied, untrusted registry (D10)."""
+    if not c.untrusted:
+        return ""
+    return (
+        f"came from {c.untrusted}, a registry you supplied that is not built into this release. It was "
+        "not trusted to say which version is current: it may be OLDER than your latest vault."
+    )
 
 
 if __name__ == "__main__":  # pragma: no cover

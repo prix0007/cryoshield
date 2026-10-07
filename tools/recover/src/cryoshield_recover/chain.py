@@ -147,10 +147,13 @@ class Registry:
         label: str = "",
         session: Session | None = None,
         version: int | None = None,
+        trusted: bool = True,
     ) -> None:
         if kind not in (1, 2):
             raise ValueError("registry kind must be 1 or 2")
         self.version = kind if version is None else version  # the deployment's version (v3 may use kind 2)
+        # A supplied registry that differs from every built-in one (recover-registry-versions D10).
+        self.trusted = trusted
         self.address = address.lower()
         self.chain_id = chain_id
         self.deploy_block = deploy_block
@@ -644,14 +647,19 @@ class Registries:
     - history agreed empty: continue. If all are empty, newer copies are UNMATCHED (a copy without a
       history is a lie) and the oldest holder's own classification stands (legacy v1 vaults).
     For ``[v2, v1]`` this is exactly the PR #40 rule.
+
+    Trust (D10, D11): untrusted (supplied, not built-in) registries are walked AFTER every trusted one,
+    so they never outrank a built-in registry. Their copies are never CURRENT or VERIFIED and are always
+    ``contested``, and an empty history of theirs counts as unverifiable, never "agreed empty" (a
+    supplied deploy block can hide events), so it can never demote anyone's copy.
     """
 
     def __init__(self, registries: Sequence[Registry]) -> None:
         if not registries:
             raise ValueError("at least one registry is needed")
-        ordered = sorted(registries, key=lambda r: -r.version)
-        if len({r.version for r in ordered}) != len(ordered):
-            raise ValueError("each registry version may appear once")
+        ordered = sorted(registries, key=lambda r: (not r.trusted, -r.version))
+        if len({(r.version, r.trusted) for r in ordered}) != len(ordered):
+            raise ValueError("each registry version may appear once (per trust group)")
         if any(r.session is not ordered[0].session for r in ordered):
             raise ValueError("all registries must share one session")
         self.registries = ordered
@@ -681,9 +689,10 @@ class Registries:
                     spec.deploy_block,
                     log_chunk=log_chunk,
                     kind=spec.kind,
-                    label=f"registry {spec.name}" if several else "",
+                    label=f"registry {spec.label}" if several or not spec.trusted else "",
                     session=session,
                     version=spec.version,
+                    trusted=spec.trusted,
                 )
                 for spec in specs
             ]
@@ -720,7 +729,30 @@ class Registries:
             ids = list(vault_ids) if reg.kind == 2 else [i for i in vault_ids if i not in self._batched_only]
             per.append(reg.fetch(ids) if ids else [])
         self._cross_check(per)
+        self._cap_untrusted(per)
         return [c for cands in per for c in cands]
+
+    def _history(self, index: int, vault_id: bytes) -> list[tuple[int, bytes]] | None:
+        """A registry's agreed history; for an untrusted registry "agreed empty" is unverifiable (D11)."""
+        reg = self.registries[index]
+        history = reg.event_hashes(vault_id)
+        return None if not reg.trusted and history == [] else history
+
+    def _cap_untrusted(self, per: list[list[Candidate]]) -> None:
+        """Copies from an untrusted registry are never current, and ranking never prefers them (D10)."""
+        for reg, cands in zip(self.registries, per, strict=True):
+            if reg.trusted or not cands:
+                continue
+            for c in cands:
+                if c.freshness in (Freshness.CURRENT, Freshness.VERIFIED):
+                    c.freshness = Freshness.UNVERIFIABLE
+                c.contested = True
+                c.untrusted = f"registry v{reg.version} {reg.address}"
+            self.warnings.append(
+                f"SECURITY: {len(cands)} copy(ies) came from registry v{reg.version} {reg.address}, which you "
+                "supplied and is not built into this release. They are never called current, and a built-in "
+                "registry's copy is always preferred."
+            )
 
     def _cross_check(self, per: list[list[Candidate]]) -> None:
         by_id: dict[bytes, list[list[Candidate]]] = {}
@@ -734,7 +766,7 @@ class Registries:
             if oldest == 0:
                 continue  # only the newest registry holds it: its own reconcile already decided
             for i in range(oldest):
-                history = self.registries[i].event_hashes(vid)
+                history = self._history(i, vid)
                 if history is None:
                     self._unverifiable(vid, groups, i)
                     break
@@ -745,7 +777,11 @@ class Registries:
                 self._demote_newer(vid, groups, oldest)
 
     def _names(self, indexes: Sequence[int]) -> str:
-        return ", ".join(f"v{self.registries[i].version}" for i in indexes)
+        return ", ".join(self._name(i) for i in indexes)
+
+    def _name(self, index: int) -> str:
+        reg = self.registries[index]
+        return f"v{reg.version}" if reg.trusted else f"v{reg.version} (supplied)"
 
     def _demote_newer(self, vid: bytes, groups: list[list[Candidate]], upto: int) -> None:
         """Copies in registries newer than ``upto`` whose history is agreed empty are lies."""
@@ -767,7 +803,7 @@ class Registries:
                 if c.freshness in (Freshness.CURRENT, Freshness.VERIFIED):
                     c.freshness = Freshness.UNVERIFIABLE
                 c.contested = len(rest) > 1
-        newer = f"v{self.registries[at].version}"
+        newer = self._name(at)
         where = (
             f"appears in several registry versions ({self._names(rest)})"
             if len(rest) > 1
@@ -789,7 +825,7 @@ class Registries:
                 c.freshness = classify(c.blob, history)  # VERIFIED only if it IS the latest blob
         stale = [j for j in older if any(c.freshness is not Freshness.VERIFIED for c in groups[j])]
         if stale:
-            auth = f"v{self.registries[at].version}"
+            auth = self._name(at)
             self.warnings.append(
                 f"SECURITY: a copy of vault 0x{vid.hex()} in the older registry {self._names(stale)} uses the "
                 f"ID of a registry {auth} vault and is not its current version (it may be an older copy left "
@@ -800,8 +836,10 @@ class Registries:
         """The agreed history of ``vault_id`` from the newest registry that has one. Unverifiable newer
         history makes the answer unverifiable (an older registry's history could be a plant)."""
         history: list[tuple[int, bytes]] | None = []
-        for reg in self.registries:
-            history = reg.event_hashes(vault_id)
+        for index, reg in enumerate(self.registries):
+            history = self._history(index, vault_id)
+            if history and not reg.trusted:
+                return None  # only a supplied registry vouches for it: never a basis for VERIFIED (D10)
             if history is None or history:
                 return history
         return history

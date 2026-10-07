@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import dataclasses
 import re
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
@@ -14,8 +15,8 @@ from typing import Literal
 
 PLACEHOLDER_ADDRESS = "0x0000000000000000000000000000000000000000"
 
-_ADDR = re.compile(r"^0x[0-9a-fA-F]{40}$")
-_HEX32 = re.compile(r"^(0x)?[0-9a-fA-F]{64}$")
+_ADDR = re.compile(r"0x[0-9a-fA-F]{40}")  # always fullmatch: "$" accepts a trailing newline
+_HEX32 = re.compile(r"(0x)?[0-9a-fA-F]{64}")
 
 
 def is_placeholder(address: str) -> bool:
@@ -23,7 +24,7 @@ def is_placeholder(address: str) -> bool:
 
 
 def parse_address(s: str) -> str:
-    if not _ADDR.match(s):
+    if not _ADDR.fullmatch(s):
         shown = s if len(s) <= 60 else s[:60] + "…"
         raise ValueError(f"not a 20-byte hex address: {shown!r}")
     return s.lower()
@@ -50,6 +51,9 @@ ABI_HASHES: dict[str, AbiKind] = {
 }
 # Each registry has its own time budgets (chain.py), so the count bounds the worst-case run time.
 MAX_REGISTRIES = 8
+# Supplied (--registry / --deployment-file) entries that differ from the built-ins, per run: each adds
+# its own resolve and fetch budgets, so this bounds what a long list can add to the run time.
+MAX_SUPPLIED = 4
 MAX_VERSION = 999
 MAX_BLOCK = 2**63
 BUILT_IN = "built-in"
@@ -95,7 +99,12 @@ def abi_kind_for(
 
 @dataclass(frozen=True)
 class RegistrySpec:
-    """One VaultRegistry deployment on a chain (D1). ``abi_kind`` 0 means "the version's own"."""
+    """One VaultRegistry deployment on a chain (D1). ``abi_kind`` 0 means "the version's own".
+
+    ``trusted`` (D10): built-in entries are trusted. A supplied entry (``--registry``, a deployment file)
+    that differs from every built-in entry is not: it ranks below every built-in registry and its copies
+    are never called current. On a chain with no built-in registry, or with --trust-custom-registries,
+    supplied entries are trusted (with a loud warning)."""
 
     version: int
     address: str
@@ -103,6 +112,7 @@ class RegistrySpec:
     abi_kind: int = 0
     block_known: bool = True
     source: str = BUILT_IN
+    trusted: bool = True
 
     def __post_init__(self) -> None:
         if isinstance(self.version, bool) or not 1 <= self.version <= MAX_VERSION:
@@ -127,14 +137,21 @@ class RegistrySpec:
     def kind(self) -> AbiKind:
         return 1 if self.abi_kind == 1 else 2
 
+    @property
+    def label(self) -> str:
+        """``v3``, or ``v3 (supplied)`` for an untrusted entry."""
+        return self.name if self.trusted else f"{self.name} (supplied)"
+
 
 def sort_registries(specs: Iterable[RegistrySpec]) -> list[RegistrySpec]:
-    """Newest first; versions and addresses unique; at most MAX_REGISTRIES."""
-    out = sorted(specs, key=lambda s: -s.version)
-    versions = [s.version for s in out]
-    for v in set(versions):
-        if versions.count(v) > 1:
-            raise ValueError(f"registry v{v} is given twice; give each version once")
+    """Trusted first, then untrusted (D10); newest first within each. A version appears at most once per
+    group (a supplied entry may sit beside the built-in one of its version); addresses are unique; at
+    most MAX_REGISTRIES."""
+    out = sorted(specs, key=lambda s: (not s.trusted, -s.version))
+    keys = [(s.version, s.trusted) for s in out]
+    for k in set(keys):
+        if keys.count(k) > 1:
+            raise ValueError(f"registry v{k[0]} is given twice; give each version once")
     addresses = [s.address for s in out]
     for a in set(addresses):
         if addresses.count(a) > 1:
@@ -155,13 +172,13 @@ class RegistryFlag:
 
 
 _REGISTRY_FLAG = re.compile(
-    r"^(0x[0-9a-fA-F]{40})(?:@([0-9]{1,19}))?(?::v([1-9][0-9]{0,2})(?::abi=v([0-9]{1,3}))?)?$"
+    r"(0x[0-9a-fA-F]{40})(?:@([0-9]{1,19}))?(?::v([1-9][0-9]{0,2})(?::abi=v([0-9]{1,3}))?)?"
 )
 
 
 def parse_registry_flag(text: str) -> RegistryFlag:
     """``ADDRESS[@DEPLOY_BLOCK][:vN[:abi=vK]]`` (D7). Unknown versions without abi= are refused (D6)."""
-    m = _REGISTRY_FLAG.match(text) if len(text) <= 128 else None
+    m = _REGISTRY_FLAG.fullmatch(text) if len(text) <= 128 else None
     if m is None:
         shown = text if len(text) <= 80 else text[:80] + "…"
         raise ValueError(f"cannot read registry {shown!r}. Expected {REGISTRY_FORM}, e.g. 0x…@123:v2")
@@ -176,25 +193,26 @@ def parse_registry_flag(text: str) -> RegistryFlag:
     return RegistryFlag(address.lower(), block, version, abi_kind)
 
 
-def apply_registry_flags(
-    base: Sequence[RegistrySpec], flags: Sequence[RegistryFlag], *, only: bool
+def resolve_flags(
+    known: Sequence[RegistrySpec], flags: Sequence[RegistryFlag], *, source: str = FLAG_SOURCE
 ) -> tuple[list[RegistrySpec], list[str]]:
-    """Merge --registry entries into ``base`` by version (D7), or use only them (``only``).
-
-    Without :vN, an address equal to a base entry's takes that version; any other address is v1 (the
-    flag's meaning before versions), with a note. Without @BLOCK, the base entry's block is kept for the
-    same (version, address); otherwise history is searched from block 0 (``block_known`` False)."""
+    """Turn --registry values into supplied entries (D7). ``known`` (built-in and file entries) is used
+    to fill in a missing version (an address equal to a known entry's takes its version, with a note;
+    any other address is v1, the flag's meaning before versions, with a note) and a missing block (the
+    known entry's for the same version and address; otherwise 0, ``block_known`` False)."""
     notes: list[str] = []
-    by_version = {s.version: s for s in base}
-    by_address = {s.address: s for s in base}
-    result: dict[int, RegistrySpec] = {} if only else dict(by_version)
-    given: set[int] = set()
+    by_address = {s.address: s for s in known}
+    out: dict[int, RegistrySpec] = {}
     for f in flags:
         version = f.version
         if version is None:
-            known = by_address.get(f.address)
-            if known is not None:
-                version = known.version
+            hit = by_address.get(f.address)
+            if hit is not None:
+                version = hit.version
+                notes.append(
+                    f"--registry {f.address} has no version; it is the known registry v{version}. Add "
+                    f":v{version} to be explicit."
+                )
             else:
                 version = 1
                 notes.append(
@@ -202,11 +220,9 @@ def apply_registry_flags(
                     "meaning before versions). If it is newer, add :v2 (or its version), e.g. "
                     f"--registry {f.address}@BLOCK:v2."
                 )
-        if version in given:
+        if version in out:
             raise ValueError(f"registry v{version} is given twice; give each version once")
-        given.add(version)
-        same = by_version.get(version)
-        same = same if same is not None and same.address == f.address else None
+        same = next((s for s in known if s.version == version and s.address == f.address), None)
         if f.block is not None:
             block, block_known = f.block, True
         elif same is not None:
@@ -214,16 +230,52 @@ def apply_registry_flags(
         else:
             block, block_known = 0, False
         kind = f.abi_kind if f.abi_kind is not None else (same.abi_kind if same is not None else 0)
-        unchanged = same is not None and same.deploy_block == block
-        result[version] = RegistrySpec(
-            version,
-            f.address,
-            block,
-            abi_kind=kind,
-            block_known=block_known,
-            source=same.source if unchanged and same is not None else FLAG_SOURCE,
+        out[version] = RegistrySpec(
+            version, f.address, block, abi_kind=kind, block_known=block_known, source=source, trusted=False
         )
-    return sort_registries(result.values()), notes
+    return list(out.values()), notes
+
+
+def combine_registries(
+    builtin: Sequence[RegistrySpec],
+    supplied: Sequence[RegistrySpec],
+    *,
+    only: bool = False,
+    trust_custom: bool = False,
+) -> list[RegistrySpec]:
+    """The final list (D7, D10, D11).
+
+    - A supplied entry with a built-in (version, address) IS that built-in entry (trusted, source
+      built-in). Its block may be lower (it only scans more), never higher: a raised block could hide the
+      genuine vault's first events (D11), so that is a ValueError.
+    - Any other supplied entry is added untrusted, BESIDE the built-ins: it never replaces or outranks
+      one, so a genuine vault in a built-in registry is never hidden. Only ``only`` (--registries-only)
+      leaves the built-ins out.
+    - It is trusted only when the chain has no built-in registry, or with ``trust_custom``."""
+    if len(supplied) > MAX_SUPPLIED:
+        raise ValueError(f"at most {MAX_SUPPLIED} registries can be supplied in one run")
+    by_key = {(b.version, b.address): b for b in builtin}
+    result: dict[tuple[int, str], RegistrySpec] = {} if only else dict(by_key)
+    for s in supplied:
+        b = by_key.get((s.version, s.address))
+        if b is not None:
+            if s.block_known and s.deploy_block > b.deploy_block:
+                raise ValueError(
+                    f"registry v{s.version} {s.address} was deployed in block {b.deploy_block}; a later start "
+                    f"block ({s.deploy_block}) could hide your vault's first records. Use {b.deploy_block} "
+                    "or lower, or leave the block out."
+                )
+            low = s.block_known and s.deploy_block < b.deploy_block
+            result[(b.version, b.address)] = dataclasses.replace(b, deploy_block=s.deploy_block) if low else b
+            continue
+        trusted = trust_custom or not builtin
+        if trust_custom and not only and any(b.version == s.version for b in builtin):
+            raise ValueError(
+                f"--trust-custom-registries cannot rank a supplied registry v{s.version} beside the built-in "
+                f"v{s.version}; use --registries-only to replace it"
+            )
+        result[(s.version, s.address)] = dataclasses.replace(s, trusted=trusted)
+    return sort_registries(result.values())
 
 
 @dataclass(frozen=True)
@@ -313,7 +365,7 @@ def preset_for_chain_id(chain_id: int) -> NetworkPreset | None:
 
 
 def parse_bytes32(s: str) -> bytes:
-    if not _HEX32.match(s):
+    if not _HEX32.fullmatch(s):
         raise ValueError("expected 32 bytes of hex (64 hex digits, optional 0x)")
     raw = bytes.fromhex(s[2:] if s.startswith("0x") else s)
     if not any(raw):
@@ -359,8 +411,10 @@ class Config:
     rp_id_overridden: bool = False
     # Public notes for the startup summary (deprecated flags, a bare --registry read as v1).
     notes: list[str] = field(default_factory=list)
-    # Built-in registry versions left out by --registries-only or --deployment-file (startup note).
+    # Built-in registry versions left out by --registries-only (startup warning).
     dropped_builtin: list[int] = field(default_factory=list)
+    # --trust-custom-registries: supplied registries rank by version and may vouch for a copy (D10).
+    trust_custom: bool = False
     rpcs_user_supplied: bool = False
 
     @property

@@ -1,6 +1,6 @@
 # Tasks
 
-> **Archive after:** add-desktop-recovery-tool, harden-recovery-network-trust and harden-gas-sponsorship. `vault-recovery` is not in `openspec/specs/` on `main` yet (it is defined by those in-flight changes), so this change only ADDs requirements, and it must be archived after them.
+> **Archive after:** harden-gas-sponsorship (its "v2 is authoritative" rule is what D2 generalises). `vault-recovery` is in `openspec/specs/` since PR #44 (add-desktop-recovery-tool and harden-recovery-network-trust archived). This change MODIFIES "Built-in defaults with overrides" and ADDs the rest.
 
 **Owners:**
 - **[rec]** recovery-tool engineer
@@ -62,6 +62,37 @@
 ## 6. Checks [rec]
 
 - [x] 6.1 [rec] Run `uv run pytest -q`, `uv run ruff check`, `uv run ruff format --check`, `uv run mypy --strict src` (the configured scope) and `openspec validate --all --strict`. Verify: all pass.
+
+## 9. Review fixes (local ECC review of d16be34) [rec]
+
+- [x] 9.1 [rec] HIGH 1 (D10): tests first (`test_registry_versions.py`, `test_registry_v3.py`, `test_cli_registries.py`):
+  - a phished `--registry 0xATTACKER@N:v99:abi=v2` that serves an old blob with a fake history can't beat the built-in v2, unit and end to end;
+  - supplied copies are never current and are contested;
+  - supplied entries are walked after the built-ins and never verify an Arweave copy;
+  - a file or flag equal to a built-in entry is built-in, with no warning;
+  - a chain without built-ins, and `--trust-custom-registries`, trust supplied entries with a warning;
+  - the result-time, `--output` and `--save-blob` warnings.
+
+  Then implement `RegistrySpec.trusted`, `combine_registries`, `Registries` ordering, `_cap_untrusted` and `Candidate.untrusted`. Verify: pytest.
+- [x] 9.2 [rec] HIGH 2 (D11): tests first: a higher block for a built-in (version, address) is refused (flag, deprecated flag, file) and a lower one stays trusted; an untrusted empty history is unverifiable and can't demote a built-in copy. Then implement. Verify: pytest.
+- [x] 9.3 [rec] MEDIUM: tests first:
+  - deep nesting is refused as "not a deployment file";
+  - a trailing `\n` is refused in a flag, an address, a vault ID and file keys and values (`fullmatch` everywhere, including `arweave.py`);
+  - `--registry X:v1` keeps the built-in v1 and finds a genuine v1 vault end to end (M3).
+
+  Then implement. Verify: pytest.
+- [x] 9.4 [rec] LOW: tests first:
+  - duplicate JSON keys are refused;
+  - a read error without `strerror` names the error type;
+  - file names are quoted and stripped of control characters;
+  - a note appears when a bare address maps to a built-in version;
+  - the reject test checks the expected message per case;
+  - `--registry-v2` errors name the flag;
+  - no production `assert`;
+  - at most 4 supplied entries;
+  - the case "v3 empty, v2 unverifiable, v1 held".
+
+  README: the shared history deadline, and that `abiHash` is not verified on-chain. Verify: pytest, ruff, `mypy --strict src`, `openspec validate --all --strict`.
 
 ## 7. Follow-ups outside `tools/recover` (not part of this change's implementation)
 
