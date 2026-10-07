@@ -297,6 +297,15 @@ Fixes from the ECC review of PR #40; none changes a spec requirement, both enfor
   - `getVaults` answers may be up to 128 KiB (32 × 1 KB blobs as hex), so a full batch is one call; other calls keep the 64 KiB cap.
 - **Anvil tests** (v1 and v2) skip only when Foundry is missing. With `CRYOSHIELD_REQUIRE_FOUNDRY` set, a missing Foundry fails collection instead. CI's `recover` job should set it (an overwatcher change in `.github/workflows/ci.yml`).
 
+## Implementation notes (web, 2026-10-08)
+
+Recorded assumptions for tasks 5.2 and 5.5; none changes a spec requirement.
+
+- **5.2 tests.** The salt-based create and the removed `VAULT_ID_TAKEN` retry landed with 5.1/5.3 (PR #41). This change makes the `vaultIdDerivation` vector check mandatory in `apps/web/test/account/writes.test.ts` (it fails, not skips, if the vector is missing). `flows.test.tsx` and `motion-ui.test.tsx` already carry no retry text. `contracts/test/VaultRegistry.t.sol` still tests the deployed v1 contract, whose `VaultIdTaken` behaviour is unchanged, so only its comment now says that the retry is v1-only; `contracts/src` is untouched.
+- **5.5 lazy write stack.** `src/account/stack.ts` (viem account abstraction, the Pimlico client, the wallet wrapper, the allowlist, the write operations) is one lazy chunk, loaded by `src/account/lazy.ts` on the first save, edit or add-key. The sponsor in the app services loads it on its first send. The light parts the initial chunk needs moved to `src/account/errors.ts` (re-exported from `writes.ts`) and `makePublicClient` moved to `src/chain/registry.ts` (re-exported from `account.ts`). `test/build/lazy-write-stack.test.ts` keeps the write stack out of the static `/app` graph.
+- **Assumption: a failed chunk load is `WriteError('LOAD_FAILED')`.** The flows show "Nothing was saved. Part of the app didn't load. Check your connection, then try again." and keep the draft. The failure is not cached, so Save imports again. Edit and add-key load the chunk before the first key tap, so a failed load never wastes a tap. The chunk is same-origin (`script-src 'self'`; `verify-build` passes with the CSP unchanged).
+- **Bundle (gzip -9, `verify-build`).** `/app` initial JS went from 216,554 B (e2e) / 216,559 B (production) to 200,242 B / 200,239 B, which is 16,312 B less. The lazy JS went from 17,132 B to 34,879 B. `APP_BASELINE` drops the +2 KB and a further 12 KB: 182,401 B.
+
 ## Open questions
 
 None are blocking. The R1 items marked UNVERIFIED are confirmations for the founder (task 1.1), not design choices.
