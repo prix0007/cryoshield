@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import logging
 import math
 import sys
@@ -12,21 +13,29 @@ from typing import Any, TextIO
 
 from . import FORMAT_VERSIONS, __version__
 from .authenticator import Fido2PrfSource, PrfSource
-from .candidates import Freshness
+from .candidates import Candidate, Freshness
 from .config import (
+    BUILT_IN,
     CUSTOM_NETWORK,
     DEFAULT_NETWORK,
+    FLAG_SOURCE,
+    MAX_BLOCK,
     NETWORKS,
-    PLACEHOLDER_ADDRESS,
+    REGISTRY_FORM,
     TESTNET,
     Config,
     NetworkPreset,
-    is_placeholder,
+    RegistryFlag,
+    RegistrySpec,
+    combine_registries,
     parse_address,
     parse_bytes32,
     parse_credential_id,
+    parse_registry_flag,
     preset_for_chain_id,
+    resolve_flags,
 )
+from .deployments import load_file
 from .errors import ExitCode, RecoveryError
 from .net import check_url, host_of
 from .recover import VAULT_ID_FOR_FILE, ArweaveFactory, Recovery, RegistryFactory, Result
@@ -68,15 +77,39 @@ def build_parser() -> argparse.ArgumentParser:
     g.add_argument(
         "--rpc", action="append", metavar="URL", help="JSON-RPC endpoint (repeatable; replaces defaults)"
     )
-    g.add_argument("--registry", metavar="ADDRESS", help="VaultRegistry (v1) contract address")
-    g.add_argument("--registry-v2", metavar="ADDRESS", help="VaultRegistry v2 contract address")
+    g.add_argument(
+        "--registry",
+        action="append",
+        metavar="ADDRESS[@DEPLOY_BLOCK][:vN[:abi=vK]]",
+        help="also read this VaultRegistry deployment (repeatable), e.g. 0x…@123:v3:abi=v2. It ranks below "
+        "the built-in registries unless it equals one. Without :vN an unknown address is read as v1",
+    )
+    g.add_argument(
+        "--registries-only",
+        action="store_true",
+        help="use only the --registry and --deployment-file entries, not the network's built-in registries",
+    )
+    g.add_argument(
+        "--trust-custom-registries",
+        action="store_true",
+        help="let supplied registries rank by version and vouch for a copy (only for a newer official "
+        "deployment this release does not know; see the README)",
+    )
+    g.add_argument(
+        "--deployment-file",
+        type=Path,
+        metavar="PATH",
+        help="use every registry in a saved deployment record (contracts/deployments/<chainId>.json) or "
+        "release file (/release.json); its chain ID selects the network",
+    )
+    g.add_argument("--registry-v2", metavar="ADDRESS", help="deprecated: use --registry ADDRESS@BLOCK:v2")
     g.add_argument(
         "--chain-id",
         type=int,
         help="expected chain ID; alone, selects the preset with that ID; otherwise overrides it",
     )
-    g.add_argument("--deploy-block", type=int, help="registry deployment block (for event history)")
-    g.add_argument("--deploy-block-v2", type=int, help="VaultRegistry v2 deployment block")
+    g.add_argument("--deploy-block", type=int, help="deprecated: use --registry ADDRESS@BLOCK:v1")
+    g.add_argument("--deploy-block-v2", type=int, help="deprecated: use --registry ADDRESS@BLOCK:v2")
     g.add_argument(
         "--arweave-graphql", action="append", metavar="URL", help="Arweave GraphQL endpoint (repeatable)"
     )
@@ -107,11 +140,14 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
-def _select_network(a: argparse.Namespace) -> Config:
+def _select_network(
+    a: argparse.Namespace, file_chain_id: int | None = None
+) -> tuple[Config, NetworkPreset | None]:
     """Selection order (target-op-sepolia D2): --network > --testnet > --chain-id matching a preset >
-    DEFAULT_NETWORK. A preset's registry is only ever used on that preset's chain (security review):
-    a preset plus a conflicting --chain-id is refused, and a non-preset chain ID is a "custom" network
-    with no built-in registry and user-supplied --rpc endpoints only."""
+    a --deployment-file's chain ID > DEFAULT_NETWORK. A preset's registries are only ever used on that
+    preset's chain (security review): a preset plus a conflicting --chain-id or deployment file is
+    refused, and a non-preset chain ID is a "custom" network with no built-in registry and user-supplied
+    --rpc endpoints only."""
     explicit = a.network or (TESTNET if a.testnet else None)
     preset: NetworkPreset | None
     if explicit is not None:
@@ -125,66 +161,120 @@ def _select_network(a: argparse.Namespace) -> Config:
             )
     elif a.chain_id is not None:
         preset = preset_for_chain_id(a.chain_id)
+    elif file_chain_id is not None:
+        preset = preset_for_chain_id(file_chain_id)
     else:
         preset = NETWORKS[DEFAULT_NETWORK]
+    chain_id = a.chain_id if a.chain_id is not None else file_chain_id
+    if file_chain_id is not None:
+        selected = preset.chain_id if preset is not None else chain_id
+        if selected != file_chain_id:
+            raise RecoveryError(
+                ExitCode.USAGE,
+                f"The deployment file is for chain {file_chain_id}, but the selected network is chain "
+                f"{selected}. Drop --network/--testnet/--chain-id, or use the file for this chain.",
+            )
     if preset is None:
         if not a.rpc:
             raise RecoveryError(
                 ExitCode.USAGE,
-                f"Chain {a.chain_id} is not a built-in network; pass --rpc <url> for it (and --registry), "
+                f"Chain {chain_id} is not a built-in network; pass --rpc <url> for it (and --registry), "
                 "or choose --network.",
             )
-        return Config(
-            network=CUSTOM_NETWORK,
-            chain_id=a.chain_id,
-            registry=PLACEHOLDER_ADDRESS,
-            deploy_block=0,
-            registry_v2=PLACEHOLDER_ADDRESS,
-            deploy_block_v2=0,
-            rpcs=[],
+        if chain_id is None:  # unreachable: no preset only with --chain-id or a deployment file
+            raise RecoveryError(ExitCode.USAGE, "Pass --network or --chain-id.")
+        return (
+            Config(
+                network=CUSTOM_NETWORK,
+                chain_id=chain_id,
+                registries=[],
+                rpcs=[],
+                timeout=a.timeout,
+                verbose=a.verbose,
+            ),
+            None,
+        )
+    return (
+        Config(
+            network=preset.name,
+            chain_id=preset.chain_id,
+            registries=list(preset.registries),
+            rpcs=list(preset.rpcs),
             timeout=a.timeout,
             verbose=a.verbose,
-        )
-    return Config(
-        network=preset.name,
-        chain_id=preset.chain_id,
-        registry=preset.registry,
-        deploy_block=preset.deploy_block,
-        registry_v2=preset.registry_v2,
-        deploy_block_v2=preset.deploy_block_v2,
-        rpcs=list(preset.rpcs),
-        timeout=a.timeout,
-        verbose=a.verbose,
+        ),
+        preset,
     )
 
 
+def _registries(a: argparse.Namespace, cfg: Config, file_specs: list[RegistrySpec] | None) -> None:
+    """The final registry list (recover-registry-versions D7, D8, D10, D11).
+
+    Supplied entries are the deployment file's, overlaid by --registry entries of the same version, then
+    the deprecated block flags. ``combine_registries`` keeps every built-in entry (unless
+    --registries-only), turns a supplied entry equal to a built-in one into that built-in entry, refuses
+    a raised built-in block, and adds the rest untrusted. Raises ValueError (a usage error)."""
+    builtin = list(cfg.registries)
+    if a.registries_only and not (a.registry or a.registry_v2 or file_specs):
+        raise ValueError(
+            "--registries-only needs at least one --registry ADDRESS[@DEPLOY_BLOCK]:vN or a --deployment-file"
+        )
+    supplied: dict[int, RegistrySpec] = {s.version: s for s in file_specs or []}
+    flags: list[RegistryFlag] = [parse_registry_flag(text) for text in a.registry or []]
+    if a.registry_v2:
+        try:
+            flags.append(RegistryFlag(parse_address(a.registry_v2), None, 2, None))
+        except ValueError as e:
+            raise ValueError(f"--registry-v2: {e}") from None
+    from_flags, notes = resolve_flags([*builtin, *supplied.values()], flags)
+    supplied.update({s.version: s for s in from_flags})
+    for flag, version, block in (
+        ("--deploy-block-v2", 2, a.deploy_block_v2),
+        ("--deploy-block", 1, a.deploy_block),
+    ):
+        if block is None:
+            continue
+        if not 0 <= block < MAX_BLOCK:
+            raise ValueError(f"{flag} must be a whole number from 0 to {MAX_BLOCK - 1}")
+        target = supplied.get(version) or next((s for s in builtin if s.version == version), None)
+        if target is None or (a.registries_only and version not in supplied):
+            raise ValueError(f"{flag} sets registry v{version}'s block, but no registry v{version} is in use")
+        supplied[version] = dataclasses.replace(
+            target, deploy_block=block, block_known=True, source=FLAG_SOURCE, trusted=False
+        )
+        notes.append(f"{flag} is deprecated; use --registry {target.address}@{block}:v{version} instead.")
+    if a.registry_v2 and a.deploy_block_v2 is None:
+        notes.append(f"--registry-v2 is deprecated; use --registry {supplied[2].address}@BLOCK:v2 instead.")
+    cfg.registries = combine_registries(
+        builtin, list(supplied.values()), only=a.registries_only, trust_custom=a.trust_custom_registries
+    )
+    cfg.trust_custom = a.trust_custom_registries
+    cfg.notes.extend(notes)
+    kept = {(s.version, s.address) for s in cfg.registries}
+    cfg.dropped_builtin = [s.version for s in builtin if (s.version, s.address) not in kept]
+
+
 def config_from_args(a: argparse.Namespace) -> Config:
-    cfg = _select_network(a)
+    file_chain_id: int | None = None
+    file_specs: list[RegistrySpec] | None = None
+    if a.deployment_file is not None:
+        try:
+            file_chain_id, file_specs = load_file(a.deployment_file)
+        except ValueError as e:
+            raise RecoveryError(ExitCode.USAGE, f"--deployment-file: {e}") from None
+    cfg, _preset = _select_network(a, file_chain_id)
     try:
         if a.rp_id:
             cfg.rp_id, cfg.rp_id_overridden = a.rp_id, True
         if a.rpc:
             cfg.rpcs = [check_url(u) for u in a.rpc]
             cfg.rpcs_user_supplied = True
-        # A preset's deploy block belongs to the preset's address. For another address without its own
-        # --deploy-block*, scan from block 0 (slower, never wrong) rather than possibly skipping that
-        # deployment's first events, which would make its history look empty (ECC review, PR #40).
-        if a.registry:
-            new = parse_address(a.registry)
-            if new != cfg.registry and a.deploy_block is None:
-                cfg.deploy_block, cfg.deploy_block_unknown = 0, True
-            cfg.registry = new
-        if a.registry_v2:
-            new = parse_address(a.registry_v2)
-            if new != cfg.registry_v2 and a.deploy_block_v2 is None:
-                cfg.deploy_block_v2, cfg.deploy_block_v2_unknown = 0, True
-            cfg.registry_v2 = new
         if a.chain_id is not None:
             cfg.chain_id = a.chain_id
-        if a.deploy_block is not None:
-            cfg.deploy_block = a.deploy_block
-        if a.deploy_block_v2 is not None:
-            cfg.deploy_block_v2 = a.deploy_block_v2
+        # A preset's deploy block belongs to the preset's address. For another address without its own
+        # block, history is scanned from block 0 (slower, never wrong) rather than possibly skipping that
+        # deployment's first events, which would make its history look empty (ECC review, PR #40).
+        _registries(a, cfg, file_specs)
         if a.arweave_graphql:
             cfg.arweave_graphql = [check_url(u) for u in a.arweave_graphql]
         if a.arweave_gateway:
@@ -227,29 +317,18 @@ def startup_summary(cfg: Config, ui: Console) -> None:
             where = f"custom chain {cfg.chain_id}" if cfg.network == CUSTOM_NETWORK else cfg.network
             ui.warn(
                 f"No VaultRegistry deployment is built in for {where} in this release, so blockchain "
-                "lookup is off. Pass --registry-v2 <address> and/or --registry <address> (and "
-                "--deploy-block-v2/--deploy-block) to use a known deployment, or --network for another chain."
+                f"lookup is off. Pass {REGISTRY_FORM} (repeatable) or --deployment-file <saved record> "
+                "to use a known deployment (the older --registry-v2/--registry flags still work), or "
+                "--network for another chain."
             )
         else:
+            _registry_summary(cfg, ui)
             source = "user-supplied" if cfg.rpcs_user_supplied else "built-in"
-            regs = [
-                f"registry {name} {addr}"
-                for name, addr in (("v2", cfg.registry_v2), ("v1", cfg.registry))
-                if not is_placeholder(addr)
-            ]
-            for flag, unknown in (
-                ("--deploy-block-v2", cfg.deploy_block_v2_unknown),
-                ("--deploy-block", cfg.deploy_block_unknown),
-            ):
-                if unknown:
-                    ui.warn(
-                        f"No deployment block is known for that registry address, so update history is "
-                        f"searched from block 0, which can be slow or fail on public servers. Pass {flag} "
-                        "if you know it."
-                    )
+            count = len(cfg.registries)
             contacts.append(
-                f"blockchain ({cfg.network}, chain {cfg.chain_id}, {', '.join(regs)}), "
-                f"{source} endpoints: " + ", ".join(host_of(u) for u in cfg.rpcs)
+                f"blockchain ({cfg.network}, chain {cfg.chain_id}, {count} "
+                f"registr{'y' if count == 1 else 'ies'}), {source} endpoints: "
+                + ", ".join(host_of(u) for u in cfg.rpcs)
             )
     if cfg.arweave_configured:
         contacts.append(
@@ -257,6 +336,53 @@ def startup_summary(cfg: Config, ui: Console) -> None:
         )
     if contacts:
         ui.info("Will contact only these public servers (read-only):\n  " + "\n  ".join(contacts))
+
+
+def _registry_summary(cfg: Config, ui: Console) -> None:
+    """Every registry, newest first, with its source (D9). Public values only."""
+    ui.info(
+        "Registries (built-in first, newest first):\n  "
+        + "\n  ".join(
+            f"registry {s.label} {s.address} from block {s.deploy_block} "
+            f"({s.source if s.source.startswith('from ') or s.source == BUILT_IN else 'from ' + s.source})"
+            + (f", read with the v{s.abi_kind} ABI" if s.abi_kind != s.version else "")
+            for s in cfg.registries
+        )
+    )
+    for note in cfg.notes:
+        ui.info(f"Note: {note}")
+    for s in cfg.registries:
+        if not s.block_known:
+            ui.warn(
+                f"No deployment block is known for registry {s.name} ({s.address}), so its update history "
+                "is searched from block 0, which can be slow or fail on public servers. If you know it, "
+                f"pass --registry {s.address}@BLOCK:{s.name}."
+            )
+    if cfg.dropped_builtin:
+        names = ", ".join(f"v{v}" for v in cfg.dropped_builtin)
+        ui.warn(
+            f"Built-in registry {names} of {cfg.network} is not used in this run, so copies elsewhere cannot "
+            "be checked against it and an older copy may look current."
+        )
+    supplied = [s for s in cfg.registries if s.source != BUILT_IN]
+    if any(not s.trusted for s in supplied):
+        ui.warn(
+            "SECURITY: you supplied a registry that is not built into this release. It is read AFTER the "
+            "built-in registries and can never make a copy count as current: a wrong address (for example "
+            "from a phishing message) could otherwise show you an OLDER version of your secrets. A copy found "
+            "only there is shown with a warning."
+        )
+    if any(s.trusted for s in supplied):
+        why = (
+            "--trust-custom-registries is set"
+            if cfg.trust_custom
+            else f"this release has no built-in registry for {cfg.network}"
+        )
+        ui.warn(
+            f"SECURITY: {why}, so the registries you supplied decide which copy of your vault is current. "
+            "A wrong address can show you an OLDER version of your secrets. Use only addresses from the "
+            "project's deployment records or another source you trust."
+        )
 
 
 def _configure_logging(verbose: bool, stream: TextIO) -> None:
@@ -333,12 +459,17 @@ def _emit(result: Result, cfg: Config, ui: Console) -> None:
     for w in result.warnings:
         ui.warn(w)
     _report(result, ui)
+    caveat = _untrusted_caveat(result.candidate)
     if cfg.save_blob is not None:
         write_new_file(cfg.save_blob, result.candidate.blob, 0o644)
         ui.info(f"Encrypted vault saved to {cfg.save_blob} (safe to keep; useless without your key).")
+        if caveat:
+            ui.warn(f"The saved copy {caveat}")
     if cfg.output is not None:
         write_new_file(cfg.output, result.secret, 0o600)
         ui.info(f"Secret written to {cfg.output} (readable only by you). Delete it when done.")
+        if caveat:
+            ui.warn(f"The secret written {caveat}")
     elif ui.confirm_show():
         ui.show_secret(result.secret)
     else:
@@ -364,6 +495,19 @@ def _report(result: Result, ui: Console) -> None:
     }
     if c.freshness in notes:
         ui.warn(notes[c.freshness])
+    caveat = _untrusted_caveat(c)
+    if caveat:
+        ui.warn(f"SECURITY: this copy {caveat}")
+
+
+def _untrusted_caveat(c: Candidate) -> str:
+    """The result-time warning for a copy from a supplied, untrusted registry (D10)."""
+    if not c.untrusted:
+        return ""
+    return (
+        f"came from {c.untrusted}, a registry you supplied that is not built into this release. It was "
+        "not trusted to say which version is current: it may be OLDER than your latest vault."
+    )
 
 
 if __name__ == "__main__":  # pragma: no cover

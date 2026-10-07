@@ -31,7 +31,7 @@ from cryoshield_recover import chain as chain_mod
 from cryoshield_recover.arweave import Arweave
 from cryoshield_recover.candidates import Freshness
 from cryoshield_recover.chain import Registry, normalize_url
-from cryoshield_recover.config import Config
+from cryoshield_recover.config import Config, RegistrySpec
 from cryoshield_recover.errors import ExitCode, RecoveryError
 from cryoshield_recover.net import TooLarge
 from cryoshield_recover.recover import Recovery
@@ -220,7 +220,7 @@ def test_one_graphql_server_cannot_pick_the_older_copy(
     monkeypatch.setattr(arw, "get_capped", lambda url, **kw: data[url.rsplit("/", 1)[1]])
     cfg = Config(
         rpcs=[],
-        registry="0x" + "00" * 20,
+        registries=[],
         use_chain=False,
         arweave_graphql=list(answers),
         arweave_gateways=["https://gw.example"],
@@ -245,7 +245,7 @@ def test_arweave_height_is_minimum_claimed(monkeypatch: pytest.MonkeyPatch) -> N
     monkeypatch.setattr(arw, "get_capped", lambda url, **kw: data[url.rsplit("/", 1)[1]])
     cfg = Config(
         rpcs=[],
-        registry="0x" + "00" * 20,
+        registries=[],
         use_chain=False,
         arweave_graphql=list(answers),
         arweave_gateways=["https://gw.example"],
@@ -291,7 +291,7 @@ def test_downloads_have_a_count_budget(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(arw, "MAX_FETCHES", 7)
     cfg = Config(
         rpcs=[],
-        registry="0x" + "00" * 20,
+        registries=[],
         use_chain=False,
         arweave_graphql=["https://g.example/graphql"],
         arweave_gateways=["https://gw.example"],
@@ -377,8 +377,13 @@ def test_secret_wiped_when_tie_prompt_aborts(monkeypatch: pytest.MonkeyPatch) ->
         "https://a.example": Client("https://a.example", NEW, 2, honest_logs()),
         "https://b.example": Client("https://b.example", OLD, 7, honest_logs()[:1]),
     }
-    cfg = Config(rpcs=list(clients), registry=REG, chain_id=CHAIN, deploy_block=0, use_arweave=False)
-    reg = lambda cfg: Registry(cfg.rpcs, cfg.registry, cfg.chain_id, 0, client_factory=lambda u: clients[u])  # type: ignore[arg-type,return-value]  # noqa: E731
+    cfg = Config(rpcs=list(clients), registries=[RegistrySpec(1, REG, 0)], chain_id=CHAIN, use_arweave=False)
+
+    def reg(cfg: Config) -> Registry:
+        return Registry(
+            cfg.rpcs, cfg.registries[0].address, cfg.chain_id, 0, client_factory=lambda u: clients[u]
+        )  # type: ignore[arg-type,return-value]
+
     with pytest.raises(RecoveryError):
         Recovery(cfg, FakePrfSource([PhysicalKey.named(KEY)]), UI(choice=None), registry_factory=reg).run()
     assert made and all(b == bytearray(len(b)) for b in made)
@@ -456,10 +461,12 @@ def test_shamir_vault_tie_requires_explicit_choice() -> None:
         "https://liar.example": ShClient("https://liar.example", sh_old, 9, logs[:1]),
         "https://honest.example": ShClient("https://honest.example", sh_new, 2, logs),
     }
-    cfg = Config(rpcs=list(clients), registry=REG, chain_id=CHAIN, deploy_block=0, use_arweave=False)
+    cfg = Config(rpcs=list(clients), registries=[RegistrySpec(1, REG, 0)], chain_id=CHAIN, use_arweave=False)
 
     def reg(cfg: Config) -> Registry:
-        return Registry(cfg.rpcs, cfg.registry, cfg.chain_id, 0, client_factory=lambda u: clients[u])  # type: ignore[arg-type,return-value]
+        return Registry(
+            cfg.rpcs, cfg.registries[0].address, cfg.chain_id, 0, client_factory=lambda u: clients[u]
+        )  # type: ignore[arg-type,return-value]
 
     keys = [PhysicalKey.named("A"), PhysicalKey.named("C")]
     ui = RecUI(pick=lambda opts: next(i for i, o in enumerate(opts) if "honest.example" in o))

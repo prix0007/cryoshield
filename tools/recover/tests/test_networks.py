@@ -12,12 +12,11 @@ from support.keys import FakePrfSource, PhysicalKey
 from support.vectors import REPO_ROOT
 
 from cryoshield_recover import cli, config
-from cryoshield_recover.config import DEFAULT_NETWORK, NETWORKS, is_placeholder
+from cryoshield_recover.config import DEFAULT_NETWORK, NETWORKS
 from cryoshield_recover.errors import ExitCode
 from cryoshield_recover.ui import Console
 
 PRESETS_JSON = REPO_ROOT / "config" / "chain-presets.json"
-DEPLOYMENTS = REPO_ROOT / "contracts" / "deployments"
 
 
 def cfg(*argv: str) -> config.Config:
@@ -121,9 +120,9 @@ def test_custom_chain_with_rpc_uses_no_preset_registry() -> None:
     c = cfg("--chain-id", "777", "--rpc", "https://my-node.example/rpc")
     assert c.network == "custom" and c.chain_id == 777
     assert c.rpcs == ["https://my-node.example/rpc"]
-    assert is_placeholder(c.registry)  # never another chain's registry
+    assert c.registries == []  # never another chain's registry
     c2 = cfg("--chain-id", "777", "--rpc", "https://my-node.example/rpc", "--registry", "0x" + "ab" * 20)
-    assert c2.registry == "0x" + "ab" * 20
+    assert [(s.version, s.address) for s in c2.registries] == [(1, "0x" + "ab" * 20)]
 
 
 def test_user_supplied_endpoints_are_labelled() -> None:
@@ -172,24 +171,23 @@ def test_startup_prints_network_name() -> None:
 
 def test_op_sepolia_registry_is_the_live_deployment() -> None:
     """VaultRegistry is live on OP Sepolia (contracts/deployments/11155420.json), embedded at release."""
-    p = NETWORKS["op-sepolia"]
-    assert p.registry == "0xb43f58cf17e64b603ae5588a1dd17e96a0849e44"
-    assert p.deploy_block == 49568053
-    assert cfg().registry == p.registry and cfg().deploy_block == p.deploy_block
+    v1 = NETWORKS["op-sepolia"].registries[-1]
+    assert (v1.version, v1.address) == (1, "0xb43f58cf17e64b603ae5588a1dd17e96a0849e44")
+    assert v1.deploy_block == 49568053
+    assert cfg().registries[-1] == v1
 
 
 def test_op_sepolia_registry_v2_is_the_live_deployment() -> None:
     """VaultRegistry v2 on OP Sepolia (contracts/deployments/11155420.json, contracts.vaultRegistryV2)."""
-    p = NETWORKS["op-sepolia"]
-    assert p.registry_v2 == "0xa622c92d3d5b54aea081cf410224a8a2ecb08cb7"
-    assert p.deploy_block_v2 == 49755277
-    assert cfg().registry_v2 == p.registry_v2 and cfg().deploy_block_v2 == p.deploy_block_v2
+    v2 = NETWORKS["op-sepolia"].registries[0]
+    assert (v2.version, v2.address) == (2, "0xa622c92d3d5b54aea081cf410224a8a2ecb08cb7")
+    assert v2.deploy_block == 49755277
+    assert cfg().registries[0] == v2
 
 
 @pytest.mark.parametrize("name", ["op-mainnet", "arbitrum-one", "arbitrum-sepolia"])
 def test_undeployed_presets_stay_placeholders(name: str) -> None:
-    assert is_placeholder(NETWORKS[name].registry)
-    assert is_placeholder(NETWORKS[name].registry_v2)
+    assert NETWORKS[name].registries == ()
 
 
 def test_preset_without_deployment_refuses_chain_mode() -> None:
@@ -230,31 +228,15 @@ def test_presets_match_presets_json() -> None:
     assert ref["defaultTestnet"] == DEFAULT_NETWORK == config.TESTNET
 
 
-def test_built_in_registry_matches_deployment_records() -> None:
-    """Release data is generated from contracts/deployments/<chainId>.json; this guards drift.
-
-    v1 is the record's top-level address (absent on chains without v1, e.g. OP Mainnet); v2 is
-    contracts.vaultRegistryV2 (deployment-targets spec, change harden-gas-sponsorship)."""
-    for p in NETWORKS.values():
-        record = DEPLOYMENTS / f"{p.chain_id}.json"
-        data = json.loads(record.read_text()) if record.exists() else {}
-        if "address" in data:
-            assert p.registry.lower() == data["address"].lower(), p.name
-            assert p.deploy_block == data["deployBlock"], p.name
-        else:
-            assert is_placeholder(p.registry), f"{p.name}: v1 registry without a deployment record"
-        v2 = (data.get("contracts") or {}).get("vaultRegistryV2")
-        if v2:
-            assert p.registry_v2.lower() == v2["address"].lower(), p.name
-            assert p.deploy_block_v2 == v2["deployBlock"], p.name
-        else:
-            assert is_placeholder(p.registry_v2), f"{p.name}: v2 registry without a deployment record"
+# Registry lists vs contracts/deployments/<chainId>.json: see test_registry_versions.py (parity, D4).
 
 
 def test_registry_v2_flags() -> None:
     c = cfg("--registry-v2", "0x" + "2B" * 20, "--deploy-block-v2", "123")
-    assert c.registry_v2 == "0x" + "2b" * 20 and c.deploy_block_v2 == 123
-    assert c.registry == NETWORKS["op-sepolia"].registry  # v1 untouched
+    assert c.registries[:2] == list(NETWORKS["op-sepolia"].registries)  # built-ins kept, first
+    supplied = c.registries[2]
+    assert (supplied.version, supplied.address, supplied.deploy_block) == (2, "0x" + "2b" * 20, 123)
+    assert not supplied.trusted
 
 
 def test_registry_v2_flag_rejects_bad_address() -> None:
@@ -269,13 +251,13 @@ def test_registry_v2_flag_rejects_bad_address() -> None:
 
 def test_custom_chain_has_no_built_in_v2_registry() -> None:
     c = cfg("--chain-id", "777", "--rpc", "https://my-node.example/rpc")
-    assert is_placeholder(c.registry_v2) and not c.has_registry
+    assert c.registries == [] and not c.has_registry
 
 
 def test_v2_only_chain_is_configured_and_announced() -> None:
     """OP Mainnet will carry only v2: chain lookup is on with a v2 address and no v1 address."""
     c = cfg("--network", "op-mainnet", "--registry-v2", "0x" + "2b" * 20)
-    assert is_placeholder(c.registry) and c.chain_configured
+    assert [s.version for s in c.registries] == [2] and c.chain_configured
     console, err = term()
     cli.startup_summary(c, console)
     text = err.getvalue()
@@ -287,18 +269,25 @@ def test_both_registries_announced() -> None:
     console, err = term()
     cli.startup_summary(cfg("--registry-v2", "0x" + "2b" * 20), console)
     text = err.getvalue()
-    assert "registry v2 0x" + "2b" * 20 in text and "registry v1 0xb43f58cf" in text
+    assert "registry v2 (supplied) 0x" + "2b" * 20 in text and "registry v1 0xb43f58cf" in text
 
 
 def test_overriding_a_registry_without_its_deploy_block_scans_from_genesis() -> None:
     """A preset's deploy block belongs to the preset's address: with another address it could skip that
     deployment's first events and make its history look empty. Use 0 (slower, never wrong) and warn."""
     c = cfg("--registry-v2", "0x" + "2b" * 20, "--registry", "0x" + "3c" * 20)
-    assert c.deploy_block_v2 == 0 and c.deploy_block == 0
+    supplied = [s for s in c.registries if not s.trusted]
+    assert [s.deploy_block for s in supplied] == [0, 0]
+    assert not any(s.block_known for s in supplied)
     console, err = term()
     cli.startup_summary(c, console)
-    assert "--deploy-block-v2" in err.getvalue() and "--deploy-block " in err.getvalue()
+    text = err.getvalue()
+    assert "block 0" in text
+    assert (
+        f"--registry {'0x' + '2b' * 20}@BLOCK:v2" in text
+        and f"--registry {'0x' + '3c' * 20}@BLOCK:v1" in text
+    )
     kept = cfg("--registry-v2", "0x" + "2b" * 20, "--deploy-block-v2", "7")
-    assert kept.deploy_block_v2 == 7
-    same = cfg("--registry-v2", NETWORKS["op-sepolia"].registry_v2)
-    assert same.deploy_block_v2 == NETWORKS["op-sepolia"].deploy_block_v2
+    assert kept.registries[-1].deploy_block == 7
+    same = cfg("--registry-v2", NETWORKS["op-sepolia"].registries[0].address)
+    assert same.registries[0] == NETWORKS["op-sepolia"].registries[0]

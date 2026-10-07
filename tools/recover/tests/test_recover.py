@@ -13,7 +13,7 @@ from support.keys import BY_NAME, FakePrfSource, PhysicalKey
 from support.vectors import h
 
 from cryoshield_recover.candidates import Freshness
-from cryoshield_recover.config import Config
+from cryoshield_recover.config import Config, RegistrySpec
 from cryoshield_recover.derive import derive_wrap_key
 from cryoshield_recover.errors import ExitCode, RecoveryError
 from cryoshield_recover.recover import Recovery
@@ -59,9 +59,9 @@ class RecUI:
 def cfg_for(chain: FakeChain | None = None, ar: FakeArweave | None = None, **kw: Any) -> Config:
     c = Config(
         rpcs=[chain.url] if chain else [],
-        registry=chain.address if chain else "0x" + "00" * 20,
+        # Fake chains start at block 0 (the real op-sepolia preset is far higher).
+        registries=[RegistrySpec(1, chain.address, 0)] if chain else [],
         chain_id=chain.chain_id if chain else 11155420,
-        deploy_block=0,  # fake chains start at block 0 (the real op-sepolia preset is far higher)
         arweave_graphql=[ar.graphql_url] if ar else [],
         arweave_gateways=[ar.url] if ar else [],
         timeout=3,
@@ -174,7 +174,7 @@ def test_blob_file_offline_makes_no_network_calls(tmp_path: Path) -> None:
         vault_id=VID,
         offline=True,
         rpcs=["https://example.org"],
-        registry="0x" + "11" * 20,
+        registries=[RegistrySpec(1, "0x" + "11" * 20)],
         arweave_graphql=["https://example.org/graphql"],
         arweave_gateways=["https://example.org"],
     )

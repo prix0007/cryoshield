@@ -30,7 +30,7 @@ from cryoshield_recover import abi
 from cryoshield_recover import chain as chain_mod
 from cryoshield_recover.candidates import Freshness
 from cryoshield_recover.chain import Registries
-from cryoshield_recover.config import PLACEHOLDER_ADDRESS, Config
+from cryoshield_recover.config import Config, RegistrySpec
 from cryoshield_recover.errors import ExitCode, RecoveryError
 from cryoshield_recover.keccak import keccak256
 from cryoshield_recover.recover import Recovery
@@ -46,10 +46,7 @@ ABI_V2 = REPO_ROOT / "contracts" / "abi" / "VaultRegistryV2.json"
 
 def cfg_v2(chain: FakeChain, *, v1: bool = True, ar: FakeArweave | None = None, **kw: Any) -> Config:
     c = cfg_for(chain, ar, **kw)
-    c.registry_v2 = REGISTRY_V2
-    c.deploy_block_v2 = 0
-    if not v1:
-        c.registry = PLACEHOLDER_ADDRESS
+    c.registries = [RegistrySpec(2, REGISTRY_V2, 0), *(c.registries if v1 else [])]
     return c
 
 
@@ -61,12 +58,10 @@ def run(cfg: Config, ui: RecUI | None = None) -> Any:
 
 def registries(*chains: FakeChain, v1: bool = True) -> Registries:
     urls = [c.url for c in chains]
-    return Registries.build(
-        urls,
-        chains[0].chain_id,
-        v2=(REGISTRY_V2, 0),
-        v1=(chains[0].address, 0) if v1 else None,
-    )
+    specs = [RegistrySpec(2, REGISTRY_V2, 0)]
+    if v1:
+        specs.append(RegistrySpec(1, chains[0].address, 0))
+    return Registries.build(urls, chains[0].chain_id, specs)
 
 
 # ------------------------------------------------------------------ ABI

@@ -12,7 +12,7 @@ from .arweave import Arweave, ArweaveTx
 from .authenticator import Assertion, PrfSource
 from .candidates import Candidate, Freshness, ranked
 from .chain import Registries, Registry, classify
-from .config import Config, is_placeholder
+from .config import Config
 from .derive import derive_locator
 from .errors import ExitCode, RecoveryError, VaultError
 from .format import MAX_BLOB, DecodedVault, decode_blob
@@ -46,19 +46,16 @@ class Result:
     warnings: list[str] = field(default_factory=list)
 
 
-# A single Registry (tests, legacy callers) or v2-then-v1 Registries; both expose the same reads.
+# A single Registry (tests, legacy callers) or every registry version (newest first) as Registries; both
+# expose the same reads.
 RegistryFactory = Callable[[Config], "Registry | Registries"]
 ArweaveFactory = Callable[[Config], Arweave]
 
 
 def _default_registry(cfg: Config) -> Registries:
-    """VaultRegistry v2 then v1, whichever this chain has (harden-gas-sponsorship D9)."""
+    """Every configured VaultRegistry version, newest first (recover-registry-versions D1)."""
     return Registries.build(
-        cfg.rpcs,
-        cfg.chain_id,
-        v2=None if is_placeholder(cfg.registry_v2) else (cfg.registry_v2, cfg.deploy_block_v2),
-        v1=None if is_placeholder(cfg.registry) else (cfg.registry, cfg.deploy_block),
-        client_factory=partial(JsonRpcClient, timeout=cfg.timeout),
+        cfg.rpcs, cfg.chain_id, cfg.registries, client_factory=partial(JsonRpcClient, timeout=cfg.timeout)
     )
 
 

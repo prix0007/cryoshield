@@ -21,7 +21,7 @@ from cryoshield_recover import arweave as arw
 from cryoshield_recover.arweave import Arweave
 from cryoshield_recover.candidates import Freshness
 from cryoshield_recover.chain import Registry
-from cryoshield_recover.config import Config
+from cryoshield_recover.config import Config, RegistrySpec
 from cryoshield_recover.derive import derive_locator
 from cryoshield_recover.errors import ExitCode, RecoveryError
 from cryoshield_recover.keccak import keccak256
@@ -109,12 +109,15 @@ class UI:
 
 def run(clients: list[Client], ui: UI | None = None) -> tuple[Any, UI]:
     cfg = Config(
-        rpcs=[c.host for c in clients], registry=REG, chain_id=CHAIN, deploy_block=0, use_arweave=False
+        rpcs=[c.host for c in clients],
+        registries=[RegistrySpec(1, REG, 0)],
+        chain_id=CHAIN,
+        use_arweave=False,
     )
     by = {c.host: c for c in clients}
 
     def reg_factory(cfg: Config) -> Registry:
-        return Registry(cfg.rpcs, cfg.registry, cfg.chain_id, 0, client_factory=lambda u: by[u])  # type: ignore[arg-type,return-value]
+        return Registry(cfg.rpcs, cfg.registries[0].address, cfg.chain_id, 0, client_factory=lambda u: by[u])  # type: ignore[arg-type,return-value]
 
     ui = ui or UI()
     res = Recovery(cfg, FakePrfSource([PhysicalKey.named(KEY)]), ui, registry_factory=reg_factory).run()
@@ -196,7 +199,9 @@ def test_tie_non_interactive_exits_12_and_writes_nothing(tmp_path: Any) -> None:
     }
 
     def reg_factory(cfg: Config) -> Registry:
-        return Registry(cfg.rpcs, cfg.registry, cfg.chain_id, 0, client_factory=lambda u: clients[u])  # type: ignore[arg-type,return-value]
+        return Registry(
+            cfg.rpcs, cfg.registries[0].address, cfg.chain_id, 0, client_factory=lambda u: clients[u]
+        )  # type: ignore[arg-type,return-value]
 
     out = tmp_path / "secret.txt"
     err = io.StringIO()
@@ -348,7 +353,7 @@ def test_rec_m2_recovery_via_honest_server_despite_hostile_metadata(monkeypatch:
     monkeypatch.setattr(arw, "get_capped", lambda url, **kw: NEW)
     cfg = Config(
         rpcs=[],
-        registry="0x" + "00" * 20,
+        registries=[],
         use_chain=False,
         arweave_graphql=list(answers),
         arweave_gateways=["https://gw.example"],

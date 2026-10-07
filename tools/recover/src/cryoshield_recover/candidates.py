@@ -39,6 +39,9 @@ class Candidate:
     # Copies of this vault id disagree in a way the chain could not settle (v1 vs v2 with unconfirmed v2
     # history): ranking must not decide between them; the user chooses (harden-gas-sponsorship D9).
     contested: bool = False
+    # Set when this copy came from a supplied registry that is not built in (recover-registry-versions
+    # D10): "registry vN 0x…". Shown again next to the result and the --output/--save-blob messages.
+    untrusted: str = ""
 
     @property
     def rank(self) -> tuple[int, int, int]:
