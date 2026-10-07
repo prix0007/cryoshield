@@ -270,6 +270,9 @@ const gz = (f) => gzipSync(readFileSync(join(dist, f)), { level: 9 }).length;
 const APP_BASELINE = 194_689 - 12 * 1024;
 const APP_ALLOWANCE = 20 * KB;
 const WRITE_STACK_MARKERS = ['eth_sendUserOperation', 'pimlico_getUserOperationGasPrice', 'WalletConfigError'];
+// vault-list-labels-archive 3.1 (design D5): the vault list, the Edit vault sheet, Archive and clear and the dates
+// (chain/history.ts: the VaultCreated topic) are one lazy chunk. Strings that exist only there must never be initial.
+const VAULT_LIST_MARKERS = ['Check another key', 'I understand old versions stay readable', '0xce97d1455c031e2d207f467953389573a1f639ea41eac2279614dea27b5e7322'];
 function appBudget(label) {
   const { initial, lazy } = splitGraph(join('app', 'index.html'));
   const bytes = [...initial].reduce((n, f) => n + gz(f), 0);
@@ -288,6 +291,16 @@ function appBudget(label) {
     if (![...lazy].some((f) => read(f).includes(marker))) fail(`[${label}] write-stack marker "${marker}" is in no lazy /app chunk`);
   }
   console.log(`ok   [${label}] the write stack is only in a lazy /app chunk (${WRITE_STACK_MARKERS.join(', ')})`);
+  const menuChunks = new Set();
+  for (const marker of VAULT_LIST_MARKERS) {
+    const early = [...initial].filter((f) => read(f).includes(marker));
+    if (early.length) fail(`[${label}] vault-list marker "${marker}" is in the initial /app graph: ${early.join(', ')}`);
+    const where = [...lazy].filter((f) => read(f).includes(marker));
+    if (!where.length) fail(`[${label}] vault-list marker "${marker}" is in no lazy /app chunk`);
+    where.forEach((f) => menuChunks.add(f));
+  }
+  if (menuChunks.size !== 1) fail(`[${label}] the vault list is spread over ${menuChunks.size} chunks (expected one): ${[...menuChunks].join(', ')}`);
+  console.log(`ok   [${label}] the vault list and its dates are one lazy /app chunk (${[...menuChunks][0]})`);
   if (bytes > APP_BASELINE + APP_ALLOWANCE) fail(`[${label}] /app initial JS ${bytes} B exceeds baseline + 20 KB (${APP_BASELINE + APP_ALLOWANCE} B)`);
   // The landing bundle stays unchanged: /app's Motion for React never shares a chunk with the landing page
   // (vite-plugins/app-motion-isolation.ts). Only Vite's tiny preload helper is common to both.

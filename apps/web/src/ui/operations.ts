@@ -2,11 +2,11 @@
  * Flow orchestration (non-visual): ties ceremonies, vault-crypto, sponsored writes and the mirror together.
  * Each function owns the PRF buffers it obtains and wipes them on every path.
  */
-import { decodeVault, deriveLocator, maxPayloadBytes, VaultError } from '@cryoshield/vault-crypto';
+import { decodeVault, deriveLocator, VaultError } from '@cryoshield/vault-crypto';
 import type { Hex } from 'viem';
-import { enrollKey, ENROLL, evaluatePrf, KeyError, type EnrolledKey } from '../webauthn';
-import { addKeyToBlob, clearVaultBlob, createVaultBlob, editVaultBlob } from '../vault/adapter';
-import { withItems, writeVaultPayload, type SecretItem, type VaultPayloadInput } from '../vault/payload';
+import { credentialLabel, enrollKey, ENROLL, evaluatePrf, KeyError, type EnrolledKey } from '../webauthn';
+import { addKeyToBlob, createVaultBlob, editVaultBlob } from '../vault/adapter';
+import { payloadOf, withItems, type PayloadErrorCode, type SecretItem, type VaultPayloadInput } from '../vault/payload';
 import type { RegistryVersion } from '../vault/adapter';
 import { notify, WriteError, type ProgressListener } from '../account/errors';
 import { loadWriteStack } from '../account/lazy';
@@ -23,7 +23,7 @@ export interface PendingKey extends EnrolledKey {
 
 /** Enrollment: create (tap) + PRF (second tap unless returned at create). */
 export async function enrollWithPrf(svc: Services, n: number, exclude: readonly Uint8Array[], onSecondTap?: () => void): Promise<PendingKey> {
-  const key: PendingKey = await enrollKey({ rpId: svc.rpId, rpName: svc.rpName, label: `CryoShield vault (key ${n})`, exclude }, svc.credentials);
+  const key: PendingKey = await enrollKey({ rpId: svc.rpId, rpName: svc.rpName, label: credentialLabel(n), exclude }, svc.credentials);
   if (!key.prf) {
     onSecondTap?.();
     const r = await evaluatePrf({ rpId: svc.rpId, credId: key.credId }, svc.credentials);
@@ -43,6 +43,10 @@ export interface VaultSession {
   archived: boolean;
   /** Payload v2 `z`, only while a cleared vault has no items. */
   pad?: string;
+  /** Decrypted but not displayable (made by a newer version, or malformed): listed, never opened or written. */
+  payloadError?: PayloadErrorCode;
+  /** The locator of the key that opened it (public; used for the Arweave copy). */
+  locator?: Hex;
   credIds: Uint8Array[];
   /** Where the vault lives. 'v1' (legacy testnet) is read-only: clients never write to VaultRegistry v1. */
   registry: RegistryVersion;
@@ -61,13 +65,9 @@ export interface MirrorItem {
 
 const lastSaveOf = (r: { version: number; txHash?: Hex }) => (r.txHash ? { lastSave: { version: r.version, txHash: r.txHash } } : {});
 
-/** The session's whole payload: the only input any write starts from (never items alone). */
-export function payloadOf(s: Pick<VaultSession, 'name' | 'archived' | 'items' | 'pad'>): VaultPayloadInput {
-  return { archived: s.archived, items: s.items, ...(s.name !== undefined ? { name: s.name } : {}), ...(s.pad !== undefined ? { pad: s.pad } : {}) };
-}
 
 /** The session after a write of payload `p`. */
-function withPayload(s: VaultSession, p: VaultPayloadInput, r: { version: number; txHash?: Hex }, blob: Uint8Array): VaultSession {
+export function withPayload(s: VaultSession, p: VaultPayloadInput, r: { version: number; txHash?: Hex }, blob: Uint8Array): VaultSession {
   const next: VaultSession = { ...s, ...payloadOf(p), version: r.version, blob, ...lastSaveOf(r) };
   if (p.name === undefined) delete next.name;
   if (p.pad === undefined) delete next.pad;
@@ -166,7 +166,10 @@ export async function saveNewVault(
  * `build` re-encrypts (and wipes the PRF it is given), then the sign tap with the same key. `updateVaultOnChain`
  * re-checks staleness right before signing.
  */
-async function rewrite(svc: Services, s: VaultSession, build: (prf: Uint8Array) => Promise<Uint8Array>, onSign: () => void, onProgress?: ProgressListener) {
+/** The update path the lazily loaded name/archive writes run on (vault-meta.ts gets it passed in). */
+export type WritePath = { rewrite: typeof rewrite; withPayload: typeof withPayload };
+
+export async function rewrite(svc: Services, s: VaultSession, build: (prf: Uint8Array) => Promise<Uint8Array>, onSign: () => void, onProgress?: ProgressListener) {
   if (isReadOnly(s)) throw new WriteError('READ_ONLY');
   const { assertCurrent, existingVaultAccount, updateVaultOnChain } = await loadWriteStack(); // before the PRF tap: a failed load wastes no tap
   await assertCurrent(svc.reader, s.vaultId, s.blob);
@@ -191,31 +194,6 @@ export async function saveEdit(svc: Services, s: VaultSession, items: SecretItem
   const payload = withItems(payloadOf(s), items);
   const { res, blob } = await rewrite(svc, s, (prf) => editVaultBlob(s.blob, prf, s.vaultId, payload), onSign, onProgress);
   return withPayload(s, payload, res, blob);
-}
-
-/**
- * Edit vault (D10): the name and the archived flag in ONE update. Nothing changed: returns `s` and sends nothing. An
- * invalid name or a payload that can't fit is refused before any key tap.
- */
-export async function saveVaultMeta(svc: Services, s: VaultSession, meta: { name?: string; archived: boolean }, onSign: () => void, onProgress?: ProgressListener): Promise<VaultSession> {
-  if (meta.name === s.name && meta.archived === s.archived) return s;
-  const payload: VaultPayloadInput = { ...payloadOf(s), archived: meta.archived };
-  if (meta.name === undefined) delete payload.name;
-  else payload.name = meta.name;
-  if (writeVaultPayload(payload).length > maxPayloadBytes(svc.rpId, s.credIds)) throw new WriteError('TOO_LARGE');
-  const { res, blob } = await rewrite(svc, s, (prf) => editVaultBlob(s.blob, prf, s.vaultId, payload), onSign, onProgress);
-  return withPayload(s, payload, res, blob);
-}
-
-/** Archive and clear (D4): keeps the name and the blob length, no items, one update. */
-export async function archiveAndClear(svc: Services, s: VaultSession, onSign: () => void, onProgress?: ProgressListener): Promise<VaultSession> {
-  let payload: VaultPayloadInput | undefined;
-  const { res, blob } = await rewrite(svc, s, async (prf) => {
-    const r = await clearVaultBlob(s.blob, prf, s.vaultId);
-    payload = r.payload;
-    return r.blob;
-  }, onSign, onProgress);
-  return withPayload(s, payload!, res, blob);
 }
 
 /** Add key: PRF tap (current key) -> enroll new key (+PRF tap) -> addKey -> sign tap (current key). */

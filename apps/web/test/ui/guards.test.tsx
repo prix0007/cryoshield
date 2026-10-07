@@ -2,6 +2,7 @@ import { screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { S } from '../../src/ui/strings';
 import { LOCATION } from '../../src/ui/strings-location';
+import { VAULTS } from '../../src/ui/strings-vaults';
 import { renderApp } from './helpers';
 
 describe('jargon (8.7)', () => {
@@ -21,6 +22,7 @@ describe('jargon (8.7)', () => {
     };
     walk(S);
     walk(LOCATION); // show-vault-onchain-location: the lazily loaded panel's strings
+    walk(VAULTS); // vault-list-labels-archive: the lazily loaded vault list and Edit vault sheet
     const banned = /\b(gas|wallet|transactions?|smart account|bundler|paymaster|ETH)\b/i;
     expect(all.filter((t) => banned.test(t))).toEqual([]);
   });

@@ -1,10 +1,24 @@
-import { useEffect, useId, useRef, type ReactNode } from 'react';
+import { Component, useEffect, useId, useRef, type ReactNode } from 'react';
 import { capacity } from '../vault/adapter';
 import { MAX_LABEL_CHARS, type SecretItem } from '../vault/payload';
 import { S } from './strings';
 import { ActionBar } from './chrome';
 import { CEREMONY_WAITING, noticeTitle } from './ceremony';
 import { AnimatePresence, Btn, Collapse, Disclosure, Pulse, Shake, SlideIn } from './motionkit';
+
+/**
+ * A lazily loaded chunk that fails to load (offline, or a redeploy replaced the hashed assets) shows `fallback`
+ * instead; without this boundary React would unmount the whole unlocked app.
+ */
+export class ChunkBoundary extends Component<{ fallback: ReactNode; children: ReactNode }, { failed: boolean }> {
+  override state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  override render() {
+    return this.state.failed ? this.props.fallback : this.props.children;
+  }
+}
 
 /** Step heading that receives focus when the step appears (WCAG 2.4.3 focus order). */
 export function StepHeading({ children }: { children: ReactNode }) {
@@ -150,7 +164,7 @@ export function SecretsEditor(props: {
           return (
           <Collapse key={k}>
             <fieldset className="item card">
-              <legend>{it.label || `${S.editor.secret} ${i + 1}`}</legend>
+              <legend>{it.label ? <bdi>{it.label}</bdi> : `${S.editor.secret} ${i + 1}`}</legend>
               <label htmlFor={`label-${k}`}>{S.editor.label}</label>
               <input
                 id={`label-${k}`}
@@ -181,7 +195,7 @@ export function SecretsEditor(props: {
               />
               {items.length > 1 && (
                 <Btn type="button" className="secondary" onClick={() => remove(i)}>
-                  {S.editor.removeItem(it.label)}
+                  {S.editor.remove} {it.label ? <bdi>{it.label}</bdi> : S.editor.thisSecret}
                 </Btn>
               )}
             </fieldset>

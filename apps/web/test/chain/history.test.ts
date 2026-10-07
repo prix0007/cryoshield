@@ -1,7 +1,10 @@
 /** vault-list-labels-archive 2.3 (design D9): dates from public block data, display only. */
 import { describe, expect, it, vi } from 'vitest';
 import { encodeAbiParameters, keccak256, toEventSelector, toHex as hexOf, type Hex } from 'viem';
-import { vaultDates } from '../../src/chain/history';
+import { vaultDates as dates } from '../../src/chain/history';
+
+const vaultDates = (rpc: never, vaults: Parameters<typeof dates>[1], registries: Parameters<typeof dates>[0]['registries'], range?: bigint) =>
+  dates({ rpc, keccak256: (b) => keccak256(toHex(b)), registries }, vaults, range);
 import { toHex } from '../../src/lib/bytes';
 
 const V2 = { address: '0x00000000000000000000000000000000000000a2' as Hex, deployBlock: 0 };
@@ -53,6 +56,14 @@ function rpc(logs: Log[], opts: { latest?: number; refuse?: boolean } = {}) {
   return { client: { request } as never, queries, request };
 }
 const ts = (block: number) => 1_790_000_000 + block * 2;
+
+describe('event topics', () => {
+  it('the hardcoded topics are the event selectors', async () => {
+    const h = await import('../../src/chain/history');
+    expect(h.CREATED).toBe(CREATED);
+    expect(h.UPDATED).toBe(UPDATED);
+  });
+});
 
 describe('vaultDates', () => {
   it('pages eth_getLogs in bounded ranges from deployBlock, ORs the vault ids in topic1, and crosses page boundaries', async () => {

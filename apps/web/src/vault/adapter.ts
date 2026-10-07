@@ -8,13 +8,12 @@ import {
   decodeVault,
   maxPayloadBytes,
   MODE_ANY_OF_N,
-  openVault,
   selectVault,
   updatePayload,
   VaultError,
 } from '@cryoshield/vault-crypto';
 import { bytesEqual, fromHex, toHex, wipe, type Hex } from '../lib/bytes';
-import { ARCHIVE_RESERVE, archiveAndClearPayload, decodeVaultPayload, writeVaultPayload, type VaultPayload, type VaultPayloadInput } from './payload';
+import { ARCHIVE_RESERVE, writeVaultPayload, type VaultPayloadInput } from './payload';
 
 export interface KeyPrf {
   credId: Uint8Array;
@@ -109,25 +108,6 @@ export async function addKeyToBlob(blob: Uint8Array, existingPrf: Uint8Array, va
     return await addKey(blob, { prf: existingPrf }, fromHex(vaultId), { id: newKey.credId, prf: newKey.prf });
   } finally {
     wipe(existingPrf, newKey.prf);
-  }
-}
-
-/**
- * Archive and clear (D4): decrypts the current payload (its exact length sizes `z`), writes the cleared one. Wipes prf.
- * Returns the new blob and the payload it holds.
- */
-export async function clearVaultBlob(blob: Uint8Array, prf: Uint8Array, vaultId: Hex): Promise<{ blob: Uint8Array; payload: VaultPayload }> {
-  const v = decodeVault(blob);
-  const id = fromHex(vaultId);
-  let prev: Uint8Array | undefined;
-  let secret: Uint8Array | undefined;
-  try {
-    prev = await openVault(blob, { prf: prf.slice() }, id);
-    secret = archiveAndClearPayload(prev, maxPayloadBytes(v.rpId, v.entries.map((e) => e.credId), v.mode));
-    const payload = decodeVaultPayload(secret);
-    return { blob: await updatePayload(blob, { prf: prf.slice() }, id, secret), payload };
-  } finally {
-    wipe(prf, prev, secret);
   }
 }
 

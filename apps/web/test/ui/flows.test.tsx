@@ -1,4 +1,4 @@
-import { act, screen, waitFor } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import * as ops from '../../src/ui/operations';
@@ -127,17 +127,19 @@ describe('unlock and view (8.2)', () => {
     expect(screen.queryByRole('heading', { name: 'Your vault' })).toBeNull();
   });
 
-  it('several vaults for one key: lets the user choose', async () => {
+  it('several vaults for one key: the vault list lets the user choose (D5)', async () => {
     const u = userEvent.setup();
-    const a = { ...session([{ label: 'A', secret: 'a' }]), entryIndex: 0 };
-    const b = { ...session([{ label: 'B', secret: 'b' }]), vaultId: ('0x' + '56'.repeat(32)) as `0x${string}`, version: 3, entryIndex: 0 };
+    const a = { ...session([{ label: 'A', secret: 'a' }]), name: 'Alpha', entryIndex: 0 };
+    const b = { ...session([{ label: 'B', secret: 'b' }]), name: 'Beta', vaultId: ('0x' + '56'.repeat(32)) as `0x${string}`, version: 3, entryIndex: 0 };
     vi.spyOn(unlockMod, 'unlock').mockResolvedValue({ credId: id(1), locator: new Uint8Array(32), matches: [b, a] });
     renderApp();
     await u.click(screen.getByRole('button', { name: 'Unlock my vault' }));
     await u.click(screen.getByRole('button', { name: 'Unlock with my key' }));
-    expect(await screen.findByText(/This is unusual. Each of these vaults was created with this key/)).toBeInTheDocument();
-    await u.click(await screen.findByRole('button', { name: 'Vault 1 (saved 3 times)' }));
-    expect(await screen.findByRole('heading', { name: 'B' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Your vaults' })).toBeInTheDocument();
+    expect(screen.getByText('This key opens more than one vault. Choose one to open.')).toBeInTheDocument();
+    await u.click(screen.getByRole('button', { name: 'Open Beta' }));
+    expect(await screen.findByRole('heading', { name: 'Beta', level: 1 })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'B' })).toBeInTheDocument();
   });
 });
 
@@ -214,7 +216,7 @@ describe('harden-gas-sponsorship: v2 is authoritative', () => {
   });
 });
 
-describe('harden-gas-sponsorship: v2 vault opens directly; v1 copies behind a small link', () => {
+describe('harden-gas-sponsorship + D5: one active v2 vault opens directly; older test vaults are in the list', () => {
   const v2 = () => ({ ...session([{ label: 'Current', secret: 'new' }]), version: 4, entryIndex: 0 });
   const v1 = () => ({ ...session([{ label: 'Legacy', secret: 'old' }]), vaultId: ('0x' + '77'.repeat(32)) as `0x${string}`, registry: 'v1' as const, entryIndex: 0 });
 
@@ -227,31 +229,35 @@ describe('harden-gas-sponsorship: v2 vault opens directly; v1 copies behind a sm
     return u;
   }
 
-  it('one v2 match plus a v1 copy: opens the v2 vault with no picker; the link opens the v1 copy read-only and comes back', async () => {
+  it('one v2 match plus a v1 copy: opens the v2 vault with no picker; "All vaults (2)" opens the v1 copy read-only and comes back', async () => {
     const u = await unlockWith([v2(), v1()]);
     expect(await screen.findByRole('heading', { name: 'Current' })).toBeInTheDocument();
     expect(screen.queryByText(/This key opens more than one vault/)).toBeNull();
     expect(screen.getByRole('button', { name: 'Edit secrets' })).toBeInTheDocument();
-    await u.click(screen.getByRole('button', { name: 'Open an older test vault' }));
+    await u.click(screen.getByRole('button', { name: 'All vaults (2)' }));
+    await u.click(within(await screen.findByRole('region', { name: 'Older test vaults' })).getByRole('button', { name: 'Open Unnamed vault' }));
     expect(await screen.findByRole('heading', { name: 'Legacy' })).toBeInTheDocument();
     expect(screen.getByText(/made with an earlier test version/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Edit secrets' })).toBeNull();
-    await u.click(screen.getByRole('button', { name: 'Back to your current vault' }));
+    await u.click(screen.getByRole('button', { name: 'All vaults (2)' }));
+    await u.click(within(await screen.findByRole('region', { name: 'Active vaults' })).getByRole('button', { name: 'Open Unnamed vault' }));
     expect(await screen.findByRole('heading', { name: 'Current' })).toBeInTheDocument();
   });
 
-  it('several v2 vaults: the picker lists only the v2 vaults, with the older link below', async () => {
+  it('several v2 vaults: the picker lists the v2 vaults, with the older test vaults behind "Open an older test vault"', async () => {
     const other = { ...v2(), vaultId: ('0x' + '56'.repeat(32)) as `0x${string}`, version: 2 };
     await unlockWith([v2(), other, v1()]);
     expect(await screen.findByText(/This key opens more than one vault/)).toBeInTheDocument();
-    expect(screen.getAllByRole('button', { name: /^Vault \d/ })).toHaveLength(2);
-    expect(screen.getByRole('button', { name: 'Open an older test vault' })).toBeInTheDocument();
+    expect(within(screen.getByRole('region', { name: 'Active vaults' })).getAllByRole('button', { name: 'Open Unnamed vault' })).toHaveLength(2);
+    expect(screen.getByRole('button', { name: 'Open an older test vault' })).toHaveAttribute('aria-expanded', 'false');
   });
 
-  it('only a v1 vault: it opens directly (read-only), with no older link', async () => {
-    await unlockWith([v1()]);
+  it('only a v1 vault: the list shows it (expanded), and Open shows it read-only', async () => {
+    const u = await unlockWith([v1()]);
+    const older = await screen.findByRole('region', { name: 'Older test vaults' });
+    expect(within(older).getByText(/^Older test vault ·/)).toBeInTheDocument();
+    await u.click(within(older).getByRole('button', { name: 'Open Unnamed vault' }));
     expect(await screen.findByRole('heading', { name: 'Legacy' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Open an older test vault' })).toBeNull();
   });
 
   it('Lock drops every held vault, including the older copies', async () => {
@@ -271,7 +277,9 @@ describe('harden-gas-sponsorship: a VaultRegistry v1 vault opens read-only', () 
     renderApp();
     await u.click(screen.getByRole('button', { name: 'Unlock my vault' }));
     await u.click(screen.getByRole('button', { name: 'Unlock with my key' }));
+    await u.click(await screen.findByRole('button', { name: 'Open Unnamed vault' }));
     expect(await screen.findByRole('heading', { name: 'Bitcoin seed' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Edit vault' })).toBeNull();
     expect(screen.getByText(/made with an earlier test version/)).toBeInTheDocument();
     expect(screen.getByText(/create a new vault and copy your secrets into it/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Edit secrets' })).toBeNull();

@@ -13,7 +13,12 @@ import { capacity, createVaultBlob } from '../../src/vault/adapter';
 import { decodeVaultPayload, writeVaultPayload } from '../../src/vault/payload';
 import { registryV2Abi } from '../../src/chain/contracts';
 import { fromHex } from '../../src/lib/bytes';
-import { archiveAndClear, saveAddKey, saveEdit, saveVaultMeta, type VaultSession } from '../../src/ui/operations';
+import { rewrite, saveAddKey, saveEdit, withPayload, type VaultSession } from '../../src/ui/operations';
+import * as meta from '../../src/ui/vault-meta';
+
+const ops = { rewrite, withPayload };
+const saveVaultMeta = (...a: Parameters<typeof meta.saveVaultMeta> extends [unknown, ...infer R] ? R : never) => meta.saveVaultMeta(ops, ...a);
+const archiveAndClear = (...a: Parameters<typeof meta.archiveAndClear> extends [unknown, ...infer R] ? R : never) => meta.archiveAndClear(ops, ...a);
 import { WriteError } from '../../src/account/errors';
 import { fakeServices } from './helpers';
 

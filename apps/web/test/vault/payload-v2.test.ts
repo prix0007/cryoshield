@@ -13,7 +13,10 @@
 import { describe, expect, it } from 'vitest';
 import vectorsText from '../../../../docs/spec/payload-vectors.json?raw';
 import { selectVault } from '@cryoshield/vault-crypto';
-import * as payload from '../../src/vault/payload';
+import * as codec from '../../src/vault/payload';
+import { archiveAndClearPayload } from '../../src/vault/payload-clear';
+
+const payload = { ...codec, archiveAndClearPayload };
 
 interface Item {
   label: string;
@@ -104,8 +107,8 @@ function errorCode(fn: () => unknown): string | null {
     fn();
     return null;
   } catch (e) {
-    expect(e).toBeInstanceOf(payload.PayloadError);
-    return (e as payload.PayloadError).code;
+    expect(e).toBeInstanceOf(codec.PayloadError);
+    return (e as codec.PayloadError).code;
   }
 }
 

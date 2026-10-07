@@ -7,34 +7,51 @@ import { RegistryUnconfirmedError } from '../chain/registry';
 import { toHex } from '../lib/bytes';
 import { KeyPrompt, Notice, StepHeading } from './components';
 import { messageFor, type VaultSession } from './operations';
-import { useServices } from './services';
+import { useServices, type Services } from './services';
 import { S } from './strings';
 import { ActionBar } from './chrome';
 import { Btn, CeremonyPresence, StepTransition, useDirection } from './motionkit';
 
-type Phase = 'ready' | 'notFound' | 'choices';
-const PHASE_ORDER: readonly Phase[] = ['ready', 'notFound', 'choices'];
+type Phase = 'ready' | 'notFound';
+const PHASE_ORDER: readonly Phase[] = ['ready', 'notFound'];
 
 export interface Unlocked {
-  session: VaultSession;
-  locator: `0x${string}`;
-  /** Legacy VaultRegistry v1 copies this key also opens (read-only), offered behind a small link. */
-  older?: VaultSession[];
+  /** Every vault this tap opened (vault-list-labels-archive D7: Shell is their only owner). */
+  vaults: VaultSession[];
+  /** D5: the one active VaultRegistry v2 vault, opened directly; null shows the vault list (picker). */
+  open: VaultSession | null;
 }
 
-function toSession(m: OpenedVault): VaultSession {
-  return {
+export function toSession(m: OpenedVault, locator: `0x${string}`): VaultSession {
+  const s: VaultSession = {
     vaultId: m.vaultId,
     owner: m.owner,
     version: m.version,
     blob: m.blob,
     items: m.items ?? [],
     archived: m.archived,
-    ...(m.name !== undefined ? { name: m.name } : {}),
-    ...(m.pad !== undefined ? { pad: m.pad } : {}),
     credIds: decodeVault(m.blob).entries.map((e) => e.credId),
     registry: m.registry,
+    locator,
   };
+  if (m.name !== undefined) s.name = m.name;
+  if (m.pad !== undefined) s.pad = m.pad;
+  if (m.payloadError) s.payloadError = m.payloadError;
+  return s;
+}
+
+/** One key ceremony: every vault it opens, as sessions. Throws UnlockError('NO_VAULT') and key/network errors. */
+export async function unlockSessions(svc: Services): Promise<VaultSession[]> {
+  const r = await unlock({ rpId: svc.rpId }, { reader: svc.reader, ...(svc.credentials ? { credentials: svc.credentials } : {}) });
+  const locator = toHex(r.locator);
+  return r.matches.map((m) => toSession(m, locator));
+}
+
+/** Plain message for an unlock failure. */
+export function unlockMessage(e: unknown): string {
+  if (e instanceof KeyError || e instanceof ChainMismatchError) return messageFor(e);
+  if (e instanceof RegistryUnconfirmedError) return S.unlock.unconfirmed;
+  return S.unlock.networkError;
 }
 
 export function UnlockFlow(props: { onUnlocked: (u: Unlocked) => void; onCreate: () => void; onCancel: () => void }) {
@@ -42,8 +59,7 @@ export function UnlockFlow(props: { onUnlocked: (u: Unlocked) => void; onCreate:
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notFound, setNotFound] = useState(false);
-  const [choices, setChoices] = useState<{ matches: OpenedVault[]; older: OpenedVault[]; locator: `0x${string}` } | null>(null);
-  const phase: Phase = choices ? 'choices' : notFound ? 'notFound' : 'ready';
+  const phase: Phase = notFound ? 'notFound' : 'ready';
   const dir = useDirection(PHASE_ORDER, phase);
 
   async function go() {
@@ -51,33 +67,22 @@ export function UnlockFlow(props: { onUnlocked: (u: Unlocked) => void; onCreate:
     setError(null);
     setNotFound(false);
     try {
-      const r = await unlock({ rpId: svc.rpId }, { reader: svc.reader, ...(svc.credentials ? { credentials: svc.credentials } : {}) });
-      const locator = toHex(r.locator);
-      // harden-gas-sponsorship: v2 vaults are current. One v2 vault opens directly, with any v1 copies behind a small
-      // link; the picker is only for several v2 vaults. With no v2 vault, the v1 vaults are the choice.
-      const current = r.matches.filter((m) => m.registry === 'v2');
-      const legacy = r.matches.filter((m) => m.registry !== 'v2');
-      const primary = current.length > 0 ? current : legacy;
-      const older = current.length > 0 ? legacy : [];
-      if (primary.length === 1) return finish(primary[0]!, locator, older);
-      setChoices({ matches: primary, older, locator });
+      const vaults = await unlockSessions(svc);
+      const readable = vaults.filter((v) => !v.payloadError);
+      if (readable.length === 0) {
+        setError(vaults[0]!.payloadError === 'UNKNOWN_VERSION' ? S.unlock.newerVersion : S.save.nothingSaved);
+        return;
+      }
+      // D5: exactly one active VaultRegistry v2 vault opens directly; anything else shows the list. An archived vault
+      // never opens by itself (D13).
+      const active = readable.filter((v) => v.registry === 'v2' && !v.archived);
+      props.onUnlocked({ vaults, open: active.length === 1 ? active[0]! : null });
     } catch (e) {
       if (e instanceof UnlockError) setNotFound(true);
-      else if (e instanceof KeyError || e instanceof ChainMismatchError) setError(messageFor(e));
-      else if (e instanceof RegistryUnconfirmedError) setError(S.unlock.unconfirmed);
-      else setError(S.unlock.networkError);
+      else setError(unlockMessage(e));
     } finally {
       setBusy(false);
     }
-  }
-
-  function finish(m: OpenedVault, locator: `0x${string}`, older: OpenedVault[] = []) {
-    if (m.payloadError) {
-      setError(m.payloadError === 'UNKNOWN_VERSION' ? S.unlock.newerVersion : S.save.nothingSaved);
-      return;
-    }
-    const readable = older.filter((o) => !o.payloadError).map(toSession);
-    props.onUnlocked({ session: toSession(m), locator, ...(readable.length > 0 ? { older: readable } : {}) });
   }
 
   return (
@@ -87,7 +92,7 @@ export function UnlockFlow(props: { onUnlocked: (u: Unlocked) => void; onCreate:
       {error && <Notice kind="error">{error}</Notice>}
       <CeremonyPresence>{busy && <KeyPrompt text={S.unlock.working} />}</CeremonyPresence>
       <StepTransition id={phase} dir={dir}>
-        {notFound && (
+        {notFound ? (
           <div>
             <Notice kind="info">{S.unlock.notFound}</Notice>
             <ActionBar>
@@ -97,28 +102,7 @@ export function UnlockFlow(props: { onUnlocked: (u: Unlocked) => void; onCreate:
               </Btn>
             </ActionBar>
           </div>
-        )}
-        {choices && (
-          <div>
-            <Notice kind="info">{S.unlock.severalWarning}</Notice>
-            <p>{S.unlock.several}</p>
-            <ul className="plain-list">
-              {choices.matches.map((m, i) => (
-                <li key={m.vaultId}>
-                  <Btn className="secondary" onClick={() => finish(m, choices.locator, choices.older)}>
-                    {S.unlock.vaultChoice(i, m.version)}
-                  </Btn>
-                </li>
-              ))}
-            </ul>
-            {choices.older.length > 0 && (
-              <Btn className="link-button" onClick={() => finish(choices.older[0]!, choices.locator)}>
-                {S.unlock.olderVault}
-              </Btn>
-            )}
-          </div>
-        )}
-        {!notFound && !choices && (
+        ) : (
           <ActionBar>
             <Btn onClick={go} disabled={busy}>
               {S.unlock.button}

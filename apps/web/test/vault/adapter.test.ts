@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import vectors from '@cryoshield/vault-crypto/test-vectors/v1.json';
 import { decodeVault, maxPayloadBytes } from '@cryoshield/vault-crypto';
-import { addKeyToBlob, capacity, clearVaultBlob, createVaultBlob, editVaultBlob, matchCandidates } from '../../src/vault/adapter';
+import { addKeyToBlob, capacity, createVaultBlob, editVaultBlob, matchCandidates } from '../../src/vault/adapter';
+import { clearVaultBlob } from '../../src/ui/vault-meta';
 import { decodePayload, decodeVaultPayload, encodePayload, withItems } from '../../src/vault/payload';
 import { fromHex } from '../../src/lib/bytes';
 

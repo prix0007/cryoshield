@@ -131,28 +131,16 @@ export function writeVaultPayload(p: VaultPayloadInput): Uint8Array {
   return out;
 }
 
+/** A session's whole payload: the only input any write starts from (never items alone). */
+export function payloadOf(s: VaultPayloadInput): VaultPayloadInput {
+  return { archived: s.archived, items: s.items, ...(s.name !== undefined ? { name: s.name } : {}), ...(s.pad !== undefined ? { pad: s.pad } : {}) };
+}
+
 /** A save of new items keeps the name and the archived flag, and drops `z` once there is an item (spec section 6). */
 export function withItems(p: VaultPayloadInput, items: SecretItem[]): VaultPayloadInput {
   const out: VaultPayloadInput = { archived: p.archived, items };
   if (p.name !== undefined) out.name = p.name;
   if (p.pad !== undefined && items.length === 0) out.pad = p.pad;
-  return out;
-}
-
-/**
- * Archive and clear (spec section 8, D4): keeps the name, sets `a`, no items, `z` sized so the payload keeps the
- * previous length (exact), or stays in the previous 64-byte block (gap). Throws PayloadError if it can't fit.
- */
-export function archiveAndClearPayload(previous: Uint8Array, maxPayloadBytes: number): Uint8Array {
-  const prev = decodeVaultPayload(previous);
-  const base: VaultPayloadInput = { archived: true, items: [] };
-  if (prev.name !== undefined) base.name = prev.name;
-  const c0 = writeVaultPayload(base).length;
-  const p = previous.length;
-  const block = 64 * Math.ceil((p + 2) / 64) - 2;
-  const zeros = p - c0 - 7 >= 1 ? p - c0 - 7 : c0 < p && c0 + 8 <= block ? 1 : 0;
-  const out = writeVaultPayload(zeros ? { ...base, pad: '0'.repeat(zeros) } : base);
-  if (out.length > maxPayloadBytes) throw MALFORMED();
   return out;
 }
 

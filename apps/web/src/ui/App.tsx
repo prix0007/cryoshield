@@ -1,23 +1,31 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { detectPrfSupport, rpIdAllowed } from '../webauthn';
 import { CreateFlow } from './CreateFlow';
-import { Notice } from './components';
+import { ChunkBoundary, Notice } from './components';
 import type { MirrorItem, MirrorResult, VaultSession } from './operations';
 import { isArweaveId } from '../config/networks';
-import { ServicesProvider, useServices, type Services } from './services';
+import { ServicesProvider, testnetName, useServices, type Services } from './services';
 import { S } from './strings';
 import { ActionBar, AppFooter, GlobalNav, SubNav, useFocusClearOfActionBar } from './chrome';
-import { UnlockFlow, type Unlocked } from './UnlockFlow';
+import { unlockMessage, unlockSessions, UnlockFlow, type Unlocked } from './UnlockFlow';
+import { UnlockError } from '../chain/unlock';
+import { keccak256 } from 'viem';
+import { config } from '../config';
 import { useAutoLock } from './useAutoLock';
 import { VaultView } from './VaultView';
 import { Btn, MotionRoot, ScreenTransition, useDirection } from './motionkit';
 
-/** Test networks get the testnet + unaudited warning (add-privacy-and-compliance 4.3). */
-const TESTNETS: Record<number, string> = { 11155420: 'OP Sepolia', 421614: 'Arbitrum Sepolia', 11155111: 'Sepolia', 31337: 'a local test chain' };
-const testnetName = (chainId: number): string | undefined => TESTNETS[chainId];
+/** vault-list-labels-archive D5: the vault list (and the Edit vault sheet) are one lazily loaded chunk. */
+const VaultsMenu = lazy(() => import('./VaultsMenu'));
 
-type Screen = { name: 'home' } | { name: 'create' } | { name: 'unlock' } | { name: 'vault'; locator: `0x${string}`; fresh: boolean };
-const SCREEN_ORDER = ['home', 'unlock', 'create', 'vault'] as const;
+type Screen =
+  | { name: 'home' }
+  | { name: 'create' }
+  | { name: 'unlock' }
+  | { name: 'vault'; fresh: boolean; edit?: boolean }
+  | { name: 'vaults'; mode: 'picker' | 'menu' };
+const SCREEN_ORDER = ['home', 'unlock', 'create', 'vaults', 'vault'] as const;
+const keyOf = (v: Pick<VaultSession, 'registry' | 'vaultId'>) => `${v.registry}:${v.vaultId.toLowerCase()}`;
 
 export function App({ services }: { services?: Services }) {
   return (
@@ -32,12 +40,11 @@ export function App({ services }: { services?: Services }) {
 function Shell() {
   const svc = useServices();
   const [screen, setScreen] = useState<Screen>({ name: 'home' });
-  // The only place decrypted secrets live. Replaced with null on lock.
-  const [session, setSession] = useState<VaultSession | null>(null);
-  // harden-gas-sponsorship: the current (v2) vault and the legacy v1 copies the same key opens. Also decrypted, so they
-  // are dropped on lock exactly like `session`.
-  const [current, setCurrent] = useState<VaultSession | null>(null);
-  const [older, setOlder] = useState<VaultSession[]>([]);
+  // vault-list-labels-archive D7: the ONLY place decrypted vaults live (the open one, the list, older test vaults).
+  // Lock, idle, page hide and 60 s hidden replace it with [] in one assignment.
+  const [vaults, setVaults] = useState<VaultSession[]>([]);
+  const [openKey, setOpenKey] = useState<string | null>(null);
+  const session = vaults.find((v) => keyOf(v) === openKey) ?? null;
   const [locked, setLocked] = useState(false);
   // show-vault-onchain-location: the Arweave copy each open vault's session uploaded or verified, newest version only.
   // Public, but still dropped on lock; a result that lands after a lock (older epoch) is ignored.
@@ -67,22 +74,43 @@ function Shell() {
   }, []);
 
   const lock = useCallback(() => {
-    setSession(null);
-    setCurrent(null);
-    setOlder([]);
+    setVaults([]);
+    setOpenKey(null);
     setMirrorItems({});
     epoch.current++;
     setScreen({ name: 'home' });
     setLocked(true);
   }, []);
-  const { warning, extend } = useAutoLock(session !== null, lock);
+  const unlocked = vaults.length > 0;
+  const { warning, extend } = useAutoLock(unlocked, lock);
 
+  const open = (v: VaultSession, edit = false) => {
+    setOpenKey(keyOf(v));
+    setScreen({ name: 'vault', fresh: false, edit });
+  };
   const onUnlocked = (u: Unlocked) => {
-    setSession(u.session);
-    setCurrent(u.session.registry === 'v2' ? u.session : null);
-    setOlder(u.older ?? []);
+    setVaults(u.vaults);
     setLocked(false);
-    setScreen({ name: 'vault', locator: u.locator, fresh: false });
+    if (u.open) open(u.open);
+    else setScreen({ name: 'vaults', mode: 'picker' });
+  };
+  // D6: one more key ceremony; its vaults are merged by vault ID, never duplicated, and nothing is stored.
+  const history = useMemo(() => ({ rpc: svc.client, keccak256: (b: Uint8Array) => keccak256(b), registries: { v1: config.registryV1, v2: config.registryV2 } }), [svc.client]);
+  const vaultsRef = useRef(vaults);
+  vaultsRef.current = vaults;
+  const checkAnother = async (): Promise<string | null> => {
+    const at = epoch.current;
+    try {
+      const more = await unlockSessions(svc);
+      if (epoch.current !== at) return null; // locked meanwhile: drop the result
+      const known = new Set(vaultsRef.current.map(keyOf));
+      const fresh = more.filter((v) => !known.has(keyOf(v)));
+      if (fresh.length === 0) return S.unlock.noOther;
+      setVaults((vs) => [...vs, ...fresh]);
+      return null;
+    } catch (e) {
+      return e instanceof UnlockError ? S.unlock.noOther : unlockMessage(e);
+    }
   };
 
   return (
@@ -111,7 +139,7 @@ function Shell() {
             </ul>
           </Notice>
         )}
-        {warning && session && (
+        {warning && unlocked && (
           <div className="notice notice-info notice-inline" role="alert">
             <p className="notice-text">{S.vault.idleWarning}</p>
             <Btn onClick={extend}>{S.vault.stillHere}</Btn>
@@ -142,29 +170,43 @@ function Shell() {
               onCancel={() => setScreen({ name: 'home' })}
               onMirror={(vaultId, version, r) => recordMirror(vaultKey('v2', vaultId), version, r)}
               onDone={(s) => {
-                setSession(s);
-                setScreen({ name: 'vault', locator: '0x', fresh: true });
+                setVaults([s]);
+                setOpenKey(keyOf(s));
+                setScreen({ name: 'vault', fresh: true });
               }}
             />
           )}
           {screen.name === 'unlock' && allowed && (
             <UnlockFlow onUnlocked={onUnlocked} onCreate={() => setScreen({ name: 'create' })} onCancel={() => setScreen({ name: 'home' })} />
           )}
+          {screen.name === 'vaults' && unlocked && (
+            <ChunkBoundary fallback={<Notice kind="error">{S.save.loadFailed}</Notice>}>
+              <Suspense fallback={<p className="hint" role="status">{S.vault.loadingList}</p>}>
+                <VaultsMenu
+                  mode={screen.mode}
+                  vaults={vaults}
+                  onOpen={(v) => open(v)}
+                  onEdit={(v) => open(v, true)}
+                  onCheckAnother={checkAnother}
+                  history={history}
+                  onBack={screen.mode === 'menu' && session ? () => setScreen({ name: 'vault', fresh: false }) : lock}
+                />
+              </Suspense>
+            </ChunkBoundary>
+          )}
           {screen.name === 'vault' && session && (
             <VaultView
-              key={`${session.registry}:${session.vaultId}`}
+              key={`${keyOf(session)}:${screen.edit ? 'edit' : ''}`}
               session={session}
-              locator={screen.locator}
+              locator={session.locator ?? '0x'}
               freshMirror={screen.fresh}
-              onChange={(s) => {
-                setSession(s);
-                if (s.registry === 'v2') setCurrent(s);
-              }}
+              {...(screen.edit ? { initialMode: 'meta' as const } : {})}
+              onChange={(s) => setVaults((vs) => vs.map((v) => (keyOf(v) === keyOf(s) ? s : v)))}
               onLock={lock}
+              vaultCount={vaults.length}
+              onAllVaults={() => setScreen({ name: 'vaults', mode: 'menu' })}
               mirrorItem={mirrorItems[vaultKey(session.registry, session.vaultId)]}
               onMirror={(version, r) => recordMirror(vaultKey(session.registry, session.vaultId), version, r)}
-              {...(session.registry === 'v2' && older.length > 0 ? { onOpenOlder: () => setSession(older[0]!) } : {})}
-              {...(session.registry !== 'v2' && current ? { onBackToCurrent: () => setSession(current) } : {})}
             />
           )}
         </ScreenTransition>
