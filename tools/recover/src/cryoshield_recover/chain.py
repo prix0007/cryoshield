@@ -6,9 +6,10 @@ binding reject forgeries and clones. Against rollback (audit REC-M1, change hard
 a copy is "current" only with a quorum of distinct RPCs returning it and no disagreement, or when it
 matches the latest event hash that several RPCs agree on. Self-reported versions are never trusted.
 
-Two registry versions (OpenSpec change harden-gas-sponsorship): ``Registries`` reads VaultRegistry v2
-and then v1 on one chain and returns one candidate list. Both share one set of RPC clients, one quorum
-and one deadline. v2 locator lists have no cap, so they are paged (oldest pages first, plus the newest
+Registry versions (OpenSpec changes harden-gas-sponsorship and recover-registry-versions): ``Registries``
+reads every VaultRegistry deployment on one chain, newest version first, and returns one candidate list.
+They share one set of RPC clients, one quorum and one history deadline; each keeps its own resolve and
+fetch budgets. v2-ABI locator lists have no cap, so they are paged (oldest pages first, plus the newest
 pages when a list is longer than the page budget) and blobs are read with ``getVaults`` in batches.
 """
 
@@ -23,6 +24,7 @@ from urllib.parse import urlparse
 
 from . import abi
 from .candidates import Candidate, Freshness
+from .config import RegistrySpec
 from .keccak import keccak256
 from .rpc import JsonRpcClient, RpcError, hex_to_bytes, hex_to_int
 
@@ -144,9 +146,11 @@ class Registry:
         kind: Literal[1, 2] = 1,
         label: str = "",
         session: Session | None = None,
+        version: int | None = None,
     ) -> None:
         if kind not in (1, 2):
             raise ValueError("registry kind must be 1 or 2")
+        self.version = kind if version is None else version  # the deployment's version (v3 may use kind 2)
         self.address = address.lower()
         self.chain_id = chain_id
         self.deploy_block = deploy_block
@@ -622,67 +626,68 @@ class Registry:
 
 
 class Registries:
-    """VaultRegistry v2 then v1 on one chain, read as one (vault-registry spec: "Registry versions
-    coexist"). Either may be absent: a chain without v1 (OP Mainnet) reads only v2, and a chain without
-    a v2 deployment reads only v1, exactly as before.
+    """Every VaultRegistry deployment on one chain, newest version first, read as one (vault-registry
+    spec "Registry versions coexist"; recover-registry-versions D1-D3). A chain may have any subset:
+    OP Mainnet has only v2, a legacy chain only v1, and a future chain v3 next to v2 and v1.
 
-    Cross-registry rollback (design D9, "Same id in both registries"): v1 accepts client-chosen ids, so
-    anyone can register a v2 vault's id in v1 with an OLDER genuine blob, which still decrypts (the AAD
-    binds the vaultId, not the registry). v2 ids are derived from the creator's address and cannot be
-    planted. So every v1 copy is checked against v2's agreed event history, whether or not a v2 copy
-    was read (a failed or withheld v2 read must not let a plant through; ECC review, PR #40):
-    - v2 history present: a v2 vault exists, so v1 copies are classified against it (an old blob is
-      OUTDATED, anything else UNMATCHED);
-    - v2 history agreed empty: no v2 vault; v1's own classification stands (legacy vaults), and any
-      "v2" copy is a lie (UNMATCHED);
-    - v2 history unverifiable: no copy of that id may be called current, and if copies from both
-      registries are present they are ``contested``, so the user chooses instead of ranking deciding.
+    Cross-registry rollback (harden-gas-sponsorship D9, generalised by recover-registry-versions D2): v1
+    accepts client-chosen ids, so anyone can register a newer registry's vault id there with an OLDER
+    genuine blob, which still decrypts (the AAD binds the vaultId, not the registry); and a vault that moved
+    to a newer registry leaves its old copy behind. So the NEWEST registry holding an id is authoritative.
+    For an id whose oldest copy is in registry j, the registries newer than j are walked newest first,
+    whether or not a copy was read from them (a failed or withheld read must not let a plant through):
+    - history unverifiable: no copy may be called current; copies in still-newer registries (agreed empty)
+      are UNMATCHED; the remaining copies are ``contested`` when they come from more than one registry, so
+      the user chooses instead of ranking deciding;
+    - history present: that registry is authoritative; older copies are classified against it (an old blob
+      is OUTDATED, anything else UNMATCHED) and newer copies (agreed empty) are UNMATCHED;
+    - history agreed empty: continue. If all are empty, newer copies are UNMATCHED (a copy without a
+      history is a lie) and the oldest holder's own classification stands (legacy v1 vaults).
+    For ``[v2, v1]`` this is exactly the PR #40 rule.
     """
 
-    def __init__(self, v2: Registry | None, v1: Registry | None) -> None:
-        if v2 is not None:
-            primary = v2
-        elif v1 is not None:
-            primary = v1
-        else:
+    def __init__(self, registries: Sequence[Registry]) -> None:
+        if not registries:
             raise ValueError("at least one registry is needed")
-        if v2 is not None and v1 is not None and v2.session is not v1.session:
-            raise ValueError("both registries must share one session")
-        self.v2 = v2
-        self.v1 = v1
-        self._primary = primary
-        self._v2_only: set[bytes] = set()
+        ordered = sorted(registries, key=lambda r: -r.version)
+        if len({r.version for r in ordered}) != len(ordered):
+            raise ValueError("each registry version may appear once")
+        if any(r.session is not ordered[0].session for r in ordered):
+            raise ValueError("all registries must share one session")
+        self.registries = ordered
+        self._primary = ordered[0]
+        # Ids reported only by v2-ABI (batched) lists: v1-ABI registries don't read them one by one.
+        self._batched_only: set[bytes] = set()
 
     @classmethod
     def build(
         cls,
         urls: Sequence[str],
         chain_id: int,
+        specs: Sequence[RegistrySpec],
         *,
-        v2: tuple[str, int] | None,
-        v1: tuple[str, int] | None,
         client_factory: ClientFactory = JsonRpcClient,
         log_chunk: int = DEFAULT_LOG_CHUNK,
     ) -> Registries:
-        """``v2``/``v1`` are ``(address, deploy_block)`` or None when the chain has no such registry."""
+        """One registry per spec (any order; sorted newest first), all on one session."""
         session = Session(urls, chain_id, client_factory)
-        both = v2 is not None and v1 is not None
-
-        def make(spec: tuple[str, int] | None, kind: Literal[1, 2]) -> Registry | None:
-            if spec is None:
-                return None
-            return Registry(
-                urls,
-                spec[0],
-                chain_id,
-                spec[1],
-                log_chunk=log_chunk,
-                kind=kind,
-                label=f"registry v{kind}" if both else "",
-                session=session,
-            )
-
-        return cls(make(v2, 2), make(v1, 1))
+        several = len(specs) > 1
+        return cls(
+            [
+                Registry(
+                    urls,
+                    spec.address,
+                    chain_id,
+                    spec.deploy_block,
+                    log_chunk=log_chunk,
+                    kind=spec.kind,
+                    label=f"registry {spec.name}" if several else "",
+                    session=session,
+                    version=spec.version,
+                )
+                for spec in specs
+            ]
+        )
 
     @property
     def warnings(self) -> list[str]:
@@ -696,73 +701,110 @@ class Registries:
         return self._primary.usable()
 
     def resolve(self, locators: Sequence[bytes]) -> list[bytes]:
-        ids2 = self.v2.resolve(locators) if self.v2 is not None else []
-        ids1 = self.v1.resolve(locators) if self.v1 is not None else []
-        self._v2_only.update(set(ids2) - set(ids1))
-        return list(dict.fromkeys(ids2 + ids1))
+        ordered: list[bytes] = []
+        batched: set[bytes] = set()
+        plain: set[bytes] = set()
+        for reg in self.registries:
+            ids = reg.resolve(locators)
+            ordered.extend(ids)
+            (batched if reg.kind == 2 else plain).update(ids)
+        self._batched_only.update(batched - plain)
+        return list(dict.fromkeys(ordered))
 
     def fetch(self, vault_ids: Sequence[bytes]) -> list[Candidate]:
-        """v2 for every id (batched, cheap); v1 for every id not found ONLY through v2 locators (v1 lists
-        hold at most 16 ids per locator; with --vault-id that is every id)."""
-        c2 = self.v2.fetch(vault_ids) if self.v2 is not None else []
-        v1_ids = [i for i in vault_ids if i not in self._v2_only]
-        c1 = self.v1.fetch(v1_ids) if self.v1 is not None and v1_ids else []
-        if self.v2 is not None:
-            self._cross_check(self.v2, c2, c1)
-        return c2 + c1
+        """v2-ABI registries read every id (batched, cheap); v1-ABI registries read every id not found
+        ONLY through v2-ABI lists (v1 lists hold at most 16 ids per locator; with --vault-id that is every
+        id)."""
+        per: list[list[Candidate]] = []
+        for reg in self.registries:
+            ids = list(vault_ids) if reg.kind == 2 else [i for i in vault_ids if i not in self._batched_only]
+            per.append(reg.fetch(ids) if ids else [])
+        self._cross_check(per)
+        return [c for cands in per for c in cands]
 
-    def _cross_check(self, v2: Registry, c2: list[Candidate], c1: list[Candidate]) -> None:
-        by_id: dict[bytes, tuple[list[Candidate], list[Candidate]]] = {}
-        for c in c2:
-            if c.vault_id is not None:
-                by_id.setdefault(c.vault_id, ([], []))[0].append(c)
-        for c in c1:
-            if c.vault_id is not None:
-                by_id.setdefault(c.vault_id, ([], []))[1].append(c)
-        for vid, (in2, in1) in by_id.items():
-            if not in1:
-                continue  # v2-only ids: v2's own reconcile already decided
-            history = v2.event_hashes(vid)
-            if history is None:
-                for c in in2 + in1:
-                    if c.freshness in (Freshness.CURRENT, Freshness.VERIFIED):
-                        c.freshness = Freshness.UNVERIFIABLE
-                    c.contested = bool(in2)
-                where = (
-                    "appears in both registry versions (v2 and the old v1)"
-                    if in2
-                    else "was found in the old registry (v1)"
-                )
-                self.warnings.append(
-                    f"SECURITY: vault 0x{vid.hex()} {where} and its v2 history could not be confirmed, so "
-                    "no copy can be called current. Retry later or use --rpc with a server you trust."
-                )
-            elif history:
-                for c in in1:
-                    c.freshness = classify(c.blob, history)  # VERIFIED only if it IS v2's latest blob
-                if any(c.freshness is not Freshness.VERIFIED for c in in1):
-                    self.warnings.append(
-                        f"SECURITY: a copy of vault 0x{vid.hex()} in the old registry (v1) uses the ID of a "
-                        "registry v2 vault and is not its current version (it may be an older copy "
-                        "registered by someone else)."
-                    )
-            elif in2:
-                for c in in2:
-                    c.freshness = Freshness.UNMATCHED
-                self.warnings.append(
-                    f"SECURITY: a server returned a registry v2 copy of vault 0x{vid.hex()} that has no "
-                    "on-chain v2 history; it was ignored."
-                )
+    def _cross_check(self, per: list[list[Candidate]]) -> None:
+        by_id: dict[bytes, list[list[Candidate]]] = {}
+        for index, cands in enumerate(per):
+            for c in cands:
+                if c.vault_id is not None:
+                    by_id.setdefault(c.vault_id, [[] for _ in self.registries])[index].append(c)
+        for vid, groups in by_id.items():
+            held = [i for i, g in enumerate(groups) if g]
+            oldest = held[-1]
+            if oldest == 0:
+                continue  # only the newest registry holds it: its own reconcile already decided
+            for i in range(oldest):
+                history = self.registries[i].event_hashes(vid)
+                if history is None:
+                    self._unverifiable(vid, groups, i)
+                    break
+                if history:
+                    self._authority(vid, groups, i, history)
+                    break
+            else:
+                self._demote_newer(vid, groups, oldest)
+
+    def _names(self, indexes: Sequence[int]) -> str:
+        return ", ".join(f"v{self.registries[i].version}" for i in indexes)
+
+    def _demote_newer(self, vid: bytes, groups: list[list[Candidate]], upto: int) -> None:
+        """Copies in registries newer than ``upto`` whose history is agreed empty are lies."""
+        lying = [i for i in range(upto) if groups[i]]
+        for i in lying:
+            for c in groups[i]:
+                c.freshness = Freshness.UNMATCHED
+        if lying:
+            self.warnings.append(
+                f"SECURITY: a server returned a registry {self._names(lying)} copy of vault 0x{vid.hex()} that "
+                "has no on-chain history in that registry; it was ignored."
+            )
+
+    def _unverifiable(self, vid: bytes, groups: list[list[Candidate]], at: int) -> None:
+        self._demote_newer(vid, groups, at)
+        rest = [j for j in range(at, len(groups)) if groups[j]]
+        for j in rest:
+            for c in groups[j]:
+                if c.freshness in (Freshness.CURRENT, Freshness.VERIFIED):
+                    c.freshness = Freshness.UNVERIFIABLE
+                c.contested = len(rest) > 1
+        newer = f"v{self.registries[at].version}"
+        where = (
+            f"appears in several registry versions ({self._names(rest)})"
+            if len(rest) > 1
+            else f"was found in registry {self._names(rest)}"
+        )
+        self.warnings.append(
+            f"SECURITY: vault 0x{vid.hex()} {where} and the history of the newer registry {newer} could not "
+            "be confirmed, so no copy can be called current. Retry later or use --rpc with a server you "
+            "trust."
+        )
+
+    def _authority(
+        self, vid: bytes, groups: list[list[Candidate]], at: int, history: list[tuple[int, bytes]]
+    ) -> None:
+        self._demote_newer(vid, groups, at)
+        older = [j for j in range(at + 1, len(groups)) if groups[j]]
+        for j in older:
+            for c in groups[j]:
+                c.freshness = classify(c.blob, history)  # VERIFIED only if it IS the latest blob
+        stale = [j for j in older if any(c.freshness is not Freshness.VERIFIED for c in groups[j])]
+        if stale:
+            auth = f"v{self.registries[at].version}"
+            self.warnings.append(
+                f"SECURITY: a copy of vault 0x{vid.hex()} in the older registry {self._names(stale)} uses the "
+                f"ID of a registry {auth} vault and is not its current version (it may be an older copy left "
+                "behind, or registered by someone else)."
+            )
 
     def event_hashes(self, vault_id: bytes) -> list[tuple[int, bytes]] | None:
-        """The agreed history of ``vault_id``: v2's if it has one; if v2 agrees it has none, v1's.
-        Unverifiable v2 history makes the answer unverifiable (a v1 history could be a plant)."""
-        if self.v2 is None:
-            return self._primary.event_hashes(vault_id)
-        h2 = self.v2.event_hashes(vault_id)
-        if h2 is None or h2 or self.v1 is None:
-            return h2
-        return self.v1.event_hashes(vault_id)
+        """The agreed history of ``vault_id`` from the newest registry that has one. Unverifiable newer
+        history makes the answer unverifiable (an older registry's history could be a plant)."""
+        history: list[tuple[int, bytes]] | None = []
+        for reg in self.registries:
+            history = reg.event_hashes(vault_id)
+            if history is None or history:
+                return history
+        return history
 
 
 def classify(blob: bytes, hashes: list[tuple[int, bytes]] | None) -> Freshness:

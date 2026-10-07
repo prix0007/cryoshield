@@ -127,11 +127,11 @@ def deployed(anvil: str) -> Deployed:  # noqa: F811 - pytest fixture injection
 
 def _args(url: str, d: Deployed, *, v1: bool = True) -> list[str]:
     args = ["--rpc", url, "--chain-id", "31337", "--no-arweave"]
-    args += ["--registry-v2", d.v2, "--deploy-block-v2", str(d.v2_block)]
+    args += ["--registry", f"{d.v2}@{d.v2_block}:v2"]
     if v1:
-        args += ["--registry", d.v1, "--deploy-block", str(d.v1_block)]
+        args += ["--registry", f"{d.v1}@{d.v1_block}:v1"]
     else:
-        args += ["--registry", "0x" + "00" * 20]
+        args += ["--registries-only"]
     return args
 
 

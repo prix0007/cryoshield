@@ -16,7 +16,7 @@ from support.keys import BY_NAME, FakePrfSource, PhysicalKey
 from support.vectors import h
 
 from cryoshield_recover import cli
-from cryoshield_recover.config import DEFAULT_NETWORK, NETWORKS, is_placeholder
+from cryoshield_recover.config import DEFAULT_NETWORK, NETWORKS
 from cryoshield_recover.errors import ExitCode
 from cryoshield_recover.ui import Console
 
@@ -86,7 +86,8 @@ def test_defaults_and_overrides() -> None:
         )
     )
     assert cfg.rpcs == ["https://a.example/rpc", "http://127.0.0.1:8545"]
-    assert cfg.registry == "0x" + "ab" * 20 and cfg.rp_id == "x.example" and cfg.chain_id == 5
+    assert [(s.version, s.address) for s in cfg.registries] == [(1, "0x" + "ab" * 20)]
+    assert cfg.rp_id == "x.example" and cfg.chain_id == 5
     assert cfg.arweave_graphql == ["https://g.example/graphql"] and cfg.arweave_gateways == [
         "https://d.example"
     ]
@@ -285,7 +286,5 @@ def test_core_dumps_disabled(chain: FakeChain) -> None:
 # ------------------------------------------------------------------ release guard
 @pytest.mark.release
 def test_release_has_real_registry_address() -> None:
-    assert not is_placeholder(NETWORKS[DEFAULT_NETWORK].registry), (
-        f"fill in the {DEFAULT_NETWORK} registry before release"
-    )
-    assert NETWORKS[DEFAULT_NETWORK].deploy_block > 0
+    assert NETWORKS[DEFAULT_NETWORK].registries, f"fill in the {DEFAULT_NETWORK} registries before release"
+    assert all(s.deploy_block > 0 for s in NETWORKS[DEFAULT_NETWORK].registries)

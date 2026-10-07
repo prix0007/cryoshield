@@ -64,11 +64,10 @@ cryoshield-recover --rpc https://my-node.example/rpc
 cryoshield-recover --testnet
 cryoshield-recover --network op-mainnet
 cryoshield-recover --chain-id 10
-# Override the built-in contract address or site name:
-cryoshield-recover --registry 0x0000000000000000000000000000000000000001 --rp-id cryoshield.app
-# Point at a VaultRegistry v2 deployment and its deployment block (without the block, update history
-# is searched from block 0, which is slow):
-cryoshield-recover --registry-v2 0x0000000000000000000000000000000000000002 --deploy-block-v2 1
+# Add a newer registry version next to the built-in ones (see "Override registries" below):
+cryoshield-recover --registry 0x0000000000000000000000000000000000000003@123:v3:abi=v2
+# Override the site name:
+cryoshield-recover --rp-id cryoshield.app
 ```
 
 Run `cryoshield-recover --help` for every option.
@@ -105,11 +104,61 @@ The mainnet chain (Arbitrum One or OP Mainnet) is not decided yet.
 **Overrides:**
 - `--rpc` replaces the RPC list but keeps the preset's chain ID. These endpoints are labelled "user-supplied", and an RPC on a different chain is refused, with a hint.
 - `--chain-id` together with `--network` or `--testnet` must match that preset's chain ID; otherwise the tool exits with a usage error. A preset's built-in registry is never used on another chain.
-- **Custom chains:** a `--chain-id` that matches no preset needs `--rpc`, and should come with `--registry`. Such a chain never gets a built-in registry address.
+- **Custom chains:** a `--chain-id` that matches no preset needs `--rpc`, and should come with `--registry` or `--deployment-file`. Such a chain never gets a built-in registry address.
+- `--deployment-file` selects the network by the file's chain ID (see below); with `--network`, `--testnet` or `--chain-id` the two must match.
 
-**Built-in registry addresses** come from the project's deployment records at release time; the tool never reads files at runtime. If a network has no deployment in this release, blockchain lookup is off: the tool says so and points you to `--registry-v2`, `--registry` and their `--deploy-block` options.
+**Built-in registries.** Each preset lists every VaultRegistry version deployed on its chain, newest first:
 
-**Two registry versions.** New vaults are saved in VaultRegistry v2; vaults saved earlier stay in the original registry (v1), which remains readable forever. The tool looks in v2 first, then v1, and treats what it finds as one list, so you never need to know where your vault is. A network may have only one of them (OP Mainnet has only v2). In v2 anyone can add entries to a key's lookup list, so the tool reads long lists in pages. Each registry has its own time limits for looking up the list and for reading the vaults, and no single server may use more than a share of either, so one slow, stuck or spamming server cannot stop the others from finding your vault. Entries reported by more servers are read first, then the oldest and newest entries of each list before the ones in the middle. If a list is so long that only part of it is read (the oldest and newest entries), the tool says so, and `--vault-id` always works.
+| Preset | Registries (newest first) |
+|---|---|
+| `op-sepolia` | v2 `0xa622c92d3d5b54aea081cf410224a8a2ecb08cb7` (from block 49755277), v1 `0xb43f58cf17e64b603ae5588a1dd17e96a0849e44` (from block 49568053) |
+| `anvil` | v2 `0xa622…cb7` (block 2), v1 `0xb43f…9e44` (block 1) |
+| `op-mainnet`, `arbitrum-one`, `arbitrum-sepolia` | none yet: blockchain lookup is off, and the tool says so |
+
+They are copied from the project's deployment records (`contracts/deployments/<chainId>.json`) at release time; the tool never reads files at runtime unless you name one.
+
+**Several registry versions.** Registries are immutable. A new version is a new contract deployed next to the old ones, and no admin can move or change it. New vaults are saved in the newest version, and vaults saved earlier stay where they were, readable forever. The tool reads every listed version, newest first, and treats what it finds as one list, so you never need to know where your vault is. A network may have only some of them (OP Mainnet has only v2). In v2 anyone can add entries to a key's lookup list, so the tool reads long lists in pages. Each registry has its own time limits for looking up the list and for reading the vaults, and no single server may use more than a share of either, so one slow, stuck or spamming server cannot stop the others from finding your vault. Entries reported by more servers are read first, then the oldest and newest entries of each list before the ones in the middle. If a list is so long that only part of it is read (the oldest and newest entries), the tool says so, and `--vault-id` always works.
+
+### Override registries
+
+You normally need none of this: the built-in list is the project's latest deployment. Use it when a newer registry exists than this release knows, or to point at your own deployment.
+
+**`--registry ADDRESS[@DEPLOY_BLOCK][:vN[:abi=vK]]`** (repeatable):
+- `ADDRESS` is the contract address (0x and 40 hex digits).
+- `@DEPLOY_BLOCK` is the block it was deployed in. The tool searches update history from there. Without it, history is searched from block 0, which is slow and may fail on public servers; the tool warns.
+- `:vN` is the registry version (`v1`, `v2`, `v3`, …). Without it, an address that matches a built-in entry keeps that entry's version, and any other address is read as **v1** (what `--registry` meant before versions), with a note.
+- `:abi=vK` says which known read functions a newer version uses (`v1` or `v2`). The tool knows the v1 and v2 registries. For an unknown version without `abi=`, it stops with "this tool doesn't know registry vN; update cryoshield-recover" and contacts nothing. It never guesses.
+
+By default each `--registry` **replaces the built-in entry with the same version, or adds a new version**. With **`--registries-only`**, only your `--registry` entries are used.
+
+```sh
+# A v3 registry was deployed after this release; its read functions match v2's:
+cryoshield-recover --registry 0x0000000000000000000000000000000000000003@123:v3:abi=v2
+# Use only your own deployment of v2:
+cryoshield-recover --registries-only --registry 0x0000000000000000000000000000000000000002@1:v2
+```
+
+**`--deployment-file PATH`** uses every registry in a saved file. The file is either:
+- a deployment record from the source repository (`contracts/deployments/<chainId>.json`), or
+- the web app's `/release.json` saved to disk.
+
+The file's chain ID selects the network. A newer version in a record is read only when its `abiHash` equals the v1 or v2 ABI's, byte for byte; otherwise the tool asks you to update it. `--registry` entries still apply on top.
+
+```text
+cryoshield-recover --deployment-file ./11155420.json
+cryoshield-recover --deployment-file ./release.json --registry 0x…@123:v3:abi=v2
+```
+
+**Deprecated, still working:** `--registry-v2 ADDRESS` (now `--registry ADDRESS:v2`), `--deploy-block-v2 N` and `--deploy-block N` (now `@N` on the entry for v2 or v1). Each prints the new form.
+
+At startup the tool prints every registry it will read, newest first, with its first block and where it came from (built-in, `--registry`, or the file's name). **Security:** the newest registry that holds your vault decides which copy is current. So a wrong address, for example one from a phishing message, could show you an *older* version of your secrets. It can never decrypt anything or learn anything. The tool prints a SECURITY note whenever a registry is not built in, and a warning when a built-in one is left out. Use only addresses from the project's deployment records or a source you trust.
+
+### How a new registry version gets picked up
+
+1. The project deploys the new registry next to the old ones and adds it to `contracts/deployments/<chainId>.json`. Until the contracts side decides otherwise, the proposed key is `contracts.vaultRegistries.v3`.
+2. A test in this tool compares every preset with those records. It fails, printing the exact entry to add, until the preset lists the new version. So a release can't ship without the latest deployment.
+3. A new release of this tool reads the new version by default.
+4. Older releases can read it too, with `--registry ADDRESS@BLOCK:v3:abi=v2`, or with `--deployment-file` and the new record. The record needs no `abi=` when its `abiHash` shows the v2 ABI.
 
 ### Shamir (M-of-N) vaults
 
@@ -161,7 +210,12 @@ Public servers are untrusted, and a lying or stale server can serve an *older* g
 
 Versions reported by a server are never trusted for ranking. If servers disagree and the chain can't settle it, the tool prefers the copy more servers returned and warns you. On an exact tie it asks you to choose, showing only where each copy came from (never the secret). In a non-interactive run it stops with exit code 12.
 
-A vault ID found in both registry versions is settled by v2's on-chain history: v2 IDs are derived from the creator's address and cannot be copied, while anyone can register any ID in v1. Every v1 copy is checked against v2's history, even when no v2 copy could be read: a v1 copy that reuses a v2 vault's ID is shown as an older (or unmatched) copy with a security warning. If v2's history can't be confirmed, no copy of that vault is called current, and when both registries hold different copies you are asked to choose.
+A vault ID found in several registry versions is settled by the **newest registry that holds it**. Anyone can register any ID in v1, and a vault that moved to a newer registry leaves its old copy behind. So every copy from an older registry is checked against each newer registry's on-chain history, newest first, even when no copy could be read from the newer one:
+- if a newer registry has a history for that ID, it decides: an older copy is shown as an older (or unmatched) copy, with a security warning;
+- if a newer registry's history can't be confirmed, no copy of that vault is called current. When copies come from more than one registry, you are asked to choose;
+- a copy a server claims is in a newer registry, while that registry's history shows no such vault, is ignored.
+
+With today's v1 and v2, this is "v2 decides".
 
 Every Arweave search server's answer is kept separately, so one bad server cannot hide the genuine mirror. Searches are paged and time-bounded, and claimed sizes are ignored; downloads are capped at 1 KB anyway.
 

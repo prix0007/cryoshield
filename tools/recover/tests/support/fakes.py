@@ -92,6 +92,8 @@ TEST_CHAIN_ID = 11155420
 REGISTRY = "0xb43f58cf17e64b603ae5588a1dd17e96a0849e44"
 # A stand-in VaultRegistry v2 address (harden-gas-sponsorship); the fake serves it next to v1.
 REGISTRY_V2 = "0x2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b"
+# A stand-in future VaultRegistry v3 with v2's ABI (recover-registry-versions), served by the same node.
+REGISTRY_V3 = "0x3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c"
 V2_PAGE_MAX = 256
 V2_GET_VAULTS_MAX = 32
 
@@ -146,6 +148,17 @@ class FakeChain(FakeServer):
         self.v2_too_large = False  # every getVaults answer is padded past any response cap
         self.v2_getvaults_malformed_once = 0  # the next N getVaults answers are malformed ABI
         self.call_delay = 0.0  # seconds every eth_call (v1 and v2) hangs; eth_chainId still answers
+        # Further v2-ABI registries on this node, by address (a fake v3); each is a state-only FakeChain.
+        self.extra: dict[str, FakeChain] = {}
+
+    def add_registry(self, address: str = REGISTRY_V3) -> FakeChain:
+        """Serve another v2-ABI registry at ``address`` on this node and return its state, which has the
+        v2 helpers (``add_vault_v2``, ``update_vault_v2``) and flags (``v2_delay``, ``logs_error``, …)."""
+        reg = FakeChain(self.chain_id)
+        reg.httpd.server_close()  # state only: this node answers for it
+        reg.enable_v2(address.lower())
+        self.extra[address.lower()] = reg
+        return reg
 
     def enable_v2(self, address: str = REGISTRY_V2) -> FakeChain:
         self.v2_address = address
@@ -254,6 +267,8 @@ class FakeChain(FakeServer):
                 time.sleep(self.call_delay)
             call = params[0]
             data = bytes.fromhex(call["data"][2:])
+            if call["to"].lower() in self.extra:
+                return self.extra[call["to"].lower()].rpc(method, params)
             if self.v2_address is not None and call["to"].lower() == self.v2_address:
                 return "0x" + self._v2_call(data).hex()
             assert call["to"].lower() == self.address
@@ -273,6 +288,8 @@ class FakeChain(FakeServer):
             if self.logs_error:
                 raise LookupError("internal error")
             f = params[0]
+            if f["address"].lower() in self.extra:
+                return self.extra[f["address"].lower()].rpc(method, params)
             t0s, vid = f["topics"]
             lo, hi = int(f["fromBlock"], 16), int(f["toBlock"], 16)
             return [
