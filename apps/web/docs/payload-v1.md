@@ -1,5 +1,11 @@
 # CryoShield vault payload encoding v1
 
+> **Superseded for decoders by [`docs/spec/payload-v2.md`](../../../docs/spec/payload-v2.md)** (change
+> `vault-list-labels-archive`). v2 decoders read v1 and v2. Writers still emit these v1 bytes for an unnamed,
+> active vault with at least one item (minimal-version rule). v1 decoding is now strict and canonical: the
+> "must not depend on key order or whitespace" rule below is withdrawn. The examples below are vectors
+> `v1-single`, `v1-multi` and `v1-unicode` in [`docs/spec/payload-vectors.json`](../../../docs/spec/payload-vectors.json).
+
 This document is normative for every CryoShield client (web app, desktop recovery tool). It defines the bytes that
 `@cryoshield/vault-crypto` encrypts as the vault *secret*. The vault blob format itself is defined in
 `docs/spec/vault-format-v1.md`; this layer sits inside the encrypted payload.

@@ -32,7 +32,9 @@
     "pretest:browser": "node scripts/extract-readme-snippets.mjs",
     "test:browser": "vitest run --config vitest.browser.config.ts",
     "vectors": "scripts/.venv/bin/python scripts/gen-vectors.py",
-    "vectors:check": "scripts/.venv/bin/python scripts/gen-vectors.py --check"
+    "vectors:check": "scripts/.venv/bin/python scripts/gen-vectors.py --check",
+    "payload-vectors": "scripts/.venv/bin/python scripts/gen-payload-vectors.py",
+    "payload-vectors:check": "scripts/.venv/bin/python scripts/gen-payload-vectors.py --check"
   },
   "engines": {
     "node": ">=20"

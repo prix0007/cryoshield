@@ -24,7 +24,7 @@
 
 ## 1. Payload v2 codec and vectors [cry] [fe] [rec]
 
-- [ ] 1.1 [cry] Freeze the format first. Write `docs/spec/payload-v2.md` (design D1–D3: key order, field rules, name rules, escaping, minimal-version writer, `z` rules, strict canonical decoding) and a deterministic generator that writes `docs/spec/payload-vectors.json`:
+- [x] 1.1 [cry] Freeze the format first. Write `docs/spec/payload-v2.md` (design D1–D3: key order, field rules, name rules, escaping, minimal-version writer, `z` rules, strict canonical decoding) and a deterministic generator that writes `docs/spec/payload-vectors.json`:
   - positive vectors (v1 and v2 bytes ↔ structure, including the D2 minimal-version cases and a cleared vault with `z`);
   - negative vectors (duplicate keys, whitespace, reordered keys, `"a":false`, `"a":1`, `z` with items, `z` with a non-`0` character, a 41-code-point name, names with C0, C1, U+2028 and U+202E, a lone surrogate, non-canonical escapes, an empty v1 `items`, `"v":3`);
   - blob vectors (each encrypted with the vault-crypto test keys and vault IDs).

@@ -1,0 +1,1535 @@
+{
+  "name": "cryoshield-payload-v2",
+  "formatVersion": 2,
+  "spec": "docs/spec/payload-v2.md",
+  "generatedBy": "packages/vault-crypto/scripts/gen-payload-vectors.py",
+  "encoding": "hex: lowercase hex of the exact payload bytes. text: the same bytes as a string when they are well-formed UTF-8, else null. decoded: {version, name|null, archived, items:[{l,s}], pad|null}. canonicalHex: the canonical re-encoding (equal to hex for positive vectors; for negative vectors that parse and validate but differ byte-wise, what the re-encoding produced, else null). Blob vectors use credentials A and B of packages/vault-crypto/test-vectors/v1.json.",
+  "errorClasses": [
+    "MALFORMED",
+    "UNKNOWN_VERSION"
+  ],
+  "constants": {
+    "maxNameCodePoints": 40,
+    "maxLabelCodePoints": 64,
+    "forbiddenNameRanges": [
+      "U+0000-U+001F",
+      "U+007F-U+009F",
+      "U+2028-U+2029",
+      "U+202A-U+202E",
+      "U+2066-U+2069"
+    ],
+    "versionPrefixRegex": "\\{\"v\":(0|[1-9][0-9]*)[,}]",
+    "archiveReserveBytes": 9,
+    "padMemberOverheadBytes": 7
+  },
+  "positive": [
+    {
+      "id": "v1-single",
+      "description": "payload-v1.md example:single.",
+      "hex": "7b2276223a312c226974656d73223a5b7b226c223a22426974636f696e2073656564222c2273223a226162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e2061626f7574227d5d7d",
+      "text": "{\"v\":1,\"items\":[{\"l\":\"Bitcoin seed\",\"s\":\"abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about\"}]}",
+      "decoded": {
+        "version": 1,
+        "name": null,
+        "archived": false,
+        "items": [
+          {
+            "l": "Bitcoin seed",
+            "s": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+          }
+        ],
+        "pad": null
+      },
+      "canonicalHex": "7b2276223a312c226974656d73223a5b7b226c223a22426974636f696e2073656564222c2273223a226162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e2061626f7574227d5d7d"
+    },
+    {
+      "id": "v1-multi",
+      "description": "payload-v1.md example:multi (a newline escape in a secret).",
+      "hex": "7b2276223a312c226974656d73223a5b7b226c223a22476974487562207265636f7665727920636f646573222c2273223a2231613262332d63346435655c6e36663767382d683969306a227d2c7b226c223a22456d61696c20324641222c2273223a224a425357593344504548504b33505850227d5d7d",
+      "text": "{\"v\":1,\"items\":[{\"l\":\"GitHub recovery codes\",\"s\":\"1a2b3-c4d5e\\n6f7g8-h9i0j\"},{\"l\":\"Email 2FA\",\"s\":\"JBSWY3DPEHPK3PXP\"}]}",
+      "decoded": {
+        "version": 1,
+        "name": null,
+        "archived": false,
+        "items": [
+          {
+            "l": "GitHub recovery codes",
+            "s": "1a2b3-c4d5e\n6f7g8-h9i0j"
+          },
+          {
+            "l": "Email 2FA",
+            "s": "JBSWY3DPEHPK3PXP"
+          }
+        ],
+        "pad": null
+      },
+      "canonicalHex": "7b2276223a312c226974656d73223a5b7b226c223a22476974487562207265636f7665727920636f646573222c2273223a2231613262332d63346435655c6e36663767382d683969306a227d2c7b226c223a22456d61696c20324641222c2273223a224a425357593344504548504b33505850227d5d7d"
+    },
+    {
+      "id": "v1-unicode",
+      "description": "payload-v1.md example:unicode (raw UTF-8, no \\u escapes).",
+      "hex": "7b2276223a312c226974656d73223a5b7b226c223a224e6f74697a656e20e29c93222c2273223a2250617373776f72743a206772c3bc6e2dc39c227d5d7d",
+      "text": "{\"v\":1,\"items\":[{\"l\":\"Notizen \u2713\",\"s\":\"Passwort: gr\u00fcn-\u00dc\"}]}",
+      "decoded": {
+        "version": 1,
+        "name": null,
+        "archived": false,
+        "items": [
+          {
+            "l": "Notizen \u2713",
+            "s": "Passwort: gr\u00fcn-\u00dc"
+          }
+        ],
+        "pad": null
+      },
+      "canonicalHex": "7b2276223a312c226974656d73223a5b7b226c223a224e6f74697a656e20e29c93222c2273223a2250617373776f72743a206772c3bc6e2dc39c227d5d7d"
+    },
+    {
+      "id": "v1-empty-label",
+      "description": "v1 allows a 0-code-point label.",
+      "hex": "7b2276223a312c226974656d73223a5b7b226c223a22222c2273223a2278227d5d7d",
+      "text": "{\"v\":1,\"items\":[{\"l\":\"\",\"s\":\"x\"}]}",
+      "decoded": {
+        "version": 1,
+        "name": null,
+        "archived": false,
+        "items": [
+          {
+            "l": "",
+            "s": "x"
+          }
+        ],
+        "pad": null
+      },
+      "canonicalHex": "7b2276223a312c226974656d73223a5b7b226c223a22222c2273223a2278227d5d7d"
+    },
+    {
+      "id": "v1-label-64-code-points",
+      "description": "v1 label of exactly 64 code points (4-byte characters).",
+      "hex": "7b2276223a312c226974656d73223a5b7b226c223a22f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491222c2273223a2278227d5d7d",
+      "text": "{\"v\":1,\"items\":[{\"l\":\"\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\",\"s\":\"x\"}]}",
+      "decoded": {
+        "version": 1,
+        "name": null,
+        "archived": false,
+        "items": [
+          {
+            "l": "\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11\ud83d\udd11",
+            "s": "x"
+          }
+        ],
+        "pad": null
+      },
+      "canonicalHex": "7b2276223a312c226974656d73223a5b7b226c223a22f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491f09f9491222c2273223a2278227d5d7d"
+    },
+    {
+      "id": "v2-named",
+      "description": "Named, active vault.",
+      "hex": "7b2276223a322c226e223a2246616d696c79222c226974656d73223a5b7b226c223a22476974487562207265636f7665727920636f646573222c2273223a2231613262332d63346435655c6e36663767382d683969306a227d2c7b226c223a22456d61696c20324641222c2273223a224a425357593344504548504b33505850227d5d7d",
+      "text": "{\"v\":2,\"n\":\"Family\",\"items\":[{\"l\":\"GitHub recovery codes\",\"s\":\"1a2b3-c4d5e\\n6f7g8-h9i0j\"},{\"l\":\"Email 2FA\",\"s\":\"JBSWY3DPEHPK3PXP\"}]}",
+      "decoded": {
+        "version": 2,
+        "name": "Family",
+        "archived": false,
+        "items": [
+          {
+            "l": "GitHub recovery codes",
+            "s": "1a2b3-c4d5e\n6f7g8-h9i0j"
+          },
+          {
+            "l": "Email 2FA",
+            "s": "JBSWY3DPEHPK3PXP"
+          }
+        ],
+        "pad": null
+      },
+      "canonicalHex": "7b2276223a322c226e223a2246616d696c79222c226974656d73223a5b7b226c223a22476974487562207265636f7665727920636f646573222c2273223a2231613262332d63346435655c6e36663767382d683969306a227d2c7b226c223a22456d61696c20324641222c2273223a224a425357593344504548504b33505850227d5d7d"
+    },
+    {
+      "id": "v2-archived",
+      "description": "Unnamed, archived vault.",
+      "hex": "7b2276223a322c2261223a747275652c226974656d73223a5b7b226c223a22426974636f696e2073656564222c2273223a226162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e2061626f7574227d5d7d",
+      "text": "{\"v\":2,\"a\":true,\"items\":[{\"l\":\"Bitcoin seed\",\"s\":\"abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about\"}]}",
+      "decoded": {
+        "version": 2,
+        "name": null,
+        "archived": true,
+        "items": [
+          {
+            "l": "Bitcoin seed",
+            "s": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+          }
+        ],
+        "pad": null
+      },
+      "canonicalHex": "7b2276223a322c2261223a747275652c226974656d73223a5b7b226c223a22426974636f696e2073656564222c2273223a226162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e2061626f7574227d5d7d"
+    },
+    {
+      "id": "v2-named-archived",
+      "description": "Named and archived.",
+      "hex": "7b2276223a322c226e223a224f6c6420776f726b20324641222c2261223a747275652c226974656d73223a5b7b226c223a22476974487562207265636f7665727920636f646573222c2273223a2231613262332d63346435655c6e36663767382d683969306a227d2c7b226c223a22456d61696c20324641222c2273223a224a425357593344504548504b33505850227d5d7d",
+      "text": "{\"v\":2,\"n\":\"Old work 2FA\",\"a\":true,\"items\":[{\"l\":\"GitHub recovery codes\",\"s\":\"1a2b3-c4d5e\\n6f7g8-h9i0j\"},{\"l\":\"Email 2FA\",\"s\":\"JBSWY3DPEHPK3PXP\"}]}",
+      "decoded": {
+        "version": 2,
+        "name": "Old work 2FA",
+        "archived": true,
+        "items": [
+          {
+            "l": "GitHub recovery codes",
+            "s": "1a2b3-c4d5e\n6f7g8-h9i0j"
+          },
+          {
+            "l": "Email 2FA",
+            "s": "JBSWY3DPEHPK3PXP"
+          }
+        ],
+        "pad": null
+      },
+      "canonicalHex": "7b2276223a322c226e223a224f6c6420776f726b20324641222c2261223a747275652c226974656d73223a5b7b226c223a22476974487562207265636f7665727920636f646573222c2273223a2231613262332d63346435655c6e36663767382d683969306a227d2c7b226c223a22456d61696c20324641222c2273223a224a425357593344504548504b33505850227d5d7d"
+    },
+    {
+      "id": "v2-empty-items",
+      "description": "v2 allows an empty items array (unnamed, active, no z).",
+      "hex": "7b2276223a322c226974656d73223a5b5d7d",
+      "text": "{\"v\":2,\"items\":[]}",
+      "decoded": {
+        "version": 2,
+        "name": null,
+        "archived": false,
+        "items": [],
+        "pad": null
+      },
+      "canonicalHex": "7b2276223a322c226974656d73223a5b5d7d"
+    },
+    {
+      "id": "v2-named-empty-items",
+      "description": "Named vault with no items.",
+      "hex": "7b2276223a322c226e223a22456d707479222c226974656d73223a5b5d7d",
+      "text": "{\"v\":2,\"n\":\"Empty\",\"items\":[]}",
+      "decoded": {
+        "version": 2,
+        "name": "Empty",
+        "archived": false,
+        "items": [],
+        "pad": null
+      },
+      "canonicalHex": "7b2276223a322c226e223a22456d707479222c226974656d73223a5b5d7d"
+    },
+    {
+      "id": "v2-cleared",
+      "description": "After Archive and clear: name kept, archived, no items, z padding.",
+      "hex": "7b2276223a322c226e223a2246616d696c79222c2261223a747275652c226974656d73223a5b5d2c227a223a2230303030303030303030303030303030303030303030303030303030303030303030303030303030227d",
+      "text": "{\"v\":2,\"n\":\"Family\",\"a\":true,\"items\":[],\"z\":\"0000000000000000000000000000000000000000\"}",
+      "decoded": {
+        "version": 2,
+        "name": "Family",
+        "archived": true,
+        "items": [],
+        "pad": "0000000000000000000000000000000000000000"
+      },
+      "canonicalHex": "7b2276223a322c226e223a2246616d696c79222c2261223a747275652c226974656d73223a5b5d2c227a223a2230303030303030303030303030303030303030303030303030303030303030303030303030303030227d"
+    },
+    {
+      "id": "v2-cleared-unarchived",
+      "description": "A cleared vault that was unarchived again keeps z.",
+      "hex": "7b2276223a322c226974656d73223a5b5d2c227a223a2230303030227d",
+      "text": "{\"v\":2,\"items\":[],\"z\":\"0000\"}",
+      "decoded": {
+        "version": 2,
+        "name": null,
+        "archived": false,
+        "items": [],
+        "pad": "0000"
+      },
+      "canonicalHex": "7b2276223a322c226974656d73223a5b5d2c227a223a2230303030227d"
+    },
+    {
+      "id": "v2-z-single",
+      "description": "Shortest z: one ASCII 0.",
+      "hex": "7b2276223a322c2261223a747275652c226974656d73223a5b5d2c227a223a2230227d",
+      "text": "{\"v\":2,\"a\":true,\"items\":[],\"z\":\"0\"}",
+      "decoded": {
+        "version": 2,
+        "name": null,
+        "archived": true,
+        "items": [],
+        "pad": "0"
+      },
+      "canonicalHex": "7b2276223a322c2261223a747275652c226974656d73223a5b5d2c227a223a2230227d"
+    },
+    {
+      "id": "v2-name-non-bmp",
+      "description": "Name with a ZWJ emoji sequence and a non-BMP letter (raw 4-byte UTF-8).",
+      "hex": "7b2276223a322c226e223a2246616d696c7920f09f91a8e2808df09f91a9e2808df09f91a720f09d929c222c226974656d73223a5b7b226c223a224e6f74697a656e20e29c93222c2273223a2250617373776f72743a206772c3bc6e2dc39c227d5d7d",
+      "text": "{\"v\":2,\"n\":\"Family \ud83d\udc68\u200d\ud83d\udc69\u200d\ud83d\udc67 \ud835\udc9c\",\"items\":[{\"l\":\"Notizen \u2713\",\"s\":\"Passwort: gr\u00fcn-\u00dc\"}]}",
+      "decoded": {
+        "version": 2,
+        "name": "Family \ud83d\udc68\u200d\ud83d\udc69\u200d\ud83d\udc67 \ud835\udc9c",
+        "archived": false,
+        "items": [
+          {
+            "l": "Notizen \u2713",
+            "s": "Passwort: gr\u00fcn-\u00dc"
+          }
+        ],
+        "pad": null
+      },
+      "canonicalHex": "7b2276223a322c226e223a2246616d696c7920f09f91a8e2808df09f91a9e2808df09f91a720f09d929c222c226974656d73223a5b7b226c223a224e6f74697a656e20e29c93222c2273223a2250617373776f72743a206772c3bc6e2dc39c227d5d7d"
+    },
+    {
+      "id": "v2-name-40-code-points",
+      "description": "Name of exactly 40 code points, each a 4-byte character (160 bytes).",
+      "hex": "7b2276223a322c226e223a22f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880222c226974656d73223a5b7b226c223a22426974636f696e2073656564222c2273223a226162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e2061626f7574227d5d7d",
+      "text": "{\"v\":2,\"n\":\"\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\",\"items\":[{\"l\":\"Bitcoin seed\",\"s\":\"abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about\"}]}",
+      "decoded": {
+        "version": 2,
+        "name": "\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00",
+        "archived": false,
+        "items": [
+          {
+            "l": "Bitcoin seed",
+            "s": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+          }
+        ],
+        "pad": null
+      },
+      "canonicalHex": "7b2276223a322c226e223a22f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880222c226974656d73223a5b7b226c223a22426974636f696e2073656564222c2273223a226162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e2061626f7574227d5d7d"
+    },
+    {
+      "id": "v2-name-40-ascii",
+      "description": "Name of exactly 40 ASCII characters.",
+      "hex": "7b2276223a322c226e223a224e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e222c226974656d73223a5b7b226c223a22426974636f696e2073656564222c2273223a226162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e2061626f7574227d5d7d",
+      "text": "{\"v\":2,\"n\":\"NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN\",\"items\":[{\"l\":\"Bitcoin seed\",\"s\":\"abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about\"}]}",
+      "decoded": {
+        "version": 2,
+        "name": "NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN",
+        "archived": false,
+        "items": [
+          {
+            "l": "Bitcoin seed",
+            "s": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+          }
+        ],
+        "pad": null
+      },
+      "canonicalHex": "7b2276223a322c226e223a224e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e222c226974656d73223a5b7b226c223a22426974636f696e2073656564222c2273223a226162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e2061626f7574227d5d7d"
+    },
+    {
+      "id": "v2-name-combining",
+      "description": "Name with a combining mark: 'Cafe' + U+0301 is 5 code points, not NFC-normalized.",
+      "hex": "7b2276223a322c226e223a2243616665cc81222c226974656d73223a5b7b226c223a22426974636f696e2073656564222c2273223a226162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e2061626f7574227d5d7d",
+      "text": "{\"v\":2,\"n\":\"Cafe\u0301\",\"items\":[{\"l\":\"Bitcoin seed\",\"s\":\"abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about\"}]}",
+      "decoded": {
+        "version": 2,
+        "name": "Cafe\u0301",
+        "archived": false,
+        "items": [
+          {
+            "l": "Bitcoin seed",
+            "s": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+          }
+        ],
+        "pad": null
+      },
+      "canonicalHex": "7b2276223a322c226e223a2243616665cc81222c226974656d73223a5b7b226c223a22426974636f696e2073656564222c2273223a226162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e2061626f7574227d5d7d"
+    },
+    {
+      "id": "v2-name-quote-backslash",
+      "description": "Name with a quote and a backslash (escaped as \\\" and \\\\).",
+      "hex": "7b2276223a322c226e223a224d79205c226d61696e5c22205c5c207661756c74222c226974656d73223a5b7b226c223a22426974636f696e2073656564222c2273223a226162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e2061626f7574227d5d7d",
+      "text": "{\"v\":2,\"n\":\"My \\\"main\\\" \\\\ vault\",\"items\":[{\"l\":\"Bitcoin seed\",\"s\":\"abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about\"}]}",
+      "decoded": {
+        "version": 2,
+        "name": "My \"main\" \\ vault",
+        "archived": false,
+        "items": [
+          {
+            "l": "Bitcoin seed",
+            "s": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+          }
+        ],
+        "pad": null
+      },
+      "canonicalHex": "7b2276223a322c226e223a224d79205c226d61696e5c22205c5c207661756c74222c226974656d73223a5b7b226c223a22426974636f696e2073656564222c2273223a226162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e2061626f7574227d5d7d"
+    },
+    {
+      "id": "v2-name-spaces",
+      "description": "Leading and trailing spaces are kept as-is (no trimming in the codec).",
+      "hex": "7b2276223a322c226e223a222073706163656420222c226974656d73223a5b7b226c223a22426974636f696e2073656564222c2273223a226162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e2061626f7574227d5d7d",
+      "text": "{\"v\":2,\"n\":\" spaced \",\"items\":[{\"l\":\"Bitcoin seed\",\"s\":\"abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about\"}]}",
+      "decoded": {
+        "version": 2,
+        "name": " spaced ",
+        "archived": false,
+        "items": [
+          {
+            "l": "Bitcoin seed",
+            "s": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+          }
+        ],
+        "pad": null
+      },
+      "canonicalHex": "7b2276223a322c226e223a222073706163656420222c226974656d73223a5b7b226c223a22426974636f696e2073656564222c2273223a226162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e2061626f7574227d5d7d"
+    },
+    {
+      "id": "v2-escapes",
+      "description": "Canonical escapes in a secret: \\\" \\\\ \\n \\r \\t \\b \\f, \\u0000 and \\u001f (lowercase); DEL, C1, U+2028/2029, U+202E, U+FEFF and '/' stay raw.",
+      "hex": "7b2276223a322c226e223a2245736361706573222c226974656d73223a5b7b226c223a22657363222c2273223a2271756f7465205c22206261636b736c617368205c5c20736c617368202f206e65776c696e65205c6e206372205c7220746162205c74206273205c62206666205c66206e756c205c7530303030207573205c75303031662064656c207f206e656c20c285206c7320e280a820707320e280a920726c6f20e280ae20626f6d20efbbbf203c7363726970743e227d5d7d",
+      "text": "{\"v\":2,\"n\":\"Escapes\",\"items\":[{\"l\":\"esc\",\"s\":\"quote \\\" backslash \\\\ slash / newline \\n cr \\r tab \\t bs \\b ff \\f nul \\u0000 us \\u001f del \u007f nel \u0085 ls \u2028 ps \u2029 rlo \u202e bom \ufeff <script>\"}]}",
+      "decoded": {
+        "version": 2,
+        "name": "Escapes",
+        "archived": false,
+        "items": [
+          {
+            "l": "esc",
+            "s": "quote \" backslash \\ slash / newline \n cr \r tab \t bs \b ff \f nul \u0000 us \u001f del \u007f nel \u0085 ls \u2028 ps \u2029 rlo \u202e bom \ufeff <script>"
+          }
+        ],
+        "pad": null
+      },
+      "canonicalHex": "7b2276223a322c226e223a2245736361706573222c226974656d73223a5b7b226c223a22657363222c2273223a2271756f7465205c22206261636b736c617368205c5c20736c617368202f206e65776c696e65205c6e206372205c7220746162205c74206273205c62206666205c66206e756c205c7530303030207573205c75303031662064656c207f206e656c20c285206c7320e280a820707320e280a920726c6f20e280ae20626f6d20efbbbf203c7363726970743e227d5d7d"
+    },
+    {
+      "id": "v2-label-bidi",
+      "description": "Labels keep the v1 rules: a U+202E in a label is valid (display must make it inert).",
+      "hex": "7b2276223a322c226974656d73223a5b7b226c223a22616263e280ae646566222c2273223a2278227d5d7d",
+      "text": "{\"v\":2,\"items\":[{\"l\":\"abc\u202edef\",\"s\":\"x\"}]}",
+      "decoded": {
+        "version": 2,
+        "name": null,
+        "archived": false,
+        "items": [
+          {
+            "l": "abc\u202edef",
+            "s": "x"
+          }
+        ],
+        "pad": null
+      },
+      "canonicalHex": "7b2276223a322c226974656d73223a5b7b226c223a22616263e280ae646566222c2273223a2278227d5d7d"
+    },
+    {
+      "id": "v2-non-minimal",
+      "description": "v2 with no n, a or z and one item: valid to decode; the writer would emit v1 (see writer case writer-unnamed-active-v1).",
+      "hex": "7b2276223a322c226974656d73223a5b7b226c223a22426974636f696e2073656564222c2273223a226162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e2061626f7574227d5d7d",
+      "text": "{\"v\":2,\"items\":[{\"l\":\"Bitcoin seed\",\"s\":\"abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about\"}]}",
+      "decoded": {
+        "version": 2,
+        "name": null,
+        "archived": false,
+        "items": [
+          {
+            "l": "Bitcoin seed",
+            "s": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+          }
+        ],
+        "pad": null
+      },
+      "canonicalHex": "7b2276223a322c226974656d73223a5b7b226c223a22426974636f696e2073656564222c2273223a226162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e2061626f7574227d5d7d"
+    },
+    {
+      "id": "v2-named-three-items",
+      "description": "Named vault with three items (the Archive and clear starting point).",
+      "hex": "7b2276223a322c226e223a2246616d696c79222c226974656d73223a5b7b226c223a22476974487562207265636f7665727920636f646573222c2273223a2231613262332d63346435655c6e36663767382d683969306a227d2c7b226c223a22456d61696c20324641222c2273223a224a425357593344504548504b33505850227d2c7b226c223a22426974636f696e2073656564222c2273223a226162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e2061626f7574227d5d7d",
+      "text": "{\"v\":2,\"n\":\"Family\",\"items\":[{\"l\":\"GitHub recovery codes\",\"s\":\"1a2b3-c4d5e\\n6f7g8-h9i0j\"},{\"l\":\"Email 2FA\",\"s\":\"JBSWY3DPEHPK3PXP\"},{\"l\":\"Bitcoin seed\",\"s\":\"abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about\"}]}",
+      "decoded": {
+        "version": 2,
+        "name": "Family",
+        "archived": false,
+        "items": [
+          {
+            "l": "GitHub recovery codes",
+            "s": "1a2b3-c4d5e\n6f7g8-h9i0j"
+          },
+          {
+            "l": "Email 2FA",
+            "s": "JBSWY3DPEHPK3PXP"
+          },
+          {
+            "l": "Bitcoin seed",
+            "s": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+          }
+        ],
+        "pad": null
+      },
+      "canonicalHex": "7b2276223a322c226e223a2246616d696c79222c226974656d73223a5b7b226c223a22476974487562207265636f7665727920636f646573222c2273223a2231613262332d63346435655c6e36663767382d683969306a227d2c7b226c223a22456d61696c20324641222c2273223a224a425357593344504548504b33505850227d2c7b226c223a22426974636f696e2073656564222c2273223a226162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e2061626f7574227d5d7d"
+    }
+  ],
+  "negative": [
+    {
+      "id": "dup-member-n",
+      "description": "Duplicate n.",
+      "hex": "7b2276223a322c226e223a2261222c226e223a2262222c226974656d73223a5b5d7d",
+      "text": "{\"v\":2,\"n\":\"a\",\"n\":\"b\",\"items\":[]}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "dup-member-n-same-value",
+      "description": "Duplicate n with the same value.",
+      "hex": "7b2276223a322c226e223a2261222c226e223a2261222c226974656d73223a5b5d7d",
+      "text": "{\"v\":2,\"n\":\"a\",\"n\":\"a\",\"items\":[]}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "dup-member-v",
+      "description": "Duplicate v.",
+      "hex": "7b2276223a322c2276223a322c226974656d73223a5b5d7d",
+      "text": "{\"v\":2,\"v\":2,\"items\":[]}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "dup-member-items",
+      "description": "Duplicate items.",
+      "hex": "7b2276223a312c226974656d73223a5b7b226c223a2261222c2273223a2262227d5d2c226974656d73223a5b7b226c223a2261222c2273223a2262227d5d7d",
+      "text": "{\"v\":1,\"items\":[{\"l\":\"a\",\"s\":\"b\"}],\"items\":[{\"l\":\"a\",\"s\":\"b\"}]}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "dup-member-in-item",
+      "description": "Duplicate l inside an item.",
+      "hex": "7b2276223a312c226974656d73223a5b7b226c223a2261222c226c223a2261222c2273223a2262227d5d7d",
+      "text": "{\"v\":1,\"items\":[{\"l\":\"a\",\"l\":\"a\",\"s\":\"b\"}]}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "a-false",
+      "description": "\"a\":false (absent means active).",
+      "hex": "7b2276223a322c2261223a66616c73652c226974656d73223a5b5d7d",
+      "text": "{\"v\":2,\"a\":false,\"items\":[]}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "a-one",
+      "description": "\"a\":1 (Python: 1 == True, so check type(a) is bool).",
+      "hex": "7b2276223a322c2261223a312c226974656d73223a5b5d7d",
+      "text": "{\"v\":2,\"a\":1,\"items\":[]}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "a-string",
+      "description": "\"a\":\"true\".",
+      "hex": "7b2276223a322c2261223a2274727565222c226974656d73223a5b5d7d",
+      "text": "{\"v\":2,\"a\":\"true\",\"items\":[]}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "a-null",
+      "description": "\"a\":null.",
+      "hex": "7b2276223a322c2261223a6e756c6c2c226974656d73223a5b5d7d",
+      "text": "{\"v\":2,\"a\":null,\"items\":[]}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "n-empty",
+      "description": "Empty name (absent means unnamed).",
+      "hex": "7b2276223a322c226e223a22222c226974656d73223a5b5d7d",
+      "text": "{\"v\":2,\"n\":\"\",\"items\":[]}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "n-null",
+      "description": "\"n\":null.",
+      "hex": "7b2276223a322c226e223a6e756c6c2c226974656d73223a5b5d7d",
+      "text": "{\"v\":2,\"n\":null,\"items\":[]}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "n-number",
+      "description": "Non-string name.",
+      "hex": "7b2276223a322c226e223a352c226974656d73223a5b5d7d",
+      "text": "{\"v\":2,\"n\":5,\"items\":[]}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "n-41-code-points",
+      "description": "Name of 41 code points.",
+      "hex": "7b2276223a322c226e223a224e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e222c226974656d73223a5b5d7d",
+      "text": "{\"v\":2,\"n\":\"NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN\",\"items\":[]}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "n-41-code-points-non-bmp",
+      "description": "Name of 41 four-byte code points.",
+      "hex": "7b2276223a322c226e223a22f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880222c226974656d73223a5b5d7d",
+      "text": "{\"v\":2,\"n\":\"\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\",\"items\":[]}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "n-c0",
+      "description": "Name with a C0 control (\\u0001).",
+      "hex": "7b2276223a322c226e223a22615c753030303162222c226974656d73223a5b5d7d",
+      "text": "{\"v\":2,\"n\":\"a\\u0001b\",\"items\":[]}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "n-newline",
+      "description": "Name with a newline (\\n).",
+      "hex": "7b2276223a322c226e223a22615c6e62222c226974656d73223a5b5d7d",
+      "text": "{\"v\":2,\"n\":\"a\\nb\",\"items\":[]}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "n-del",
+      "description": "Name with DEL (U+007F) (assumption A1: DEL counts as a control).",
+      "hex": "7b2276223a322c226e223a22617f62222c226974656d73223a5b5d7d",
+      "text": "{\"v\":2,\"n\":\"a\u007fb\",\"items\":[]}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "n-c1",
+      "description": "Name with a C1 control (U+0085 NEL).",
+      "hex": "7b2276223a322c226e223a2261c28562222c226974656d73223a5b5d7d",
+      "text": "{\"v\":2,\"n\":\"a\u0085b\",\"items\":[]}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "n-2028",
+      "description": "Name with U+2028 LINE SEPARATOR.",
+      "hex": "7b2276223a322c226e223a2261e280a862222c226974656d73223a5b5d7d",
+      "text": "{\"v\":2,\"n\":\"a\u2028b\",\"items\":[]}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "n-2029",
+      "description": "Name with U+2029 PARAGRAPH SEPARATOR.",
+      "hex": "7b2276223a322c226e223a2261e280a962222c226974656d73223a5b5d7d",
+      "text": "{\"v\":2,\"n\":\"a\u2029b\",\"items\":[]}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "n-bidi-202a",
+      "description": "Name with U+202A LRE.",
+      "hex": "7b2276223a322c226e223a2261e280aa62222c226974656d73223a5b5d7d",
+      "text": "{\"v\":2,\"n\":\"a\u202ab\",\"items\":[]}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "n-bidi-202e",
+      "description": "Name with U+202E RLO.",
+      "hex": "7b2276223a322c226e223a2261e280ae62222c226974656d73223a5b5d7d",
+      "text": "{\"v\":2,\"n\":\"a\u202eb\",\"items\":[]}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "n-bidi-2066",
+      "description": "Name with U+2066 LRI.",
+      "hex": "7b2276223a322c226e223a2261e281a662222c226974656d73223a5b5d7d",
+      "text": "{\"v\":2,\"n\":\"a\u2066b\",\"items\":[]}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "n-bidi-2069",
+      "description": "Name with U+2069 PDI.",
+      "hex": "7b2276223a322c226e223a2261e281a962222c226974656d73223a5b5d7d",
+      "text": "{\"v\":2,\"n\":\"a\u2069b\",\"items\":[]}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "lone-surrogate-escaped",
+      "description": "Escaped lone high surrogate in a name (JSON.parse accepts it).",
+      "hex": "7b2276223a322c226e223a22615c7564383030222c226974656d73223a5b5d7d",
+      "text": "{\"v\":2,\"n\":\"a\\ud800\",\"items\":[]}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "lone-surrogate-escaped-low-in-secret",
+      "description": "Escaped lone low surrogate in a secret.",
+      "hex": "7b2276223a312c226974656d73223a5b7b226c223a2261222c2273223a225c7564633030227d5d7d",
+      "text": "{\"v\":1,\"items\":[{\"l\":\"a\",\"s\":\"\\udc00\"}]}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "lone-surrogate-raw-bytes",
+      "description": "UTF-8-encoded surrogate bytes ED A0 80 (ill-formed UTF-8).",
+      "hex": "7b2276223a312c226974656d73223a5b7b226c223a2261222c2273223a22eda080227d5d7d",
+      "text": null,
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "escaped-surrogate-pair",
+      "description": "A well-formed pair written as \\ud83d\\ude00 (canonical form is raw UTF-8).",
+      "hex": "7b2276223a312c226974656d73223a5b7b226c223a2261222c2273223a225c75643833645c7564653030227d5d7d",
+      "text": "{\"v\":1,\"items\":[{\"l\":\"a\",\"s\":\"\\ud83d\\ude00\"}]}",
+      "error": "MALFORMED",
+      "canonicalHex": "7b2276223a312c226974656d73223a5b7b226c223a2261222c2273223a22f09f9880227d5d7d"
+    },
+    {
+      "id": "invalid-utf8",
+      "description": "Byte 0xFF.",
+      "hex": "7b2276223a312c226974656d73223a5b7b226c223a2261222c2273223a22ff227d5d7d",
+      "text": null,
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "overlong-utf8",
+      "description": "Overlong encoding C0 AF of '/'.",
+      "hex": "7b2276223a312c226974656d73223a5b7b226c223a2261222c2273223a22c0af227d5d7d",
+      "text": null,
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "utf8-bom",
+      "description": "Leading UTF-8 BOM (TextDecoder strips it by default: compare bytes, not text).",
+      "hex": "efbbbf7b2276223a312c226974656d73223a5b7b226c223a2261222c2273223a2262227d5d7d",
+      "text": "\ufeff{\"v\":1,\"items\":[{\"l\":\"a\",\"s\":\"b\"}]}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "escape-solidus",
+      "description": "Non-canonical escape \\/.",
+      "hex": "7b2276223a312c226974656d73223a5b7b226c223a2261222c2273223a225c2f227d5d7d",
+      "text": "{\"v\":1,\"items\":[{\"l\":\"a\",\"s\":\"\\/\"}]}",
+      "error": "MALFORMED",
+      "canonicalHex": "7b2276223a312c226974656d73223a5b7b226c223a2261222c2273223a222f227d5d7d"
+    },
+    {
+      "id": "escape-unneeded-u",
+      "description": "Non-canonical escape \\u0041 for 'A'.",
+      "hex": "7b2276223a312c226974656d73223a5b7b226c223a2261222c2273223a225c7530303431227d5d7d",
+      "text": "{\"v\":1,\"items\":[{\"l\":\"a\",\"s\":\"\\u0041\"}]}",
+      "error": "MALFORMED",
+      "canonicalHex": "7b2276223a312c226974656d73223a5b7b226c223a2261222c2273223a2241227d5d7d"
+    },
+    {
+      "id": "escape-uppercase-hex",
+      "description": "\\u001F instead of \\u001f.",
+      "hex": "7b2276223a312c226974656d73223a5b7b226c223a2261222c2273223a225c7530303146227d5d7d",
+      "text": "{\"v\":1,\"items\":[{\"l\":\"a\",\"s\":\"\\u001F\"}]}",
+      "error": "MALFORMED",
+      "canonicalHex": "7b2276223a312c226974656d73223a5b7b226c223a2261222c2273223a225c7530303166227d5d7d"
+    },
+    {
+      "id": "escape-u-newline",
+      "description": "\\u000a instead of \\n.",
+      "hex": "7b2276223a312c226974656d73223a5b7b226c223a2261222c2273223a225c7530303061227d5d7d",
+      "text": "{\"v\":1,\"items\":[{\"l\":\"a\",\"s\":\"\\u000a\"}]}",
+      "error": "MALFORMED",
+      "canonicalHex": "7b2276223a312c226974656d73223a5b7b226c223a2261222c2273223a225c6e227d5d7d"
+    },
+    {
+      "id": "escape-non-ascii",
+      "description": "\\u00e9 instead of raw UTF-8.",
+      "hex": "7b2276223a312c226974656d73223a5b7b226c223a2261222c2273223a225c7530306539227d5d7d",
+      "text": "{\"v\":1,\"items\":[{\"l\":\"a\",\"s\":\"\\u00e9\"}]}",
+      "error": "MALFORMED",
+      "canonicalHex": "7b2276223a312c226974656d73223a5b7b226c223a2261222c2273223a22c3a9227d5d7d"
+    },
+    {
+      "id": "extra-member-top",
+      "description": "Unknown top-level key in v2.",
+      "hex": "7b2276223a322c226974656d73223a5b5d2c2278223a317d",
+      "text": "{\"v\":2,\"items\":[],\"x\":1}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "extra-member-item",
+      "description": "Unknown key in an item.",
+      "hex": "7b2276223a312c226974656d73223a5b7b226c223a2261222c2273223a2262222c2274223a2263227d5d7d",
+      "text": "{\"v\":1,\"items\":[{\"l\":\"a\",\"s\":\"b\",\"t\":\"c\"}]}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "v1-with-n",
+      "description": "v1 has no n.",
+      "hex": "7b2276223a312c226e223a2261222c226974656d73223a5b7b226c223a2261222c2273223a2262227d5d7d",
+      "text": "{\"v\":1,\"n\":\"a\",\"items\":[{\"l\":\"a\",\"s\":\"b\"}]}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "v1-with-a",
+      "description": "v1 has no a.",
+      "hex": "7b2276223a312c2261223a747275652c226974656d73223a5b7b226c223a2261222c2273223a2262227d5d7d",
+      "text": "{\"v\":1,\"a\":true,\"items\":[{\"l\":\"a\",\"s\":\"b\"}]}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "v1-empty-items",
+      "description": "v1 requires at least one item.",
+      "hex": "7b2276223a312c226974656d73223a5b5d7d",
+      "text": "{\"v\":1,\"items\":[]}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "whitespace-after-comma",
+      "description": "A space between members.",
+      "hex": "7b2276223a322c20226974656d73223a5b5d7d",
+      "text": "{\"v\":2, \"items\":[]}",
+      "error": "MALFORMED",
+      "canonicalHex": "7b2276223a322c226974656d73223a5b5d7d"
+    },
+    {
+      "id": "whitespace-leading",
+      "description": "Leading space.",
+      "hex": "207b2276223a322c226974656d73223a5b5d7d",
+      "text": " {\"v\":2,\"items\":[]}",
+      "error": "MALFORMED",
+      "canonicalHex": "7b2276223a322c226974656d73223a5b5d7d"
+    },
+    {
+      "id": "whitespace-trailing-newline",
+      "description": "Trailing newline.",
+      "hex": "7b2276223a322c226974656d73223a5b5d7d0a",
+      "text": "{\"v\":2,\"items\":[]}\n",
+      "error": "MALFORMED",
+      "canonicalHex": "7b2276223a322c226974656d73223a5b5d7d"
+    },
+    {
+      "id": "whitespace-after-colon",
+      "description": "A space after a colon.",
+      "hex": "7b2276223a312c226974656d73223a205b7b226c223a2261222c2273223a2262227d5d7d",
+      "text": "{\"v\":1,\"items\": [{\"l\":\"a\",\"s\":\"b\"}]}",
+      "error": "MALFORMED",
+      "canonicalHex": "7b2276223a312c226974656d73223a5b7b226c223a2261222c2273223a2262227d5d7d"
+    },
+    {
+      "id": "member-order-a-before-n",
+      "description": "a before n.",
+      "hex": "7b2276223a322c2261223a747275652c226e223a2278222c226974656d73223a5b5d7d",
+      "text": "{\"v\":2,\"a\":true,\"n\":\"x\",\"items\":[]}",
+      "error": "MALFORMED",
+      "canonicalHex": "7b2276223a322c226e223a2278222c2261223a747275652c226974656d73223a5b5d7d"
+    },
+    {
+      "id": "member-order-items-before-v",
+      "description": "v1 with items before v.",
+      "hex": "7b226974656d73223a5b7b226c223a2261222c2273223a2262227d5d2c2276223a317d",
+      "text": "{\"items\":[{\"l\":\"a\",\"s\":\"b\"}],\"v\":1}",
+      "error": "MALFORMED",
+      "canonicalHex": "7b2276223a312c226974656d73223a5b7b226c223a2261222c2273223a2262227d5d7d"
+    },
+    {
+      "id": "member-order-z-before-items",
+      "description": "z before items.",
+      "hex": "7b2276223a322c227a223a2230222c226974656d73223a5b5d7d",
+      "text": "{\"v\":2,\"z\":\"0\",\"items\":[]}",
+      "error": "MALFORMED",
+      "canonicalHex": "7b2276223a322c226974656d73223a5b5d2c227a223a2230227d"
+    },
+    {
+      "id": "member-order-s-before-l",
+      "description": "s before l in an item.",
+      "hex": "7b2276223a312c226974656d73223a5b7b2273223a2262222c226c223a2261227d5d7d",
+      "text": "{\"v\":1,\"items\":[{\"s\":\"b\",\"l\":\"a\"}]}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "v-string",
+      "description": "\"v\":\"2\".",
+      "hex": "7b2276223a2232222c226974656d73223a5b5d7d",
+      "text": "{\"v\":\"2\",\"items\":[]}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "v-float",
+      "description": "\"v\":2.0.",
+      "hex": "7b2276223a322e302c226974656d73223a5b5d7d",
+      "text": "{\"v\":2.0,\"items\":[]}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "v-exponent",
+      "description": "\"v\":1e0.",
+      "hex": "7b2276223a3165302c226974656d73223a5b7b226c223a2261222c2273223a2262227d5d7d",
+      "text": "{\"v\":1e0,\"items\":[{\"l\":\"a\",\"s\":\"b\"}]}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "v-true",
+      "description": "\"v\":true.",
+      "hex": "7b2276223a747275652c226974656d73223a5b7b226c223a2261222c2273223a2262227d5d7d",
+      "text": "{\"v\":true,\"items\":[{\"l\":\"a\",\"s\":\"b\"}]}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "v-zero",
+      "description": "\"v\":0 is not a newer version.",
+      "hex": "7b2276223a302c226974656d73223a5b5d7d",
+      "text": "{\"v\":0,\"items\":[]}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "v-negative",
+      "description": "\"v\":-1.",
+      "hex": "7b2276223a2d312c226974656d73223a5b5d7d",
+      "text": "{\"v\":-1,\"items\":[]}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "v-missing",
+      "description": "No v.",
+      "hex": "7b226974656d73223a5b7b226c223a2261222c2273223a2262227d5d7d",
+      "text": "{\"items\":[{\"l\":\"a\",\"s\":\"b\"}]}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "v-3",
+      "description": "\"v\":3: a newer version.",
+      "hex": "7b2276223a332c226974656d73223a5b5d7d",
+      "text": "{\"v\":3,\"items\":[]}",
+      "error": "UNKNOWN_VERSION",
+      "canonicalHex": null
+    },
+    {
+      "id": "v-3-unknown-fields",
+      "description": "\"v\":3 with fields this version does not know.",
+      "hex": "7b2276223a332c2271223a5b312c325d2c226974656d73223a7b7d7d",
+      "text": "{\"v\":3,\"q\":[1,2],\"items\":{}}",
+      "error": "UNKNOWN_VERSION",
+      "canonicalHex": null
+    },
+    {
+      "id": "v-10",
+      "description": "\"v\":10.",
+      "hex": "7b2276223a31307d",
+      "text": "{\"v\":10}",
+      "error": "UNKNOWN_VERSION",
+      "canonicalHex": null
+    },
+    {
+      "id": "v-3-precedes-validation",
+      "description": "The version prefix is checked before parsing: a v3 prefix wins over a later duplicate v.",
+      "hex": "7b2276223a332c2276223a322c226974656d73223a5b5d7d",
+      "text": "{\"v\":3,\"v\":2,\"items\":[]}",
+      "error": "UNKNOWN_VERSION",
+      "canonicalHex": null
+    },
+    {
+      "id": "v-3-not-first",
+      "description": "\"v\":3 not at the start: no version prefix, so MALFORMED.",
+      "hex": "7b226974656d73223a5b5d2c2276223a337d",
+      "text": "{\"items\":[],\"v\":3}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "v-3-whitespace",
+      "description": "Whitespace before a v3: no version prefix, so MALFORMED.",
+      "hex": "7b202276223a332c226974656d73223a5b5d7d",
+      "text": "{ \"v\":3,\"items\":[]}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "v-03",
+      "description": "\"v\":03 (leading zero, invalid JSON).",
+      "hex": "7b2276223a30332c226974656d73223a5b5d7d",
+      "text": "{\"v\":03,\"items\":[]}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "z-non-zero",
+      "description": "z with a character other than 0.",
+      "hex": "7b2276223a322c2261223a747275652c226974656d73223a5b5d2c227a223a22303031227d",
+      "text": "{\"v\":2,\"a\":true,\"items\":[],\"z\":\"001\"}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "z-empty",
+      "description": "Empty z.",
+      "hex": "7b2276223a322c2261223a747275652c226974656d73223a5b5d2c227a223a22227d",
+      "text": "{\"v\":2,\"a\":true,\"items\":[],\"z\":\"\"}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "z-number",
+      "description": "Numeric z.",
+      "hex": "7b2276223a322c2261223a747275652c226974656d73223a5b5d2c227a223a307d",
+      "text": "{\"v\":2,\"a\":true,\"items\":[],\"z\":0}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "z-with-items",
+      "description": "z next to a non-empty items.",
+      "hex": "7b2276223a322c226974656d73223a5b7b226c223a2261222c2273223a2262227d5d2c227a223a2230227d",
+      "text": "{\"v\":2,\"items\":[{\"l\":\"a\",\"s\":\"b\"}],\"z\":\"0\"}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "z-in-v1",
+      "description": "v1 has no z.",
+      "hex": "7b2276223a312c226974656d73223a5b7b226c223a2261222c2273223a2262227d5d2c227a223a2230227d",
+      "text": "{\"v\":1,\"items\":[{\"l\":\"a\",\"s\":\"b\"}],\"z\":\"0\"}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "label-65-code-points",
+      "description": "Label of 65 code points.",
+      "hex": "7b2276223a312c226974656d73223a5b7b226c223a227878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878222c2273223a2262227d5d7d",
+      "text": "{\"v\":1,\"items\":[{\"l\":\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\",\"s\":\"b\"}]}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "label-number",
+      "description": "Non-string label.",
+      "hex": "7b2276223a312c226974656d73223a5b7b226c223a312c2273223a2262227d5d7d",
+      "text": "{\"v\":1,\"items\":[{\"l\":1,\"s\":\"b\"}]}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "secret-null",
+      "description": "Null s.",
+      "hex": "7b2276223a312c226974656d73223a5b7b226c223a2261222c2273223a6e756c6c7d5d7d",
+      "text": "{\"v\":1,\"items\":[{\"l\":\"a\",\"s\":null}]}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "item-missing-s",
+      "description": "Item without s.",
+      "hex": "7b2276223a312c226974656d73223a5b7b226c223a2261227d5d7d",
+      "text": "{\"v\":1,\"items\":[{\"l\":\"a\"}]}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "items-object",
+      "description": "items is not an array.",
+      "hex": "7b2276223a322c226974656d73223a7b7d7d",
+      "text": "{\"v\":2,\"items\":{}}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "items-missing",
+      "description": "No items.",
+      "hex": "7b2276223a322c226e223a2261227d",
+      "text": "{\"v\":2,\"n\":\"a\"}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "item-array",
+      "description": "An item that is an array.",
+      "hex": "7b2276223a312c226974656d73223a5b5b2261222c2262225d5d7d",
+      "text": "{\"v\":1,\"items\":[[\"a\",\"b\"]]}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "top-level-array",
+      "description": "Top level is an array.",
+      "hex": "5b7b2276223a317d5d",
+      "text": "[{\"v\":1}]",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "top-level-null",
+      "description": "Top level is null.",
+      "hex": "6e756c6c",
+      "text": "null",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "empty-input",
+      "description": "Zero bytes.",
+      "hex": "",
+      "text": "",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "not-json",
+      "description": "Not JSON.",
+      "hex": "616263",
+      "text": "abc",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "nan",
+      "description": "NaN is not JSON (Python's json accepts it unless refused).",
+      "hex": "7b2276223a4e614e2c226974656d73223a5b5d7d",
+      "text": "{\"v\":NaN,\"items\":[]}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "trailing-garbage",
+      "description": "Bytes after the object.",
+      "hex": "7b2276223a322c226974656d73223a5b5d7d78",
+      "text": "{\"v\":2,\"items\":[]}x",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    },
+    {
+      "id": "deep-nesting",
+      "description": "A deeply nested secret (must be rejected, never crash).",
+      "hex": "7b2276223a312c226974656d73223a5b7b226c223a2261222c2273223a5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d7d5d7d",
+      "text": "{\"v\":1,\"items\":[{\"l\":\"a\",\"s\":[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]}]}",
+      "error": "MALFORMED",
+      "canonicalHex": null
+    }
+  ],
+  "writer": [
+    {
+      "id": "writer-unnamed-active-v1",
+      "description": "No name, active, items: v1, byte-identical to today's encoding (D2).",
+      "input": {
+        "name": null,
+        "archived": false,
+        "items": [
+          {
+            "l": "Bitcoin seed",
+            "s": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+          }
+        ],
+        "pad": null
+      },
+      "expectedVersion": 1,
+      "expectedHex": "7b2276223a312c226974656d73223a5b7b226c223a22426974636f696e2073656564222c2273223a226162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e2061626f7574227d5d7d",
+      "expectedText": "{\"v\":1,\"items\":[{\"l\":\"Bitcoin seed\",\"s\":\"abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about\"}]}"
+    },
+    {
+      "id": "writer-unnamed-active-multi-v1",
+      "description": "Same rule with two items.",
+      "input": {
+        "name": null,
+        "archived": false,
+        "items": [
+          {
+            "l": "GitHub recovery codes",
+            "s": "1a2b3-c4d5e\n6f7g8-h9i0j"
+          },
+          {
+            "l": "Email 2FA",
+            "s": "JBSWY3DPEHPK3PXP"
+          }
+        ],
+        "pad": null
+      },
+      "expectedVersion": 1,
+      "expectedHex": "7b2276223a312c226974656d73223a5b7b226c223a22476974487562207265636f7665727920636f646573222c2273223a2231613262332d63346435655c6e36663767382d683969306a227d2c7b226c223a22456d61696c20324641222c2273223a224a425357593344504548504b33505850227d5d7d",
+      "expectedText": "{\"v\":1,\"items\":[{\"l\":\"GitHub recovery codes\",\"s\":\"1a2b3-c4d5e\\n6f7g8-h9i0j\"},{\"l\":\"Email 2FA\",\"s\":\"JBSWY3DPEHPK3PXP\"}]}"
+    },
+    {
+      "id": "writer-named-v2",
+      "description": "A name forces v2.",
+      "input": {
+        "name": "Family",
+        "archived": false,
+        "items": [
+          {
+            "l": "GitHub recovery codes",
+            "s": "1a2b3-c4d5e\n6f7g8-h9i0j"
+          },
+          {
+            "l": "Email 2FA",
+            "s": "JBSWY3DPEHPK3PXP"
+          }
+        ],
+        "pad": null
+      },
+      "expectedVersion": 2,
+      "expectedHex": "7b2276223a322c226e223a2246616d696c79222c226974656d73223a5b7b226c223a22476974487562207265636f7665727920636f646573222c2273223a2231613262332d63346435655c6e36663767382d683969306a227d2c7b226c223a22456d61696c20324641222c2273223a224a425357593344504548504b33505850227d5d7d",
+      "expectedText": "{\"v\":2,\"n\":\"Family\",\"items\":[{\"l\":\"GitHub recovery codes\",\"s\":\"1a2b3-c4d5e\\n6f7g8-h9i0j\"},{\"l\":\"Email 2FA\",\"s\":\"JBSWY3DPEHPK3PXP\"}]}"
+    },
+    {
+      "id": "writer-archived-v2",
+      "description": "The archived flag forces v2.",
+      "input": {
+        "name": null,
+        "archived": true,
+        "items": [
+          {
+            "l": "Bitcoin seed",
+            "s": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+          }
+        ],
+        "pad": null
+      },
+      "expectedVersion": 2,
+      "expectedHex": "7b2276223a322c2261223a747275652c226974656d73223a5b7b226c223a22426974636f696e2073656564222c2273223a226162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e2061626f7574227d5d7d",
+      "expectedText": "{\"v\":2,\"a\":true,\"items\":[{\"l\":\"Bitcoin seed\",\"s\":\"abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about\"}]}"
+    },
+    {
+      "id": "writer-empty-items-v2",
+      "description": "No items forces v2 (v1 needs at least one).",
+      "input": {
+        "name": null,
+        "archived": false,
+        "items": [],
+        "pad": null
+      },
+      "expectedVersion": 2,
+      "expectedHex": "7b2276223a322c226974656d73223a5b5d7d",
+      "expectedText": "{\"v\":2,\"items\":[]}"
+    },
+    {
+      "id": "writer-cleared-v2",
+      "description": "Archive and clear output.",
+      "input": {
+        "name": "Family",
+        "archived": true,
+        "items": [],
+        "pad": "000000000000"
+      },
+      "expectedVersion": 2,
+      "expectedHex": "7b2276223a322c226e223a2246616d696c79222c2261223a747275652c226974656d73223a5b5d2c227a223a22303030303030303030303030227d",
+      "expectedText": "{\"v\":2,\"n\":\"Family\",\"a\":true,\"items\":[],\"z\":\"000000000000\"}"
+    },
+    {
+      "id": "writer-unarchived-cleared-v2",
+      "description": "Unarchiving a cleared vault keeps z.",
+      "input": {
+        "name": "Family",
+        "archived": false,
+        "items": [],
+        "pad": "000000000000"
+      },
+      "expectedVersion": 2,
+      "expectedHex": "7b2276223a322c226e223a2246616d696c79222c226974656d73223a5b5d2c227a223a22303030303030303030303030227d",
+      "expectedText": "{\"v\":2,\"n\":\"Family\",\"items\":[],\"z\":\"000000000000\"}"
+    }
+  ],
+  "archiveClear": [
+    {
+      "id": "clear-named-three-items",
+      "description": "Named vault with three items: same payload length.",
+      "rule": "exact",
+      "previousHex": "7b2276223a322c226e223a2246616d696c79222c226974656d73223a5b7b226c223a22476974487562207265636f7665727920636f646573222c2273223a2231613262332d63346435655c6e36663767382d683969306a227d2c7b226c223a22456d61696c20324641222c2273223a224a425357593344504548504b33505850227d2c7b226c223a22426974636f696e2073656564222c2273223a226162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e2061626f7574227d5d7d",
+      "previousLength": 253,
+      "maxPayloadBytes": 638,
+      "clearedWithoutPadLength": 40,
+      "expectedHex": "7b2276223a322c226e223a2246616d696c79222c2261223a747275652c226974656d73223a5b5d2c227a223a223030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030227d",
+      "expectedText": "{\"v\":2,\"n\":\"Family\",\"a\":true,\"items\":[],\"z\":\"00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"}",
+      "expectedLength": 253,
+      "expectedPadLength": 206
+    },
+    {
+      "id": "clear-v1-two-items",
+      "description": "Unnamed v1 vault: v2 cleared payload of the same length.",
+      "rule": "exact",
+      "previousHex": "7b2276223a312c226974656d73223a5b7b226c223a22476974487562207265636f7665727920636f646573222c2273223a2231613262332d63346435655c6e36663767382d683969306a227d2c7b226c223a22456d61696c20324641222c2273223a224a425357593344504548504b33505850227d5d7d",
+      "previousLength": 119,
+      "maxPayloadBytes": 638,
+      "clearedWithoutPadLength": 27,
+      "expectedHex": "7b2276223a322c2261223a747275652c226974656d73223a5b5d2c227a223a2230303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030227d",
+      "expectedText": "{\"v\":2,\"a\":true,\"items\":[],\"z\":\"0000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"}",
+      "expectedLength": 119,
+      "expectedPadLength": 85
+    },
+    {
+      "id": "clear-already-archived",
+      "description": "Named archived vault.",
+      "rule": "exact",
+      "previousHex": "7b2276223a322c226e223a224f6c64222c2261223a747275652c226974656d73223a5b7b226c223a22426974636f696e2073656564222c2273223a226162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e2061626f7574227d5d7d",
+      "previousLength": 157,
+      "maxPayloadBytes": 638,
+      "clearedWithoutPadLength": 37,
+      "expectedHex": "7b2276223a322c226e223a224f6c64222c2261223a747275652c226974656d73223a5b5d2c227a223a223030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030227d",
+      "expectedText": "{\"v\":2,\"n\":\"Old\",\"a\":true,\"items\":[],\"z\":\"00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"}",
+      "expectedLength": 157,
+      "expectedPadLength": 113
+    },
+    {
+      "id": "clear-exact-one-zero",
+      "description": "Previous length is C0 + 8: z is a single 0.",
+      "rule": "exact",
+      "previousHex": "7b2276223a312c226974656d73223a5b7b226c223a22222c2273223a227878227d5d7d",
+      "previousLength": 35,
+      "maxPayloadBytes": 638,
+      "clearedWithoutPadLength": 27,
+      "expectedHex": "7b2276223a322c2261223a747275652c226974656d73223a5b5d2c227a223a2230227d",
+      "expectedText": "{\"v\":2,\"a\":true,\"items\":[],\"z\":\"0\"}",
+      "expectedLength": 35,
+      "expectedPadLength": 1
+    },
+    {
+      "id": "clear-tiny-gap",
+      "description": "Tiny v1 vault, C0 < previous < C0 + 8: z of one 0, so the payload is slightly longer, never shorter.",
+      "rule": "gap-one-zero",
+      "previousHex": "7b2276223a312c226974656d73223a5b7b226c223a22222c2273223a22227d5d7d",
+      "previousLength": 33,
+      "maxPayloadBytes": 638,
+      "clearedWithoutPadLength": 27,
+      "expectedHex": "7b2276223a322c2261223a747275652c226974656d73223a5b5d2c227a223a2230227d",
+      "expectedText": "{\"v\":2,\"a\":true,\"items\":[],\"z\":\"0\"}",
+      "expectedLength": 35,
+      "expectedPadLength": 1
+    },
+    {
+      "id": "clear-recleared-unarchived",
+      "description": "An unarchived cleared vault with z of one 0: C0 >= previous, no z.",
+      "rule": "no-pad",
+      "previousHex": "7b2276223a322c226974656d73223a5b5d2c227a223a2230227d",
+      "previousLength": 26,
+      "maxPayloadBytes": 638,
+      "clearedWithoutPadLength": 27,
+      "expectedHex": "7b2276223a322c2261223a747275652c226974656d73223a5b5d7d",
+      "expectedText": "{\"v\":2,\"a\":true,\"items\":[]}",
+      "expectedLength": 27,
+      "expectedPadLength": 0
+    },
+    {
+      "id": "clear-recleared-equal",
+      "description": "An unarchived cleared vault with z of two 0s: C0 == previous, no z.",
+      "rule": "no-pad",
+      "previousHex": "7b2276223a322c226974656d73223a5b5d2c227a223a223030227d",
+      "previousLength": 27,
+      "maxPayloadBytes": 638,
+      "clearedWithoutPadLength": 27,
+      "expectedHex": "7b2276223a322c2261223a747275652c226974656d73223a5b5d7d",
+      "expectedText": "{\"v\":2,\"a\":true,\"items\":[]}",
+      "expectedLength": 27,
+      "expectedPadLength": 0
+    },
+    {
+      "id": "clear-gap-at-capacity",
+      "description": "Hypothetical 62-byte capacity, previous at capacity: C0 + 8 does not fit, so no z; the padded length is unchanged.",
+      "rule": "gap-no-room",
+      "previousHex": "7b2276223a322c226e223a224e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e222c226974656d73223a5b7b226c223a22222c2273223a22227d5d7d",
+      "previousLength": 62,
+      "maxPayloadBytes": 62,
+      "clearedWithoutPadLength": 56,
+      "expectedHex": "7b2276223a322c226e223a224e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e222c2261223a747275652c226974656d73223a5b5d7d",
+      "expectedText": "{\"v\":2,\"n\":\"NNNNNNNNNNNNNNNNNNNNNN\",\"a\":true,\"items\":[]}",
+      "expectedLength": 56,
+      "expectedPadLength": 0
+    }
+  ],
+  "blobs": [
+    {
+      "id": "blob-v1-minimal",
+      "description": "v1 payload (the minimal-version writer's output for an unnamed active vault), keys A+B.",
+      "payloadVector": "v1-multi",
+      "payloadHex": "7b2276223a312c226974656d73223a5b7b226c223a22476974487562207265636f7665727920636f646573222c2273223a2231613262332d63346435655c6e36663767382d683969306a227d2c7b226c223a22456d61696c20324641222c2273223a224a425357593344504548504b33505850227d5d7d",
+      "vaultId": "032efddd848b894ae99e8c26af99fb7d233715f20a3211368b254a24e103dc83",
+      "rpId": "cryoshield.app",
+      "mode": 1,
+      "threshold": 1,
+      "credentials": [
+        {
+          "name": "A",
+          "id": "a847efefef0e5428cdd8ade8fb88fed66143e5ff70c92fb5fe4d578c7008866790bff107e574e76c7fde59c83d449ad57a5ce149a29f11831df297b0c2be59c5",
+          "prf": "b4a427e7ed5f551ac381630996917ccb70a2ea7a0b51630776d5f30ae57afcd3"
+        },
+        {
+          "name": "B",
+          "id": "2a388c1dee7f7bd98056994f1dfd2b23f8963c9c0b53bbdb569ea39300a2014c225bde8145b00e6eeedd4035ad1153b1fe475408dca809fc4e9a191facd60679",
+          "prf": "cf92232ec685baec0cb8be2f86f7454d71d77b4966325a7cda0d370d6cab6bf4"
+        }
+      ],
+      "updates": null,
+      "sameLengthAs": null,
+      "rng": "a681a009c7cdb7d26606b250b599e83862e1152543507ff04ac50fb0ee9b71e9eb2e1f81e6124c133c05aeefbded01ea462a1324ca97b516485667e1092afc7fcb02f4a58f38b27489400d713da1d8a2117a8a7780e1c573e24def4ba6f108101930a410",
+      "blob": "4352594f01010101020e6372796f736869656c642e617070a681a009c7cdb7d26606b250b599e83862e1152543507ff04ac50fb0ee9b71e940a847efefef0e5428cdd8ade8fb88fed66143e5ff70c92fb5fe4d578c7008866790bff107e574e76c7fde59c83d449ad57a5ce149a29f11831df297b0c2be59c5cb02f4a58f38b27489400d71972b69a58131308da384059854c288d7b4b11db7cbca1d2b7c1678d5118f1de6e93c8b709d7c1b9b5fdb00810358e380402a388c1dee7f7bd98056994f1dfd2b23f8963c9c0b53bbdb569ea39300a2014c225bde8145b00e6eeedd4035ad1153b1fe475408dca809fc4e9a191facd606793da1d8a2117a8a7780e1c57382ce84da656e2a4b8394a0844752fbbbf39c045d9ff0e4c631d8274ea962b3e83f3d7737bafa08011d36fe989da2c004e24def4ba6f108101930a4106fa535d8757429ae1a6e55d50ca47f41fb281eab3970c01ac1ec6b37f9266cd827ba6a95d3baa1cb2093d20dd96e4639a91c6046ef6bbfcfad718d1b76a268a65331f14a31467a75c69669b1476f14d6046408afcd0e87b5e9c5469302f631e7a8d80e916461b398558839717266d19cc1bdf1c7d1e64e7facdde2f60820b3538ca616ea9b8eff0a9cb0b969aee29d64",
+      "blobLength": 462
+    },
+    {
+      "id": "blob-v2-named",
+      "description": "Named v2 payload, keys A+B.",
+      "payloadVector": "v2-named",
+      "payloadHex": "7b2276223a322c226e223a2246616d696c79222c226974656d73223a5b7b226c223a22476974487562207265636f7665727920636f646573222c2273223a2231613262332d63346435655c6e36663767382d683969306a227d2c7b226c223a22456d61696c20324641222c2273223a224a425357593344504548504b33505850227d5d7d",
+      "vaultId": "5c35eaace892b5efcb7514d2e3bd46ad5113c9290ffba6d5b1fcf2015b7246b0",
+      "rpId": "cryoshield.app",
+      "mode": 1,
+      "threshold": 1,
+      "credentials": [
+        {
+          "name": "A",
+          "id": "a847efefef0e5428cdd8ade8fb88fed66143e5ff70c92fb5fe4d578c7008866790bff107e574e76c7fde59c83d449ad57a5ce149a29f11831df297b0c2be59c5",
+          "prf": "b4a427e7ed5f551ac381630996917ccb70a2ea7a0b51630776d5f30ae57afcd3"
+        },
+        {
+          "name": "B",
+          "id": "2a388c1dee7f7bd98056994f1dfd2b23f8963c9c0b53bbdb569ea39300a2014c225bde8145b00e6eeedd4035ad1153b1fe475408dca809fc4e9a191facd60679",
+          "prf": "cf92232ec685baec0cb8be2f86f7454d71d77b4966325a7cda0d370d6cab6bf4"
+        }
+      ],
+      "updates": null,
+      "sameLengthAs": null,
+      "rng": "cce48d8b857e1bff97af29edb83c288d6204a472ba828344c94d3af48f5279e982fc45fa1b8e795d780b7e0064b1e42dc851790687815d000f29dd44c4e649fce06caf95b50662348cc1199e3e28305b98eda82f08171ce9a120bd92d7ab2a84fff9304c",
+      "blob": "4352594f01010101020e6372796f736869656c642e617070cce48d8b857e1bff97af29edb83c288d6204a472ba828344c94d3af48f5279e940a847efefef0e5428cdd8ade8fb88fed66143e5ff70c92fb5fe4d578c7008866790bff107e574e76c7fde59c83d449ad57a5ce149a29f11831df297b0c2be59c5e06caf95b50662348cc1199e57b1c3d18587ebbfc74343005434abee0bff793c0e135d15eb1a78c3bffd959fe1c198960efe010b414ce77451508660402a388c1dee7f7bd98056994f1dfd2b23f8963c9c0b53bbdb569ea39300a2014c225bde8145b00e6eeedd4035ad1153b1fe475408dca809fc4e9a191facd606793e28305b98eda82f08171ce920fd57fca8cf14de05d251e1543f9ecc029d745fd48b13901c46b5a45dba20e99ac32125a795bd7c9993d99f8bd28bc1a120bd92d7ab2a84fff9304c8bb65931f6ccfac705af6092dfeb18f7b4ee7e5dd536bde89fd8af17744aa0ab602ed868f0472b7f7e460df170d83d13045b423e1646862741a6a1e7374e21fbef53410cd3fb690497ece3955a8826458d460c7aef743eb3452306d8076ed64af5d10c7906396bf039070bd4662463ca3eabf37710ac80b5d26902cb3a06401570d4a8a0cf39e7fc194e95750e70db70f0d8fe1629b738bac870e6f726532a1866e97ff3c03a7dc2fb437cbae01d110added7d563e2f10e3108129ebcdf42ba752a15c969f09fbacb71b1cf5525b2cc6",
+      "blobLength": 526
+    },
+    {
+      "id": "blob-v2-named-archived",
+      "description": "Named, archived v2 payload, keys A+B.",
+      "payloadVector": "v2-named-archived",
+      "payloadHex": "7b2276223a322c226e223a224f6c6420776f726b20324641222c2261223a747275652c226974656d73223a5b7b226c223a22476974487562207265636f7665727920636f646573222c2273223a2231613262332d63346435655c6e36663767382d683969306a227d2c7b226c223a22456d61696c20324641222c2273223a224a425357593344504548504b33505850227d5d7d",
+      "vaultId": "75ad5037b917019285ff96a598a3e517e52b9a17fa367ed331cbbe359be7044e",
+      "rpId": "cryoshield.app",
+      "mode": 1,
+      "threshold": 1,
+      "credentials": [
+        {
+          "name": "A",
+          "id": "a847efefef0e5428cdd8ade8fb88fed66143e5ff70c92fb5fe4d578c7008866790bff107e574e76c7fde59c83d449ad57a5ce149a29f11831df297b0c2be59c5",
+          "prf": "b4a427e7ed5f551ac381630996917ccb70a2ea7a0b51630776d5f30ae57afcd3"
+        },
+        {
+          "name": "B",
+          "id": "2a388c1dee7f7bd98056994f1dfd2b23f8963c9c0b53bbdb569ea39300a2014c225bde8145b00e6eeedd4035ad1153b1fe475408dca809fc4e9a191facd60679",
+          "prf": "cf92232ec685baec0cb8be2f86f7454d71d77b4966325a7cda0d370d6cab6bf4"
+        }
+      ],
+      "updates": null,
+      "sameLengthAs": null,
+      "rng": "225327b2bed8b67d0b6829397e057c3b08881b04bed5a56fc332643ffa13a72a08ab35d02ef97cde4e0f84bcfd6c06c6b3b452fac4254ae1b608e6119c851d22ede4dab58dd636785ddb1f5fc733bd00b9ad1ef3d2ac2d174104daba71bb4d15d3b2670d",
+      "blob": "4352594f01010101020e6372796f736869656c642e617070225327b2bed8b67d0b6829397e057c3b08881b04bed5a56fc332643ffa13a72a40a847efefef0e5428cdd8ade8fb88fed66143e5ff70c92fb5fe4d578c7008866790bff107e574e76c7fde59c83d449ad57a5ce149a29f11831df297b0c2be59c5ede4dab58dd636785ddb1f5fc2f47863967463af218fbbb174fc4510b85371ff6bf46e80932b45e507192e6ee19f2cc6eb6cb6f828ed05e50870a05e402a388c1dee7f7bd98056994f1dfd2b23f8963c9c0b53bbdb569ea39300a2014c225bde8145b00e6eeedd4035ad1153b1fe475408dca809fc4e9a191facd60679c733bd00b9ad1ef3d2ac2d177e5be06d3081c692896af9010b5ad27dcbf6739e8e506216fb96e107d0acb4d9040e7a815e2a496b56b41923a9c1578d4104daba71bb4d15d3b2670d2b4a6d934f25509af58e88c085f9d7f77c587d5188047259bcc3730380e75c91e5916960b9e71b6e15b05b1e5da97c7ee269a21f57b74bebe93adeb310726799f84b7e41882323fecf12430fa90fa2c6fa8ffbe7fbff9819727c15cd45762191537f6275afa14519cddc51b08c150bcc1b3d9dfb63e9eec23fefa1b2e787848717986ad68cd02bf058aedff0010112eea83fdc4f2e39d746780de68f4bb5c639d7d5945b6d496c36450df4fb6b36b08b193733890328ec2484a389c981d9f2e5fc6e55fcc3e0437df17144811988cf05",
+      "blobLength": 526
+    },
+    {
+      "id": "blob-v2-name-non-bmp",
+      "description": "v2 payload with a non-BMP name, keys A+B.",
+      "payloadVector": "v2-name-non-bmp",
+      "payloadHex": "7b2276223a322c226e223a2246616d696c7920f09f91a8e2808df09f91a9e2808df09f91a720f09d929c222c226974656d73223a5b7b226c223a224e6f74697a656e20e29c93222c2273223a2250617373776f72743a206772c3bc6e2dc39c227d5d7d",
+      "vaultId": "ed73522b01fa9f96bc7782721d154700feb591d6494603ace1acfbbc3bbbd7d3",
+      "rpId": "cryoshield.app",
+      "mode": 1,
+      "threshold": 1,
+      "credentials": [
+        {
+          "name": "A",
+          "id": "a847efefef0e5428cdd8ade8fb88fed66143e5ff70c92fb5fe4d578c7008866790bff107e574e76c7fde59c83d449ad57a5ce149a29f11831df297b0c2be59c5",
+          "prf": "b4a427e7ed5f551ac381630996917ccb70a2ea7a0b51630776d5f30ae57afcd3"
+        },
+        {
+          "name": "B",
+          "id": "2a388c1dee7f7bd98056994f1dfd2b23f8963c9c0b53bbdb569ea39300a2014c225bde8145b00e6eeedd4035ad1153b1fe475408dca809fc4e9a191facd60679",
+          "prf": "cf92232ec685baec0cb8be2f86f7454d71d77b4966325a7cda0d370d6cab6bf4"
+        }
+      ],
+      "updates": null,
+      "sameLengthAs": null,
+      "rng": "f437cc3457c5cfc5b8c5607a33852d7607fcf01d8b3f91912c1aaa57f946451900bdcf5e9e2f81f2230bb5005527b9cf7570159d00c44dbd2053c782dd85a541d5d79f0f6d54a7bb158a0d2fd559cb29a707f856a043b949dc0dff47df69920a482868b4",
+      "blob": "4352594f01010101020e6372796f736869656c642e617070f437cc3457c5cfc5b8c5607a33852d7607fcf01d8b3f91912c1aaa57f946451940a847efefef0e5428cdd8ade8fb88fed66143e5ff70c92fb5fe4d578c7008866790bff107e574e76c7fde59c83d449ad57a5ce149a29f11831df297b0c2be59c5d5d79f0f6d54a7bb158a0d2fb49392baf2fabe3cfb20b399d6806807846022854117a2ee64b6e5228737e645772c1091975c09c5275e9d75b9acd3eb402a388c1dee7f7bd98056994f1dfd2b23f8963c9c0b53bbdb569ea39300a2014c225bde8145b00e6eeedd4035ad1153b1fe475408dca809fc4e9a191facd60679d559cb29a707f856a043b949569787821e50486bcabaa4b72db5f36191cb4ef429a6a16b88284a14fc461eeede21e1e01425cb24144024f41fccd8b6dc0dff47df69920a482868b4aa1166fe03a55eafdd4d6e545bdf12beb29e9dbbf6723aaa5432fdcbebdd42b6e984fa5da6caca411ef15e621441d1935f32507db0ee6aacf84a7f95fb894cc26d7129448b7a8a564cfb0ab2ac8a90c68af755e4b6481345ebf93208d3b95ad809beaee6a1587a332cc7928ba56e985a901e3a1fff005e225842cf150c68b1eefeabd98098f1967da1791aa4e606761d",
+      "blobLength": 462
+    },
+    {
+      "id": "blob-v2-empty-items",
+      "description": "v2 payload with no items, keys A+B.",
+      "payloadVector": "v2-empty-items",
+      "payloadHex": "7b2276223a322c226974656d73223a5b5d7d",
+      "vaultId": "435a821f30c0f8e8e7f2cedf951ef244e2b5a44cc9dedf9b617947ba808d78d5",
+      "rpId": "cryoshield.app",
+      "mode": 1,
+      "threshold": 1,
+      "credentials": [
+        {
+          "name": "A",
+          "id": "a847efefef0e5428cdd8ade8fb88fed66143e5ff70c92fb5fe4d578c7008866790bff107e574e76c7fde59c83d449ad57a5ce149a29f11831df297b0c2be59c5",
+          "prf": "b4a427e7ed5f551ac381630996917ccb70a2ea7a0b51630776d5f30ae57afcd3"
+        },
+        {
+          "name": "B",
+          "id": "2a388c1dee7f7bd98056994f1dfd2b23f8963c9c0b53bbdb569ea39300a2014c225bde8145b00e6eeedd4035ad1153b1fe475408dca809fc4e9a191facd60679",
+          "prf": "cf92232ec685baec0cb8be2f86f7454d71d77b4966325a7cda0d370d6cab6bf4"
+        }
+      ],
+      "updates": null,
+      "sameLengthAs": null,
+      "rng": "e1c5fc187d59d5cb22485787288b7344d3ecbe514c4f73858b281979b5b4a447fcbb2640ad799ac036092e288c396866157eb51df196c07347089d99d7d8bd188d3c7ef6e1c03abaffc24a42ff377cf5317de108f99904b358d1471b05cca2796745ea0e",
+      "blob": "4352594f01010101020e6372796f736869656c642e617070e1c5fc187d59d5cb22485787288b7344d3ecbe514c4f73858b281979b5b4a44740a847efefef0e5428cdd8ade8fb88fed66143e5ff70c92fb5fe4d578c7008866790bff107e574e76c7fde59c83d449ad57a5ce149a29f11831df297b0c2be59c58d3c7ef6e1c03abaffc24a42be4e64f8568a5f1cb80db5d8502f00685fcdec65ccb8b76095506c4ae98dedb15c916b41fe90b95f63a7bdaf8e54bf5f402a388c1dee7f7bd98056994f1dfd2b23f8963c9c0b53bbdb569ea39300a2014c225bde8145b00e6eeedd4035ad1153b1fe475408dca809fc4e9a191facd60679ff377cf5317de108f99904b356277f41ec2b4216c54049433239069badbde96c7a6ef190fc0873e830e49487b34c5a9b322c85c70f0c3c87065b968058d1471b05cca2796745ea0e5df807e4636865d307521185edf7370a7149af5862ffb9268681eb1c2a7524eb4e1859400bf9795215d35284591db0d330c9191d0016b98d32c5fa7c96fe55b64b63deea6ba25b99913d2969bd3d5b16",
+      "blobLength": 398
+    },
+    {
+      "id": "blob-clear-before",
+      "description": "Named vault with three items, keys A+B (before Archive and clear).",
+      "payloadVector": "v2-named-three-items",
+      "payloadHex": "7b2276223a322c226e223a2246616d696c79222c226974656d73223a5b7b226c223a22476974487562207265636f7665727920636f646573222c2273223a2231613262332d63346435655c6e36663767382d683969306a227d2c7b226c223a22456d61696c20324641222c2273223a224a425357593344504548504b33505850227d2c7b226c223a22426974636f696e2073656564222c2273223a226162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e206162616e646f6e2061626f7574227d5d7d",
+      "vaultId": "53b03004743403a48d5c3fdef38733038582fe230512164dc7c3ac9ba2c443f5",
+      "rpId": "cryoshield.app",
+      "mode": 1,
+      "threshold": 1,
+      "credentials": [
+        {
+          "name": "A",
+          "id": "a847efefef0e5428cdd8ade8fb88fed66143e5ff70c92fb5fe4d578c7008866790bff107e574e76c7fde59c83d449ad57a5ce149a29f11831df297b0c2be59c5",
+          "prf": "b4a427e7ed5f551ac381630996917ccb70a2ea7a0b51630776d5f30ae57afcd3"
+        },
+        {
+          "name": "B",
+          "id": "2a388c1dee7f7bd98056994f1dfd2b23f8963c9c0b53bbdb569ea39300a2014c225bde8145b00e6eeedd4035ad1153b1fe475408dca809fc4e9a191facd60679",
+          "prf": "cf92232ec685baec0cb8be2f86f7454d71d77b4966325a7cda0d370d6cab6bf4"
+        }
+      ],
+      "updates": null,
+      "sameLengthAs": null,
+      "rng": "5c3679da713830600c27a058abdad20e8592012154b36c976a16c9db180b1b99c19b80d42299e244c98f0bf39b0941a6f7331b7938805ca81a6ad2cc344bf81e6cf1557bc9fb79ecb7109268cb35b2991d35ed6457b2d851ab16f5d64286d991d4e82f03",
+      "blob": "4352594f01010101020e6372796f736869656c642e6170705c3679da713830600c27a058abdad20e8592012154b36c976a16c9db180b1b9940a847efefef0e5428cdd8ade8fb88fed66143e5ff70c92fb5fe4d578c7008866790bff107e574e76c7fde59c83d449ad57a5ce149a29f11831df297b0c2be59c56cf1557bc9fb79ecb7109268d75e3cc6d183f1130040775f43c702737fae6d0cd434c363cb0928739f131218f5f534e92eef2554f56de4de2c96c7bd402a388c1dee7f7bd98056994f1dfd2b23f8963c9c0b53bbdb569ea39300a2014c225bde8145b00e6eeedd4035ad1153b1fe475408dca809fc4e9a191facd60679cb35b2991d35ed6457b2d85169028e372157ca5672c3d13fd83589d9342843c5e3c6c5d3f06d857774c4e9706fc08103fadf88a57df74ac05623635aab16f5d64286d991d4e82f03b188706a65607dab8bc7f4583a3c5515ae8792b87e6a056522c1022a47887bc7933366559126ec8721e4297e5240e1fa2c2c797f3e65c48842d7b6303664deb712405bf8143b8d085ca8fd60abe531acf0bd29e5a95176352d04e88c5a9ab5580621c563192c13a3f2da0536a52d9c685b8ce27dcee2034f016af629fa9d7ebb113702a1a0a93669232d979789f1bf59437e992859daa11358f718c08b5c7f8d5abd4d1910178858a97afd81287edaf1971acde0f17e781427a3fcf8e0105bc94e8ff7bedb8529881cc916871dc568025ea468284083dbd31b6ff3f47f486b7744d64867d468e56455b27ce837892f44da33519d0135a1c7c6e749f728d4bae120b3f2fc5aafdd593190d8a47f8daf69",
+      "blobLength": 590
+    },
+    {
+      "id": "blob-clear-after",
+      "description": "Archive and clear of blob-clear-before by key A (updatePayload): the blob length is unchanged.",
+      "payloadVector": "clear-named-three-items",
+      "payloadHex": "7b2276223a322c226e223a2246616d696c79222c2261223a747275652c226974656d73223a5b5d2c227a223a223030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030227d",
+      "vaultId": "53b03004743403a48d5c3fdef38733038582fe230512164dc7c3ac9ba2c443f5",
+      "rpId": "cryoshield.app",
+      "mode": 1,
+      "threshold": 1,
+      "credentials": [
+        {
+          "name": "A",
+          "id": "a847efefef0e5428cdd8ade8fb88fed66143e5ff70c92fb5fe4d578c7008866790bff107e574e76c7fde59c83d449ad57a5ce149a29f11831df297b0c2be59c5",
+          "prf": "b4a427e7ed5f551ac381630996917ccb70a2ea7a0b51630776d5f30ae57afcd3"
+        },
+        {
+          "name": "B",
+          "id": "2a388c1dee7f7bd98056994f1dfd2b23f8963c9c0b53bbdb569ea39300a2014c225bde8145b00e6eeedd4035ad1153b1fe475408dca809fc4e9a191facd60679",
+          "prf": "cf92232ec685baec0cb8be2f86f7454d71d77b4966325a7cda0d370d6cab6bf4"
+        }
+      ],
+      "updates": "blob-clear-before",
+      "sameLengthAs": "blob-clear-before",
+      "rng": "2af0820aec0b5551a2e0adb4",
+      "blob": "4352594f01010101020e6372796f736869656c642e6170705c3679da713830600c27a058abdad20e8592012154b36c976a16c9db180b1b9940a847efefef0e5428cdd8ade8fb88fed66143e5ff70c92fb5fe4d578c7008866790bff107e574e76c7fde59c83d449ad57a5ce149a29f11831df297b0c2be59c56cf1557bc9fb79ecb7109268d75e3cc6d183f1130040775f43c702737fae6d0cd434c363cb0928739f131218f5f534e92eef2554f56de4de2c96c7bd402a388c1dee7f7bd98056994f1dfd2b23f8963c9c0b53bbdb569ea39300a2014c225bde8145b00e6eeedd4035ad1153b1fe475408dca809fc4e9a191facd60679cb35b2991d35ed6457b2d85169028e372157ca5672c3d13fd83589d9342843c5e3c6c5d3f06d857774c4e9706fc08103fadf88a57df74ac05623635a2af0820aec0b5551a2e0adb4f31671b2da4e63e3874cbd1cad9ef84608587307a11ee3428c1c9adce1fc38aa4009b7340b5139b0a3cbcf03d304dbcb66c41e374bbc3446d696ea9b0defde141f8f2652d1b0fa0124d1a9b18fefef3c7158b1c5b6958ea5cddc7ee64ba9af34f9406177bc9acdf0fb00fd136790e601699ea3720145e28b2e2b1c5793c4e9f6dec714c25eeceeb1b61d35788c3047f54b566ed8e432a3547dc27cbd7eec5ccbecc607ed9aadc83ba02689318d8a2794189cffb0bcb98e1602099d07b4465b1c7fc2f49afdf896b39eba2460d14436553fba24fb295b97629c1a507b9739f65728701a8de72743beef1e7671f62f6ee93ac0b122bdf8055a003c16316ddc0a82b44d6ff076d98cd826b7f868920af192",
+      "blobLength": 590
+    }
+  ]
+}

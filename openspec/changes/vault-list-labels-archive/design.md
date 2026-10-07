@@ -233,6 +233,18 @@ The writer emits **v1** when there is no name, no archive flag, no `z`, and at l
 | 5 | Recovery tool listing (parallel with 2–4 after phase 1) | pytest and anvil e2e green |
 | 6 | Docs, hardware checklist, security review | No open CRITICAL or HIGH |
 
+## Assumptions recorded at task 1.1 [cry]
+
+These points were left open by D1–D4. `docs/spec/payload-v2.md` and its vectors fix them. Each one can be reverted by an overwatcher decision before the vectors freeze (phase 1 gate).
+
+- **A1. DEL in names.** "Control characters" in the D3 name rule means Unicode `Cc`, so U+007F (DEL) is refused along with C0 and C1. Vector: `n-del`.
+- **A2. Version check before parsing.** `UNKNOWN_VERSION` is decided lexically: the text starts with `{"v":` followed by an integer of 3 or more, then `,` or `}`. Everything else that isn't a valid v1 or v2 payload is `MALFORMED`. This includes `"v":0`, a `v` that is not first, and whitespace before `v`. The rule gives TypeScript and Python the same answer without depending on their parsers, and leaves a future version free to change everything after `v`. Vectors: `v-3*`, `v-10`, `v-0`.
+- **A3. Non-minimal v2 decodes.** `{"v":2,"items":[…]}` with no `n`, `a` or `z` is valid: decoders keep `version`, and the re-encoding uses it. D2 binds writers only. Vector: `v2-non-minimal`.
+- **A4. The Archive and clear gap.** D4 covers `C0 >= P` (no `z`) and the exact case. When `C0 < P < C0 + 8`, an exact match is impossible, because `z` costs at least 8 bytes. The writer then uses `z = "0"`: the payload grows a few bytes, so the blob never shrinks. If that would exceed `maxPayloadBytes`, it writes no `z`, which provably stays in the same 64-byte block. Under D11 this fallback can't happen. Vectors: `clear-tiny-gap`, `clear-gap-at-capacity`. (`C0 >= P` also occurs when re-clearing an unarchived cleared vault: `clear-recleared-*`.)
+- **A5. No trimming or normalisation.** Names are not trimmed and not NFC-normalised. Code points are counted as they are, so "Cafe" plus a combining accent is 5 code points. Vectors: `v2-name-spaces`, `v2-name-combining`.
+- **A6. A BOM is malformed.** Decoders compare the re-encoding with the input bytes, not the decoded text. `TextDecoder` strips a BOM by default, and Python does not. Vector: `utf8-bom`.
+- **A7. Stricter v1 decoding.** D3's strict decoding applies to v1, too, which withdraws `payload-v1.md`'s "must not depend on key order or whitespace". Every v1 payload CryoShield has written is canonical. The one exception is a secret holding an unpaired surrogate, which `JSON.stringify` writes as `\udXXX`; such a vault is now `MALFORMED` in the web app and is shown raw by the recovery tool.
+
 ## Open questions
 
 None. The founder answered D2, D4, D12 and D13 on 2026-10-06.
