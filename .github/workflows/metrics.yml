@@ -1,0 +1,59 @@
+# Weekly product metrics (OpenSpec change add-privacy-preserving-analytics, design D1; spec product-metrics
+# "Read-only scheduled run"). Runs tools/metrics against OP Sepolia's public RPCs and Arweave gateways and uploads the
+# aggregate, identifier-free report as a workflow artifact kept for 90 days.
+# Read-only by design: no secrets, contents: read only, credentials never persisted; it never commits, pushes or
+# deploys (committing the JSON back was rejected in design D1). Enforced by .github/scripts/workflow-policy.mjs
+# (SCHEDULED_READ_ONLY) and zizmor.
+
+name: Metrics
+
+on:
+  schedule:
+    - cron: '41 5 * * 1' # Mondays 05:41 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: metrics
+  cancel-in-progress: false
+
+jobs:
+  metrics:
+    name: metrics
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read # checkout only
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up pnpm
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0 (version from packageManager)
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+          package-manager-cache: false
+      - name: Install the metrics tool (frozen lockfile)
+        run: pnpm install --frozen-lockfile --filter @cryoshield/metrics
+      - name: Compute the metrics
+        run: pnpm --filter @cryoshield/metrics metrics --network op-sepolia --out "${RUNNER_TEMP}/metrics/metrics.json"
+      - name: Summary (aggregates only)
+        run: |
+          {
+            echo '### CryoShield metrics (op-sepolia)'
+            echo '```json'
+            cat "${RUNNER_TEMP}/metrics/metrics.json"
+            echo '```'
+          } >> "${GITHUB_STEP_SUMMARY}"
+      - name: Upload the report
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: metrics-op-sepolia
+          path: ${{ runner.temp }}/metrics/metrics.json
+          if-no-files-found: error
+          retention-days: 90

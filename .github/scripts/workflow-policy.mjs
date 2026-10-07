@@ -17,6 +17,10 @@
 //   author gate: (gate-external-pr-automation) ecc-review and auto-merge run automatically only for trusted authors
 //           (repository owner, or .github/trusted-authors.json read from the default branch): an exact, unconditional
 //           gate step at a fixed position (authorGate below), and a valid trusted-authors.json.
+//   scheduled read-only: (add-privacy-preserving-analytics 2.2) SCHEDULED_READ_ONLY workflows run only on schedule and
+//           input-less workflow_dispatch, reference no secrets at all (GITHUB_TOKEN included), hold only contents: read,
+//           never persist checkout credentials, use no environment, and never commit, push, call the GitHub API or
+//           deploy; metrics.yml must upload its report with upload-artifact and retention-days <= 90.
 //   zizmor: SHA pinning (via that hash-pin policy), persist-credentials (artipacked), template injection, etc.
 //
 // CLI: node workflow-policy.mjs [<.github dir>]   (default: .github)  exit 0 ok, 1 violations.
@@ -507,6 +511,8 @@ export function checkWorkflow(file, text) {
     if (hits.length) errors.push(`${file}: secrets must not be referenced in a PR-triggered workflow (${hits.length} reference(s))`);
   }
 
+  if (Object.hasOwn(SCHEDULED_READ_ONLY, name)) errors.push(...checkScheduled(file, name, wf, on));
+
   // Deployments (OpenSpec changes add-continuous-deploy D7, gate-production-deploys, split-dev-and-release-deploys D7).
   const mentionsToken = strings(wf).some((s) => /FLY_API_TOKEN/i.test(s));
   const jobsList = Object.entries(isObj(wf.jobs) ? wf.jobs : {}).filter(([, j]) => isObj(j));
@@ -521,6 +527,52 @@ export function checkWorkflow(file, text) {
   else {
     if (mentionsToken) errors.push(`${file}: FLY_API_TOKEN may only be referenced by the deploy workflows (${DEPLOY_FILES})`);
     if (usesDeployEnv) errors.push(`${file}: environments ${ALL_DEPLOY_ENVIRONMENTS.join(', ')} may only be used by the deploy workflows (${DEPLOY_FILES})`);
+  }
+  return errors;
+}
+
+// Read-only scheduled workflows (add-privacy-preserving-analytics task 2.2; spec product-metrics "Read-only scheduled
+// run"). They are not PR-triggered, so the generic secrets rule would not reach them; this profile does.
+export const SCHEDULED_READ_ONLY = {
+  'metrics.yml': { artifact: { maxRetentionDays: 90 } },
+  'beacon-drift.yml': {},
+};
+const SCHEDULED_TRIGGERS = ['schedule', 'workflow_dispatch'];
+// Writes anywhere: commits, pushes, tags, the gh CLI, GitHub API writes, any HTTP write verb, deploy tooling.
+const WRITES_SOMEWHERE = /\bgit\s+(push|commit|tag|remote)\b|(^|[\s;&|(])gh\s+\S|api\.github\.com|-X\s*(POST|PUT|PATCH|DELETE)\b|--request\s+(POST|PUT|PATCH|DELETE)\b|\bfly(ctl)?\s+deploy\b|\bflyctl\b/m;
+
+function checkScheduled(file, name, wf, on) {
+  const profile = SCHEDULED_READ_ONLY[name];
+  const errors = [];
+  const err = (m) => errors.push(`${file}: ${m}`);
+  for (const t of on) if (!SCHEDULED_TRIGGERS.includes(t)) err(`trigger '${t}' is not allowed in ${name} (read-only scheduled workflows run only on ${SCHEDULED_TRIGGERS.join(' and ')})`);
+  const dispatch = isObj(wf.on) ? wf.on.workflow_dispatch : undefined;
+  if (isObj(dispatch) && dispatch.inputs !== undefined) err('workflow_dispatch may not take inputs (nothing user-controlled reaches a scheduled read-only run)');
+  const secretRefs = exprsOf(wf).filter((e) => /\bsecrets\b/i.test(e)).length + strings(wf).filter((x) => x === 'inherit').length;
+  if (secretRefs) err(`secrets must not be referenced in a read-only scheduled workflow, GITHUB_TOKEN included (${secretRefs} reference(s))`);
+  const uploads = [];
+  for (const [id, job] of Object.entries(isObj(wf.jobs) ? wf.jobs : {})) {
+    if (!isObj(job)) continue;
+    if (job.environment !== undefined) err(`job '${id}' may not use an environment`);
+    if (job.uses !== undefined) err(`job '${id}' may not call a reusable workflow`);
+    const perms = isObj(job.permissions) ? job.permissions : {};
+    for (const [scope, level] of Object.entries(perms)) {
+      if (!(scope === 'contents' && level === 'read')) err(`job '${id}' requests ${scope}: ${level}; a read-only scheduled job may hold only contents: read`);
+    }
+    for (const step of Array.isArray(job.steps) ? job.steps.filter(isObj) : []) {
+      const label = `job '${id}' step '${step.name ?? step.uses ?? '?'}'`;
+      const uses = String(step.uses ?? '');
+      if (/^actions\/checkout@/.test(uses) && (!isObj(step.with) || step.with['persist-credentials'] !== false)) err(`${label}: checkout must set persist-credentials: false`);
+      if (/^actions\/upload-artifact@/.test(uses)) uploads.push([label, step]);
+      if (step.run !== undefined && WRITES_SOMEWHERE.test(withoutComments(step.run))) err(`${label}: a read-only scheduled workflow must never commit, push, call the GitHub API or deploy`);
+    }
+  }
+  if (profile.artifact) {
+    if (uploads.length === 0) err(`${name} must upload its report with actions/upload-artifact`);
+    for (const [label, step] of uploads) {
+      const days = Number(isObj(step.with) ? step.with['retention-days'] : NaN);
+      if (!Number.isInteger(days) || days < 1 || days > profile.artifact.maxRetentionDays) err(`${label}: retention-days must be set, at most ${profile.artifact.maxRetentionDays}`);
+    }
   }
   return errors;
 }

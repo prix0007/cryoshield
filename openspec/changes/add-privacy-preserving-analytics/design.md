@@ -53,6 +53,10 @@ which is exactly the tracking we refuse); per-user metrics; real-time dashboards
 | USD bill | Pimlico dashboard, monthly, by hand (Pimlico bills in USD and adds 10% on mainnet, free on testnets: docs.pimlico.io/guides/pricing). A usage-export API is UNVERIFIED; the platform API lists sponsorship policies (docs.pimlico.io/references/platform/api/sponsorship-policies/list) |
 
 - Output is aggregate only, and buckets under 3 are suppressed on public networks. Every input is public, but the report must not become a convenient index of who uses CryoShield, and aggregates keep the report outside personal-data rules.
+  - Suppression also covers totals (a total over 1–2 vaults, or sponsored gas of 1–2 accounts, is `"<3"`), and is complementary: when exactly one cell of a family that sums to a published total (weekly creates or updates, keys per vault, vaults per registry, gas per week) is hidden, the next-smallest cell is hidden too, so subtraction cannot recover it. Weekly active vaults has no total and needs no complement.
+  - Before writing, the tool scans its own report and refuses any 20/32-byte hex value other than the registry addresses (spec "Report scan"), so a future field cannot leak an identifier silently.
+  - Registries: every version in the deployment record is read (v1 top-level, `contracts.vaultRegistryV<N>`, `contracts.vaultRegistries.v<N>`), with the read ABI chosen by `abiHash` as in `tools/recover`; vault counts are also split by registry version.
+- The scheduled workflow is held to a `SCHEDULED_READ_ONLY` profile in `.github/scripts/workflow-policy.mjs` (also applied to `beacon-drift.yml`): schedule and input-less dispatch only, no `secrets` reference at all (it is not PR-triggered, so the generic rule would not apply), only `contents: read`, no persisted credentials, no environment, no commit/push/API write/deploy command, and an `upload-artifact` with `retention-days` ≤ 90.
 
 
 ### D3. Per-route CSP and headers: landing document vs everything else

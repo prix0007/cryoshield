@@ -43,6 +43,10 @@ public on-chain.
 - **WHEN** a weekly or distribution bucket holds fewer than 3 vaults on a public network
 - **THEN** that bucket is reported as `"<3"` rather than the exact count
 
+#### Scenario: No hidden cell recoverable by subtraction
+- **WHEN** on a public network a total covers fewer than 3 vaults (for gas: fewer than 3 accounts), or exactly one cell of a family that sums to a published total is hidden
+- **THEN** that total, or the next-smallest cell of the family, is also reported as `"<3"`
+
 ### Requirement: Arweave mirror coverage metric
 The report SHALL include mirror coverage: the share of vaults whose latest on-chain version has an Arweave item tagged
 with the same `CryoShield-Vault-Id` and `CryoShield-Version`. An item counts only when its data hash equals the on-chain
