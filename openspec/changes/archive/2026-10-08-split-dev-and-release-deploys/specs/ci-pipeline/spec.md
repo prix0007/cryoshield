@@ -21,11 +21,11 @@ If anything is missing:
 
 Fully configured runs SHALL behave as before. The workflow policy SHALL allow a secret presence expression only for `VITE_BUNDLER_URL`, in the `config` step of a job in the workflow's own build environment.
 
-#### Scenario: Dev not configured
+#### Scenario: Nothing configured
 - **WHEN** `deploy-dev.yml` runs and `development-build` has no variables or secrets
 - **THEN** the run logs a warning naming every missing item and `development-build`, builds and deploys nothing, and concludes success
 
-#### Scenario: Production partly configured
+#### Scenario: Partly configured
 - **WHEN** the owner publishes a release and only `VITE_BUNDLER_URL` is missing from `production-build`
 - **THEN** the run reports an error naming `VITE_BUNDLER_URL`, builds and deploys nothing, and fails
 
@@ -33,8 +33,8 @@ Fully configured runs SHALL behave as before. The workflow policy SHALL allow a 
 - **WHEN** the configuration is completed after skipped dev runs
 - **THEN** the next merge or a forced `workflow_dispatch` of `deploy-dev.yml` deploys normally, because skipped runs do not count as failed
 
-#### Scenario: Fly token missing
-- **WHEN** a release job runs with an empty `FLY_API_TOKEN` in its environment (`development` or `production`)
+#### Scenario: Fly token missing after approval
+- **WHEN** a release job runs, after any required approval, with an empty `FLY_API_TOKEN` in its environment (`development` or `production`)
 - **THEN** it fails at once with a `deploy not configured` error that names `FLY_API_TOKEN` and that environment, before calling flyctl
 
 ## ADDED Requirements

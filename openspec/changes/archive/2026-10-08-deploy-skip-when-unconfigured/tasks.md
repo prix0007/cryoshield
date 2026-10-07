@@ -21,7 +21,7 @@
 
 ## 4. Security review
 
-- [ ] 4.1 The security reviewer reviews this change, covering:
+- [x] 4.1 The security reviewer reviews this change, covering: (Done: APPROVE recorded in the "Security review" section of PR #29.)
   - that no secret value reaches the config step;
   - the policy exception's scope;
   - that a skip can't hide a real failure or bypass CI before a deploy;
