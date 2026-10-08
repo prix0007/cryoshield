@@ -1,10 +1,14 @@
 /**
- * web-review-followups 3 (review WB3, N2): no false "changed since you opened it" (STALE).
- * - The session's nonce is pinned only when the chain still holds the session's blob (at open, and after every write
- *   attempt), and the pin never goes down; so a failed save that used up a nonce, or a lagging RPC, can't fake STALE.
- * - A real STALE offers "Reload vault" (one key tap) instead of a dead end.
+ * web-review-followups 3 (review WB3, N2; ECC reviews of 86fbc66 and 88255e2): the session's nonce pin, and STALE.
+ * - The pin is read once, when the vault opens (or reopens after Reload): nonce, then the vault, then the nonce again;
+ *   accepted only when both nonce reads agree and the chain holds the session's blob; one retry, otherwise saving is
+ *   refused as STALE (Reload).
+ * - After a write the pin never depends on RPC reads: a failed attempt never moves it (the next save is STALE and
+ *   offers Reload); a successful one moves it locally to pinned + 1.
+ * - Reload: one key tap (with the prompt), remounts the vault view, refuses an older version, keeps the session when
+ *   the key doesn't open it, and returns focus to the vault heading.
  */
-import { screen, waitFor } from '@testing-library/react';
+import { act, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import * as ops from '../../src/ui/operations';
@@ -27,25 +31,37 @@ const opened = (label = 'Seed', version = 1, blob = BLOB) => ({
   entryIndex: 0,
   registry: 'v2' as const,
 });
-let chain: { nonce: bigint; blob: Uint8Array };
-const client = { request: async ({ method }: { method: string }) => (method === 'eth_call' ? '0x' + chain.nonce.toString(16) : Promise.reject(new Error(method))) };
+let chain: { nonce: bigint; blob: Uint8Array; nonceReads: bigint[] };
+let nonceReads = 0;
+const client = {
+  request: vi.fn(async ({ method }: { method: string }) => {
+    if (method !== 'eth_call') throw new Error(method);
+    nonceReads++;
+    const n = chain.nonceReads.length ? chain.nonceReads.shift()! : chain.nonce;
+    return '0x' + n.toString(16);
+  }),
+};
 const reader = { getVault: async () => ({ vaultId: VAULT_ID, owner: OWNER, blob: chain.blob, version: 1, registry: 'v2' as const }) };
 
 beforeEach(async () => {
   vi.restoreAllMocks();
-  chain = { nonce: 5n, blob: BLOB };
+  chain = { nonce: 5n, blob: BLOB, nonceReads: [] };
+  nonceReads = 0;
   vi.spyOn(await import('@cryoshield/vault-crypto'), 'decodeVault').mockReturnValue({ entries: [{ credId: id(1) }, { credId: id(2) }] } as never);
   vi.spyOn(ops, 'mirrorWrite').mockResolvedValue({ status: 'saved' });
   vi.spyOn(ops, 'ensureMirror').mockResolvedValue({ status: 'saved' });
 });
 
-async function openVault() {
+/** Unlocks, and waits until the open pin's reads are done (`reads` nonce reads). */
+async function openVault(reads = 2) {
   const unlock = vi.spyOn(unlockMod, 'unlock').mockResolvedValue({ credId: id(1), locator: new Uint8Array(32), matches: [opened()] });
   const u = userEvent.setup();
   renderApp({ client: client as never, reader: reader as never });
   await u.click(screen.getByRole('button', { name: 'Unlock my vault' }));
   await u.click(screen.getByRole('button', { name: 'Unlock with my key' }));
   await screen.findByRole('heading', { name: 'Seed' });
+  await waitFor(() => expect(nonceReads).toBe(reads), { timeout: 3_000 });
+  await act(async () => undefined); // the pin is applied after the last read
   return { u, unlock };
 }
 /** Opens the editor if it isn't open (a failed save keeps it open, with the unsaved text), then saves. */
@@ -55,94 +71,104 @@ async function save(u: ReturnType<typeof userEvent.setup>) {
   await u.click(await screen.findByRole('button', { name: 'Save' }));
 }
 
-describe('WB3: a retry after a failed save is not a false STALE', () => {
-  it('the nonce a failed (included, reverted) save used up is re-pinned from the chain before the retry', async () => {
+describe('the pin after a write never depends on RPC reads', () => {
+  it.each(['REVERTED', 'NONCE_CONFLICT', 'NOT_CONFIRMED', 'NETWORK'] as const)('a failed attempt (%s) never moves the pin, whatever the RPC says next', async (code) => {
     const edit = vi
       .spyOn(ops, 'saveEdit')
       .mockImplementationOnce(async () => {
-        chain.nonce = 6n; // included but reverted: the nonce is used, the blob is unchanged
-        throw new WriteError('REVERTED');
-      })
-      .mockImplementationOnce(async (_svc, s, items) => ({ ...s, items, version: 2, nonce: (s.nonce ?? 0n) + 1n }));
-    const { u } = await openVault();
-    await waitFor(() => expect(true).toBe(true));
-    await save(u);
-    await screen.findByRole('alert');
-    expect(edit.mock.calls[0]![1].nonce).toBe(5n);
-    await save(u);
-    await waitFor(() => expect(edit).toHaveBeenCalledTimes(2));
-    expect(edit.mock.calls[1]![1].nonce).toBe(6n);
-  });
-
-  it.each(['NOT_CONFIRMED', 'NETWORK'] as const)('M1/L4: %s (the save may have landed) behind a lagging blob read: never re-pinned, so the next save is STALE, not an overwrite', async (code) => {
-    const edit = vi
-      .spyOn(ops, 'saveEdit')
-      .mockImplementationOnce(async () => {
-        chain.nonce = 6n; // the save landed (nonce used) but the RPC still returns the old blob (lag)
+        chain.nonce = 6n; // a write landed somewhere, and a lagging node still returns the old blob
         throw new WriteError(code);
       })
       .mockImplementationOnce(async (_svc, s, items) => ({ ...s, items, version: 2 }));
     const { u } = await openVault();
-    await waitFor(() => expect(true).toBe(true));
     await save(u);
     await screen.findByRole('alert');
-    await new Promise((r) => setTimeout(r, 20)); // let any re-pin settle
+    const readsAfterFailure = nonceReads;
     await save(u);
     await waitFor(() => expect(edit).toHaveBeenCalledTimes(2));
-    // Still pinned to 5: the write stack's assertCurrent then sees nonce 6 > 5 and refuses (STALE), never overwriting.
+    expect(edit.mock.calls[0]![1].nonce).toBe(5n);
+    // Still 5: the write stack's assertCurrent then sees nonce 6 > 5 and refuses (STALE, Reload), never overwriting.
     expect(edit.mock.calls[1]![1].nonce).toBe(5n);
+    expect(nonceReads).toBe(readsAfterFailure); // no re-pin reads at all
   });
 
-  it('M1: after REVERTED, a nonce that moved by more than one is not adopted', async () => {
-    const edit = vi
-      .spyOn(ops, 'saveEdit')
-      .mockImplementationOnce(async () => {
-        chain.nonce = 7n; // two operations since the pin: not just our own reverted one
-        throw new WriteError('REVERTED');
-      })
-      .mockImplementationOnce(async (_svc, s, items) => ({ ...s, items, version: 2 }));
+  it('a successful save moves the pin locally to pinned + 1, with no RPC read (a lagging RPC changes nothing)', async () => {
+    const edit = vi.spyOn(ops, 'saveEdit').mockImplementation(async (_svc, s, items) => ({ ...s, items, version: s.version + 1, blob: new Uint8Array(400).fill(s.version + 1), nonce: (s.nonce ?? 0n) + 1n }));
     const { u } = await openVault();
-    await waitFor(() => expect(true).toBe(true));
     await save(u);
-    await screen.findByRole('alert');
-    await new Promise((r) => setTimeout(r, 20));
+    await screen.findByText(S.save.saved);
+    chain.nonce = 9n; // whatever a node says now is never read
     await save(u);
     await waitFor(() => expect(edit).toHaveBeenCalledTimes(2));
-    expect(edit.mock.calls[1]![1].nonce).toBe(5n);
+    expect(edit.mock.calls[1]![1].nonce).toBe(6n);
+    expect(nonceReads).toBe(2); // only the open pin's two reads
   });
+});
 
-  it('N2: no pin at open while the RPC still shows another blob (lagging right after a write)', async () => {
-    chain.blob = new Uint8Array(400).fill(9);
+describe('the open pin: nonce, vault, nonce', () => {
+  it('both nonce reads agree and the blob is the session\'s: pinned', async () => {
     const edit = vi.spyOn(ops, 'saveEdit').mockImplementation(async (_svc, s, items) => ({ ...s, items, version: 2 }));
     const { u } = await openVault();
     await save(u);
     await waitFor(() => expect(edit).toHaveBeenCalled());
-    expect(edit.mock.calls[0]![1].nonce).toBeUndefined(); // assertCurrent then reads the nonce fresh
+    expect(edit.mock.calls[0]![1].nonce).toBe(5n);
   });
 
-  it('after a successful save, a lagging RPC never lowers the pin', async () => {
-    const edit = vi.spyOn(ops, 'saveEdit').mockImplementation(async (_svc, s, items) => ({ ...s, items, version: s.version + 1, blob: new Uint8Array(400).fill(s.version + 1), nonce: (s.nonce ?? 0n) + 1n }));
-    const { u } = await openVault();
-    await waitFor(() => expect(true).toBe(true));
+  it('the nonce reads disagree, then agree on the retry: pinned to the agreed value', async () => {
+    chain.nonceReads = [5n, 6n];
+    chain.nonce = 6n;
+    const edit = vi.spyOn(ops, 'saveEdit').mockImplementation(async (_svc, s, items) => ({ ...s, items, version: 2 }));
+    const { u } = await openVault(4);
     await save(u);
-    await screen.findByText(S.save.saved);
-    await save(u); // the RPC still answers nonce 5 and the old blob
-    await waitFor(() => expect(edit).toHaveBeenCalledTimes(2));
-    expect(edit.mock.calls[1]![1].nonce).toBe(6n);
+    await waitFor(() => expect(edit).toHaveBeenCalled());
+    expect(edit.mock.calls[0]![1].nonce).toBe(6n);
+  });
+
+  it('they disagree twice: saving is refused as STALE (Reload), and nothing is written', async () => {
+    chain.nonceReads = [5n, 6n, 6n, 7n];
+    const edit = vi.spyOn(ops, 'saveEdit');
+    const { u } = await openVault(4);
+    await save(u);
+    expect(await screen.findByRole('alert')).toHaveTextContent(S.save.stale);
+    expect(screen.getByRole('button', { name: S.save.reload })).toBeInTheDocument();
+    expect(edit).not.toHaveBeenCalled();
+  });
+
+  it('N2: the chain shows another blob at open (twice): STALE on save, not a pin over a lagging read', async () => {
+    chain.blob = new Uint8Array(400).fill(9);
+    const edit = vi.spyOn(ops, 'saveEdit');
+    const { u } = await openVault(4);
+    await save(u);
+    expect(await screen.findByRole('alert')).toHaveTextContent(S.save.stale);
+    expect(edit).not.toHaveBeenCalled();
   });
 });
 
 describe('STALE offers "Reload vault"', () => {
-  it('reloads the vault with one unlock and shows the current version', async () => {
+  it('one key tap (with the prompt) reloads the current version, remounts the view and focuses the heading', async () => {
     vi.spyOn(ops, 'saveEdit').mockRejectedValue(new WriteError('STALE'));
     const { u, unlock } = await openVault();
+    await u.click(screen.getByRole('button', { name: `Show ${'Seed'}` }));
+    expect(screen.getByText('abandon art')).toBeInTheDocument();
     await save(u);
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent(S.save.stale);
-    unlock.mockResolvedValueOnce({ credId: id(1), locator: new Uint8Array(32), matches: [opened('Changed elsewhere', 3, new Uint8Array(400).fill(3))] });
+    let release!: () => void;
+    unlock.mockImplementationOnce(
+      () =>
+        new Promise((r) => {
+          release = () => r({ credId: id(1), locator: new Uint8Array(32), matches: [opened('Changed elsewhere', 3, new Uint8Array(400).fill(3))] });
+        }),
+    );
     await u.click(screen.getByRole('button', { name: S.save.reload }));
-    expect(await screen.findByRole('heading', { name: 'Changed elsewhere' })).toBeInTheDocument();
+    expect(await screen.findByText(S.edit.touchAny)).toBeInTheDocument(); // the key prompt during the ceremony
+    await act(async () => release());
+    const heading = await screen.findByRole('heading', { level: 1, name: S.vault.title });
+    expect(screen.getByRole('heading', { name: 'Changed elsewhere' })).toBeInTheDocument();
+    await waitFor(() => expect(heading).toHaveFocus());
     expect(screen.queryByText(S.save.stale)).toBeNull();
+    // Remounted: the earlier "Show" does not carry over to the new items.
+    expect(screen.queryByText('abandon art')).toBeNull();
   });
 
   it('L1: a reload that returns an OLDER version than the session (lagging RPC) is refused: "try again"', async () => {
@@ -165,8 +191,9 @@ describe('STALE offers "Reload vault"', () => {
     unlock.mockRejectedValueOnce(new unlockMod.UnlockError('NO_VAULT'));
     await u.click(screen.getByRole('button', { name: S.save.reload }));
     expect(await screen.findByText(S.save.reloadMissing)).toBeInTheDocument();
-    // The session and the unsaved edit are kept; Reload is still offered.
+    // The session and the unsaved edit are kept; Reload is still offered, in the one action area.
     expect(screen.getByRole('button', { name: S.save.reload })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: S.save.reload }).closest('.action-bar')).toBeNull();
   });
 });

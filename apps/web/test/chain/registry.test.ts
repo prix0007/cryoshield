@@ -307,6 +307,35 @@ describe('review W1: locatorLength is the source of truth for a paged locator', 
     expect(await createRegistryReader(reg.transport()).candidatesFor(loc)).toHaveLength(10);
   });
 
+  it('LOW: a page longer than expected because the locator GREW is accepted after re-reading locatorLength', async () => {
+    const reg = new MockRegistry();
+    for (let i = 1; i <= 3; i++) reg.put(id(i), { owner, blob: blob('00', 1), version: 1 }, [loc]);
+    const real = reg.handle.bind(reg);
+    let grown = false;
+    reg.handle = (data) => {
+      const d = decodeFunctionData({ abi: reg.abi, data });
+      if (d.functionName === 'resolveLocator' && !grown) {
+        grown = true; // a new vault is registered between locatorLength and the first page
+        reg.put(id(4), { owner, blob: blob('00', 1), version: 1 }, [loc]);
+      }
+      return real(data);
+    };
+    expect((await createRegistryReader(reg.transport()).candidatesFor(loc)).map((c) => c.vaultId)).toEqual([id(1), id(2), id(3), id(4)]);
+  });
+
+  it('LOW: a locatorLength above 100,000 is refused as incomplete, with no paging', async () => {
+    const { RegistryIncompleteError } = await import('../../src/chain/registry');
+    const reg = new MockRegistry();
+    const real = reg.handle.bind(reg);
+    reg.handle = (data) => {
+      const d = decodeFunctionData({ abi: reg.abi, data });
+      if (d.functionName === 'locatorLength') return encodeFunctionResult({ abi: reg.abi, functionName: 'locatorLength', result: 100_001n } as never);
+      return real(data);
+    };
+    await expect(createRegistryReader(reg.transport()).candidatesFor(loc)).rejects.toBeInstanceOf(RegistryIncompleteError);
+    expect(reg.calls).not.toContain('resolveLocator');
+  });
+
   it('a short (or long) page is refused the same way', async () => {
     const { RegistryIncompleteError } = await import('../../src/chain/registry');
     const reg = new MockRegistry();

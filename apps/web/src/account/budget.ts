@@ -24,18 +24,23 @@ export async function readNonce(client: { request(a: { method: string; params?: 
 }
 
 /**
- * web-review-followups 3: the nonce to pin for a session, read nonce first, then the vault. Only while the chain still
- * holds the session's own blob (so a lagging RPC right after a write, or a write from elsewhere, never moves the pin),
- * and only upward. With `exact` (after a failed save, ECC review M1), only that value: the session's own reverted
- * operation, never a save that may have landed behind a lagging read. Otherwise undefined: keep the current pin.
+ * web-review-followups 3 (ECC review of 88255e2): the nonce to pin when a vault opens (or reopens after Reload).
+ * Reads the nonce, then the vault, then the nonce again, and accepts only when both nonce reads agree and the chain holds
+ * the session's own blob; one retry after `waitMs`. Otherwise undefined: the caller refuses to save (STALE, Reload).
+ * Never used after a write: a failed attempt never moves the pin, a successful one moves it locally.
  */
 export async function pinIfCurrent(
   client: Parameters<typeof readNonce>[0],
   reader: { getVault(id: `0x${string}`): Promise<{ blob: Uint8Array } | null> },
-  s: { vaultId: `0x${string}`; owner: string; blob: Uint8Array; nonce?: bigint | undefined },
-  exact?: bigint,
+  s: { vaultId: `0x${string}`; owner: string; blob: Uint8Array },
+  waitMs = 1_500,
 ): Promise<bigint | undefined> {
-  const n = await readNonce(client, s.owner);
-  const v = await reader.getVault(s.vaultId);
-  return v && bytesEqual(v.blob, s.blob) && (exact !== undefined ? n === exact : s.nonce === undefined || n > s.nonce) ? n : undefined;
+  for (let i = 0; i < 2; i++) {
+    if (i) await new Promise((r) => setTimeout(r, waitMs));
+    const a = await readNonce(client, s.owner);
+    const v = await reader.getVault(s.vaultId);
+    const b = await readNonce(client, s.owner);
+    if (a === b && v && bytesEqual(v.blob, s.blob)) return a;
+  }
+  return undefined;
 }

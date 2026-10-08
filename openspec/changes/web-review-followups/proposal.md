@@ -25,8 +25,9 @@ writers ship to production (N1/WEB-M2), and the rest affect availability or hone
   refuses, at most 200 queries per registry; the newest event is found first, and the created date by the same
   bounded walk.
 - STALE: `assertCurrent` re-reads twice before calling a vault STALE (a lagging RPC). The session's nonce is pinned
-  at open and re-pinned after every save attempt, only while the chain holds the session's own blob and never
-  downward. On STALE the app offers "Reload vault" (one unlock), which replaces the session.
+  only at open (two agreeing nonce reads around a vault read), moves only locally after a successful save, and never
+  after a failed one. On STALE the app offers "Reload vault" (one unlock), which replaces the session. The on-chain fix
+  (a compare-and-swap in a future VaultRegistry v3) is recorded as a follow-up.
 - Unarchive uses the same zero-saves-left gate as every other save.
 - A paged locator whose pages don't add up to `locatorLength` fails with "We couldn't load all of your vaults".
 - Read-only vaults are "Read-only vault (older format)"; the read-only notice no longer says "test".

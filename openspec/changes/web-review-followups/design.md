@@ -21,28 +21,37 @@ queried window or for another vault are ignored. Hostile-RPC bounds kept: abort 
 `blobHash` match the decrypted blob. 200 growing pages cover far more than any real chain; a vault not found within
 the cap shows "Date unavailable".
 
-## D3. No false STALE; fail safe (WB3, N2)
+## D3. Staleness: the pin never depends on RPC reads after a write (WB3, N2; ECC reviews of 86fbc66 and 88255e2)
 
-- `assertCurrent` (write stack): if the blob differs or the nonce is below the pin, re-read up to twice, 1.5 s apart
-  (a load-balanced RPC lagging this session's own write). A nonce above the pin is a write from elsewhere: STALE at
-  once, never adopted there.
-- `pinIfCurrent` (initial chunk, raw `eth_call`s): reads the nonce, then the vault, and returns the nonce only if the
-  chain holds the session's blob and the nonce is above the current pin. Used at open (instead of pinning blindly)
-  and after a successful save (with the session's new blob). The App applies it only to the session whose blob was
-  checked.
-- **After a failed save (ECC review of 86fbc66, M1, decided 2026-10-08):** re-pin only for `REVERTED` (included,
-  nonce used, blob unchanged) and `NONCE_CONFLICT`, and only when the chain nonce is exactly `pinned + 1`. For
-  `NOT_CONFIRMED`, `NETWORK` and every other failure, never re-pin: the save may have landed while a lagging read
-  still shows the old blob, so moving the pin would let the next save overwrite the user's own landed save from the
-  old base. The pin stays, so the next save is STALE and offers Reload.
-- Why this stays safe: the pin is only raised while the chain still holds exactly the blob this session decrypted
-  (another device's save changes the blob, so it is never re-pinned over), and the operation still carries the nonce
-  read right before signing, so a write that lands in between fails at the bundler (AA25) instead of overwriting.
-- "Reload vault" on STALE: one unlock (`unlockSessions`), and the same `registry:vaultId` replaces the session; the
-  draft is dropped (it was made from the old version). If that key doesn't open this vault, a message says so and
-  the session is kept. A result after a lock is ignored (epoch). A reload that returns an older version than the
-  session (a lagging RPC) is refused with "try again" (L1), so Reload never rolls the session back.
-- A short or empty `resolveLocator` page is read once more before `RegistryIncompleteError` (L3, D5).
+*Revised 2026-10-08 after the ECC review of 88255e2 (HIGH): re-pinning after a write from two independent RPC reads
+(the nonce, then `getVault`) could move the pin over a lagging node's old blob and let the next save overwrite a write
+that had landed. The pin is now set only at open, and only locally after a write.*
+
+- **At open (and after Reload, which remounts the view):** `pinIfCurrent` (initial chunk, raw `eth_call`s) reads the
+  nonce, then the vault, then the nonce again, and pins only when both nonce reads are equal and the chain holds the
+  session's own blob; one retry after 1.5 s; otherwise the session is unpinned-and-refused: Save, Edit vault,
+  Unarchive and Add key show STALE and offer Reload, and nothing is sent.
+- **After a failed attempt (any code):** the pin never moves, and nothing is read. The next save goes STALE (the write
+  stack sees a nonce above the pin) and offers Reload. This trades WB3's convenience (a retry after a reverted save
+  now needs a Reload) for never re-pinning from reads that may disagree.
+- **After a successful save:** the pin moves locally to `pinned + 1n` with the session's new blob (`withPayload`,
+  `saveAddKey`): our own operation used exactly that nonce. No RPC read.
+- **`assertCurrent`** (write stack, unchanged): a nonce below the pin or a different blob is read again up to twice
+  (lag); a nonce above the pin is STALE at once, never adopted.
+- **Reload:** one unlock with the "touch your key" prompt; the same `registry:vaultId` replaces the session and the view
+  is remounted (its key carries a reload counter, so no Show, mirror or heal state carries over; a version in the key
+  would also remount after every save and drop the "Saved" status), the heading gets focus. An older version than the
+  session is refused ("try again", L1); a key that doesn't open the vault keeps the session. A result after a lock is
+  ignored (epoch). The Reload button sits under the error notice, not in a second action bar.
+
+**Residual (honest).** All of this is client-side. A load-balanced RPC whose nodes lag can still mislead a single
+client: for example, an open whose three reads all come from one lagging node pins a stale nonce and blob, and the
+next save's own reads may come from that node too. The write is then still bounded by the EntryPoint nonce (a nonce
+another write has used fails at the bundler, AA25), but a client that never saw that write can still build its save
+from an old base. The real fix is on-chain: **`VaultRegistry` v3 should take an `expectedVersion` in `updateVault` (and
+`addLocators`) and revert on mismatch (compare-and-swap)**, so a save built from version N can only replace version N.
+Registries are immutable, so that needs a new v3 deployment (follow-up 4.1); `web-registry-versions` already lets the
+app read and write a v3. Until then, Reload and the nonce bound are the mitigations.
 
 ## D4. Unarchive gate (WB4)
 
@@ -65,7 +74,7 @@ Each page must have exactly `min(256, length - start)` ids; otherwise `RegistryI
 | Attacker / failure | Can | Cannot | Mitigation |
 |---|---|---|---|
 | Someone at an unattended device after a create | Read the new vault on the "saved" screen | After 5 min idle, `pagehide` or 60 s hidden | D1 |
-| Lagging or lying RPC | Delay dates, return a stale nonce or blob | Make the app adopt another device's state as current, or overwrite it | D3: re-pin only on the session's own blob, never downward; the bundler nonce check |
+| Lagging or lying RPC | Delay dates; return a stale nonce or blob at open | Move the pin after a write (never read again), or reuse a nonce another write used (AA25) | D3. Residual: a client that never saw another write can build from an old base until VaultRegistry v3's compare-and-swap |
 | RPC returning short pages | Hide vaults | Silently: the list fails instead | D5 |
 | Hostile RPC on dates | Make dates unavailable | Unbounded queries, fake "Last saved" | D2 bounds and the blobHash check |
 

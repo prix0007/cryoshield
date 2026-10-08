@@ -98,15 +98,21 @@ function Shell() {
   // D6: one more key ceremony; its vaults are merged by vault ID, never duplicated, and nothing is stored.
   // D8: the nonce read when a vault opens; a later write (which sets its own) is never overwritten.
   const pinNonce = useCallback(
-    // web-review-followups 3: only for the session whose blob was checked, and only upward.
+    // The open pin (D3): only for the session whose blob was checked, and only while it has none.
     (vaultId: string, n: bigint, blob: Uint8Array) =>
-      setVaults((vs) => vs.map((v) => (!isOlder(v.registry) && v.vaultId === vaultId && bytesEqual(v.blob, blob) && (v.nonce === undefined || n > v.nonce) ? { ...v, nonce: n } : v))),
+      setVaults((vs) => vs.map((v) => (!isOlder(v.registry) && v.vaultId === vaultId && bytesEqual(v.blob, blob) && v.nonce === undefined ? { ...v, nonce: n } : v))),
     [],
   );
   const history = useMemo(() => ({ rpc: svc.client, keccak256: (b: Uint8Array) => keccak256(b), registries: config.registries }), [svc.client]);
   const menu = useLazyModule(loadMenu, screen.name === 'vaults');
   const vaultsRef = useRef(vaults);
   vaultsRef.current = vaults;
+  /** Bumped by a successful Reload so the vault view remounts (it is part of the view's key). */
+  const [reloads, setReloads] = useState(0);
+  const focusVault = useRef(false);
+  useEffect(() => {
+    focusVault.current = false; // consumed by the view that mounted with it
+  }, [reloads]);
   /** STALE: one more unlock; the same vault replaces this session (D7: still the only decrypted copy). */
   const reload = async (current: VaultSession): Promise<string | null> => {
     const at = epoch.current;
@@ -116,6 +122,9 @@ function Shell() {
       if (!fresh) return S.save.reloadMissing;
       if (fresh.version < current.version) return S.save.reloadOlder; // ECC review L1: a lagging RPC, never a rollback
       setVaults((vs) => vs.map((v) => (keyOf(v) === keyOf(fresh) ? fresh : v)));
+      // A new view (no carried-over Show, mirror or heal state), pinned afresh at open, with focus on its heading.
+      focusVault.current = true;
+      setReloads((n) => n + 1);
       return null;
     } catch (e) {
       return e instanceof UnlockError ? S.save.reloadMissing : unlockMessage(e);
@@ -228,7 +237,8 @@ function Shell() {
           )}
           {screen.name === 'vault' && session && (
             <VaultView
-              key={`${keyOf(session)}:${screen.edit ? 'edit' : ''}`}
+              key={`${keyOf(session)}:${reloads}:${screen.edit ? 'edit' : ''}`}
+              focusTitle={focusVault.current}
               session={session}
               locator={session.locator ?? '0x'}
               freshMirror={screen.fresh}

@@ -21,8 +21,10 @@ export const UPDATED = '0x708a8b330fade2f32683d342c347557c666ee86d0dc54d7ed55440
 export const LOG_RANGE = 10_000n;
 /** Pages double while the RPC accepts them, up to this factor of the base (1.28M blocks, about 30 days on OP). */
 const MAX_GROWTH = 128n;
-/** At most this many log queries per registry (refused ones included); a vault not found by then shows no date. */
+/** At most this many accepted log queries per registry; a vault not found by then shows no date. */
 export const MAX_PAGES = 200;
+/** And at most this many refused ones (each halves the page size, which then never grows above it again). */
+const MAX_REFUSED = 8;
 /** A latest block at or above this is refused as hostile (OP is near 2^27 blocks). */
 const MAX_BLOCK = 2n ** 40n;
 /** Block timestamps outside 1..4e9 (about year 2096) are refused as hostile. */
@@ -88,7 +90,10 @@ async function datesFor(
   const found = vaults.map(() => ({ last: undefined as RawLog | undefined, created: undefined as RawLog | undefined }));
   let pending = vaults.map((_, i) => i);
   let size = range;
-  for (let to = latest, pages = 0; pending.length > 0 && to >= deploy && pages < MAX_PAGES; pages++) {
+  // The largest page size still allowed: after a refusal it drops to the halved size for the rest of the walk, so an RPC
+  // with a range cap costs one refused query, not every second one (ECC review of 88255e2).
+  let ceiling = range * MAX_GROWTH;
+  for (let to = latest, pages = 0, refused = 0; pending.length > 0 && to >= deploy && pages < MAX_PAGES; ) {
     abortIf(signal);
     const from = to - size + 1n < deploy ? deploy : to - size + 1n;
     const ids = pending.map((i) => vaults[i]!.vaultId.toLowerCase());
@@ -99,12 +104,14 @@ async function datesFor(
         params: [{ address: reg.address, topics: [[CREATED, UPDATED], ids], fromBlock: hex(from), toBlock: hex(to) }],
       })) as RawLog[];
     } catch (e) {
-      if (signal?.aborted || size <= range) throw e;
-      size /= 2n; // the RPC refused the range: retry this window smaller
+      if (signal?.aborted || size <= range || ++refused > MAX_REFUSED) throw e;
+      ceiling = size / 2n; // the RPC refused the range: retry this window smaller, and stay at most this size
+      size = ceiling;
       continue;
     }
-    for (const i of pending) {
-      const id = ids[pending.indexOf(i)];
+    pages++;
+    for (const [k, i] of pending.entries()) {
+      const id = ids[k];
       const own = page
         .filter((l) => l.topics[1]?.toLowerCase() === id && (l.topics[0] === CREATED || l.topics[0] === UPDATED) && big(l.blockNumber) >= from && big(l.blockNumber) <= to)
         .sort(order);
@@ -114,7 +121,7 @@ async function datesFor(
     }
     pending = pending.filter((i) => !found[i]!.last || !found[i]!.created);
     to = from - 1n;
-    if (size < range * MAX_GROWTH) size *= 2n;
+    if (size * 2n <= ceiling) size *= 2n;
   }
   abortIf(signal);
   const out = new Map<string, VaultDates>();

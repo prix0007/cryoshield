@@ -65,7 +65,8 @@ const unlockReturns = (...taps: unlockMod.OpenedVault[][]) => {
 const chainReader = { getVault: async (vaultId: `0x${string}`) => ({ vaultId, blob: new Uint8Array(400).fill(parseInt(vaultId.slice(2, 4), 16)) }) } as never;
 async function unlockApp(over: Parameters<typeof renderApp>[0] = {}) {
   const u = userEvent.setup();
-  const r = renderApp({ reader: chainReader, ...over });
+  // A chain that holds each vault's blob at the stack's nonce, so the open pin (D3) succeeds.
+  const r = renderApp({ reader: chainReader, client: nonceClient(), ...over });
   await u.click(screen.getByRole('button', { name: 'Unlock my vault' }));
   await u.click(screen.getByRole('button', { name: 'Unlock with my key' }));
   return { u, ...r };

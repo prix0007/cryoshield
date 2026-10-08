@@ -38,6 +38,8 @@ export function VaultView(props: {
   onNonce?: (vaultId: `0x${string}`, nonce: bigint, blob: Uint8Array) => void;
   /** STALE: unlock again (one tap) and replace this session with the vault's current version. A message on failure. */
   onReload?: () => Promise<string | null>;
+  /** Focus the vault heading on mount (after a successful Reload remounted this view). */
+  focusTitle?: boolean;
   /** This vault's Arweave copy known to the session (App state, so it survives a remount; wiped on lock). */
   mirrorItem?: MirrorItem | undefined;
   /** Reports every mirror result with the version it is for; App validates it and keeps the newest version. */
@@ -91,6 +93,10 @@ export function VaultView(props: {
   };
   // Back in view mode after edit / add key / details: focus the vault heading once the transition has finished.
   const title = useRef<HTMLHeadingElement>(null);
+  const focusOnMount = useRef(props.focusTitle);
+  useEffect(() => {
+    if (focusOnMount.current) title.current?.focus();
+  }, []);
   const leftView = useRef(false);
   if (mode !== 'view') leftView.current = true;
 
@@ -115,34 +121,44 @@ export function VaultView(props: {
     });
   }
 
-  // D8/D10: when the vault opens, read and pin the account's EntryPoint nonce (raw eth_calls; no write stack). It is the
-  // base every write of this session is checked against, and it feeds the testnet save-budget hint. web-review-followups
-  // 3: pinned only while the chain holds this session's blob, re-pinned after every write attempt, and never lowered.
+  // D8/D10: when the vault opens (or reopens after Reload), pin the account's EntryPoint nonce (raw eth_calls; no write
+  // stack): nonce, vault, nonce, accepted only when both reads agree and the chain holds this session's blob (D3). It is
+  // the base every write of this session is checked against, and it feeds the testnet save-budget hint. If it can't be
+  // pinned, saving is refused as STALE (Reload). After a write the pin is never read again: a failed attempt keeps it,
+  // a successful one moves it locally (withPayload, saveAddKey).
   const { onNonce } = props;
-  const repin = (x: VaultSession, exact?: bigint) => {
-    if (isReadOnly(x) || !onNonce) return;
-    pinIfCurrent(svc.client, svc.reader, x, exact)
-      .then((n) => n !== undefined && onNonce(x.vaultId, n, x.blob))
-      .catch(() => undefined);
-  };
+  const [pinFailed, setPinFailed] = useState(false);
   useEffect(() => {
-    if (s.nonce === undefined) repin(s);
-    // repin reads only the session's public fields listed here.
+    if (readOnly || s.nonce !== undefined || !onNonce) return;
+    let live = true;
+    pinIfCurrent(svc.client, svc.reader, s)
+      .then((n) => live && (n === undefined ? setPinFailed(true) : onNonce(s.vaultId, n, s.blob)))
+      .catch(() => live && setPinFailed(true));
+    return () => {
+      live = false;
+    };
+    // `s` is read only through the fields listed here.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [readOnly, s.nonce, s.vaultId, s.blob, svc.client, s.owner, onNonce]);
+  }, [readOnly, s.nonce, s.vaultId, s.blob, s.owner, svc.client, svc.reader, onNonce]);
   const [stale, setStale] = useState(false);
+  /** Refuses a save up front when the open pin failed (the chain didn't agree on this session's version). */
+  const unpinned = () => {
+    if (!pinFailed) return false;
+    setError(S.save.stale);
+    setErrorRef(undefined);
+    setStale(true);
+    return true;
+  };
   async function reload() {
     if (!props.onReload) return;
     setBusy(true);
+    setPrompt(S.edit.touchAny);
     try {
+      // On success the App replaces the session and remounts this view (a new key), which focuses the heading.
       const msg = await props.onReload();
-      setError(msg);
-      setErrorRef(undefined);
-      if (!msg) {
-        setStale(false);
-        setMode('view'); // the draft was made from the old version
-      }
+      if (msg) setError(msg);
     } finally {
+      setPrompt(null);
       setBusy(false);
     }
   }
@@ -151,6 +167,7 @@ export function VaultView(props: {
 
   /** One write with the usual taps, prompts and checklist. `next === s` (nothing changed) closes without a save. */
   async function run(write: (onSign: () => void) => Promise<VaultSession>) {
+    if (unpinned()) return;
     setBusy(true);
     setError(null);
     setErrorRef(undefined);
@@ -162,10 +179,7 @@ export function VaultView(props: {
       const next = await write(() => setPrompt(S.edit.touchSame));
       setMode('view');
       if (next === s) setProgress(null);
-      else {
-        afterWrite(next);
-        repin(next);
-      }
+      else afterWrite(next);
     } catch (e) {
       failed(e);
     } finally {
@@ -174,22 +188,18 @@ export function VaultView(props: {
     }
   }
 
-  /**
-   * ECC review M1: after a FAILED save, re-pin only when the operation surely did not land (REVERTED: included, nonce
-   * used, blob unchanged; NONCE_CONFLICT), and only to pinned + 1. NOT_CONFIRMED and NETWORK may have landed, and a
-   * lagging read could still show the old blob: the pin stays, so the next save is STALE (Reload), never an overwrite.
-   */
+  /** A failed save never moves the pin (ECC reviews M1 and 88255e2): the next save is STALE and offers Reload. */
   function failed(e: unknown) {
     setProgress(null);
     setError(messageFor(e));
     setErrorRef(errorReference(e));
     setStale(e instanceof WriteError && e.code === 'STALE');
-    if (e instanceof WriteError && (e.code === 'REVERTED' || e.code === 'NONCE_CONFLICT') && s.nonce !== undefined) repin(s, s.nonce + 1n);
   }
 
   const saveDraft = () => run((sign) => saveEdit(svc, s, cleanItems(draft), sign, onProgress));
 
   async function addKey() {
+    if (unpinned()) return;
     setBusy(true);
     setError(null);
     setErrorRef(undefined);
@@ -206,7 +216,6 @@ export function VaultView(props: {
       });
       setMode('view');
       afterWrite(next, [newLocator]);
-      repin(next);
       setStatus(S.addKey.done);
     } catch (e) {
       failed(e);
@@ -241,11 +250,11 @@ export function VaultView(props: {
         </Notice>
       )}
       {stale && props.onReload && (
-        <ActionBar>
-          <Btn onClick={reload} disabled={busy}>
+        <p className="notice-action">
+          <Btn className="secondary" onClick={reload} disabled={busy}>
             {S.save.reload}
           </Btn>
-        </ActionBar>
+        </p>
       )}
       {status && <Notice kind="success">{status}</Notice>}
       <CeremonyPresence>{prompt && <KeyPrompt text={prompt} {...(waiting ? { onContinue: waiting } : {})} />}</CeremonyPresence>

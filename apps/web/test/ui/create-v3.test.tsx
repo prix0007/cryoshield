@@ -18,6 +18,8 @@ beforeEach(async () => {
   vi.doMock('virtual:cryoshield-config', () => ({
     config: Object.freeze({ ...base, registries: [{ version: 'v3', abi: 2, address: A3, deployBlock: 12 }, ...base.registries] }),
   }));
+  // The open pin (web-review-followups D3) needs a chain these fakes don't model; stale-repin.test.tsx covers it.
+  vi.spyOn(await import('../../src/account/budget'), 'pinIfCurrent').mockResolvedValue(0n);
   vi.doMock('../../src/account/stack', async () => ({
     newVaultAccount: async () => ({ getAddress: async () => OWNER }),
     createVaultOnChain: async ({ build }: { build: (id: Hex) => Promise<{ blob: Uint8Array; locators: Hex[] }> }) => {

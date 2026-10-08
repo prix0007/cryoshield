@@ -32,6 +32,8 @@ beforeEach(async () => {
   vi.spyOn(await import('@cryoshield/vault-crypto'), 'decodeVault').mockReturnValue({ entries: [{ credId: id(1) }, { credId: id(2) }] } as never);
 });
 afterEach(() => {
+  // Never leak a hidden page into the next test, even if one fails midway.
+  Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
   vi.useRealTimers();
   vi.restoreAllMocks();
 });
@@ -39,17 +41,19 @@ afterEach(() => {
 async function toSaved() {
   const u = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
   renderApp();
-  await u.click(screen.getByRole('button', { name: 'Create a new vault' }));
-  await u.click(screen.getByRole('button', { name: 'Get started' }));
-  await u.click(screen.getByRole('button', { name: 'Set up key 1' }));
+  // Every step waits for its control: step transitions run on timers, which are fake (and only advance when awaited).
+  const click = async (name: string) => u.click(await screen.findByRole('button', { name }));
+  await click('Create a new vault');
+  await click('Get started');
+  await click('Set up key 1');
   await screen.findByText('Key 1 is ready.');
-  await u.click(screen.getByRole('button', { name: 'Set up key 2' }));
+  await click('Set up key 2');
   await screen.findByText('Key 2 is ready.');
-  await u.click(screen.getByRole('button', { name: 'Continue' }));
-  await u.type(screen.getByLabelText('Secret'), 'abandon art');
+  await click('Continue');
+  await u.type(await screen.findByLabelText('Secret'), 'abandon art');
   await acknowledge(u);
-  await u.click(screen.getByRole('button', { name: 'Save' }));
-  await screen.findByRole('button', { name: 'Continue' });
+  await click('Save');
+  await screen.findByRole('heading', { name: 'Your vault is saved' });
   return u;
 }
 
@@ -90,7 +94,6 @@ describe('WEB-M2: the create "saved" screen is under auto-lock', () => {
       document.dispatchEvent(new Event('visibilitychange'));
     });
     await act(async () => vi.advanceTimersByTimeAsync(HIDDEN_MS));
-    Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
     expectLockedHome();
   });
 });

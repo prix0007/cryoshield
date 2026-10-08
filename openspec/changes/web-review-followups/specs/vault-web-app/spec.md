@@ -16,12 +16,16 @@ Vault dates SHALL be found however far the vault's events are before the latest 
 - **WHEN** a vault's events are 5 million blocks before the latest block
 - **THEN** its Created and Last saved dates are shown
 
-### Requirement: No false staleness, and a way out
-A save SHALL NOT be refused as "changed since you opened it" because of the session's own earlier save attempt or a lagging RPC. The session's pinned nonce SHALL only be refreshed while the chain holds the session's own blob, and never lowered. When a vault really changed, the app SHALL offer "Reload vault".
+### Requirement: Staleness never trusts reads made after a write, and has a way out
+The session's pinned nonce SHALL be set when the vault opens (or reopens after Reload) only from two equal nonce reads around a vault read that shows the session's own blob; otherwise saving SHALL be refused as changed. After a write the pin SHALL NOT be re-read: a failed save SHALL NOT move it, and a successful save SHALL move it locally by one. A save SHALL NOT be refused as changed merely because an RPC lags the session's own successful save (re-read before refusing). When a save is refused as changed, the app SHALL offer "Reload vault".
+
+#### Scenario: Lagging RPC after the session's own save
+- **WHEN** a save succeeds and the RPC still returns the previous nonce and blob for the next save
+- **THEN** the next save is not refused as changed
 
 #### Scenario: Retry after a failed save
-- **WHEN** a save is included but reverts (using up a nonce) and the user saves again
-- **THEN** the second save is not refused as changed
+- **WHEN** a save fails (reverted, nonce conflict, not confirmed or a network error) and the user saves again
+- **THEN** the app refuses it as changed, sends nothing, and offers "Reload vault"
 
 #### Scenario: Changed on another device
 - **WHEN** the vault was changed on another device and the user saves

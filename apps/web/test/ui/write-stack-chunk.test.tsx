@@ -20,6 +20,8 @@ const key = (n: number) => ({ credId: id(n), publicKey: ('0x' + 'aa'.repeat(64))
 const credentials = () => ({ create: vi.fn(async () => null), get: vi.fn(async () => null) });
 
 beforeEach(async () => {
+  // The open pin (web-review-followups D3) needs a chain these fakes don't model; stale-repin.test.tsx covers it.
+  vi.spyOn(await import('../../src/account/budget'), 'pinIfCurrent').mockResolvedValue(0n);
   vi.spyOn(ops, 'mirrorWrite').mockResolvedValue({ status: 'saved' });
   vi.spyOn(ops, 'ensureMirror').mockResolvedValue({ status: 'saved' });
   vi.spyOn(await import('@cryoshield/vault-crypto'), 'decodeVault').mockReturnValue({ entries: [{ credId: id(1) }, { credId: id(2) }], keyCount: 2 } as never);

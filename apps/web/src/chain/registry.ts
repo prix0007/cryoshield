@@ -21,6 +21,8 @@ import { GET_VAULTS_MAX, PAGE_SIZE, registryV1Abi, registryV2Abi } from './contr
 export const MAX_BLOB_BYTES = 1024;
 /** v1 capped each locator at 16 entries. */
 const V1_LOCATOR_CAP = 16;
+/** A locatorLength above this is refused as incomplete (a hostile RPC can't keep the paging loop running). */
+const MAX_LOCATOR = 100_000n;
 const ZERO = '0x0000000000000000000000000000000000000000';
 
 export function chainOf() {
@@ -73,17 +75,25 @@ export function createRegistryReader(transport: Transport = defaultTransport(), 
   /** Every vaultId under a locator: kind 2 in insertion order (no cap; pages of PAGE_SIZE), kind 1 capped at 16. */
   async function resolve(r: RegistryConfig, locator: Hex): Promise<Hex[]> {
     if (r.abi === 1) return ((await read(r, 'resolveLocator', [locator])) as Hex[]).slice(0, V1_LOCATOR_CAP);
-    const length = (await read(r, 'locatorLength', [locator])) as bigint;
+    const len = async () => (await read(r, 'locatorLength', [locator])) as bigint;
+    let length = await len();
     const out: Hex[] = [];
     for (let start = 0n; start < length; start += BigInt(PAGE_SIZE)) {
-      // locatorLength is the source of truth: an empty, short or long page is read once more (L3), then refused.
-      const want = length - start < PAGE_SIZE ? length - start : BigInt(PAGE_SIZE);
+      // locatorLength is the source of truth (review W1). A page that doesn't match is read once more (L3), after
+      // re-reading locatorLength (a locator that grew meanwhile is not "incomplete"); then it is refused.
+      if (length > MAX_LOCATOR) break;
+      const want = () => (length - start < PAGE_SIZE ? length - start : BigInt(PAGE_SIZE));
       const get = async () => (await read(r, 'resolveLocator', [locator, start, BigInt(PAGE_SIZE)])) as readonly Hex[];
       let page = await get();
-      if (BigInt(page.length) !== want) page = await get();
-      if (BigInt(page.length) !== want) throw new RegistryIncompleteError(r.version);
+      if (BigInt(page.length) !== want()) {
+        const now = await len();
+        if (now > length) length = now;
+        page = await get();
+      }
+      if (BigInt(page.length) !== want()) throw new RegistryIncompleteError(r.version);
       out.push(...page);
     }
+    if (length > MAX_LOCATOR) throw new RegistryIncompleteError(r.version);
     return out;
   }
 

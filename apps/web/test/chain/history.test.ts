@@ -181,11 +181,23 @@ describe('review M2/M3: bounded, abortable, and hostile-RPC-proof', () => {
     expect(out.get(`v2:${id(1)}`)).toEqual({ created: null, saved: null });
   });
 
-  it('at most 200 log queries per registry; a vault not found by then is "Date unavailable"', async () => {
+  it('at most 200 accepted (and 8 refused) log queries per registry; a vault not found by then is "Date unavailable"', async () => {
     const r = rpc([], { latest: 2 ** 39, maxSpan: 100 });
     const out = await vaultDates(r.client, one, [V2], 100n);
-    expect(r.queries.length).toBe(200);
+    const refused = r.queries.filter((q) => q.to - q.from + 1 > 100).length;
+    expect(r.queries.length - refused).toBe(200);
+    expect(refused).toBeLessThanOrEqual(8);
     expect(out.get(`v2:${id(1)}`)).toEqual({ created: null, saved: null });
+  });
+
+  it('ECC review of 88255e2: an RPC capped at 10k blocks: after one refusal the size stays at the cap, and 200 queries cover at least the old 2M blocks', async () => {
+    const r = rpc([], { latest: 50_000_000, maxSpan: 10_000 });
+    await vaultDates(r.client, one, [V2]);
+    const accepted = r.queries.filter((q) => q.to - q.from + 1 <= 10_000);
+    const refused = r.queries.length - accepted.length;
+    expect(refused).toBe(1); // 20k once, then never doubled back above the refused size
+    const covered = accepted.reduce((n, q) => n + (q.to - q.from + 1), 0);
+    expect(covered).toBeGreaterThanOrEqual(200 * 10_000);
   });
 
   it('a log outside the queried window or for another vault is ignored (hostile RPC)', async () => {

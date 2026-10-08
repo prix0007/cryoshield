@@ -57,6 +57,8 @@ async function expand() {
 
 let writeText: ReturnType<typeof vi.fn>;
 beforeEach(async () => {
+  // The open pin (web-review-followups D3) needs a chain these fakes don't model; stale-repin.test.tsx covers it.
+  vi.spyOn(await import('../../src/account/budget'), 'pinIfCurrent').mockResolvedValue(0n);
   vi.spyOn(ops, 'ensureMirror').mockResolvedValue({ status: 'saved' });
   vi.spyOn(await import('@cryoshield/vault-crypto'), 'decodeVault').mockReturnValue({ entries: [{ credId: credId(1) }, { credId: credId(2) }] } as never);
   writeText = vi.fn(async () => undefined);
