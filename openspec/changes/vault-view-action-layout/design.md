@@ -8,10 +8,10 @@ MANAGE VAULT                       h2, caption size, uppercase via CSS (the text
   Rename or archive          ›     <ul> of <li><button>; hidden when read-only
   Add a key                  ›     hidden when read-only
   Details & backup file      ›     always shown
-[ All vaults (N) ]      [ Lock ]   plain .actions row (not sticky); Lock is right-aligned when alone
+[ All vaults (N) ]                 plain .actions row (not sticky), only with the vault list
 ```
 
-- **DOM order = keyboard order:** Edit secrets, the rows, All vaults, Lock, then "Where your vault is stored".
+- **DOM order = keyboard order:** Edit secrets, the rows, All vaults, then "Where your vault is stored".
 - **Rows are built from one array** (mode, label), filtered by read-only. If the array is empty the heading and list
   are not rendered. Today Details is always shown, so the section always renders; the guard costs a few bytes and keeps
   the rule true if a row is gated later.
@@ -43,3 +43,16 @@ measures the only `.action-bar` on the screen. A read-only vault has no bar at a
 The /app initial JS budget had about 220 B of headroom (measured on f2c70e4: e2e 203,673 B, production 203,688 B
 against a cap of 203,905 B). The rows are one mapped array and reuse existing classes, so no baseline change is
 planned; the measured delta is recorded in tasks 2.1.
+
+## D5. Lock in the header bar (ECC review M3, overwatcher decision, 2026-10-08)
+
+Lock must always be reachable, and the bottom row scrolls away. While a vault is open (the vault screen), a compact
+secondary Lock pill sits in the sticky "Your vault" sub-nav, after the Testnet chip (`SubNav` gained an optional
+`action`). To avoid two tab stops and two same-named buttons, the bottom row no longer repeats Lock; it holds only
+"All vaults (N)" and is omitted when there is no vault list. Other screens keep their own Lock/Back buttons (the vault
+list, chunk fallbacks), and the header shows none there. The pill keeps the 44 px target with smaller text.
+
+## D6. Review L1 / L4
+
+The rows are one array with a `writable` flag, filtered for read-only vaults (no `splice`). The list is
+`aria-labelledby` its "Manage vault" heading.

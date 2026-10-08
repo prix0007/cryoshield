@@ -7,7 +7,8 @@ import * as ops from '../../src/ui/operations';
 import { ServicesProvider } from '../../src/ui/services';
 import { S } from '../../src/ui/strings';
 import { VaultView } from '../../src/ui/VaultView';
-import { fakeServices } from './helpers';
+import * as unlockMod from '../../src/chain/unlock';
+import { fakeServices, renderApp } from './helpers';
 
 const credIds = [new Uint8Array(48).fill(1), new Uint8Array(48).fill(2)];
 const session = (over: Partial<ops.VaultSession> = {}): ops.VaultSession => ({
@@ -36,7 +37,7 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 const manage = () => screen.getByRole('heading', { name: S.vault.manage, level: 2 });
-const rows = () => within(manage().nextElementSibling as HTMLElement).getAllByRole('button');
+const rows = () => within(screen.getByRole('list', { name: S.vault.manage })).getAllByRole('button');
 
 describe('vault actions layout', () => {
   it('uses the new labels', () => {
@@ -58,8 +59,9 @@ describe('vault actions layout', () => {
 
   it('Manage vault: an h2 over a list of row buttons with an aria-hidden chevron', () => {
     show();
-    const list = manage().nextElementSibling as HTMLElement;
+    const list = screen.getByRole('list', { name: S.vault.manage }); // L4: labelled by the heading
     expect(list.tagName).toBe('UL');
+    expect(list.getAttribute('aria-labelledby')).toBe(manage().id);
     expect(within(list).getAllByRole('listitem')).toHaveLength(3);
     expect(rows().map((b) => b.textContent)).toEqual([S.vault.editVault, S.vault.addKey, S.vault.details]);
     for (const b of rows()) {
@@ -70,30 +72,29 @@ describe('vault actions layout', () => {
     }
   });
 
-  it('keyboard order: Edit secrets, the rows, All vaults, Lock', async () => {
+  it('keyboard order: Edit secrets, the rows, All vaults', async () => {
     const u = userEvent.setup();
     show({}, { onAllVaults: () => {} });
     screen.getByRole('button', { name: S.vault.edit }).focus();
-    const order = [S.vault.editVault, S.vault.addKey, S.vault.details, S.vault.allVaults(3), S.vault.lock];
+    const order = [S.vault.editVault, S.vault.addKey, S.vault.details, S.vault.allVaults(3)];
     for (const name of order) {
       await u.tab();
       expect(document.activeElement).toBe(screen.getByRole('button', { name }));
     }
   });
 
-  it('All vaults and Lock form the navigation row, outside the floating bar and the list', () => {
+  it('All vaults is the navigation row, outside the floating bar and the list; Lock is not repeated here (M3: header)', () => {
     show({}, { onAllVaults: () => {} });
     const all = screen.getByRole('button', { name: S.vault.allVaults(3) });
-    const lock = screen.getByRole('button', { name: S.vault.lock });
-    expect(all.parentElement).toBe(lock.parentElement);
-    expect(lock.closest('.action-bar')).toBeNull();
-    expect(lock.closest('ul')).toBeNull();
+    expect(all.closest('.action-bar')).toBeNull();
+    expect(all.closest('ul')).toBeNull();
+    expect(screen.queryByRole('button', { name: S.vault.lock })).toBeNull();
   });
 
-  it('without a vault list: no All vaults, Lock alone', () => {
+  it('without a vault list: no navigation row at all', () => {
     show();
     expect(screen.queryByRole('button', { name: /^All vaults/ })).toBeNull();
-    expect(screen.getByRole('button', { name: S.vault.lock }).parentElement!.querySelectorAll('button')).toHaveLength(1);
+    expect(document.querySelector('.vault-nav')).toBeNull();
   });
 
   it('read-only: no Edit secrets, Rename or archive or Add a key; Details stays', () => {
@@ -103,10 +104,9 @@ describe('vault actions layout', () => {
     expect(rows().map((b) => b.textContent)).toEqual([S.vault.details]);
   });
 
-  it('each row opens its screen, and Lock locks', async () => {
+  it('each row opens its screen', async () => {
     const u = userEvent.setup();
-    const onLock = vi.fn();
-    show({}, { onLock });
+    show();
     await u.click(screen.getByRole('button', { name: S.vault.addKey }));
     expect(await screen.findByRole('heading', { name: S.addKey.title })).toBeInTheDocument();
     await u.click(screen.getByRole('button', { name: S.back }));
@@ -116,8 +116,23 @@ describe('vault actions layout', () => {
     await u.click(await screen.findByRole('button', { name: S.vault.editVault }));
     expect(await screen.findByRole('heading', { name: 'Edit vault' })).toBeInTheDocument();
     await u.click(screen.getByRole('button', { name: S.editor.cancel }));
-    await u.click(await screen.findByRole('button', { name: S.vault.lock }));
-    expect(onLock).toHaveBeenCalledOnce();
+    expect(await screen.findByRole('button', { name: S.vault.editVault })).toBeInTheDocument();
+  });
+
+  it('M3: while a vault is open, Lock sits in the always-visible header bar, once; it locks', async () => {
+    const u = userEvent.setup();
+    vi.spyOn(await import('@cryoshield/vault-crypto'), 'decodeVault').mockReturnValue({ entries: [{ credId: credIds[0] }, { credId: credIds[1] }] } as never);
+    vi.spyOn(unlockMod, 'unlock').mockResolvedValue({ credId: credIds[0]!, locator: new Uint8Array(32), matches: [{ ...session(), entryIndex: 0, items: session().items }] as never });
+    renderApp();
+    const header = document.querySelector('.site-header') as HTMLElement;
+    expect(within(header).queryByRole('button', { name: S.vault.lock })).toBeNull(); // nothing to lock on the home screen
+    await u.click(screen.getByRole('button', { name: 'Unlock my vault' }));
+    await u.click(screen.getByRole('button', { name: 'Unlock with my key' }));
+    await screen.findByRole('heading', { name: 'Bitcoin seed' });
+    expect(screen.getAllByRole('button', { name: S.vault.lock })).toHaveLength(1);
+    await u.click(within(header).getByRole('button', { name: S.vault.lock }));
+    expect(await screen.findByText(S.vault.locked)).toBeInTheDocument();
+    expect(within(header).queryByRole('button', { name: S.vault.lock })).toBeNull();
   });
 
   it('has no axe violations', async () => {

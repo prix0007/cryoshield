@@ -152,7 +152,11 @@ function Shell() {
       </a>
       <header className="site-header">
         <GlobalNav />
-        <SubNav name={S.vault.surface} />
+        {/* vault-view-action-layout D4 (review M3): Lock is always reachable while a vault is open. */}
+        <SubNav
+          name={S.vault.surface}
+          action={screen.name === 'vault' && session && <Btn className="secondary sub-nav-action" onClick={lock}>{S.vault.lock}</Btn>}
+        />
       </header>
       <main id="main" className="app-main" tabIndex={-1}>
         {testnetName(svc.chainId) && (

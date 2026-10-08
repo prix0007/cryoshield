@@ -251,8 +251,10 @@ button.group-row:focus-visible {
     background: var(--app-bg);
   }
 }
-.vault-nav > :last-child {
-  margin-left: auto;
+/* Lock in the always-visible sub-nav (review M3): a compact pill that keeps the 44px target. */
+.app button.sub-nav-action {
+  padding: 0 var(--space-md);
+  font-size: var(--caption-size);
 }
 
 /* ---- Notices: error ink + icon + title (colour is never the only signal) ---- */

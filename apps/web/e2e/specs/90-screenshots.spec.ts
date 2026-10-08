@@ -248,10 +248,10 @@ test('vault actions (vault-view-action-layout): Edit secrets, Manage vault, navi
     { label: 'GitHub recovery codes', secret: 'a1b2-c3d4' },
   ]);
   await page.getByRole('button', { name: 'Continue' }).click();
-  const lock = page.getByRole('button', { name: 'Lock', exact: true });
-  await expect(lock).toBeVisible();
+  const nav = page.getByRole('button', { name: /^All vaults/ });
+  await expect(nav).toBeVisible();
   await page.waitForTimeout(600);
-  await lock.scrollIntoViewIfNeeded();
+  await nav.scrollIntoViewIfNeeded();
   await page.screenshot({ path: `${dir}/app-vault-actions.png` });
   await page.emulateMedia({ colorScheme: 'dark' });
   await page.waitForTimeout(300);
