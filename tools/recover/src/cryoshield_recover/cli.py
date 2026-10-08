@@ -189,6 +189,7 @@ def _select_network(
         preset = preset_for_chain_id(file_chain_id)
     else:
         preset = NETWORKS[DEFAULT_NETWORK]
+    defaulted = explicit is None and a.chain_id is None and file_chain_id is None
     chain_id = a.chain_id if a.chain_id is not None else file_chain_id
     if file_chain_id is not None:
         selected = preset.chain_id if preset is not None else chain_id
@@ -226,6 +227,7 @@ def _select_network(
             rpcs=list(preset.rpcs),
             timeout=a.timeout,
             verbose=a.verbose,
+            network_defaulted=defaulted,
         ),
         preset,
     )
@@ -366,6 +368,12 @@ def startup_summary(cfg: Config, ui: Console) -> None:
         ui.info("Offline mode: no network connections will be made.")
         return
     ui.info(f"Network: {cfg.network} (chain {cfg.chain_id})")
+    if cfg.network_defaulted and cfg.network != TESTNET:
+        # launch-op-mainnet D5/Q2: testnet-preview vaults did not move to mainnet.
+        ui.info(
+            f"This is the default network. For a vault made during the testnet preview, use --testnet "
+            f"({TESTNET})."
+        )
     contacts = []
     if cfg.use_chain:
         if not cfg.has_registry:

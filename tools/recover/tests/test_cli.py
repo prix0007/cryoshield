@@ -62,7 +62,7 @@ def run_cli(args: list[str], term: Term, keys: list[PhysicalKey] | None = None) 
 def test_defaults_and_overrides() -> None:
     p = cli.build_parser()
     cfg = cli.config_from_args(p.parse_args([]))
-    assert cfg.rp_id == "cryoshield.app" and cfg.chain_id == 11155420 and len(cfg.rpcs) >= 3
+    assert cfg.rp_id == "cryoshield.app" and cfg.chain_id == 10 and len(cfg.rpcs) >= 3  # op-mainnet
     assert len(cfg.arweave_graphql) >= 2 and len(cfg.arweave_gateways) >= 2
     assert all(u.startswith("https://") for u in cfg.rpcs + cfg.arweave_graphql + cfg.arweave_gateways)
     cfg = cli.config_from_args(

@@ -140,6 +140,7 @@ def main(
 ) -> tuple[int, str, str]:
     console, out, err = term(answer, interactive)
     args = [
+        "--testnet",
         "--rpc",
         chain.url,
         "--registries-only",
@@ -298,7 +299,7 @@ def test_list_merges_chain_and_arweave() -> None:
         c.add_vault(VID_WORK, blob_for(VID_WORK, payload.write(WORK)), [LOC_A, LOC_B])
         ar.mirror(blob_for(VID_FAMILY, payload.write(FAMILY)), vault_id=VID_FAMILY, locators=[LOC_A])
         console, out, err = term("")
-        args = ["--rpc", c.url, "--registries-only", "--registry", f"{c.address}@0:v1", "--list"]
+        args = ["--testnet", "--rpc", c.url, "--registries-only", "--registry", f"{c.address}@0:v1", "--list"]
         args += ["--arweave-graphql", ar.graphql_url, "--arweave-gateway", ar.url]
         code = cli.main(
             args, console=console, prf_factory=lambda u: FakePrfSource([PhysicalKey.named("A")], ui=u)
@@ -309,7 +310,7 @@ def test_list_merges_chain_and_arweave() -> None:
 
 def test_list_warns_when_arweave_is_unreachable(two: FakeChain) -> None:
     console, out, err = term("")
-    args = ["--rpc", two.url, "--registries-only", "--registry", f"{two.address}@0:v1", "--list"]
+    args = ["--testnet", "--rpc", two.url, "--registries-only", "--registry", f"{two.address}@0:v1", "--list"]
     args += ["--arweave-graphql", "http://127.0.0.1:9/graphql", "--arweave-gateway", "http://127.0.0.1:9"]
     code = cli.main(
         args, console=console, prf_factory=lambda u: FakePrfSource([PhysicalKey.named("A")], ui=u)
@@ -367,7 +368,16 @@ def test_outdated_copy_is_marked_in_list_and_chooser() -> None:
         ui = RecUI(pick=lambda options: 0)
         run(cfg, ui)
         console, out, err = term("")
-        args = ["--rpc", c.url, "--rpc", dead.url, "--registries-only", "--registry", f"{c.address}@0:v1"]
+        args = [
+            "--testnet",
+            "--rpc",
+            c.url,
+            "--rpc",
+            dead.url,
+            "--registries-only",
+            "--registry",
+            f"{c.address}@0:v1",
+        ]
         code = cli.main(
             [*args, "--no-arweave", "--list"],
             console=console,
