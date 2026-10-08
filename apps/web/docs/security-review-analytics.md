@@ -28,3 +28,16 @@
   landing page to its own origin remains the founder's option.
 - **OPEN (founder, task 3.2):** whether Cloudflare permits self-hosting (D4a). The shipped path is D4b (Cloudflare-hosted
   + SRI), which fails closed on updates.
+
+## Beacon re-reviews
+
+- **2026-10-08, 2026.10.0** (31,679 bytes, `sha384-IJ+SAO…kahIq+`), diffed against 2026.9.1 (Wayback capture,
+  byte-identical to the previous pin). **Pass.** There are no new sinks, storage, endpoints, fingerprinting APIs or
+  payload fields, and the query, fragment and userinfo are still stripped. Changes:
+  - a flat bundle instead of webpack modules;
+  - guarded polyfills for `includes`, `globalThis` and `queueMicrotask`;
+  - finer browser and OS version parsing from the user agent;
+  - a pre-existing `window.__cfBeacon` now overrides `data-cf-beacon`. This has no effect here: we never set it, and
+    CSP blocks inline script and other endpoints.
+
+  Details are in `analytics/beacon.lock.json`. Human security-reviewer sign-off is still pending.
