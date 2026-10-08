@@ -12,7 +12,7 @@ holds. How the design keeps this list short is in [`legal-analysis.md`](legal-an
 
 | # | Where | Data | PD? | Who chose it / who controls it | Retention / control |
 |---|---|---|---|---|---|
-| 1 | Browser (user's device) | PRF outputs, wrap and data keys, plaintext secrets, labels and vault name (in memory only); the WebAuthn credential lives on the security key | Plaintext may contain PD; never leaves the device | The user. CryoShield's code runs there but sends none of it anywhere | PRF buffers wiped after use; open vault cleared on Lock, after 5 min idle and on page hide (spec `vault-web-app` "Secrets in memory only with auto-lock"); no cookies or storage (lint + `test/privacy.test.ts` + E2E sweep) |
+| 1 | Browser (user's device) | PRF outputs, wrap and data keys, plaintext secrets, labels and vault name (in memory only); the WebAuthn credential lives on the security key | Plaintext may contain PD; never leaves the device | The user. CryoShield's code runs there but sends none of it anywhere | PRF buffers wiped after use; open vault cleared on Lock, after 5 min idle and on page hide (spec `vault-web-app` "Secrets in memory only with auto-lock"); no cookies; the only storage is the optional theme preference (see Browser-side device storage); vault data never stored (lint + `test/privacy.test.ts` + E2E sweep) |
 | 2 | Fly.io edge proxy (`cryoshield.app`, `cryoshield-web-dev.fly.dev`) | Client IP, TLS metadata, Host, path, user agent, timestamps | Yes (IP) | The maintainers chose Fly. Fly holds its edge logs; we cannot see or delete them | Fly exposes no edge access logs to customers; internal retention **unpublished (UNVERIFIED)**. `fly logs` keeps container stdout ~7 days (it contains no request data, row 3). Fly Inc. is US-based; machines in Singapore (`sin`). Fly's public privacy policy and DPA terms apply |
 | 3 | Caddy container (our config) | Would see `Fly-Client-IP`, path, user agent | Only if logged | The maintainers (config in this repo) | **No `log` directive, so Caddy writes no access log.** Tested: `apps/web/deploy/test/container.test.ts` sends 100 requests with distinct IPs, user agents and query strings and finds none in the output |
 | 4 | Pimlico bundler/paymaster (Austerlitz Labs Ltd, UK) | Client IP, Origin, user agent, smart-account address (sender), user-operation calldata (ciphertext blob, locators, vaultId), WebAuthn signatures, sponsorship policy ID | Yes (IP linked to the account address) | The maintainers chose Pimlico and hold the API key. Pimlico holds its logs | Pimlico's public terms and privacy policy apply; retention **unstated (UNVERIFIED)**. No separate agreement is sought (OSS, founder 2026-10-08) |
@@ -51,9 +51,13 @@ a secret. `/privacy` "Public and permanent data" lists all of it.
 
 ## Browser-side device storage
 
-None. CryoShield's code sets no cookie and uses no localStorage, sessionStorage, IndexedDB, Cache Storage or service
-worker on any route (`apps/web/legal/storage-inventory.json`, enforced by a build scan of every shipped script and an
-E2E sweep). The Cloudflare beacon (row 8) states it uses no client-side state.
+One optional preference, nothing else. If the visitor picks Light or Dark in the Theme menu (`add-theme-switch`), the
+browser keeps `localStorage["cryoshield-theme"]` = `light` or `dark` on every route; choosing System deletes it, and
+clearing the site's data in the browser removes it. It holds no identifier, is not personal data, and is never sent
+anywhere. Apart from it, CryoShield's code sets no cookie and uses no localStorage, sessionStorage, IndexedDB, Cache
+Storage or service worker on any route (`apps/web/legal/storage-inventory.json`, enforced by a build scan of every
+shipped script, which allows `localStorage` only in the theme script, and an E2E sweep before and after choosing a
+theme). The Cloudflare beacon (row 8) states it uses no client-side state.
 
 ## Sources
 

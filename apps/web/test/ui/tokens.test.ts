@@ -21,9 +21,13 @@ function block(src: string, start: number): string {
 function vars(body: string): Record<string, string> {
   return Object.fromEntries([...body.matchAll(/(--[\w-]+)\s*:\s*([^;]+);/g)].map((m) => [m[1]!, m[2]!.trim()]));
 }
-const light = vars(block(css, css.indexOf(':root')));
-const darkAt = css.indexOf('@media (prefers-color-scheme: dark)');
-const dark = { ...light, ...vars(block(block(css, darkAt), 0)) };
+const light = vars(block(css, css.indexOf(':root {')));
+// add-theme-switch D2: a forced Dark theme and System on a dark device use one palette, declared twice.
+const forcedDarkBody = block(css, css.indexOf(":root[data-theme='dark'] {"));
+const mediaAt = css.indexOf('@media (prefers-color-scheme: dark)');
+const mediaBody = block(css, mediaAt);
+const systemDarkBody = block(mediaBody, mediaBody.indexOf(":root:not([data-theme='light']) {"));
+const dark = { ...light, ...vars(forcedDarkBody) };
 
 function resolve(theme: Record<string, string>, name: string): string {
   let v = theme[name];
@@ -62,6 +66,29 @@ const APP_BOUNDARY: [string, string][] = [
   ['--color-primary', '--app-bg'], // outlined secondary pill border
   ['--color-primary', '--app-surface'],
   ['--color-primary-on-dark', '--surface-black'], // focus ring in the black nav
+  ['--input-border', '--surface-black'], // the theme switch's border in the black nav (add-theme-switch D4)
+];
+/** Page pairs (themed, add-theme-switch D2/D3): the landing's light tiles, sub-nav and footer, and the legal layout. */
+const PAGE_TEXT: [string, string][] = [
+  ['--page-ink', '--page-canvas'],
+  ['--page-ink', '--page-parchment'],
+  ['--page-muted-80', '--page-canvas'],
+  ['--page-muted-80', '--page-parchment'],
+  ['--page-muted-48', '--page-canvas'],
+  ['--page-muted-48', '--page-parchment'],
+  ['--page-link', '--page-canvas'],
+  ['--page-link', '--page-parchment'],
+  ['--on-primary', '--color-primary-fill'], // filled pills and the skip link, both themes
+];
+const PAGE_BOUNDARY: [string, string][] = [
+  ['--page-focus', '--page-canvas'],
+  ['--page-focus', '--page-parchment'],
+  ['--page-input-border', '--page-canvas'],
+  ['--page-input-border', '--page-parchment'],
+  ['--page-link', '--page-canvas'], // outlined secondary pills
+  ['--page-link', '--page-parchment'],
+  ['--color-primary-fill', '--page-canvas'], // filled pill shape against the page
+  ['--color-primary-fill', '--page-parchment'],
 ];
 /** Landing pairs (fixed light/dark tiles, not themed). */
 const LANDING_TEXT: [string, string][] = [
@@ -98,12 +125,100 @@ describe('token contrast (WCAG 2.2 AA)', () => {
     it.each(APP_BOUNDARY)(`${name}: boundary %s on %s >= 3`, (fg, bg) => {
       expect(contrast(resolve(theme, fg), resolve(theme, bg))).toBeGreaterThanOrEqual(3);
     });
+    it.each(PAGE_TEXT)(`${name}: page text %s on %s >= 4.5`, (fg, bg) => {
+      expect(contrast(resolve(theme, fg), resolve(theme, bg))).toBeGreaterThanOrEqual(4.5);
+    });
+    it.each(PAGE_BOUNDARY)(`${name}: page boundary %s on %s >= 3`, (fg, bg) => {
+      expect(contrast(resolve(theme, fg), resolve(theme, bg))).toBeGreaterThanOrEqual(3);
+    });
   }
   it.each(LANDING_TEXT)('landing: text %s on %s >= 4.5', (fg, bg) => {
     expect(contrast(resolve(light, fg), resolve(light, bg))).toBeGreaterThanOrEqual(4.5);
   });
   it.each(LANDING_BOUNDARY)('landing: boundary %s on %s >= 3', (fg, bg) => {
     expect(contrast(resolve(light, fg), resolve(light, bg))).toBeGreaterThanOrEqual(3);
+  });
+});
+
+describe('white on blue (add-theme-switch review H1/M1)', () => {
+  // White text or a white check mark sits on a blue fill in: the copy chip, the key-slot badge, the done stage icon.
+  // The link blue fails with white in dark (3.01:1); the fill blue passes in both themes.
+  it('the link blue is too light for white in dark, the fill blue is AA in both themes', () => {
+    expect(contrast(resolve(dark, '--on-primary'), resolve(dark, '--app-link'))).toBeLessThan(4.5);
+    for (const theme of [light, dark]) expect(contrast(resolve(theme, '--on-primary'), resolve(theme, '--color-primary-fill'))).toBeGreaterThanOrEqual(4.5);
+  });
+  const g = readFileSync(join(__dirname, '..', '..', 'src', 'ui', 'global.css'), 'utf8');
+  const rule = (sel: string) => {
+    const at = g.indexOf(`\n${sel} {`);
+    expect(at, sel).toBeGreaterThan(-1);
+    return block(g, at);
+  };
+  it.each(['.copy-chip', '.key-slot-badge', '.stage-done .stage-icon'])('%s fills with --color-primary-fill, never the link blue', (sel) => {
+    const body = rule(sel);
+    expect(body).toMatch(/background:\s*var\(--color-primary-fill\)/);
+    expect(body).not.toMatch(/var\(--app-link\)/);
+  });
+  it('no rule puts white (--on-primary) text on a --app-link background', () => {
+    for (const m of g.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+      const body = m[2]!;
+      if (/background:\s*var\(--app-link\)/.test(body)) expect(body, m[1]!.trim()).not.toMatch(/var\(--on-primary\)/);
+    }
+  });
+});
+
+describe('/architecture highlighted labels (add-theme-switch review L6)', () => {
+  // .arch-hl-text (--app-link, 12-13px) sits on .arch-hl (--app-accent-soft, translucent) inside a figure on --app-bg.
+  const over = (rgba: string, bg: string) => {
+    const m = rgba.match(/^rgba\((\d+),\s*(\d+),\s*(\d+),\s*([\d.]+)\)$/)!;
+    const a = Number(m[4]);
+    const b = [1, 3, 5].map((i) => parseInt(bg.slice(i, i + 2), 16));
+    return '#' + [1, 2, 3].map((i, k) => Math.round(a * Number(m[i]) + (1 - a) * b[k]!).toString(16).padStart(2, '0')).join('');
+  };
+  it.each([
+    ['light', light],
+    ['dark', dark],
+  ] as const)('%s: link text on the soft accent over the figure is >= 4.5', (_n, theme) => {
+    const bg = over(theme['--app-accent-soft']!, resolve(theme, '--app-bg'));
+    expect(contrast(resolve(theme, '--app-link'), bg)).toBeGreaterThanOrEqual(4.5);
+  });
+});
+
+describe('theme blocks (add-theme-switch D2)', () => {
+  it('the forced-dark block and the system-dark block are identical', () => {
+    expect(mediaAt).toBeGreaterThan(0);
+    expect(vars(systemDarkBody)).toEqual(vars(forcedDarkBody));
+    expect(systemDarkBody.match(/color-scheme:\s*([^;]+);/)?.[1]).toBe('dark');
+    expect(forcedDarkBody.match(/color-scheme:\s*([^;]+);/)?.[1]).toBe('dark');
+  });
+  it('the media query applies only when no explicit Light is chosen; Light forces the light scheme', () => {
+    expect(mediaBody.trim()).toMatch(/^:root:not\(\[data-theme='light'\]\)\s*\{[^{}]*\}$/);
+    expect(block(css, css.indexOf(':root {'))).toMatch(/color-scheme:\s*light dark;/);
+    expect(block(css, css.indexOf(":root[data-theme='light'] {"))).toMatch(/color-scheme:\s*light;/);
+    expect(css.match(/@media \(prefers-color-scheme/g)).toHaveLength(1);
+  });
+  it('page tokens equal the base tokens in light, so light pages look exactly as before', () => {
+    const same: [string, string][] = [
+      ['--page-canvas', '--canvas'],
+      ['--page-parchment', '--canvas-parchment'],
+      ['--page-ink', '--ink'],
+      ['--page-muted-80', '--ink-muted-80'],
+      ['--page-muted-48', '--ink-muted-48'],
+      ['--page-hairline', '--hairline'],
+      ['--page-input-border', '--input-border'],
+      ['--page-link', '--color-primary'],
+      ['--page-focus', '--color-primary-focus'],
+    ];
+    for (const [p, b] of same) expect(resolve(light, p), p).toBe(resolve(light, b));
+    expect(resolve(light, '--color-primary-fill')).toBe('#0066cc');
+    expect(resolve(dark, '--color-primary-fill')).toBe('#0066cc');
+  });
+  it('the dark page palette is the app dark palette (one dark look across the site)', () => {
+    expect(resolve(dark, '--page-canvas')).toBe(resolve(dark, '--app-bg'));
+    expect(resolve(dark, '--page-parchment')).toBe(resolve(dark, '--app-surface'));
+    expect(resolve(dark, '--page-ink')).toBe(resolve(dark, '--app-ink'));
+    expect(resolve(dark, '--page-muted-48')).toBe(resolve(dark, '--app-muted'));
+    expect(resolve(dark, '--page-hairline')).toBe(resolve(dark, '--app-hairline'));
+    expect(resolve(dark, '--page-link')).toBe(resolve(dark, '--app-link'));
   });
 });
 
@@ -123,7 +238,7 @@ describe('token set', () => {
   });
 
   it('has no hue besides the blue accent family and the error ink (greys only)', () => {
-    const allowed = new Set(['--color-primary', '--color-primary-focus', '--color-primary-on-dark', '--error-ink', '--error-ink-on-dark', '--app-link', '--app-focus', '--app-error']);
+    const allowed = new Set(['--color-primary', '--color-primary-focus', '--color-primary-on-dark', '--color-primary-fill', '--error-ink', '--error-ink-on-dark', '--app-link', '--app-focus', '--app-error', '--page-link', '--page-focus']);
     for (const theme of [light, dark]) {
       for (const [k, v] of Object.entries(theme)) {
         const m = v.match(/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i);
@@ -141,7 +256,7 @@ describe('token set', () => {
 });
 
 describe('stylesheets use tokens only', () => {
-  const files = ['src/ui/global.css', 'src/ui/chrome.css', 'src/landing/landing.css'];
+  const files = ['src/ui/global.css', 'src/ui/chrome.css', 'src/landing/landing.css', 'src/legal/legal.css', 'src/support/support.css', 'src/architecture/architecture.css'];
   it.each(files)('%s has no colour literal and no font-weight 500', (f) => {
     const body = readFileSync(join(__dirname, '..', '..', f), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
     expect(body).not.toMatch(/#[0-9a-f]{3,8}\b|rgba?\(|hsla?\(/i);

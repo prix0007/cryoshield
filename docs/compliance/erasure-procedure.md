@@ -13,7 +13,7 @@ by destroying their keys.
 |---|---|---|
 | Privacy-request issues, comments and PR text the person posted | maintainer (or the author) | delete the issue (or redact the comment) on GitHub. Edit history of a public issue stays visible, so deleting the whole issue is preferred when it holds personal data |
 | Private security advisories | maintainer | close once handled; delete at most 3 years after closure (`retention.md`) |
-| Anything in the user's own browser | the user | nothing is stored (no cookies, no storage); closing the tab clears the open vault from memory (it also locks after 5 minutes idle) |
+| Anything in the user's own browser | the user | no cookies; the only stored item is the optional theme choice (`localStorage` `cryoshield-theme` = `light` or `dark`, set only when the user picks it, never sent anywhere), removed by choosing System in the Theme menu or by clearing the site's data in the browser; closing the tab clears the open vault from memory (it also locks after 5 minutes idle) |
 | Downloaded encrypted backup files (`cryoshield-<id>.cryo`) | the user | delete the file. It is ciphertext only, the same bytes as on-chain |
 | Vendor logs (Fly, Pimlico, RPCs, Turbo/ar.io, Cloudflare) | each vendor | under the vendor's own policy. The maintainers cannot see or delete them; the user can ask the vendor directly (links in `subprocessors.md`) |
 | The user's keys (and with them the ability to decrypt) | the user | see §3, crypto-shredding |

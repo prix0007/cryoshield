@@ -1,5 +1,6 @@
-/* /architecture (add-architecture-page D2): the system map on the site's tokens. The --app-* tokens switch with
-   prefers-color-scheme, so the whole page (figures included) has light and dark appearances. No colour literals. */
+/* /architecture (add-architecture-page D2): the system map on the site's tokens. The --app-* tokens follow the theme
+   (System, Light or Dark; add-theme-switch), so the whole page (figures included) has light and dark appearances; the
+   shared sub-nav and footer follow it through the page tokens (landing.css). No colour literals. */
 @import '../ui/tokens.css';
 @import '../ui/chrome.css';
 @import '../landing/landing.css';
@@ -7,7 +8,6 @@
 .arch-page {
   background: var(--app-surface);
   color: var(--app-ink);
-  color-scheme: light dark;
 }
 .arch-page main:focus {
   outline: none;
@@ -145,37 +145,6 @@
 }
 .arch-table td {
   overflow-wrap: anywhere;
-}
-
-/* The shared chrome follows the scheme on this page too. */
-@media (prefers-color-scheme: dark) {
-  .arch-page .sub-nav {
-    background: var(--app-frost);
-    color: var(--app-ink);
-    border-bottom-color: var(--app-hairline);
-  }
-  .arch-page .chip {
-    background: transparent;
-    color: var(--app-ink);
-    border-color: var(--app-muted);
-  }
-  .arch-page .site-footer {
-    background: var(--app-bg);
-    color: var(--app-muted);
-  }
-  .arch-page .footer-heading {
-    color: var(--app-ink);
-  }
-  .arch-page .footer-links a {
-    color: var(--app-muted);
-  }
-  .arch-page .legal {
-    color: var(--app-muted);
-    border-top-color: var(--app-hairline);
-  }
-  .arch-page :focus-visible {
-    outline-color: var(--color-primary-on-dark);
-  }
 }
 
 /* The artifact's secondary SVG labels used fill-opacity .6-.7: too faint for 11-12 px text. 0.8 keeps the hierarchy

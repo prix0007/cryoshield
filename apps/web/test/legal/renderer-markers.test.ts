@@ -9,9 +9,10 @@ import { LEGAL_MARKERS, renderMarkdown } from '../../vite-plugins/legal';
 
 describe('legal renderer markers', () => {
   it('passes the known markers through exactly', () => {
-    expect([...LEGAL_MARKERS].sort()).toEqual(['<!--legal-note-->', '<!--storage-inventory-->']);
+    expect([...LEGAL_MARKERS].sort()).toEqual(['<!--legal-note-->', '<!--storage-inventory-->', '<!--storage-preferences-->']);
     expect(renderMarkdown('a\n\n<!--legal-note-->\n\nb')).toBe('<p>a</p>\n<!--legal-note-->\n<p>b</p>');
     expect(renderMarkdown('<!--storage-inventory-->')).toBe('<!--storage-inventory-->');
+    expect(renderMarkdown('<!--storage-preferences-->')).toBe('<!--storage-preferences-->');
   });
   it('refuses a comment line that smuggles markup', () => {
     expect(() => renderMarkdown('<!-- --><script>alert(1)</script><!-- -->')).toThrow(/marker/);

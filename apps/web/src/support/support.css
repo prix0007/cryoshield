@@ -1,5 +1,6 @@
-/* /support (add-donation): the donation card on the legal layout, which stays light in both themes (fixed --ink and
-   --canvas tokens, like legal.css). Tokens only, no colour literals. */
+/* /support (add-donation): the donation card on the legal layout, which follows the theme through the page tokens
+   (add-theme-switch D2). The QR code keeps its own white quiet zone in both themes, so it always scans. Tokens only,
+   no colour literals. */
 .support-lede {
   font-size: var(--lead-size, 21px);
   line-height: 1.38;

@@ -76,7 +76,7 @@ dd a {
   align-items: center;
   padding: 0 var(--space-lg);
   border-radius: var(--radius-pill);
-  background: var(--color-primary);
+  background: var(--color-primary-fill);
   color: var(--on-primary);
   text-decoration: none;
 }
@@ -104,8 +104,12 @@ dd a {
   padding: 0 var(--space-md);
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: var(--space-lg);
+}
+@media (max-width: 419px) {
+  .global-nav-inner {
+    gap: var(--space-xs);
+  }
 }
 .global-nav a {
   color: var(--body-on-dark);
@@ -128,12 +132,15 @@ dd a {
   outline-offset: -2px;
 }
 .wordmark {
+  /* Links, the theme switch and the narrow-width menu pack to the right. */
+  margin-right: auto;
   gap: var(--space-xs);
   font-size: var(--caption-size);
   font-weight: 600;
   letter-spacing: -0.224px;
 }
 .wordmark-glyph {
+  flex: none; /* never squeezed by the theme switch on 320px screens */
   width: 18px;
   height: 18px;
   fill: var(--body-on-dark);
@@ -231,6 +238,101 @@ dd a {
   }
 }
 
+/* ---- Theme switch (add-theme-switch D4) ----
+   A native <select> in the black global nav, so its colours are fixed (the nav is black in both themes). The select's
+   box is the 44px target; a transparent border with a padding-box background and an inset hairline draws a smaller
+   pill inside it. Static pages render the wrapper `hidden` until src/theme/theme-init.js runs. */
+.theme-switch {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: none;
+  color: var(--body-on-dark);
+}
+/* Until the script runs (static pages), the switch keeps its space but is invisible, unfocusable and out of the
+   accessibility tree: no layout shift when it appears (review L4). */
+.theme-switch[hidden] {
+  display: flex;
+  visibility: hidden;
+}
+.theme-icon {
+  position: absolute;
+  left: 18px;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  margin-top: -7px;
+  pointer-events: none;
+}
+.theme-icon circle {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+}
+.theme-icon path {
+  fill: currentColor;
+}
+/* The chevron: two borders, like the disclosure chevron. */
+.theme-switch::after {
+  content: '';
+  position: absolute;
+  right: 20px;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  margin-top: -5px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg);
+  pointer-events: none;
+}
+.theme-switch select {
+  -webkit-appearance: none;
+  appearance: none;
+  color-scheme: dark; /* the native option list matches the black nav */
+  height: var(--target);
+  min-height: var(--target);
+  min-width: var(--target);
+  margin: 0;
+  padding: 0 32px 0 36px;
+  border: 6px solid transparent;
+  border-radius: var(--radius-pill);
+  background: var(--surface-black);
+  background-clip: padding-box;
+  box-shadow: inset 0 0 0 1px var(--input-border);
+  color: var(--body-on-dark);
+  font: inherit;
+  font-size: var(--caption-size);
+  letter-spacing: -0.224px;
+  line-height: 1;
+  cursor: pointer;
+}
+.theme-switch select:hover {
+  box-shadow: inset 0 0 0 1px var(--body-on-dark);
+}
+.theme-switch select:focus-visible {
+  outline: 2px solid var(--color-primary-on-dark);
+  outline-offset: -2px;
+}
+/* Windows High Contrast / forced colours drops box-shadows: the same inner pill as a 1px system-colour outline drawn
+   inside the transparent border, so the 44px target is kept. */
+@media (forced-colors: active) {
+  .theme-switch select {
+    outline: 1px solid ButtonText;
+    outline-offset: -7px;
+  }
+  .theme-switch select:focus-visible {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+}
+/* No zoom on focus on touch devices (iOS zooms into controls under 16px). */
+@media (pointer: coarse) {
+  .theme-switch select {
+    font-size: 16px;
+  }
+}
+
 /* ---- Frosted sub-nav (52px, sticky with the global nav) ---- */
 .sub-nav {
   height: var(--subnav-h);
@@ -295,8 +397,11 @@ dd a {
 .pill:active {
   transform: scale(0.95);
 }
+/* Filled pills keep Action Blue with white text in both themes (add-theme-switch D2): the link blue of dark surfaces
+   would fail with white text. */
 .pill-primary {
-  background: var(--color-primary);
+  background: var(--color-primary-fill);
+  border-color: var(--color-primary-fill);
   color: var(--on-primary);
 }
 .pill-secondary {
@@ -335,7 +440,8 @@ dd a {
   overflow: hidden;
   isolation: isolate;
   gap: 10px;
-  /* The pill lives in the site footer, which stays parchment in both themes: Action Blue on parchment (AA). */
+  /* The pill lives in the site footer (parchment, or the dark page parchment in the dark theme): the footer maps
+     --color-primary to the page link token, AA on both (add-theme-switch D3). */
   color: var(--color-primary);
   border-color: var(--color-primary);
 }

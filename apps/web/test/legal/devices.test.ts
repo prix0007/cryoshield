@@ -113,7 +113,8 @@ describe('/devices page (built)', () => {
     const h = html('devices/index.html');
     expect(doc('devices/index.html').querySelector('main h1')?.textContent).toBe('Supported devices');
     expect(doc('devices/index.html').title).toBe('YubiKey & Security Keys for Encrypted Backup · CryoShield');
-    expect(h).not.toMatch(/<script/i);
+    // add-theme-switch D1: the one same-origin classic theme script, nothing else.
+    expect([...h.matchAll(/<script\b[^>]*>/gi)].map((m) => m[0])).toEqual([expect.stringMatching(/^<script src="\/assets\/theme-[0-9a-f]{8}\.js">$/)]);
     expect(h).not.toMatch(/cloudflareinsights|cf-beacon/);
     for (const m of h.matchAll(/<(?:link(?! rel="canonical")|img|source|iframe)[^>]+(?:href|src)="([^"]+)"/g)) expect(m[1]).toMatch(/^(\/|data:)/);
     expect(metaCsp('devices/index.html')).toBe(metaCsp('app/index.html'));

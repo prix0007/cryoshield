@@ -12,9 +12,15 @@
     U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
+/* Themes (add-theme-switch D2): System follows the device (the media query below); the theme switch can force Light
+   (`<html data-theme="light">`) or Dark (`data-theme="dark"`). src/theme/theme-init.js sets the attribute before the
+   first paint. `color-scheme` follows the theme so native controls (selects, scrollbars) match. */
 :root {
+  color-scheme: light dark;
+
   /* Accent (the only interactive colour) */
   --color-primary: #0066cc;
+  --color-primary-fill: #0066cc; /* filled pills and the skip link: white text 5.57:1, in both themes */
   --color-primary-focus: #0071e3;
   --color-primary-on-dark: #2997ff;
   --on-primary: #ffffff;
@@ -105,13 +111,68 @@
   --app-error: var(--error-ink);
   --app-input-border: var(--input-border);
   --app-frost: var(--frost-light);
-  --app-accent-soft: rgba(0, 102, 204, 0.1); /* highlighted boxes in the system-design figures */
+  /* Highlighted boxes in the system-design figures. 0.08 (was 0.1) keeps the link-blue label on it >= 4.5:1
+     (4.58:1 over parchment; 4.45:1 at 0.1), add-theme-switch review L6. */
+  --app-accent-soft: rgba(0, 102, 204, 0.08);
   --app-disabled-bg: var(--surface-pearl); /* disabled pills: Ink Muted 48 on Pearl (4.86:1) */
   --app-disabled-ink: var(--ink-muted-48);
+
+  /* Page semantic tokens (light), add-theme-switch D2: the landing page's light tiles, sub-nav and footer, and the
+     legal-layout pages map the base tokens to these inside light surfaces only. Equal to the base tokens here. */
+  --page-canvas: var(--canvas);
+  --page-parchment: var(--canvas-parchment);
+  --page-ink: var(--ink);
+  --page-muted-80: var(--ink-muted-80);
+  --page-muted-48: var(--ink-muted-48);
+  --page-hairline: var(--hairline);
+  --page-hairline-soft: var(--hairline-soft);
+  --page-divider-soft: var(--divider-soft);
+  --page-input-border: var(--input-border);
+  --page-link: var(--color-primary);
+  --page-focus: var(--color-primary-focus);
+  --page-frost: var(--frost-light);
+  --page-pearl: var(--surface-pearl);
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+}
+
+/* Dark theme. The two blocks below MUST stay identical (checked by test/ui/tokens.test.ts): the first is a forced Dark
+   choice, the second is System on a dark device (it never applies once Light is chosen). */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --app-bg: #000000;
+  --app-surface: #1d1d1f;
+  --app-ink: #f5f5f7;
+  --app-muted: #a1a1a6;
+  --app-hairline: #424245;
+  --app-link: #2997ff;
+  --app-focus: #2997ff;
+  --app-error: #ff6961;
+  --app-input-border: #86868b;
+  --app-frost: rgba(29, 29, 31, 0.8);
+  --app-accent-soft: rgba(41, 151, 255, 0.14);
+  --app-disabled-bg: #2a2a2c;
+  --app-disabled-ink: #a1a1a6;
+  --page-canvas: #000000;
+  --page-parchment: #1d1d1f;
+  --page-ink: #f5f5f7;
+  --page-muted-80: #d2d2d7;
+  --page-muted-48: #a1a1a6;
+  --page-hairline: #424245;
+  --page-hairline-soft: rgba(255, 255, 255, 0.14);
+  --page-divider-soft: #2a2a2c;
+  --page-input-border: #86868b;
+  --page-link: #2997ff;
+  --page-focus: #2997ff;
+  --page-frost: rgba(29, 29, 31, 0.8);
+  --page-pearl: #2a2a2c;
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
     --app-bg: #000000;
     --app-surface: #1d1d1f;
     --app-ink: #f5f5f7;
@@ -125,5 +186,18 @@
     --app-accent-soft: rgba(41, 151, 255, 0.14);
     --app-disabled-bg: #2a2a2c;
     --app-disabled-ink: #a1a1a6;
+    --page-canvas: #000000;
+    --page-parchment: #1d1d1f;
+    --page-ink: #f5f5f7;
+    --page-muted-80: #d2d2d7;
+    --page-muted-48: #a1a1a6;
+    --page-hairline: #424245;
+    --page-hairline-soft: rgba(255, 255, 255, 0.14);
+    --page-divider-soft: #2a2a2c;
+    --page-input-border: #86868b;
+    --page-link: #2997ff;
+    --page-focus: #2997ff;
+    --page-frost: rgba(29, 29, 31, 0.8);
+    --page-pearl: #2a2a2c;
   }
 }

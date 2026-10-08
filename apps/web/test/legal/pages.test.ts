@@ -65,6 +65,26 @@ describe('legal pages', () => {
     expect(rows).toEqual(expect.arrayContaining(['/', '/app/', '/privacy', '/terms', '/cookies']));
   });
 
+  it('/cookies and /privacy disclose the theme preference honestly (add-theme-switch D5)', () => {
+    const d = page('cookies/index.html');
+    const prefs = [...d.querySelectorAll('[data-testid="storage-preferences"] tbody tr')].map((r) => [...r.querySelectorAll('th, td')].map((c) => c.textContent?.replace(/\s+/g, ' ').trim()));
+    expect(prefs).toHaveLength(1);
+    expect(prefs[0]![0]).toBe('cryoshield-theme');
+    expect(prefs[0]!.join(' | ')).toMatch(/localStorage/);
+    expect(prefs[0]!.join(' | ')).toMatch(/light.*dark/);
+    expect(prefs[0]!.join(' | ')).toMatch(/only when you choose Light or Dark/i);
+    for (const p of ['cookies/index.html', 'privacy/index.html']) {
+      const html = readFileSync(join(out, p), 'utf8');
+      const t = page(p).body.textContent!.replace(/\s+/g, ' ');
+      expect(t, p).toContain('cryoshield-theme');
+      expect(t, p).toMatch(/never sent anywhere/i);
+      expect(t, p).toMatch(/clear(ing)? this site's data/i);
+      expect(t, p).toMatch(/Choosing System deletes it/);
+      // The old absolute promise is gone everywhere on the page, including the meta description.
+      expect(html, p).not.toMatch(/stores nothing on your device|No page stores anything|nothing on your device/i);
+    }
+  });
+
   it('/terms covers testnet/unaudited, no recovery, permanence, sponsorship, eligibility and the licence', () => {
     const t = page('terms/index.html').body.textContent!.replace(/\s+/g, ' ');
     for (const s of ['test network', 'not been independently audited', 'nobody', 'cannot be removed', 'paused, limited or withdrawn', '18 or over', 'sanctions', 'MIT license', 'Limitation of liability', 'Governing law']) expect(t, s).toMatch(new RegExp(s, 'i'));
@@ -122,10 +142,11 @@ describe('legal pages', () => {
     }
   });
 
-  it('legal pages load no script and no third-party resource, and carry the app CSP', () => {
+  it('legal pages load no script but the theme script, no third-party resource, and carry the app CSP', () => {
     for (const p of LEGAL) {
       const html = readFileSync(join(out, p), 'utf8');
-      expect(html, p).not.toMatch(/<script/i);
+      // add-theme-switch D1: the one same-origin classic theme script, nothing else.
+      expect([...html.matchAll(/<script\b[^>]*>/gi)].map((m) => m[0]), p).toEqual([expect.stringMatching(/^<script src="\/assets\/theme-[0-9a-f]{8}\.js">$/)]);
       for (const m of html.matchAll(/<(?:link(?! rel="canonical")|img|source|iframe)[^>]+(?:href|src)="([^"]+)"/g)) expect(m[1], p).toMatch(/^(\/|data:)/);
       // improve-landing-seo D7: the one absolute href, the canonical link, names the production origin only.
       expect([...html.matchAll(/<link rel="canonical" href="([^"]+)">/g)].map((m) => m[1]), p).toEqual([`https://cryoshield.app/${p.split('/')[0]}`]);

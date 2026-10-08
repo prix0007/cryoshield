@@ -20,7 +20,7 @@ Arweave only). So there is no CryoShield-side database, account, session, log or
 | PRF outputs, wrap keys, data keys | exist only in browser memory during a ceremony and are wiped (`vault-web-app` "Secrets in memory only with auto-lock"; `hardware-key-auth`) |
 | Names, emails, phone numbers, accounts | there are no accounts and no email address (`project-contact`) |
 | Request logs | the static server writes none (tested, `apps/web/deploy/test/container.test.ts`) |
-| Cookies or device storage | none on any route (`storage-inventory.json`, build scan, E2E sweep) |
+| Cookies or device storage | no cookies; one optional preference, the theme (`localStorage` `cryoshield-theme` = `light` or `dark`), saved only when the user picks Light or Dark, cleared with the site's data, never sent anywhere; nothing else on any route (`storage-inventory.json`, build scan, E2E sweep) |
 
 ## 2. The personal data that does exist, and where
 

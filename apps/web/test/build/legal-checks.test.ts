@@ -5,7 +5,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { checkNoPlaceholders, unlistedStorageApis } from '../../scripts/legal-check.mjs';
+import { checkNoPlaceholders, storageApiOutsideAllowedFiles, unlistedStorageApis } from '../../scripts/legal-check.mjs';
 import { readFileSync } from 'node:fs';
 
 describe('no placeholders or project mailboxes in shipped files (adopt-oss-project-defaults 1.1)', () => {
@@ -77,10 +77,37 @@ describe('effective date changes with content (3.5)', () => {
 describe('device-storage inventory guard', () => {
   const inv = JSON.parse(readFileSync(join(__dirname, '..', '..', 'legal', 'storage-inventory.json'), 'utf8'));
   it('flags a bundle that starts using storage the inventory does not list', () => {
-    expect(unlistedStorageApis('x=1;window.localStorage.setItem("a","b");document.cookie="c=d"', inv)).toEqual(['localStorage', 'document.cookie']);
+    expect(unlistedStorageApis('x=1;window.sessionStorage.setItem("a","b");document.cookie="c=d"', inv)).toEqual(['sessionStorage', 'document.cookie']);
+    // localStorage is listed (the theme preference), so only the per-file guard below can catch its misuse.
+    expect(unlistedStorageApis('window.localStorage.setItem("a","b")', inv)).toEqual([]);
   });
-  it('the published inventory lists no storage API and no entries on any route', () => {
-    expect(inv.apis).toEqual([]);
+  it('the published inventory lists one storage API (the theme preference) and no entry a page creates on its own', () => {
+    // add-theme-switch D5: localStorage only, only in the theme script, only when the visitor picks Light or Dark.
+    expect(inv.apis).toEqual(['localStorage']);
+    expect(inv.apiFiles).toEqual({ localStorage: 'theme' });
     for (const r of Object.values(inv.routes) as Record<string, string[]>[]) for (const v of Object.values(r)) expect(v).toEqual([]);
+    expect(inv.preferences).toHaveLength(1);
+    expect(inv.preferences[0]).toMatchObject({ storage: 'localStorage', key: 'cryoshield-theme', values: ['light', 'dark'] });
+  });
+  it('flags a listed API used outside its allowed file (localStorage only in the theme script)', () => {
+    const files = {
+      'assets/theme-0a1b2c3d.js': 'localStorage.getItem("cryoshield-theme")',
+      'assets/index-ab12cd34.js': 'export const x=1',
+    };
+    const referenced = ['assets/theme-0a1b2c3d.js']; // the theme script the pages actually load
+    expect(storageApiOutsideAllowedFiles(files, inv, referenced)).toEqual([]);
+    expect(storageApiOutsideAllowedFiles({ ...files, 'assets/vault-1234abcd.js': 'window.localStorage.setItem("k","v")' }, inv, referenced)).toEqual([
+      'assets/vault-1234abcd.js uses localStorage (allowed only in assets/theme-0a1b2c3d.js)',
+    ]);
+    // A file merely named like the theme asset elsewhere does not count.
+    expect(storageApiOutsideAllowedFiles({ 'assets/x/theme-0a1b2c3d.js.map.js': 'localStorage' }, inv, referenced)).toHaveLength(1);
+    // Review: a second, unreferenced theme-named asset is not allowed, even with a valid-looking name.
+    expect(storageApiOutsideAllowedFiles({ ...files, 'assets/theme-deadbeef.js': 'localStorage.setItem("x","y")' }, inv, referenced)).toEqual([
+      'assets/theme-deadbeef.js uses localStorage (allowed only in assets/theme-0a1b2c3d.js)',
+    ]);
+    // No referenced theme script: nothing may use localStorage.
+    expect(storageApiOutsideAllowedFiles(files, inv, [])).toHaveLength(1);
+    // Unlisted APIs are still flagged by unlistedStorageApis.
+    expect(unlistedStorageApis('sessionStorage.setItem("a","b")', inv)).toEqual(['sessionStorage']);
   });
 });

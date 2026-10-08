@@ -1,6 +1,6 @@
 # Privacy policy
 
-**Effective date:** 2026-10-08
+**Effective date:** 2026-10-08 (revision 3)
 
 <!--legal-note-->
 
@@ -35,6 +35,14 @@ There is no email address.
 - Any account, name, email address or phone number. CryoShield has no accounts.
 
 This also means we **cannot** recover, read, change or hand over your vault, for you or for anyone else.
+
+## On your device
+
+CryoShield sets no cookies. If you pick **Light** or **Dark** in the Theme menu, your browser remembers that one
+choice in its local storage, under the name `cryoshield-theme`, so every page opens in it. It holds only the word
+`light` or `dark`: no identifier and nothing about you or your vault, and it is never sent anywhere. Choosing System
+deletes it, and clearing this site's data in your browser removes it too. Nothing else is stored on your device; the
+[cookie policy](/cookies) lists everything.
 
 ## Data held by third parties
 
@@ -106,7 +114,8 @@ the vault app at `/app/`, and not these legal pages.
 - **What it reads:** the page path (we remove any query string or fragment from the address before it loads), the
   referring page, your browser's user agent, and page-load performance timings. Your IP address passes through
   Cloudflare in transit; Cloudflare says it does not store IP addresses for analytics and derives only a country.
-- **No cookies:** Cloudflare states the beacon sets no cookies and uses no local storage. We set none either.
+- **No cookies:** Cloudflare states the beacon sets no cookies and uses no local storage. We set none either. The
+  optional theme choice (see "On your device") is not part of the analytics and is never sent.
 - **Your choice:** if your browser sends **Global Privacy Control** or **Do Not Track**, the beacon is not loaded at
   all. Blocking `cloudflareinsights.com` has no side effects.
 - **Who and where:** Cloudflare, Inc. acts as our processor under its data processing agreement; data is processed in
@@ -121,8 +130,8 @@ totals only, never shows a group of fewer than 3, and each report is kept for 90
 
 ## Donations
 
-We don't track donations. The [/support](/support) page has no analytics, sets no cookies and stores nothing on your
-device, and we don't link donations to vaults or to visits.
+We don't track donations. The [/support](/support) page has no analytics and sets no cookies. Like every page, it
+stores nothing in your browser except the optional theme choice, and we don't link donations to vaults or to visits.
 
 Ethereum is a public blockchain. If you donate, your sending address, the amount and the time are visible to anyone,
 permanently, and can't be deleted by us or by anyone else. Like anyone, we can see incoming transactions to the
@@ -188,6 +197,8 @@ Your vault is encrypted on your device with AES-256-GCM, using keys derived from
 We will update the effective date at the top whenever this policy changes, and record each change below. The full
 history is public in our [source repository](https://github.com/prix0007/cryoshield/commits/main/apps/web/legal/privacy.md).
 
+- 2026-10-08 (revision 3): new "On your device" section. The site now has a Theme menu (System, Light, Dark); if you
+  pick Light or Dark, your browser remembers that one choice (`cryoshield-theme`). It is never sent anywhere.
 - 2026-10-08: "Public and permanent data" now lists every public item (earlier versions, each key's public signing
   key, the size range, the Arweave upload address) and says that unlocking needs a key **and** its PIN; vault names
   are listed as encrypted; how long an open vault stays in memory; the statistics job that reads only public data;
