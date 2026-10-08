@@ -43,7 +43,7 @@ error message and retry, with no spinner.
 ### Requirement: Unlock and loading feedback
 Unlock and Reload SHALL show the steps "Touch your key", "Finding your vaults" and "Opening" in the same progress view,
 only once the wait has lasted 300 ms; the key prompt itself is never delayed. Lazily loaded parts SHALL show a small
-spinner with their loading text after a 300 ms delay, in a `role="status"` region marked `aria-busy`. "Check another key"
+spinner with their loading text after a 300 ms delay, in a `role="status"` region. "Check another key"
 SHALL show the same unlock steps, and each vault row SHALL show a small spinner while its dates load. Lock SHALL stay
 immediate. Progress and loaders MUST NOT move focus, SHALL announce at most one polite message per step change, and
 under reduced motion SHALL show a static indicator and an instant bar.

@@ -33,7 +33,7 @@ afterEach(() => {
 
 const bar = () => screen.getByRole('progressbar', { name: S.progress.label });
 const states = () =>
-  within(screen.getByRole('list', { name: S.progress.label }))
+  within(screen.getByRole('list', { name: S.progress.steps }))
     .getAllByRole('listitem')
     .map((li) => li.className.replace('stage stage-', ''));
 
@@ -90,7 +90,7 @@ describe('save of an existing vault: five steps, starting with the key', () => {
     const line = document.querySelector('.stage-background')!;
     expect(line).toHaveTextContent(S.progress.background);
     expect(line.querySelector('.spinner')).not.toBeNull();
-    expect(within(screen.getByRole('list', { name: S.progress.label })).queryByText(S.progress.arweave)).toBeNull(); // not a step
+    expect(within(screen.getByRole('list', { name: S.progress.steps })).queryByText(S.progress.arweave)).toBeNull(); // not a step
   });
 });
 
@@ -133,6 +133,40 @@ describe('create: four steps (the keys were touched during setup)', () => {
   });
 });
 
+describe('review M4: the create idle wipe also drops a stopped save progress', () => {
+  it('after a failed save and the idle wipe, the secrets step shows no old progress', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const u = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      vi.spyOn(ops, 'enrollWithPrf').mockImplementation(async (_s, n) => ({ credId: new Uint8Array(48).fill(n), publicKey: ('0x' + 'aa'.repeat(64)) as `0x${string}`, prf: new Uint8Array(32).fill(n) }));
+      vi.spyOn(ops, 'saveNewVault').mockImplementation(async (_s, _k, _i, _sign, onProgress) => {
+        onProgress?.('encrypted');
+        throw new WriteError('SPONSORSHIP_REFUSED');
+      });
+      renderApp();
+      await u.click(screen.getByRole('button', { name: 'Create a new vault' }));
+      await u.click(await screen.findByRole('button', { name: 'Get started' }));
+      await u.click(await screen.findByRole('button', { name: 'Set up key 1' }));
+      await u.click(await screen.findByRole('button', { name: 'Set up key 2' }));
+      await u.click(await screen.findByRole('button', { name: 'Continue' }));
+      await u.type(await screen.findByLabelText('Secret'), 'abandon art');
+      await acknowledge(u);
+      await u.click(screen.getByRole('button', { name: 'Save' }));
+      expect(await screen.findByRole('list', { name: S.progress.steps })).toBeInTheDocument();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5 * 60_000 + 10);
+      });
+      await u.click(await screen.findByRole('button', { name: 'Set up key 1' }));
+      await u.click(await screen.findByRole('button', { name: 'Set up key 2' }));
+      await u.click(await screen.findByRole('button', { name: 'Continue' }));
+      await screen.findByLabelText('Secret');
+      expect(screen.queryByRole('list', { name: S.progress.steps })).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe('unlock: Touch your key -> Finding your vaults -> Opening, only after 300 ms', () => {
   async function start(impl: (deps: { onPhase?: (p: 'finding' | 'opening') => void }) => Promise<unlockMod.UnlockResult>) {
     vi.spyOn(unlockMod, 'unlock').mockImplementation((_p, deps) => impl(deps as never));
@@ -149,6 +183,25 @@ describe('unlock: Touch your key -> Finding your vaults -> Opening, only after 3
     expect(await screen.findByText(S.unlock.notFound)).toBeInTheDocument();
     await new Promise((r) => setTimeout(r, 400));
     expect(screen.queryByRole('progressbar')).toBeNull();
+  });
+
+  it('H1: a retry on the same screen waits 300 ms again (no flash)', async () => {
+    let n = 0;
+    vi.spyOn(unlockMod, 'unlock').mockImplementation(async () => {
+      if (++n === 1) {
+        await new Promise((r) => setTimeout(r, 400));
+        throw new unlockMod.UnlockError('NO_VAULT');
+      }
+      return new Promise(() => undefined);
+    });
+    const u = userEvent.setup();
+    renderApp();
+    await u.click(screen.getByRole('button', { name: 'Unlock my vault' }));
+    await u.click(screen.getByRole('button', { name: 'Unlock with my key' }));
+    expect(await screen.findByRole('progressbar', { name: S.progress.openLabel }, { timeout: 1_000 })).toBeInTheDocument();
+    await u.click(await screen.findByRole('button', { name: S.unlock.tryAgain }));
+    expect(screen.queryByRole('progressbar')).toBeNull();
+    expect(await screen.findByRole('progressbar', { name: S.progress.openLabel }, { timeout: 1_000 })).toBeInTheDocument();
   });
 
   it('after 300 ms: the steps follow the unlock phases; the key prompt is shown at once', async () => {

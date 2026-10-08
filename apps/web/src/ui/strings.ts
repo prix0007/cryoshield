@@ -164,6 +164,7 @@ export const S = {
 
   progress: {
     label: 'Save progress',
+    steps: 'Save steps',
     encrypted: 'Encrypted on this device',
     sponsored: 'Network fee sponsored',
     sent: 'Signed and sent',
@@ -183,6 +184,7 @@ export const S = {
     /** progress-feedback D4: unlock, Reload and Check another key. */
     open: ['Touch your key', 'Finding your vaults', 'Opening'],
     openLabel: 'Opening progress',
+    openSteps: 'Opening steps',
   },
   save: {
     waitingForKey: 'Waiting for your key…',

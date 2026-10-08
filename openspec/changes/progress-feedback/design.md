@@ -13,7 +13,6 @@
   `stage-failed` (an "!" in the error ink), `stage-todo` (the neutral dot).
 - **Announcements:** one polite live region, the visible "Step N of M: <label>" line above the bar, whose text changes
   only when the step changes (the same string as `aria-valuetext`). The reassurance line is visible text, not live, so it never adds an announcement per tick.
-- **Busy:** `aria-busy` on the progress card while a step is in progress.
 - **Focus:** never moved (no autofocus inside the component).
 - `SaveProgress` is replaced by `Progress`; `SAVE_STAGES` stays the source of the stage order.
 
@@ -63,10 +62,24 @@ The /app initial budget had 64 B of headroom after `vault-view-action-layout`. T
 phases and the loaders are founder-requested UX shared by every flow; they cannot be lazy (a save's progress must
 render before the write stack loads).
 
-**Baseline raised by 1 KB (2026-10-08).** Measured gzip on 74fc3c1 → this change: e2e 203,832 → 204,574 B (+742 B),
-production 203,841 → 204,588 B (+747 B). The old cap (203,905 B) is exceeded by about 680 B even after sharing the step
-icon between the list and the background line, so `APP_BASELINE` gains 1,024 B (whole KB, as every earlier entry),
-leaving 341 B of headroom. The +20 KB Motion allowance is unchanged. Recorded in `scripts/verify-build.mjs`.
+**Baseline raised by 1 KB (2026-10-08).** Measured gzip on 08a36fa (vault-view-action-layout after its review) → this
+change after its review: e2e 203,870 → 204,703 B (+833 B), production 203,881 → 204,718 B (+837 B). The old cap
+(203,905 B) is exceeded by about 810 B even after sharing the step icon between the list and the background line, so
+`APP_BASELINE` gains 1,024 B (whole KB, as every earlier entry), leaving 211 B of headroom. The +20 KB Motion
+allowance is unchanged. Recorded in `scripts/verify-build.mjs`.
+
+## D7. ECC review fixes (2026-10-08)
+
+- **H1:** `useAfter` clears its state in the effect cleanup, so it restarts whenever `on` drops or `key` changes: the
+  300 ms anti-flicker delay and the 10 s reassurance wait again on an unlock retry and on a second save on the same
+  mount.
+- **M1:** no `aria-busy` on the progress card or on `Loading` (the progressbar and the step text carry the state).
+- **M2:** the visible step line is `aria-hidden`; a separate polite region carries the same text, empty on
+  "Touch your key" (the key prompt already announces it), so nothing is announced twice.
+- **M4:** the create flow's idle wipe also clears the stopped progress (`saveFailed`, `reached`).
+- **L2:** the step list has its own name ("Save steps" / "Opening steps"), distinct from the bar.
+- **L3:** `finished` is false while failed, so a failure on the last step reads "Stopped at", never "Done".
+- **L5:** a failed progress scrolls into view (`block: 'nearest'`); focus is not moved.
 
 ## Threat / abuse
 

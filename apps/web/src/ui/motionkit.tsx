@@ -198,14 +198,20 @@ export function Spinner() {
   return <span className="spinner" aria-hidden="true" />;
 }
 
-/** True once `on` has held for `ms` (no flicker on short waits); restarts when `key` changes. */
+/**
+ * True once `on` has held for `ms` (no flicker on short waits). Restarts from zero whenever `on` drops or `key`
+ * changes (review H1: the cleanup clears the state, so a second use on the same mount waits again).
+ */
 export function useAfter(on: boolean, ms: number, key: unknown = 0): boolean {
   const [late, setLate] = useState<unknown>(null);
   const token = on ? key : null;
   useEffect(() => {
     if (!on) return;
     const t = setTimeout(() => setLate(() => token), ms);
-    return () => clearTimeout(t);
+    return () => {
+      clearTimeout(t);
+      setLate(null);
+    };
   }, [on, ms, token]);
   return on && late === token;
 }
@@ -214,7 +220,7 @@ export function useAfter(on: boolean, ms: number, key: unknown = 0): boolean {
 export function Loading({ text }: { text: string }) {
   const shown = useAfter(true, 300);
   return (
-    <p className="hint loading" role="status" aria-busy="true">
+    <p className="hint loading" role="status">
       {shown && (
         <>
           <Spinner />
@@ -238,23 +244,32 @@ const icon = (state: StageState) => (
  * progress-feedback D1: the one progress view for every save and wait. `done` counts finished steps and moves only on
  * real callbacks (never a timer); `failed` stops the bar at the step in progress. `extra` is a line under the steps.
  */
-export function Progress({ label, steps, done, failed, extra }: { label: string; steps: readonly string[]; done: number; failed?: boolean | undefined; extra?: ReactNode }) {
+export function Progress({ label, listLabel, steps, done, failed, extra }: { label: string; listLabel: string; steps: readonly string[]; done: number; failed?: boolean | undefined; extra?: ReactNode }) {
   const reduced = useReduced();
   const total = steps.length;
   const at = Math.min(done, total - 1);
-  const finished = done >= total;
+  const finished = done >= total && !failed;
+  // Review L5: a stopped save is shown where the user is looking.
+  const card = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (failed) card.current?.scrollIntoView?.({ block: 'nearest' });
+  }, [failed]);
   const slow = useAfter(!finished && !failed, SLOW_MS, done);
   const text = finished ? S.progress.complete : failed ? S.progress.stopped(steps[at]!) : S.progress.step(at + 1, total, steps[at]!);
   return (
-    <div className="progress card" aria-busy={!finished && !failed}>
-      {/* Visible "Step N of M: …" and the one polite announcement, changing only with the step. */}
-      <p className="progress-text" aria-live="polite">
+    <div className="progress card" ref={card}>
+      {/* Visible "Step N of M: …"; the polite announcement changes only with the step, and stays quiet on "Touch your key",
+          where the key prompt already speaks (review M2). */}
+      <p className="progress-text" aria-hidden="true">
         {text}
+      </p>
+      <p className="sr-only" aria-live="polite">
+        {steps[at] === S.progress.key && !failed ? '' : text}
       </p>
       <div className="progress-track" role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={total} aria-valuenow={Math.min(done, total)} aria-valuetext={text}>
         <m.span className="progress-fill" initial={false} animate={{ scaleX: Math.min(done, total) / total }} transition={{ duration: reduced ? 0 : 0.3 }} />
       </div>
-      <ol className="progress-list" aria-label={label}>
+      <ol className="progress-list" aria-label={listLabel}>
         {steps.map((s, i) => {
           const state: StageState = i < done ? 'done' : i > done ? 'todo' : failed ? 'failed' : 'current';
           return (
@@ -278,7 +293,7 @@ export const PHASE_STEP = { finding: 1, opening: 2 } as const;
 /** Unlock, Reload and Check another key (D4): the open steps, shown only once the wait passes 300 ms. */
 export function OpenProgress({ at }: { at: number | null }) {
   const shown = useAfter(at !== null, 300);
-  return shown ? <Progress label={S.progress.openLabel} steps={S.progress.open} done={at!} /> : null;
+  return shown ? <Progress label={S.progress.openLabel} listLabel={S.progress.openSteps} steps={S.progress.open} done={at!} /> : null;
 }
 
 /**
@@ -294,6 +309,7 @@ export function SaveProgress({ reached, arweave, tap, failed }: { reached: Reado
   return (
     <Progress
       label={S.progress.label}
+      listLabel={S.progress.steps}
       steps={tap ? [S.progress.key, ...steps] : steps}
       done={tap && n > 0 ? n + 1 : n}
       failed={failed}

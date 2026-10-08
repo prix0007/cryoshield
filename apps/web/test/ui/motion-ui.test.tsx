@@ -45,7 +45,7 @@ async function toSave(u: ReturnType<typeof userEvent.setup>) {
   await u.click(screen.getByRole('button', { name: 'Save' }));
 }
 const doneStages = () =>
-  within(screen.getByRole('list', { name: 'Save progress' }))
+  within(screen.getByRole('list', { name: 'Save steps' }))
     .getAllByRole('listitem')
     .filter((li) => li.textContent!.endsWith(': done'))
     .map((li) => li.textContent!.replace(': done', ''));

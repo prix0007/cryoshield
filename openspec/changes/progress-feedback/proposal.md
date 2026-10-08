@@ -24,7 +24,7 @@ parts of the app show plain "Loading…" text.
 - **Loading:** a small CSS spinner, after a short delay, for the lazily loaded parts (vault list and its sheet, the
   vault location panel), for "Check another key" and per row for the vault dates.
 - **Accessibility:** `role="progressbar"` with `aria-valuenow/min/max` and an `aria-valuetext` naming the step; one
-  polite announcement per step change; `aria-busy` on loading regions; focus is never moved; reduced motion gets a
+  polite announcement per step change (none on "Touch your key", which the key prompt announces); `aria-busy` only on the vault-date rows while they load; focus is never moved; reduced motion gets a
   static indicator and an instant bar.
 
 ## Out of scope

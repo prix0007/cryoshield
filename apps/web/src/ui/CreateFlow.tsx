@@ -63,6 +63,8 @@ export function CreateFlow(props: {
     setItems([{ label: '', secret: '' }]);
     setName('');
     setStep('keys');
+    setSaveFailed(false); // review M4: no stopped progress from before the wipe
+    setReached(new Set());
     setEpoch((n) => n + 1);
     setError(S.create.idleReset);
   });

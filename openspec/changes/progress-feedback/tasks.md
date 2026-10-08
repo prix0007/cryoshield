@@ -16,3 +16,10 @@
 
 - [x] 3.1 Unit, E2E, typecheck, lint, `verify-build` (e2e and production; record the bundle numbers and any baseline change, dated, in design D6 and `scripts/verify-build.mjs`) and `openspec validate --all --strict`. Verify: all pass.
   - Result (2026-10-08): unit 1,203/1,203 (87 files); E2E 73 passed, 11 skipped (screenshot specs; the new one run with `SCREENSHOTS=1`); typecheck and lint clean; `openspec validate --all --strict` 34/34. /app initial JS gzip 74fc3c1 -> this change: e2e 203,832 -> 204,574 B (+742 B), production 203,841 -> 204,588 B (+747 B); baseline +1 KB (design D6), headroom 341 B.
+
+## 4. ECC review [fe]
+
+- [x] 4.1 H1: tests first (`progress.test.tsx`: OpenProgress retry and a second save on the same mount; `progress-flows.test.tsx`: unlock Try again waits 300 ms). Then D7 H1. Verify: vitest.
+- [x] 4.2 M1, M2, L2, L3, L5: tests first (`progress.test.tsx`: no aria-busy, quiet live text on Touch your key, list name "Save steps", failure on the last step, scroll on failure). Then D7; E2E selector. Verify: vitest, playwright.
+- [x] 4.3 M4: test first (`progress-flows.test.tsx`: failed save, idle wipe, no old progress). Then D7 M4. Verify: vitest.
+  - Result after review (2026-10-08, on 08a36fa): unit 1,211/1,211 (87 files); E2E 73 passed, 11 skipped; typecheck, lint and `openspec validate --all --strict` (34/34) clean. /app initial JS gzip e2e 204,703 B, production 204,718 B (+833 / +837 B over 08a36fa); cap 204,929 B after the +1 KB baseline (211 B headroom).

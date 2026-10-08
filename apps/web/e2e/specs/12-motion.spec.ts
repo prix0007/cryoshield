@@ -192,7 +192,7 @@ test.describe('reduced motion', () => {
     await keys.use(0);
     await page.getByRole('button', { name: 'Save' }).click();
     await expect(page.getByRole('heading', { name: 'Your vault is saved' })).toBeFocused({ timeout: 60_000 });
-    await expect(page.getByRole('list', { name: 'Save progress' })).toContainText('Confirmed on-chain');
+    await expect(page.getByRole('list', { name: 'Save steps' })).toContainText('Confirmed on-chain');
     await axe(page, 'reduced: done');
     expect(await page.evaluate(() => (window as unknown as { __moved: string[] }).__moved)).toEqual([]);
 
