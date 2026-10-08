@@ -23,6 +23,8 @@ for (const file of [
   'packages/vault-crypto/src/index.ts',
   'contracts/src/VaultRegistry.sol',
   'tools/recover/src/cryoshield_recover/cli.py',
+  'tools/metrics/src/report.ts',
+  'tools/metrics/paymasters.json',
   '.github/workflows/ci.yml',
 ]) {
   test(`code path detected: ${file}`, () => assert.equal(evaluate(pr({ files: [file] })).ok, false));

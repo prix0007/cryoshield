@@ -53,6 +53,7 @@ site; it runs locally or in GitHub Actions against public RPCs and the Arweave g
 
 ### Modified Capabilities
 - `landing-page`: "Same security headers and CSP on every page" now allows a distinct landing CSP (the analytics sources only) and a landing Permissions-Policy without WebAuthn.
+- `web-hosting`: "HTTP security headers" now applies the CSP of each response's own document (landing CSP on `/` and `/index.html`, app CSP everywhere else) and denies WebAuthn in the landing Permissions-Policy, reconciled after `add-fly-hosting` was archived (task 6.4).
 
 ## Impact
 

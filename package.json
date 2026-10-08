@@ -5,7 +5,8 @@
   "packageManager": "pnpm@9.15.5",
   "scripts": {
     "test": "pnpm -r test",
-    "build": "pnpm -r build"
+    "build": "pnpm -r build",
+    "metrics": "pnpm --filter @cryoshield/metrics metrics"
   },
   "pnpm": {
     "onlyBuiltDependencies": []

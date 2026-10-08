@@ -17,6 +17,10 @@
 //   author gate: (gate-external-pr-automation) ecc-review and auto-merge run automatically only for trusted authors
 //           (repository owner, or .github/trusted-authors.json read from the default branch): an exact, unconditional
 //           gate step at a fixed position (authorGate below), and a valid trusted-authors.json.
+//   scheduled read-only: (add-privacy-preserving-analytics 2.2) SCHEDULED_READ_ONLY workflows run only on schedule and
+//           input-less workflow_dispatch, reference no secrets or github.token, hold only contents: read, never persist
+//           checkout credentials, use no environment or custom shell, use only allow-listed actions and run only
+//           allow-listed programs; metrics.yml must upload its report with upload-artifact and retention-days <= 90.
 //   zizmor: SHA pinning (via that hash-pin policy), persist-credentials (artipacked), template injection, etc.
 //
 // CLI: node workflow-policy.mjs [<.github dir>]   (default: .github)  exit 0 ok, 1 violations.
@@ -507,6 +511,8 @@ export function checkWorkflow(file, text) {
     if (hits.length) errors.push(`${file}: secrets must not be referenced in a PR-triggered workflow (${hits.length} reference(s))`);
   }
 
+  if (Object.hasOwn(SCHEDULED_READ_ONLY, name)) errors.push(...checkScheduled(file, name, wf, on));
+
   // Deployments (OpenSpec changes add-continuous-deploy D7, gate-production-deploys, split-dev-and-release-deploys D7).
   const mentionsToken = strings(wf).some((s) => /FLY_API_TOKEN/i.test(s));
   const jobsList = Object.entries(isObj(wf.jobs) ? wf.jobs : {}).filter(([, j]) => isObj(j));
@@ -521,6 +527,93 @@ export function checkWorkflow(file, text) {
   else {
     if (mentionsToken) errors.push(`${file}: FLY_API_TOKEN may only be referenced by the deploy workflows (${DEPLOY_FILES})`);
     if (usesDeployEnv) errors.push(`${file}: environments ${ALL_DEPLOY_ENVIRONMENTS.join(', ')} may only be used by the deploy workflows (${DEPLOY_FILES})`);
+  }
+  return errors;
+}
+
+// Read-only scheduled workflows (add-privacy-preserving-analytics task 2.2; spec product-metrics "Read-only scheduled
+// run"). They are not PR-triggered, so the generic secrets rule would not reach them; this profile does.
+export const SCHEDULED_READ_ONLY = {
+  'metrics.yml': { artifact: { maxRetentionDays: 90 } },
+  'beacon-drift.yml': {},
+};
+const SCHEDULED_TRIGGERS = ['schedule', 'workflow_dispatch'];
+// Allow-lists rather than block-lists (security review LOW-4): the only actions, and the only programs a run step may
+// start (shell grouping braces aside). No command substitution, no inline node code, no pnpm dlx/exec.
+const SCHEDULED_ACTIONS = ['actions/checkout', 'pnpm/action-setup', 'actions/setup-node', 'actions/upload-artifact'];
+const SCHEDULED_PROGRAMS = ['pnpm', 'node', 'echo'];
+// node: only a script file, no flags (no --eval/--import/-r in any form, no script from stdin).
+const NODE_SCRIPT = /^[\w@][\w@./-]*\.(m?js|ts)$/;
+// pnpm: only a locked install, or a named script of a filtered workspace package.
+const PNPM_SCRIPTS = ['metrics', 'test', 'typecheck'];
+function pnpmOk(args) {
+  if (args[0] === 'install') return args.includes('--frozen-lockfile') && args.slice(1).every((a, i, all) => a === '--frozen-lockfile' || a === '--filter' || all[i - 1] === '--filter');
+  return args[0] === '--filter' && /^@cryoshield\/[\w-]+$/.test(args[1] ?? '') && PNPM_SCRIPTS.includes(args[2] ?? '');
+}
+function scheduledRunProblems(run) {
+  const text = withoutComments(run);
+  const problems = [];
+  if (/\$\(|`|<\(|>\(/.test(text)) problems.push('command substitution');
+  if (/[<>]/.test(text)) problems.push('redirection');
+  if (/GITHUB_(ENV|PATH|OUTPUT|STATE)/.test(text)) problems.push('writing GITHUB_ENV/GITHUB_PATH/GITHUB_OUTPUT');
+  for (const raw of text.split(/\n|;|&&|\|\||\||&/)) {
+    const words = raw.trim().split(/\s+/).filter((w) => w && !/^[{}()]$/.test(w));
+    if (words.length === 0) continue;
+    const [cmd, ...args] = words;
+    if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(cmd)) problems.push(`environment assignment '${cmd}'`);
+    else if (!SCHEDULED_PROGRAMS.includes(cmd)) problems.push(`program '${cmd}'`);
+    else if (cmd === 'node' && !(args.length >= 1 && NODE_SCRIPT.test(args[0]))) problems.push(`'node ${args.join(' ')}' (only node <script file>)`);
+    else if (cmd === 'pnpm' && !pnpmOk(args)) problems.push(`'pnpm ${args.join(' ')}' (only pnpm install --frozen-lockfile, or pnpm --filter @cryoshield/<pkg> ${PNPM_SCRIPTS.join('|')})`);
+  }
+  return problems;
+}
+
+// Belt and braces next to the allow-list: commits, pushes, tags, the gh CLI, GitHub API writes, HTTP write verbs, deploys.
+const WRITES_SOMEWHERE = /\bgit\s+(push|commit|tag|remote)\b|(^|[\s;&|(])gh\s+\S|api\.github\.com|-X\s*(POST|PUT|PATCH|DELETE)\b|--request\s+(POST|PUT|PATCH|DELETE)\b|\bfly(ctl)?\s+deploy\b|\bflyctl\b/m;
+
+function checkScheduled(file, name, wf, on) {
+  const profile = SCHEDULED_READ_ONLY[name];
+  const errors = [];
+  const err = (m) => errors.push(`${file}: ${m}`);
+  for (const t of on) if (!SCHEDULED_TRIGGERS.includes(t)) err(`trigger '${t}' is not allowed in ${name} (read-only scheduled workflows run only on ${SCHEDULED_TRIGGERS.join(' and ')})`);
+  const dispatch = isObj(wf.on) ? wf.on.workflow_dispatch : undefined;
+  if (isObj(dispatch) && dispatch.inputs !== undefined) err('workflow_dispatch may not take inputs (nothing user-controlled reaches a scheduled read-only run)');
+  const secretRefs = exprsOf(wf).filter((e) => /\bsecrets\b/i.test(e)).length + strings(wf).filter((x) => x === 'inherit').length;
+  if (secretRefs) err(`secrets must not be referenced in a read-only scheduled workflow, GITHUB_TOKEN included (${secretRefs} reference(s))`);
+  if (exprsOf(wf).some((e) => /\bgithub\s*\.\s*token\b|\bgithub\s*\[\s*['"]token['"]\s*\]/i.test(e))) err('github.token must not be referenced in a read-only scheduled workflow');
+  const uploads = [];
+  // interpreter hijacks, plus package-manager config that reaches node (npm_config_node_options -> NODE_OPTIONS)
+  const envKeys = (env) => [...hijackKeys(env), ...(isObj(env) ? Object.keys(env).filter((k) => /^(npm|pnpm)_config_|^NODE_EXTRA_CA_CERTS$/i.test(k)) : [])];
+  for (const k of envKeys(wf.env)) err(`workflow env must not set ${k}`);
+  for (const [id, job] of Object.entries(isObj(wf.jobs) ? wf.jobs : {})) {
+    if (!isObj(job)) continue;
+    for (const k of envKeys(job.env)) err(`job '${id}': env must not set ${k}`);
+    for (const st of Array.isArray(job.steps) ? job.steps.filter(isObj) : []) for (const k of envKeys(st.env)) err(`job '${id}' step '${st.name ?? st.uses ?? '?'}': env must not set ${k}`);
+    if (job.environment !== undefined) err(`job '${id}' may not use an environment`);
+    if (job.uses !== undefined) err(`job '${id}' may not call a reusable workflow`);
+    const perms = isObj(job.permissions) ? job.permissions : {};
+    for (const [scope, level] of Object.entries(perms)) {
+      if (!(scope === 'contents' && level === 'read')) err(`job '${id}' requests ${scope}: ${level}; a read-only scheduled job may hold only contents: read`);
+    }
+    for (const step of Array.isArray(job.steps) ? job.steps.filter(isObj) : []) {
+      const label = `job '${id}' step '${step.name ?? step.uses ?? '?'}'`;
+      const uses = String(step.uses ?? '');
+      if (/^actions\/checkout@/.test(uses) && (!isObj(step.with) || step.with['persist-credentials'] !== false)) err(`${label}: checkout must set persist-credentials: false`);
+      if (/^actions\/upload-artifact@/.test(uses)) uploads.push([label, step]);
+      if (step.uses !== undefined && !SCHEDULED_ACTIONS.includes(uses.split('@')[0])) err(`${label}: action '${uses.split('@')[0]}' is not allowed in a read-only scheduled workflow (allowed: ${SCHEDULED_ACTIONS.join(', ')})`);
+      if (step.shell !== undefined) err(`${label}: a custom shell is not allowed in a read-only scheduled workflow`);
+      if (step.run !== undefined) {
+        if (WRITES_SOMEWHERE.test(withoutComments(step.run))) err(`${label}: a read-only scheduled workflow must never commit, push, call the GitHub API or deploy`);
+        for (const p of scheduledRunProblems(step.run)) err(`${label}: ${p} is not allowed in a read-only scheduled workflow (programs: ${SCHEDULED_PROGRAMS.join(', ')})`);
+      }
+    }
+  }
+  if (profile.artifact) {
+    if (uploads.length === 0) err(`${name} must upload its report with actions/upload-artifact`);
+    for (const [label, step] of uploads) {
+      const days = Number(isObj(step.with) ? step.with['retention-days'] : NaN);
+      if (!Number.isInteger(days) || days < 1 || days > profile.artifact.maxRetentionDays) err(`${label}: retention-days must be set, at most ${profile.artifact.maxRetentionDays}`);
+    }
   }
   return errors;
 }

@@ -69,6 +69,7 @@ jobs:
       vault-crypto: ${{ steps.filter.outputs.vault-crypto }}
       recover: ${{ steps.filter.outputs.recover }}
       web: ${{ steps.filter.outputs.web }}
+      metrics: ${{ steps.filter.outputs.metrics }}
       openspec: ${{ steps.filter.outputs.openspec }}
       workflows: ${{ steps.filter.outputs.workflows }}
     steps:
@@ -111,6 +112,15 @@ jobs:
               - contracts/src/**
               - contracts/foundry.toml
               - contracts/deployments/**
+            metrics: # tools/metrics (add-privacy-preserving-analytics)
+              - *ci
+              - *pnpm
+              - tools/metrics/**
+              - config/chain-presets.json
+              - contracts/deployments/**
+              - contracts/abi/**
+              - contracts/src/**
+              - contracts/foundry.toml
             openspec:
               - *ci
               - openspec/**
@@ -459,6 +469,41 @@ jobs:
       - name: Playwright E2E (Chromium, anvil stack, virtual authenticators)
         run: pnpm --filter @cryoshield/web test:e2e
 
+  # Product metrics CLI (OpenSpec change add-privacy-preserving-analytics): unit tests on fixtures plus the anvil fixture.
+  metrics:
+    name: metrics
+    needs: changes
+    if: always() && (inputs.full || github.event_name == 'push' || needs.changes.outputs.metrics == 'true')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read # checkout only
+    env:
+      CRYOSHIELD_REQUIRE_FOUNDRY: "1" # the anvil fixture test fails instead of skipping if Foundry is missing
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up pnpm
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0 (version from packageManager)
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          package-manager-cache: false
+      - name: Set up Foundry
+        uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1.9.1
+        with:
+          version: ${{ env.FOUNDRY_VERSION }}
+          cache: false
+      - name: Install (frozen lockfile)
+        run: pnpm install --frozen-lockfile
+      - name: Typecheck
+        run: pnpm --filter @cryoshield/metrics typecheck
+      - name: Unit and anvil fixture tests
+        run: pnpm --filter @cryoshield/metrics test
+
   openspec:
     name: openspec
     needs: changes
@@ -490,7 +535,7 @@ jobs:
   # The only check the main ruleset requires. Skipped jobs count as success; failed or cancelled ones do not.
   ci-ok:
     name: ci-ok
-    needs: [changes, pr-checks, workflow-lint, contracts, vault-crypto, recover, web, web-e2e, openspec]
+    needs: [changes, pr-checks, workflow-lint, contracts, vault-crypto, recover, web, web-e2e, metrics, openspec]
     if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 5

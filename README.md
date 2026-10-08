@@ -17,6 +17,7 @@ Permanent, non-custodial backup for the secrets you can't afford to lose (seed p
 | `contracts` | `VaultRegistry` (Foundry): no admin, no upgrades, append-only locator index | `openspec/specs/vault-registry` |
 | `apps/web` | Static web app: WebAuthn PRF, ERC-4337 passkey smart account, sponsored gas, Arweave mirror | `openspec/specs/vault-web-app` |
 | `tools/recover` | `cryoshield-recover` Python CLI (CTAP2 hmac-secret), an independent second implementation of the format | `openspec/specs/vault-recovery` |
+| `tools/metrics` | Aggregate, identifier-free product metrics from public chain and Arweave data (no tracking, no backend) | `product-metrics` (change `add-privacy-preserving-analytics`) |
 | `docs/reviews` | Security review records | |
 
 The system design (architecture, key derivation, flows, delivery pipeline) is in [`docs/system-design.md`](docs/system-design.md). The product requirements live in `.claude/PRPs/prds/cryoshield.prd.md`.
@@ -54,6 +55,10 @@ pnpm --filter @cryoshield/web verify-build
 
 # recovery tool
 cd tools/recover && uv sync --locked && uv run pytest -q
+
+# product metrics (tools/metrics/README.md)
+pnpm --filter @cryoshield/metrics test
+pnpm metrics --network op-sepolia
 ```
 
 Dependency install scripts are disabled (`pnpm.onlyBuiltDependencies: []`).
@@ -97,7 +102,7 @@ The gate scripts live in `.github/scripts` and are tested with `npm ci --ignore-
 `main` is protected by the ruleset in `.github/rulesets/main.json`. Every change, including the maintainer's, goes through a pull request. The step-by-step flow for agents and humans is in [`CLAUDE.md`](CLAUDE.md) → "Change flow (one PR per change)". AI agents work through a non-admin machine account ([`docs/agent-account.md`](docs/agent-account.md)), so they cannot change protection, environments or secrets.
 
 1. **OpenSpec first.** Propose a change under `openspec/changes/<name>/` before writing code (see above).
-   - A PR that touches code or CI configuration (`apps/`, `packages/`, `contracts/src/`, `tools/recover/src/`, `.github/`, `scripts/`, `.gitleaks.toml`, the root workspace manifests or `contracts/foundry.toml`) must also add or modify something under `openspec/changes/`, archiving included.
+   - A PR that touches code or CI configuration (`apps/`, `packages/`, `contracts/src/`, `tools/recover/src/`, `tools/metrics/`, `.github/`, `scripts/`, `.gitleaks.toml`, the root workspace manifests or `contracts/foundry.toml`) must also add or modify something under `openspec/changes/`, archiving included.
    - The only exception is the `no-spec` label plus a `No-spec justification: <reason>` line in the PR description.
    - Dependabot PRs that touch only dependency manifests are exempt.
 2. **Branch** from `main` with a prefix: `feat/`, `fix/`, `ci/`, `docs/` or `chore/`, for example `feat/shamir-recovery`.

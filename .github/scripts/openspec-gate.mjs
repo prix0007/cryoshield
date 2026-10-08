@@ -12,7 +12,7 @@ import { pathToFileURL } from 'node:url';
 
 // Code paths: product code, plus everything that defines how CI gates and builds it (security review MEDIUM-4:
 // the gate, scanner configs, ruleset and root build config must not change without a spec either).
-export const CODE_PREFIXES = ['apps/', 'packages/', 'contracts/src/', 'tools/recover/src/', '.github/', 'scripts/'];
+export const CODE_PREFIXES = ['apps/', 'packages/', 'contracts/src/', 'tools/recover/src/', 'tools/metrics/', '.github/', 'scripts/'];
 export const CODE_FILES = ['.gitleaks.toml', 'package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', 'contracts/foundry.toml'];
 export const SPEC_PREFIX = 'openspec/changes/';
 export const LABEL = 'no-spec';
@@ -27,6 +27,7 @@ const MANIFEST_PATTERNS = [
   /^(apps|packages)\/[^/]+\/package\.json$/,
   /^\.github\/(openspec-cli|scripts)\/package(-lock)?\.json$/,
   /^tools\/recover\/(pyproject\.toml|uv\.lock)$/,
+  /^tools\/metrics\/package\.json$/,
   /^apps\/web\/deploy\/Dockerfile$/,
   /^\.github\/workflows\/[^/]+\.ya?ml$/,
 ];
