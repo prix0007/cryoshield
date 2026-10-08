@@ -164,14 +164,27 @@ export const S = {
 
   progress: {
     label: 'Save progress',
+    steps: 'Save steps',
     encrypted: 'Encrypted on this device',
     sponsored: 'Network fee sponsored',
     sent: 'Signed and sent',
     confirmed: 'Confirmed on-chain',
+    key: 'Touch your key',
     arweave: 'Backup copy saved to Arweave',
+    background: 'in the background',
     done: 'done',
+    current: 'in progress',
     pending: 'not yet',
     failed: 'not saved yet',
+    stoppedMark: 'stopped',
+    step: (n: number, m: number, label: string) => `Step ${n} of ${m}: ${label}`,
+    stopped: (label: string) => `Stopped at: ${label}`,
+    complete: 'Done',
+    slow: 'Still working… this can take up to a minute.',
+    /** progress-feedback D4: unlock, Reload and Check another key. */
+    open: ['Touch your key', 'Finding your vaults', 'Opening'],
+    openLabel: 'Opening progress',
+    openSteps: 'Opening steps',
   },
   save: {
     waitingForKey: 'Waiting for your key…',

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { decodeVault } from '@cryoshield/vault-crypto';
-import { unlock, UnlockError, type OpenedVault } from '../chain/unlock';
+import { unlock, UnlockError, type OpenedVault, type UnlockPhase } from '../chain/unlock';
 import { KeyError } from '../webauthn';
 import { ChainMismatchError } from '../chain/guard';
 import { RegistryIncompleteError, RegistryUnconfirmedError } from '../chain/registry';
@@ -11,7 +11,7 @@ import { messageFor, type VaultSession } from './operations';
 import { useServices, type Services } from './services';
 import { S } from './strings';
 import { ActionBar } from './chrome';
-import { Btn, CeremonyPresence, StepTransition, useDirection } from './motionkit';
+import { Btn, CeremonyPresence, OpenProgress, PHASE_STEP, StepTransition, useDirection } from './motionkit';
 
 type Phase = 'ready' | 'notFound';
 const PHASE_ORDER: readonly Phase[] = ['ready', 'notFound'];
@@ -42,8 +42,8 @@ export function toSession(m: OpenedVault, locator: `0x${string}`): VaultSession 
 }
 
 /** One key ceremony: every vault it opens, as sessions. Throws UnlockError('NO_VAULT') and key/network errors. */
-export async function unlockSessions(svc: Services): Promise<VaultSession[]> {
-  const r = await unlock({ rpId: svc.rpId }, { reader: svc.reader, ...(svc.credentials ? { credentials: svc.credentials } : {}) });
+export async function unlockSessions(svc: Services, onPhase?: (p: UnlockPhase) => void): Promise<VaultSession[]> {
+  const r = await unlock({ rpId: svc.rpId }, { reader: svc.reader, ...(svc.credentials ? { credentials: svc.credentials } : {}), ...(onPhase ? { onPhase } : {}) });
   const locator = toHex(r.locator);
   return r.matches.map((m) => toSession(m, locator));
 }
@@ -59,6 +59,8 @@ export function unlockMessage(e: unknown): string {
 export function UnlockFlow(props: { onUnlocked: (u: Unlocked) => void; onCreate: () => void; onCancel: () => void }) {
   const svc = useServices();
   const [busy, setBusy] = useState(false);
+  /** progress-feedback D4: the unlock step reached (0 key, 1 finding, 2 opening); null when idle. */
+  const [at, setAt] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notFound, setNotFound] = useState(false);
   const phase: Phase = notFound ? 'notFound' : 'ready';
@@ -66,10 +68,11 @@ export function UnlockFlow(props: { onUnlocked: (u: Unlocked) => void; onCreate:
 
   async function go() {
     setBusy(true);
+    setAt(0);
     setError(null);
     setNotFound(false);
     try {
-      const vaults = await unlockSessions(svc);
+      const vaults = await unlockSessions(svc, (p) => setAt(PHASE_STEP[p]));
       const readable = vaults.filter((v) => !v.payloadError);
       if (readable.length === 0) {
         setError(vaults[0]!.payloadError === 'UNKNOWN_VERSION' ? S.unlock.newerVersion : S.save.nothingSaved);
@@ -84,6 +87,7 @@ export function UnlockFlow(props: { onUnlocked: (u: Unlocked) => void; onCreate:
       else setError(unlockMessage(e));
     } finally {
       setBusy(false);
+      setAt(null);
     }
   }
 
@@ -92,7 +96,8 @@ export function UnlockFlow(props: { onUnlocked: (u: Unlocked) => void; onCreate:
       <h1 id="unlock-title">{S.unlock.title}</h1>
       <StepHeading>{S.unlock.touch}</StepHeading>
       {error && <Notice kind="error">{error}</Notice>}
-      <CeremonyPresence>{busy && <KeyPrompt text={S.unlock.working} />}</CeremonyPresence>
+      <CeremonyPresence>{busy && at === 0 && <KeyPrompt text={S.unlock.working} />}</CeremonyPresence>
+      <OpenProgress at={at} />
       <StepTransition id={phase} dir={dir}>
         {notFound ? (
           <div>

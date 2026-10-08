@@ -37,6 +37,8 @@ export interface OpenedVault {
   registry: RegistryVersion;
 }
 
+export type UnlockPhase = 'finding' | 'opening';
+
 export interface UnlockResult {
   credId: Uint8Array;
   locator: Uint8Array;
@@ -46,9 +48,11 @@ export interface UnlockResult {
 
 export async function unlock(
   params: { rpId: string },
-  deps: { credentials?: CredentialsApi; reader: RegistryReader },
+  /** `onPhase` (progress-feedback D4): UI progress only; it changes nothing that is read, derived or wiped. */
+  deps: { credentials?: CredentialsApi; reader: RegistryReader; onPhase?: (phase: UnlockPhase) => void },
 ): Promise<UnlockResult> {
   const { credId, prf } = await evaluatePrf({ rpId: params.rpId }, deps.credentials);
+  deps.onPhase?.('finding');
   let locator: Uint8Array;
   try {
     locator = deriveLocator(prf);
@@ -63,6 +67,7 @@ export async function unlock(
     wipe(prf);
     throw e;
   }
+  deps.onPhase?.('opening');
   const matches = await matchCandidates(candidates, prf, credId); // wipes prf
   if (matches.length === 0) throw new UnlockError('NO_VAULT');
   const opened = matches.map((m): OpenedVault => {

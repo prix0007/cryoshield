@@ -8,13 +8,13 @@ import { ServicesProvider, testnetName, useServices, type Services } from './ser
 import { S } from './strings';
 import { ActionBar, AppFooter, GlobalNav, SubNav, useFocusClearOfActionBar } from './chrome';
 import { unlockMessage, unlockSessions, UnlockFlow, type Unlocked } from './UnlockFlow';
-import { UnlockError } from '../chain/unlock';
+import { UnlockError, type UnlockPhase } from '../chain/unlock';
 import { keccak256 } from 'viem';
 import { bytesEqual } from '../lib/bytes';
 import { config, isOlder, WRITE_REGISTRY } from '../config';
 import { useAutoLock } from './useAutoLock';
 import { VaultView } from './VaultView';
-import { Btn, MotionRoot, ScreenTransition, useDirection } from './motionkit';
+import { Btn, Loading, MotionRoot, ScreenTransition, useDirection } from './motionkit';
 
 /** vault-list-labels-archive D5: the vault list (and the Edit vault sheet) are one lazily loaded chunk. */
 const loadMenu = () => import('./VaultsMenu');
@@ -114,10 +114,10 @@ function Shell() {
     focusVault.current = false; // consumed by the view that mounted with it
   }, [reloads]);
   /** STALE: one more unlock; the same vault replaces this session (D7: still the only decrypted copy). */
-  const reload = async (current: VaultSession): Promise<string | null> => {
+  const reload = async (current: VaultSession, onPhase?: (p: UnlockPhase) => void): Promise<string | null> => {
     const at = epoch.current;
     try {
-      const fresh = (await unlockSessions(svc)).find((v) => keyOf(v) === keyOf(current));
+      const fresh = (await unlockSessions(svc, onPhase)).find((v) => keyOf(v) === keyOf(current));
       if (epoch.current !== at) return null; // locked meanwhile: drop the result
       if (!fresh) return S.save.reloadMissing;
       if (fresh.version < current.version) return S.save.reloadOlder; // ECC review L1: a lagging RPC, never a rollback
@@ -130,10 +130,10 @@ function Shell() {
       return e instanceof UnlockError ? S.save.reloadMissing : unlockMessage(e);
     }
   };
-  const checkAnother = async (): Promise<string | null> => {
+  const checkAnother = async (onPhase?: (p: UnlockPhase) => void): Promise<string | null> => {
     const at = epoch.current;
     try {
-      const more = await unlockSessions(svc);
+      const more = await unlockSessions(svc, onPhase);
       if (epoch.current !== at) return null; // locked meanwhile: drop the result
       const known = new Set(vaultsRef.current.map(keyOf));
       const fresh = more.filter((v) => !known.has(keyOf(v)));
@@ -234,9 +234,7 @@ function Shell() {
                   onBack={screen.mode === 'menu' && session ? () => setScreen({ name: 'vault', fresh: false }) : lock}
                 />
             ) : (
-              <p className="hint" role="status">
-                {S.vault.loadingList}
-              </p>
+              <Loading text={S.vault.loadingList} />
             )
           )}
           {screen.name === 'vault' && session && (
@@ -252,7 +250,7 @@ function Shell() {
               vaultCount={vaults.length}
               onAllVaults={() => setScreen({ name: 'vaults', mode: 'menu' })}
               onNonce={pinNonce}
-              onReload={() => reload(session)}
+              onReload={(onPhase) => reload(session, onPhase)}
               mirrorItem={mirrorItems[vaultKey(session.registry, session.vaultId)]}
               onMirror={(version, r) => recordMirror(vaultKey(session.registry, session.vaultId), version, r)}
             />

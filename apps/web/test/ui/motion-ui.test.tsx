@@ -45,7 +45,7 @@ async function toSave(u: ReturnType<typeof userEvent.setup>) {
   await u.click(screen.getByRole('button', { name: 'Save' }));
 }
 const doneStages = () =>
-  within(screen.getByRole('list', { name: 'Save progress' }))
+  within(screen.getByRole('list', { name: 'Save steps' }))
     .getAllByRole('listitem')
     .filter((li) => li.textContent!.endsWith(': done'))
     .map((li) => li.textContent!.replace(': done', ''));
@@ -89,7 +89,7 @@ describe('save checklist reflects real write events only (D5)', () => {
     expect(doneStages()).toEqual([]);
   });
 
-  it('done: all four write stages plus the Arweave copy once the mirror reports it', async () => {
+  it('done: all four write stages, plus the background Arweave line once the mirror reports it (progress-feedback D2)', async () => {
     const u = userEvent.setup();
     vi.spyOn(ops, 'saveNewVault').mockImplementation(async (_s, _k, items, _sign, onProgress?: OnProgress) => {
       for (const st of ['encrypted', 'sponsored', 'sent', 'confirmed'] as const) onProgress?.(st);
@@ -98,8 +98,9 @@ describe('save checklist reflects real write events only (D5)', () => {
     await toSave(u);
     await screen.findByRole('heading', { name: 'Your vault is saved' });
     await waitFor(() =>
-      expect(doneStages()).toEqual(['Encrypted on this device', 'Network fee sponsored', 'Signed and sent', 'Confirmed on-chain', 'Backup copy saved to Arweave']),
+      expect(doneStages()).toEqual(['Encrypted on this device', 'Network fee sponsored', 'Signed and sent', 'Confirmed on-chain']),
     );
+    await waitFor(() => expect(document.querySelector('.stage-background.stage-done')).toHaveTextContent('Backup copy saved to Arweave'));
   });
 });
 

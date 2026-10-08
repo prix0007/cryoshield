@@ -2,7 +2,7 @@
  * Motion components for /app (app-motion-ux). Decoration only: nothing here is awaited by a flow, and no secret,
  * PRF output, key or address is ever passed in as an animated value or used as an animation key.
  */
-import { useId, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { AnimatePresence, LazyMotion, MotionConfig, PresenceContext, useIsPresent, useReducedMotion, type HTMLMotionProps } from 'motion/react';
 import * as m from 'motion/react-m';
 import { collapse, countdown, directionOf, HOVER, keyCheck, pop, pulse, shake, slideIn, slotFill, stepVariants, TAP } from './motion';
@@ -191,36 +191,140 @@ export function Disclosure({ label, children }: { label: string; children: React
 
 export type ProgressStage = 'encrypted' | 'sponsored' | 'sent' | 'confirmed' | 'arweave';
 export const SAVE_STAGES: readonly ProgressStage[] = ['encrypted', 'sponsored', 'sent', 'confirmed', 'arweave'];
+const SLOW_MS = 10_000;
+
+/** A small CSS spinner; a static ring under reduced motion (global.css). Decorative. */
+export function Spinner() {
+  return <span className="spinner" aria-hidden="true" />;
+}
 
 /**
- * The save checklist. A stage is checked ONLY when the write path reported it (`reached`); nothing advances on a
- * timer. `arweave` reflects the mirror result ('failed' shows as not saved yet; MirrorLine has the retry).
+ * True once `on` has held for `ms` (no flicker on short waits). Restarts from zero whenever `on` drops or `key`
+ * changes (review H1: the cleanup clears the state, so a second use on the same mount waits again).
  */
-export function SaveProgress({ reached, arweave }: { reached: ReadonlySet<ProgressStage>; arweave?: 'pending' | 'saved' | 'failed' }) {
-  const stages = arweave ? SAVE_STAGES : SAVE_STAGES.filter((s) => s !== 'arweave');
-  const isDone = (s: ProgressStage) => (s === 'arweave' ? arweave === 'saved' : reached.has(s));
-  const latest = [...stages].reverse().find(isDone);
+export function useAfter(on: boolean, ms: number, key: unknown = 0): boolean {
+  const [late, setLate] = useState<unknown>(null);
+  const token = on ? key : null;
+  useEffect(() => {
+    if (!on) return;
+    const t = setTimeout(() => setLate(() => token), ms);
+    return () => {
+      clearTimeout(t);
+      setLate(null);
+    };
+  }, [on, ms, token]);
+  return on && late === token;
+}
+
+/** Lazy-part fallback (progress-feedback D5): nothing for 300 ms, then a spinner and the text. */
+export function Loading({ text }: { text: string }) {
+  const shown = useAfter(true, 300);
   return (
-    <div className="save-progress card">
-      <ol className="progress-list" aria-label={S.progress.label}>
-        {stages.map((s) => {
-          const done = isDone(s);
-          const failed = s === 'arweave' && arweave === 'failed';
+    <p className="hint loading" role="status">
+      {shown && (
+        <>
+          <Spinner />
+          {text}
+        </>
+      )}
+    </p>
+  );
+}
+
+const MARK = { done: 'done', current: 'current', failed: 'stoppedMark', todo: 'pending' } as const;
+type StageState = keyof typeof MARK;
+/** A step's icon: check, spinner, error mark or the neutral dot (decorative; the state is also given as text). */
+const icon = (state: StageState) => (
+  <span className="stage-icon" aria-hidden="true">
+    {state === 'done' ? <Check /> : state === 'current' ? <Spinner /> : state === 'failed' ? '!' : <span className="stage-dot" />}
+  </span>
+);
+
+/**
+ * progress-feedback D1: the one progress view for every save and wait. `done` counts finished steps and moves only on
+ * real callbacks (never a timer); `failed` stops the bar at the step in progress. `extra` is a line under the steps.
+ */
+export function Progress({ label, listLabel, steps, done, failed, extra }: { label: string; listLabel: string; steps: readonly string[]; done: number; failed?: boolean | undefined; extra?: ReactNode }) {
+  const reduced = useReduced();
+  const total = steps.length;
+  const at = Math.min(done, total - 1);
+  const finished = done >= total && !failed;
+  // Review L5: a stopped save is shown where the user is looking.
+  const card = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (failed) card.current?.scrollIntoView?.({ block: 'nearest' });
+  }, [failed]);
+  const slow = useAfter(!finished && !failed, SLOW_MS, done);
+  const text = finished ? S.progress.complete : failed ? S.progress.stopped(steps[at]!) : S.progress.step(at + 1, total, steps[at]!);
+  return (
+    <div className="progress card" ref={card}>
+      {/* Visible "Step N of M: …"; the polite announcement changes only with the step, and stays quiet on "Touch your key",
+          where the key prompt already speaks (review M2). */}
+      <p className="progress-text" aria-hidden="true">
+        {text}
+      </p>
+      <p className="sr-only" aria-live="polite">
+        {steps[at] === S.progress.key && !failed ? '' : text}
+      </p>
+      <div className="progress-track" role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={total} aria-valuenow={Math.min(done, total)} aria-valuetext={text}>
+        <m.span className="progress-fill" initial={false} animate={{ scaleX: Math.min(done, total) / total }} transition={{ duration: reduced ? 0 : 0.3 }} />
+      </div>
+      <ol className="progress-list" aria-label={listLabel}>
+        {steps.map((s, i) => {
+          const state: StageState = i < done ? 'done' : i > done ? 'todo' : failed ? 'failed' : 'current';
           return (
-            <li key={s} className={done ? 'stage stage-done' : failed ? 'stage stage-failed' : 'stage'}>
-              <span className="stage-icon" aria-hidden="true">
-                {done ? <Check /> : <span className="stage-dot" />}
-              </span>
-              <span>{S.progress[s]}</span>
-              <span className="sr-only">: {done ? S.progress.done : failed ? S.progress.failed : S.progress.pending}</span>
+            <li key={s} className={`stage stage-${state}`}>
+              {icon(state)}
+              <span>{s}</span>
+              <span className="sr-only">: {S.progress[MARK[state]]}</span>
             </li>
           );
         })}
       </ol>
-      <p className="sr-only" aria-live="polite">
-        {latest ? `${S.progress[latest]}: ${S.progress.done}` : ''}
-      </p>
+      {extra}
+      {slow && <p className="hint">{S.progress.slow}</p>}
     </div>
+  );
+}
+
+/** Unlock phases as step indexes (D4): "Touch your key" is 0 until the first phase arrives. */
+export const PHASE_STEP = { finding: 1, opening: 2 } as const;
+
+/** Unlock, Reload and Check another key (D4): the open steps, shown only once the wait passes 300 ms. */
+export function OpenProgress({ at }: { at: number | null }) {
+  const shown = useAfter(at !== null, 300);
+  return shown ? <Progress label={S.progress.openLabel} listLabel={S.progress.openSteps} steps={S.progress.open} done={at!} /> : null;
+}
+
+/**
+ * A save's progress (D2): "Touch your key" first when the save starts with a tap (`tap`), then the write path's
+ * stages. The Arweave copy is a background line outside the bar ('failed': not saved yet; MirrorLine has the retry).
+ */
+export function SaveProgress({ reached, arweave, tap, failed }: { reached: ReadonlySet<ProgressStage>; arweave?: 'pending' | 'saved' | 'failed' | undefined; tap?: boolean; failed?: boolean }) {
+  const stages = SAVE_STAGES.slice(0, 4);
+  let n = 0;
+  while (n < 4 && reached.has(stages[n]!)) n++;
+  const steps = stages.map((s) => S.progress[s]);
+  const bg: StageState = arweave === 'saved' ? 'done' : arweave === 'failed' ? 'failed' : 'current';
+  return (
+    <Progress
+      label={S.progress.label}
+      listLabel={S.progress.steps}
+      steps={tap ? [S.progress.key, ...steps] : steps}
+      done={tap && n > 0 ? n + 1 : n}
+      failed={failed}
+      extra={
+        arweave && (
+          <p className={`stage stage-background stage-${bg}`}>
+            {icon(bg)}
+            <span>
+              {S.progress.arweave} <span className="hint">· {S.progress.background}</span>
+            </span>
+            <span className="sr-only">: {bg === 'failed' ? S.progress.failed : S.progress[MARK[bg]]}</span>
+          </p>
+        )
+      }
+    />
   );
 }
 

@@ -410,11 +410,80 @@ button.group-row:focus-visible {
   stroke-linejoin: round;
 }
 
+/* ---- Progress and loaders (progress-feedback D1, D5): CSS only, tokens only ---- */
+.spinner {
+  display: inline-block;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--app-hairline);
+  border-top-color: var(--app-link);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation: none;
+  }
+}
+.progress-track {
+  height: 6px;
+  margin: 0 0 var(--space-sm);
+  border-radius: var(--radius-pill);
+  background: var(--app-hairline);
+  overflow: hidden;
+}
+.progress-fill {
+  display: block;
+  height: 100%;
+  background: var(--app-link);
+  transform: scaleX(0);
+  transform-origin: left center;
+}
+.progress-text {
+  margin: 0 0 var(--space-xs);
+  font-size: var(--caption-size);
+  font-weight: 600;
+}
+.stage.stage-current {
+  color: var(--app-ink);
+  font-weight: 600;
+}
+/* Inside a card (unlock), the progress sits on the card: no nested frame. */
+.card .progress.card {
+  padding: 0;
+  border: 0;
+  background: none;
+}
+.stage-current .stage-icon,
+.stage-background .stage-icon {
+  border: 0;
+}
+.stage.stage-failed {
+  color: var(--app-error);
+  font-weight: 600;
+}
+.stage-failed .stage-icon {
+  border-color: var(--app-error);
+  font-size: var(--caption-size);
+}
+.loading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  min-height: 1lh;
+}
+
 /* ---- Motion pieces (app-motion-ux) ---- */
 .step-motion {
   min-width: 0;
 }
-.save-progress .progress-list {
+.progress .progress-list {
   list-style: none;
   margin: 0;
   padding: 0;
