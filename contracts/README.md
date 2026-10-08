@@ -38,7 +38,7 @@ RPC_URL=http://127.0.0.1:9545 script/deploy.sh anvil   # other port
 
 Public networks are named presets (`script/deploy.sh --list-presets`):
 
-| Preset | Chain ID | RPC env var | Verifier (Blockscout, keyless) |
+| Preset | Chain ID | RPC env var | Verifier (Blockscout, keyless; plus Sourcify) |
 |---|---:|---|---|
 | `op_sepolia` (testnet) | 11155420 | `OP_SEPOLIA_RPC_URL` | `https://testnet-explorer.optimism.io/api/` |
 | `op_mainnet` | 10 | `OP_MAINNET_RPC_URL` | `https://explorer.optimism.io/api/` |
@@ -47,17 +47,23 @@ Public networks are named presets (`script/deploy.sh --list-presets`):
 
 Secrets come from the environment or a Foundry keystore only; never commit them (template: [`.env.example`](.env.example)).
 Raw private keys are refused for every public network, because they would be visible in the process list. Only anvil
-uses an unlocked dev account. Source verification is keyless, on Blockscout (`--verifier blockscout`, URL per preset).
-No explorer API key is needed. Verification runs after `deployments/<chainId>.json` is written. If it fails, the script
-exits 2, keeps the record, and prints a retry command. The script checks the RPC's chain ID before it simulates or
-sends anything.
+uses an unlocked dev account. Source verification is keyless: every new contract is verified on Blockscout
+(`--verifier blockscout`, URL per preset) and on Sourcify (`--verifier sourcify`). No explorer API key is needed.
+Verification runs after `deployments/<chainId>.json` is written. If it fails, the script exits 2, keeps the record, and
+prints the retry commands. The script checks the RPC's chain ID before it simulates or sends anything.
+
+Etherscan is optional and separate: `script/verify-etherscan.sh <chainId>` verifies the contracts of a record through
+the Etherscan V2 API (forge 1.1.0's Etherscan V2 path is broken). The key comes only from `ETHERSCAN_API_KEY` in the
+environment and reaches curl only through stdin (`curl --config -`); key-like arguments are refused. OP Mainnet run,
+guards and the "someone deployed first" response: [`deployments/README.md`](deployments/README.md#op-mainnet-chain-10-writing-10json).
 
 ```sh
 cast wallet import cryoshield-deployer --interactive   # once; key stored encrypted in ~/.foundry/keystores
 set -a; source .env; set +a                   # OP_SEPOLIA_RPC_URL, DEPLOYER_ACCOUNT
 script/deploy.sh op_sepolia                   # simulation only (DEPLOYER_ADDRESS=0x... also works, without a keystore)
-BROADCAST=1 script/deploy.sh op_sepolia       # send, write deployments/11155420.json, verify on Blockscout
+BROADCAST=1 script/deploy.sh op_sepolia       # send, write deployments/11155420.json, verify on Blockscout + Sourcify
 script/test-deploy-args.sh                    # preset/argv tests and parity with config/chain-presets.json (no keys, local anvil)
+script/test-verify-etherscan.sh               # Etherscan V2 script with stub curl/forge (no network, no real key)
 ```
 
 Test ETH: use the Superchain faucet (https://docs.optimism.io/app-developers/tools-sdks/faucets).
@@ -140,7 +146,7 @@ sent one at a time (`--slow`).
 OP_SEPOLIA_RPC_URL=https://sepolia.optimism.io DEPLOYER_ADDRESS=0x33144f681d83527c0a8f364751a5d2f4505d26bf \
   script/deploy.sh op_sepolia
 # OP Sepolia broadcast (prompts for the keystore password; writes and prints deployments/11155420.json; verifies
-# every new contract on Blockscout, exit 2 + retry commands if verification fails)
+# every new contract on Blockscout and Sourcify, exit 2 + retry commands if verification fails)
 OP_SEPOLIA_RPC_URL=https://sepolia.optimism.io DEPLOYER_ACCOUNT=cryoshield-deployer BROADCAST=1 \
   script/deploy.sh op_sepolia
 ```
@@ -151,7 +157,8 @@ OP_SEPOLIA_RPC_URL=https://sepolia.optimism.io DEPLOYER_ACCOUNT=cryoshield-deplo
 CRYOSHIELD_REQUIRE_TRACE=1 forge test --mc CryoShieldSmartWalletErc7562Test -vvv   # ERC-7562 traces (CI; fails without the tracer)
 script/check-storage-layout.sh                          # storage layout == CBSW v1.1
 script/export-abi.sh --check                            # committed ABIs are current
-script/test-deploy-args.sh                              # presets, mainnet gate (fail-closed), argv, no secrets
+script/test-deploy-args.sh                              # presets, mainnet gate (fail-closed), op_mainnet guards, argv, no secrets
+script/test-verify-etherscan.sh                         # Etherscan V2 script: key never in argv, env, files or output
 script/anvil-e2e.sh && git diff --exit-code -- deployments/ abi/   # anvil deploy reproduces the 31337 record
 script/gas-md.sh --check                                # GAS.md == snapshots/*.json (regenerate: script/gas-md.sh)
 script/check-deployments.sh [chainId...]                # NETWORK: public records vs chain (code, block, tx, init code)
