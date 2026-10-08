@@ -360,3 +360,22 @@ test('donation (add-donation): coffee pill at rest and on hover, /support deskto
   await p.getByRole('contentinfo').screenshot({ path: `${dir}/app-footer-coffee.png` });
   await phone.close();
 });
+
+test('theme switch (add-theme-switch 4.3): the switch in light and dark, and pages that gained a dark look', async ({ browser }) => {
+  for (const theme of ['light', 'dark'] as const) {
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, reducedMotion: 'reduce' });
+    await ctx.addInitScript((t) => localStorage.setItem('cryoshield-theme', t), theme);
+    const page = await ctx.newPage();
+    await page.goto('/privacy');
+    await page.screenshot({ path: `${dir}/theme-switch-${theme}.png`, clip: { x: 0, y: 0, width: 1280, height: 100 } });
+    for (const [name, path] of [['landing', LANDING], ['privacy', '/privacy'], ['support', '/support']] as const) {
+      await page.goto(path);
+      await page.waitForTimeout(300);
+      await page.screenshot({ path: `${dir}/theme-${name}-${theme}.png` });
+    }
+    await page.setViewportSize({ width: 320, height: 640 });
+    await page.goto(LANDING);
+    await page.screenshot({ path: `${dir}/theme-switch-phone-${theme}.png`, clip: { x: 0, y: 0, width: 320, height: 100 } });
+    await ctx.close();
+  }
+});
