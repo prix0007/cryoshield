@@ -281,7 +281,7 @@ describe('harden-gas-sponsorship: a VaultRegistry v1 vault opens read-only', () 
     await u.click(screen.getByRole('button', { name: 'Unlock with my key' }));
     await u.click(await screen.findByRole('button', { name: 'Open Unnamed vault' }));
     expect(await screen.findByRole('heading', { name: 'Bitcoin seed' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Edit vault' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Rename or archive' })).toBeNull();
     expect(screen.getByText(/in an older, read-only format/)).toBeInTheDocument();
     expect(screen.getByText(/create a new vault and copy your secrets into it/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Edit secrets' })).toBeNull();
@@ -289,7 +289,7 @@ describe('harden-gas-sponsorship: a VaultRegistry v1 vault opens read-only', () 
     await u.click(screen.getByRole('button', { name: 'Show Bitcoin seed' }));
     expect(screen.getByText('abandon art')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Copy Bitcoin seed' })).toBeInTheDocument();
-    await u.click(screen.getByRole('button', { name: 'Vault details' }));
+    await u.click(screen.getByRole('button', { name: 'Details & backup file' }));
     expect(screen.getByRole('button', { name: /Download/ })).toBeInTheDocument();
     expect(save).not.toHaveBeenCalled();
   });

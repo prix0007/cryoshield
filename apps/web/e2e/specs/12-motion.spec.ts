@@ -140,7 +140,7 @@ test('motion: transitions end at rest, focus follows, the checklist ticks in rea
   await step(page, 'Add a key', 'Add a key');
   await page.getByRole('button', { name: 'Back' }).click();
   await atRest(page);
-  await step(page, 'Vault details', 'Vault details');
+  await step(page, 'Details & backup file', 'Vault details');
   await axe(page, 'details');
 
   // Lock goes home at once and focuses the home heading.

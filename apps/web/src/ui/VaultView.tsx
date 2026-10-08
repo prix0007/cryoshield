@@ -162,6 +162,9 @@ export function VaultView(props: {
       setBusy(false);
     }
   }
+  /** The Manage vault rows (vault-view-action-layout D1): rename/archive and add key only for writable vaults. */
+  const manage: [Mode, string][] = [['meta', S.vault.editVault], ['addKey', S.vault.addKey], ['details', S.vault.details]];
+  if (readOnly) manage.splice(0, 2);
   const left = testnetName(svc.chainId) && s.nonce !== undefined ? savesLeft(Number(s.nonce)) : null;
   const budget = left !== null && left <= BUDGET_HINT_AT ? { text: left === 0 ? S.save.paused : S.save.budget(left), blocked: left === 0 } : undefined;
 
@@ -333,14 +336,31 @@ export function VaultView(props: {
                 ))}
               </AnimatePresence>
             </ul>
-            <ActionBar>
-              {!readOnly && <Btn onClick={() => { setDraft(s.items); setMode('edit'); setStatus(null); setProgress(null); }}>{S.vault.edit}</Btn>}
-              {!readOnly && <Btn className="secondary" onClick={() => { setMode('meta'); setStatus(null); setProgress(null); }}>{S.vault.editVault}</Btn>}
-              {!readOnly && <Btn className="secondary" onClick={() => { setMode('addKey'); setStatus(null); setProgress(null); }}>{S.vault.addKey}</Btn>}
+            {/* vault-view-action-layout D1: primary (floating bar), Manage vault rows, then navigation; DOM = Tab order. */}
+            {!readOnly && (
+              <ActionBar>
+                <Btn className="wide" onClick={() => { setDraft(s.items); setMode('edit'); setStatus(null); setProgress(null); }}>{S.vault.edit}</Btn>
+              </ActionBar>
+            )}
+            {manage.length > 0 && (
+              <>
+                <h2 className="group-heading">{S.vault.manage}</h2>
+                <ul className="group-list">
+                  {manage.map(([to, label]) => (
+                    <li key={to}>
+                      <Btn className="group-row" onClick={() => { setMode(to); if (to !== 'details') setStatus(null); setProgress(null); }}>
+                        {label}
+                        <span className="disclosure-chevron" aria-hidden="true" />
+                      </Btn>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+            <div className="actions vault-nav">
               {props.onAllVaults && <Btn className="secondary" onClick={props.onAllVaults}>{S.vault.allVaults(props.vaultCount ?? 1)}</Btn>}
-              <Btn className="secondary" onClick={() => { setMode('details'); setProgress(null); }}>{S.vault.details}</Btn>
               <Btn className="secondary" onClick={props.onLock}>{S.vault.lock}</Btn>
-            </ActionBar>
+            </div>
             <div className="vault-location-disclosure">
               <Disclosure label={S.location.title}>
                 <ChunkBoundary fallback={<p className="hint">{S.location.failed}</p>}>

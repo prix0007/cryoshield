@@ -119,7 +119,7 @@ describe('vault details (8.6)', () => {
     vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
       clicks.push(this.download);
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Vault details' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Details & backup file' }));
     await act(async () => vi.advanceTimersByTimeAsync(500)); // this file freezes timers: let the step transition finish
     expect(screen.getByTestId('vault-id')).toHaveTextContent(s.vaultId);
     fireEvent.click(screen.getByRole('button', { name: 'Download encrypted backup file' }));

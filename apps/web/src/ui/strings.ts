@@ -124,7 +124,7 @@ export const S = {
     lock: 'Lock',
     edit: 'Edit secrets',
     addKey: 'Add a key',
-    details: 'Vault details',
+    details: 'Details & backup file',
     hidden: '••••••••',
     idleWarning: 'For your safety, your vault will lock in 30 seconds.',
     stillHere: 'I’m still here',
@@ -133,7 +133,8 @@ export const S = {
     surface: 'Your vault',
     loadingList: 'Loading your vaults…',
     allVaults: (n: number) => `All vaults (${n})`,
-    editVault: 'Edit vault',
+    editVault: 'Rename or archive',
+    manage: 'Manage vault',
     archived: 'This vault is archived.',
     unarchive: 'Unarchive',
     legacyReadOnly:

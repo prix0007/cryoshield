@@ -31,7 +31,7 @@ holds. How the design keeps this list short is in [`legal-analysis.md`](legal-an
 Payload v2 (`docs/spec/payload-v2.md`) adds two fields, and both exist **only inside the encrypted blob** (rows 5 and 6
 publish the ciphertext; no new plaintext field, tag, event or log carries them):
 
-- **Vault name** (optional, typed by the user at creation or in "Edit vault"). It may contain personal data. It is
+- **Vault name** (optional, typed by the user at creation or in "Rename or archive"). It may contain personal data. It is
   encrypted client-side with the rest of the payload and is never sent, logged or stored in plaintext: not in a
   credential, the URL, the page title, `errorReference`, analytics (landing page only) or device storage. Older
   versions stay readable to anyone with one of the vault's keys and its PIN, like every older version of the vault.

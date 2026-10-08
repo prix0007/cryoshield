@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test';
 import { APP, LANDING } from '../fixtures/routes';
 import { VirtualKeys } from '../fixtures/webauthn';
 import { ArweaveStub } from '../fixtures/arweave';
-import { unlockWith } from '../fixtures/app';
+import { createVault, unlockWith } from '../fixtures/app';
 
 test.skip(!process.env.SCREENSHOTS, 'set SCREENSHOTS=1 to refresh apps/web/docs/screenshots');
 const dir = 'docs/screenshots';
@@ -233,6 +233,29 @@ test('app motion (app-motion-ux 4.3): mid-transition, key slots, real save check
   await page.getByRole('button', { name: 'Edit secrets' }).click();
   await page.waitForTimeout(90);
   await page.screenshot({ path: `${dir}/motion-reduced-mid-transition.png` });
+});
+
+test('vault actions (vault-view-action-layout): Edit secrets, Manage vault, navigation; light and dark', async ({ page }) => {
+  await page.setViewportSize({ width: 1024, height: 900 });
+  const arweave = new ArweaveStub();
+  await arweave.install(page);
+  await page.goto(APP);
+  const keys = await VirtualKeys.attach(page);
+  await keys.add();
+  await keys.add();
+  await createVault(page, keys, [
+    { label: 'Bitcoin seed', secret: 'abandon ability able about' },
+    { label: 'GitHub recovery codes', secret: 'a1b2-c3d4' },
+  ]);
+  await page.getByRole('button', { name: 'Continue' }).click();
+  const lock = page.getByRole('button', { name: 'Lock', exact: true });
+  await expect(lock).toBeVisible();
+  await page.waitForTimeout(600);
+  await lock.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: `${dir}/app-vault-actions.png` });
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: `${dir}/app-vault-actions-dark.png` });
 });
 
 test('supported devices page (add-supported-devices-page 4.x): light, dark, phone, and the app key error link', async ({ browser }) => {
