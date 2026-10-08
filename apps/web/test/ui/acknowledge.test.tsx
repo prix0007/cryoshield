@@ -92,7 +92,7 @@ describe('permanence + 18+ acknowledgement before the first write', () => {
 describe('testnet warning in the app shell (4.3)', () => {
   it('shows the testnet + unaudited warning on OP Sepolia', () => {
     renderApp({ chainId: 11155420 });
-    expect(screen.getByText(/stored on OP Sepolia \(a test network\).*has not been independently audited/)).toBeInTheDocument();
+    expect(screen.getByText(/stored on OP Sepolia, a test network.*Test networks can be reset.*has not been independently audited/)).toBeInTheDocument();
   });
 
   it('shows no testnet warning on a mainnet chain', () => {
