@@ -134,7 +134,7 @@ All must be **met and recorded** in `docs/reviews/launch-op-mainnet.md` (task 7.
 | G6 | **Audit decision** recorded (D7). | Launch record | Open (Q1) |
 | G7 | **Monitoring ready.** The runbook in `paymaster-policy.md` has the mainnet thresholds and cadence (below), and the founder has the calendar reminders. | Runbook PR merged | Open |
 | G8 | **Rollback ready.** The four current `production-build` values are saved (names and non-secret values, offline); `vA` is proven on OP Sepolia (D3 step 1); the previous-image rollback is known to work. | Launch record | Open |
-| G9 | **Compliance mainnet gate** (`add-privacy-and-compliance`): a `mainnet-gate` review-log entry dated within 30 days, the sanctions decision (its task 7.4), legal pages without unfilled placeholders, and the founder's recorded acceptance of any lawyer item still open (founder question Q3). | `docs/compliance/review-log.md` | Open |
+| G9 | **Compliance mainnet gate** (`add-privacy-and-compliance`, rescoped 2026-10-08 for the OSS project: no company, no lawyer items): a `mainnet-gate` review-log entry dated within 30 days, covering its mainnet checklist (pages name the network truthfully, sanctions stance in `docs/compliance/legal-analysis.md` §6 still current, risk register re-scored and signed). CI enforces it: the PR that adds `10.json` fails without that entry and without this launch record (`.github/scripts/mainnet-gate.mjs`), so the launch record must be merged first (task 1.3). Placeholders are already refused by `verify-build`. | `docs/compliance/review-log.md`, this launch record | Open |
 | G10 | **Copy and build.** The chain-10 build passes `verify-build` (`VERIFY_CHAIN_ID=10`) and every copy test in section 4; the chain-11155420 build still passes. | CI on `vA` | Open |
 | G11 | **Chain facts re-checked on the day** (table above) and the deployer balance ≥ 0.001 ETH. | Launch record | Re-run on the day |
 
@@ -251,7 +251,7 @@ At most five; each has a recommended default that this plan assumes unless the f
 
 1. **Q1. Audit:** launch unaudited with the D6 copy, or fund an audit first? **Default: C**: launch unaudited with prominent "not independently audited" copy, and apply to NLnet by 3 November 2026 for funding of an external audit of the contracts, vault-crypto and the recovery tool after launch.
 2. **Q2. Recovery tool default network:** switch the default to `op-mainnet` at launch? **Default: yes**, with `--testnet` for OP Sepolia and the network always printed.
-3. **Q3. Compliance gate:** block launch on every open `add-privacy-and-compliance` mainnet item (lawyer opinions, DPIA), or on a minimum set? **Default: minimum set**: the `mainnet-gate` review-log entry, the sanctions decision, legal pages with no unfilled placeholders, plus the founder's dated, written acceptance of each lawyer item still open.
+3. **Q3. Compliance gate:** answered by the founder on 2026-10-08 ("It's OSS so no company and legal"): there are no lawyer opinions or DPIA to wait for. The gate is the `mainnet-gate` review-log entry (G9), enforced in CI.
 4. **Q4. Testnet vaults on cryoshield.app:** no migration, a 90-day notice, recovery tool `--testnet`? **Default: yes**, no in-app testnet mode (it would need a second network in the production build).
 5. **Q5. Exposure:** soft launch for 7 days before announcing? **Default: yes**, 7 days with only organic traffic and daily monitoring; chain rollback stays available until real users arrive.
 

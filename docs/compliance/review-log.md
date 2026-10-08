@@ -66,6 +66,13 @@ opening never depends on sponsorship; Fly in Singapore; GitHub-only contact; ope
 and owned; sign-off pending); `security.txt` `Expires` 2027-09-30 (> 90 days away). Tabletop run
 ([`tabletop-2026-10-08.md`](tabletop-2026-10-08.md)); gaps G2–G6 are proposed issues for the maintainer.
 
+**CI change review (task 9.2).** `.github/scripts/mainnet-gate.mjs` reads only repository files and the PR's
+added-file list; it uses no secret, token or network. It runs in `pr-checks` (`contents: read`), with PR data reaching
+it only as a file produced by `git diff`. "Mainnet" is fail-closed: any chain id that is not a local or testnet preset
+counts, and an unknown id fails. A parity test ties the allow-list to `contracts/script/deploy.sh`. Gate scripts
+390/390 tests, `workflow-policy.mjs` OK. Residual: only *added* records are gated; editing an existing mainnet record
+is reviewed through the normal PR flow.
+
 **Next review due:** by 2027-04-08, or at the `mainnet-gate`, whichever comes first.
 
 **Maintainer sign-off:** ______________________ (date: __________)

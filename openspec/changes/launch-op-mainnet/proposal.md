@@ -30,7 +30,7 @@ This change is the single plan: what must be true before launch (go/no-go), the 
 - An external audit itself. This change records the decision (design D7, founder question Q1); funding or running an audit is separate.
 - Arbitrum One or any other chain.
 - Changing the vault format, the crypto or the test vectors (none change).
-- The legal work owned by `add-privacy-and-compliance` (lawyer opinions, entity details). This change only gates on its mainnet items (design → Go/no-go G9).
+- The compliance records owned by `add-privacy-and-compliance` (rescoped 2026-10-08 to the OSS project: no entity, no lawyer). This change only gates on its `mainnet-gate` review (design → Go/no-go G9), which CI enforces on the `10.json` PR.
 
 ### Runtime dependencies
 
