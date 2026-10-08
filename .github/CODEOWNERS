@@ -9,6 +9,7 @@
 /.github/             @prix0007
 /.gitleaks.toml       @prix0007
 /contracts/src/       @prix0007
+/contracts/deployments/ @prix0007
 /packages/vault-crypto/ @prix0007
 /tools/recover/src/   @prix0007
 /openspec/            @prix0007

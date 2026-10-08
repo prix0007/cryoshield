@@ -54,7 +54,7 @@ for spec in "op_mainnet 10 OP_MAINNET_RPC_URL https://explorer.optimism.io/api/"
   "arbitrum_sepolia 421614 ARBITRUM_SEPOLIA_RPC_URL https://arbitrum-sepolia.blockscout.com/api/" \
   "arbitrum_one 42161 ARBITRUM_ONE_RPC_URL https://arbitrum.blockscout.com/api/"; do
   set -- $spec
-  out="$(plan BROADCAST=1 DEPLOYER_ACCOUNT=a RP_IDS=cryoshield.app CRYOSHIELD_MAINNET_GATE=approved "$3=http://rpc.invalid" "$DEPLOY" "$1" 2>&1)"; rc=$?
+  out="$(plan BROADCAST=1 DEPLOYER_ACCOUNT=a RP_IDS=cryoshield.app CRYOSHIELD_MAINNET_GATE="approved:$2" "$3=http://rpc.invalid" "$DEPLOY" "$1" 2>&1)"; rc=$?
   check "$1 plan succeeds" test "$rc" -eq 0
   check "$1 chainId=$2" grep -q "chainId=$2" <<<"$out"
   check "$1 verifier blockscout $4" grep -q -- "verify-args: --verifier blockscout --verifier-url $4$" <<<"$out"
@@ -75,8 +75,8 @@ out="$(plan BROADCAST=1 DEPLOYER_ACCOUNT=a OP_MAINNET_RPC_URL=x "$DEPLOY" op_mai
 check "op_mainnet broadcast refused without the gate" test "$rc" -ne 0
 check "op_mainnet gate message" grep -q "CRYOSHIELD_MAINNET_GATE" <<<"$out"
 # Mainnet gate is fail-closed (security review C9): every preset that is not local/testnet needs the gate to broadcast.
-for spec in "op_sepolia OP_SEPOLIA_RPC_URL allow" "arbitrum_sepolia ARBITRUM_SEPOLIA_RPC_URL allow" \
-  "op_mainnet OP_MAINNET_RPC_URL gate" "arbitrum_one ARBITRUM_ONE_RPC_URL gate"; do
+for spec in "op_sepolia OP_SEPOLIA_RPC_URL allow 11155420" "arbitrum_sepolia ARBITRUM_SEPOLIA_RPC_URL allow 421614" \
+  "op_mainnet OP_MAINNET_RPC_URL gate 10" "arbitrum_one ARBITRUM_ONE_RPC_URL gate 42161"; do
   set -- $spec
   out="$(plan BROADCAST=1 DEPLOYER_ACCOUNT=a RP_IDS=cryoshield.app "$2=http://rpc.invalid" "$DEPLOY" "$1" 2>&1)"; rc=$?
   if [[ "$3" == "allow" ]]; then
@@ -84,10 +84,16 @@ for spec in "op_sepolia OP_SEPOLIA_RPC_URL allow" "arbitrum_sepolia ARBITRUM_SEP
   else
     check "$1 broadcast refused without the mainnet gate" test "$rc" -ne 0
     check "$1 refusal names CRYOSHIELD_MAINNET_GATE" grep -q "CRYOSHIELD_MAINNET_GATE" <<<"$out"
-    out="$(plan BROADCAST=1 DEPLOYER_ACCOUNT=a RP_IDS=cryoshield.app CRYOSHIELD_MAINNET_GATE=approved "$2=http://rpc.invalid" "$DEPLOY" "$1" 2>&1)"; rc=$?
-    check "$1 broadcast plan allowed with the gate approved" test "$rc" -eq 0
-    out="$(plan BROADCAST=1 DEPLOYER_ACCOUNT=a RP_IDS=cryoshield.app CRYOSHIELD_MAINNET_GATE=yes "$2=http://rpc.invalid" "$DEPLOY" "$1" 2>&1)"; rc=$?
-    check "$1 gate accepts only the exact value 'approved'" test "$rc" -ne 0
+    out="$(plan BROADCAST=1 DEPLOYER_ACCOUNT=a RP_IDS=cryoshield.app CRYOSHIELD_MAINNET_GATE="approved:$4" "$2=http://rpc.invalid" "$DEPLOY" "$1" 2>&1)"; rc=$?
+    check "$1 broadcast plan allowed with approved:$4" test "$rc" -eq 0
+    for wrong in approved yes "approved:1" "approved:$4x" "approved: $4"; do
+      out="$(plan BROADCAST=1 DEPLOYER_ACCOUNT=a RP_IDS=cryoshield.app CRYOSHIELD_MAINNET_GATE="$wrong" "$2=http://rpc.invalid" "$DEPLOY" "$1" 2>&1)"; rc=$?
+      check "$1 gate refuses '$wrong' (only approved:$4)" test "$rc" -ne 0
+    done
+    # An approval for the OTHER mainnet must not open this one.
+    other=10; [[ "$4" == 10 ]] && other=42161
+    out="$(plan BROADCAST=1 DEPLOYER_ACCOUNT=a RP_IDS=cryoshield.app CRYOSHIELD_MAINNET_GATE="approved:$other" "$2=http://rpc.invalid" "$DEPLOY" "$1" 2>&1)"; rc=$?
+    check "$1 gate refuses another chain's approval (approved:$other)" test "$rc" -ne 0
   fi
 done
 # Every preset in config/chain-presets.json is classified; the default testnet is a testnet; non-testnets are gated.

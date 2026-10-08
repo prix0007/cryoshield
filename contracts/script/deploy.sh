@@ -25,8 +25,9 @@
 #   RP_IDS               WebAuthn RP IDs to deploy wallet pairs for (comma or space separated). Defaults:
 #                        anvil "localhost cryoshield.app"; op_sepolia "cryoshield.app cryoshield-web-dev.fly.dev";
 #                        op_mainnet "cryoshield.app"; other presets: required.
-#   CRYOSHIELD_MAINNET_GATE=approved   required to BROADCAST to any mainnet preset (kind != local/testnet; e.g.
-#                        op_mainnet, arbitrum_one). OpenSpec harden-gas-sponsorship task 8.1. Fail-closed.
+#   CRYOSHIELD_MAINNET_GATE=approved:<chainId>   required to BROADCAST to any mainnet preset (kind != local/testnet;
+#                        e.g. approved:10 for op_mainnet, approved:42161 for arbitrum_one). Task 8.1. Fail-closed.
+#                        An accident guard against broadcasting to a mainnet by mistake, NOT access control.
 #   DEPLOY_PLAN_ONLY=1   print the resolved preset, RP IDs and forge args, then exit before any RPC call (tests)
 # Anvil overrides: RPC_URL, ANVIL_SENDER (default: anvil account #0, sent via --unlocked; no key involved).
 #
@@ -139,8 +140,10 @@ else
   if [[ "$DO_BROADCAST" == "1" ]]; then
     [[ -n "${DEPLOYER_ACCOUNT:-}" ]] || die "BROADCAST=1 requires DEPLOYER_ACCOUNT (a Foundry keystore name)"
     # Fail-closed: only local and testnet presets broadcast without the gate.
-    if [[ "${KIND:-}" != "testnet" && "${KIND:-}" != "local" && "${CRYOSHIELD_MAINNET_GATE:-}" != "approved" ]]; then
-      die "$NETWORK (chain $EXPECTED_CHAIN_ID, kind ${KIND:-unset}) broadcast is gated (harden-gas-sponsorship task 8.1): set CRYOSHIELD_MAINNET_GATE=approved only after the recorded founder approval"
+    # An accident guard, not access control: anyone holding the keystore can set the variable. It is bound to the
+    # chain ID so an approval for one mainnet can never be reused for another.
+    if [[ "${KIND:-}" != "testnet" && "${KIND:-}" != "local" && "${CRYOSHIELD_MAINNET_GATE:-}" != "approved:$EXPECTED_CHAIN_ID" ]]; then
+      die "$NETWORK (chain $EXPECTED_CHAIN_ID, kind ${KIND:-unset}) broadcast is gated (harden-gas-sponsorship task 8.1): set CRYOSHIELD_MAINNET_GATE=approved:$EXPECTED_CHAIN_ID only after the recorded founder approval"
     fi
     args+=(--account "$DEPLOYER_ACCOUNT" --broadcast)
     # Keyless Blockscout verification. It runs as a separate step after the deployment record is written, so a

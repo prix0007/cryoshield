@@ -208,7 +208,12 @@ test('ci.yml: `full` forces every area job on; every area job checks out the cal
   assert.equal(wf.on.workflow_call.inputs.full.type, 'boolean');
   // production runs AT the tag, so its own commit is the tagged one; a ref input is not needed (ECC HIGH, CodeQL)
   assert.deepEqual(Object.keys(wf.on.workflow_call.inputs), ['full']);
-  const forced = Object.entries(wf.jobs).filter(([id]) => !['changes', 'pr-checks', 'ci-ok'].includes(id));
+  // deployments-onchain is the one deliberate exception: a network check (public RPCs) that runs only on PRs touching
+  // contracts/deployments/**, so push and deploy CI never depend on a third-party RPC (deployments-check.yml re-checks
+  // weekly). It must stay PR-only and path-filtered.
+  assert.equal(String(wf.jobs['deployments-onchain'].if), "github.event_name == 'pull_request' && needs.changes.outputs.deployments == 'true'");
+  assert.ok(wf.jobs['ci-ok'].needs.includes('deployments-onchain'));
+  const forced = Object.entries(wf.jobs).filter(([id]) => !['changes', 'pr-checks', 'ci-ok', 'deployments-onchain'].includes(id));
   assert.ok(forced.length >= 7);
   for (const [id, job] of forced) {
     assert.match(String(job.if), /inputs\.full \|\|/, id);

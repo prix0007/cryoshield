@@ -47,3 +47,33 @@ jobs:
         run: script/test-check-deployments.sh
         env:
           CRYOSHIELD_NETWORK_TESTS: "1"
+
+  # The repository's only job with a write scope (workflow-policy WRITE_EXCEPTIONS, checkWriteException): when the
+  # scheduled check fails, open ONE tracking issue (or comment on it if already open) so the failure is not missed.
+  # issues: write is needed for exactly that; there is no checkout and no third-party action, only gh with this
+  # job's own short-lived token, and the workflow cannot be triggered by a pull request.
+  report-failure:
+    name: report-failure
+    needs: deployments-check
+    if: failure()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      issues: write # open or comment on the one tracking issue when the check fails (WRITE_EXCEPTIONS)
+    steps:
+      - name: Open or update the tracking issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title="Deployment records do not match the chain (deployments-check)"
+          body="The on-chain deployment record check failed: ${RUN_URL}
+          See contracts/script/check-deployments.sh. Do not edit a record to make it pass: find out why it differs."
+          num="$(gh issue list --state open --search "\"${title}\" in:title" --json number,title \
+            --jq "map(select(.title == \"${title}\"))[0].number // empty")"
+          if [ -n "$num" ]; then
+            gh issue comment "$num" --body "$body"
+          else
+            gh issue create --title "$title" --body "$body"
+          fi

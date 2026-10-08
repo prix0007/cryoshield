@@ -127,7 +127,13 @@ On OP Sepolia it verifies the existing v1 (bytecode + record) and never redeploy
 the `v1` Foundry profile so its bytecode (and CREATE2 address `0xB43f…9e44`) stays byte-identical to the deployed one.
 Broadcasts to any mainnet preset (every preset whose `kind` in `deploy.sh` is not `local` or `testnet`, e.g.
 `op_mainnet` and `arbitrum_one`; fail-closed for presets without a kind) additionally require
-`CRYOSHIELD_MAINNET_GATE=approved` (task 8.1, founder approval). Transactions are sent one at a time (`--slow`).
+`CRYOSHIELD_MAINNET_GATE=approved:<chainId>` (for example `approved:10`; task 8.1, founder approval). Transactions are
+sent one at a time (`--slow`).
+
+> **The mainnet gate is an accident guard, not access control.** It stops a mistyped preset or a copied command from
+> broadcasting to a mainnet, and binding it to the chain ID stops an approval for one mainnet from opening another.
+> Anyone who holds the deployer keystore and its password can set the variable: protecting that keystore is the real
+> control, and the founder's recorded approval (task 8.1) is the process control.
 
 ```sh
 # OP Sepolia dry run (no keys, nothing sent)
@@ -152,7 +158,14 @@ script/check-deployments.sh [chainId...]                # NETWORK: public record
 CRYOSHIELD_NETWORK_TESTS=1 script/test-check-deployments.sh   # NETWORK: the checker also rejects tampered records
 ```
 
-All but the two NETWORK checks run in the CI `contracts` job. The NETWORK checks run weekly and on demand in
-`.github/workflows/deployments-check.yml` (public RPCs only, no secrets). `test/DeployV2.t.sol` pins the predicted
+All but the two NETWORK checks run in the CI `contracts` job (the offline `check-deployments.sh --offline`
+completeness check and the offline part of the self-test run there too). The NETWORK checks run:
+- on every PR that changes `contracts/deployments/**`, `check-deployments.sh` or `deploy.sh` (CI job
+  `deployments-onchain`, part of `ci-ok`; public RPCs, no secrets);
+- weekly and on demand in `.github/workflows/deployments-check.yml`. When that run fails, its `report-failure` job opens
+  (or comments on) one tracking issue; it is the repository's only job with a write scope (`issues: write`).
+
+> **Schedule caveat:** GitHub disables scheduled workflows after 60 days without repository activity. If the repository
+> goes quiet, re-enable "Deployments check" in the Actions tab (or run it by hand) so the weekly check keeps running. `test/DeployV2.t.sol` pins the predicted
 CREATE2 addresses to the live OP Sepolia record, so any change to `src/`, the compiler settings or the remappings
 fails `forge test`.
