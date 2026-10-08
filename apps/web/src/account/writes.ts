@@ -24,7 +24,7 @@ import {
   type SmartAccount,
 } from 'viem/account-abstraction';
 import { createPimlicoClient } from 'permissionless/clients/pimlico';
-import { config } from '../config';
+import { config, WRITE_REGISTRY } from '../config';
 import { deriveVaultIdV2, registryV2Abi } from '../chain/contracts';
 import { bytesEqual, randomBytes, toHex } from '../lib/bytes';
 import type { RegistryReader } from '../chain/registry';
@@ -74,7 +74,7 @@ function revertData(e: unknown): Hex | undefined {
 export async function preflight(client: PublicClient, from: Hex, calls: readonly Call[]): Promise<void> {
   await ensureChain(client);
   for (const c of calls) {
-    if (c.to.toLowerCase() !== config.registryV2.address.toLowerCase()) continue;
+    if (c.to.toLowerCase() !== WRITE_REGISTRY.address.toLowerCase()) continue;
     try {
       await client.call({ account: from, to: c.to, data: c.data });
     } catch (e) {
@@ -261,7 +261,7 @@ export interface WriteDeps {
 }
 
 const randomSalt = () => toHex(randomBytes(32));
-const registryCall = (data: Hex): Call => ({ to: config.registryV2.address, value: 0n, data });
+const registryCall = (data: Hex): Call => ({ to: WRITE_REGISTRY.address, value: 0n, data });
 
 function createCall(salt: Hex, blob: Uint8Array, locators: readonly Hex[]): Call {
   return registryCall(encodeFunctionData({ abi: registryV2Abi, functionName: 'createVault', args: [salt, toHex(blob), locators] }));
@@ -271,7 +271,7 @@ function createCall(salt: Hex, blob: Uint8Array, locators: readonly Hex[]): Call
 async function assertVaultId(client: PublicClient, owner: Hex, salt: Hex, vaultId: Hex): Promise<void> {
   let onChain: Hex;
   try {
-    const r = await client.call({ to: config.registryV2.address, data: encodeFunctionData({ abi: registryV2Abi, functionName: 'vaultIdFor', args: [owner, salt] }) });
+    const r = await client.call({ to: WRITE_REGISTRY.address, data: encodeFunctionData({ abi: registryV2Abi, functionName: 'vaultIdFor', args: [owner, salt] }) });
     onChain = decodeFunctionResult({ abi: registryV2Abi, functionName: 'vaultIdFor', data: r.data ?? '0x' });
   } catch (e) {
     throw new WriteError('NETWORK', { cause: e });

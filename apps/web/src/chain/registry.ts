@@ -1,18 +1,19 @@
 /**
  * VaultRegistry reads over a public RPC: plain eth_call, no account, no signature (spec hardware-key-auth).
  *
- * harden-gas-sponsorship (spec vault-registry "Registry versions coexist"): reads query VaultRegistry v2 (paged
- * `resolveLocator`, batched `getVaults`), then the legacy v1 where the chain has one, and treat the candidates as one
- * list. Writes go to v2 only (src/account/writes.ts).
+ * web-registry-versions D2 (generalises harden-gas-sponsorship "Registry versions coexist"): reads query every
+ * configured registry, newest first (kind 2: paged `resolveLocator`, batched `getVaults`; kind 1: the legacy v1 views),
+ * and treat the candidates as one list. Writes go to the newest only (src/account/writes.ts).
  *
- * v2 is authoritative per vaultId. v1 accepts caller-chosen ids, so anyone can register a v2 vault's id in v1 with a
- * stale, still-decryptable copy. Every v1 id is therefore checked against v2: if v2 has it, the v1 copy is ignored.
- * If v2 can't be confirmed (an RPC error, or v2 contradicting itself), the read fails with RegistryUnconfirmedError;
- * it never falls back to v1.
+ * The newest registry holding a vaultId is authoritative. Older registries may accept caller-chosen ids (v1), so anyone
+ * can plant a newer vault's id there with a stale, still-decryptable copy. Every id an older registry lists is therefore
+ * checked against every newer registry, newest first: the first that has it wins. If a newer registry can't be confirmed
+ * (an RPC error, or it contradicts itself), the read fails with RegistryUnconfirmedError; it never falls back.
  */
 import { createPublicClient, http, type Abi, type Hex, type PublicClient, type Transport } from 'viem';
 import { config } from '../config';
 import type { Candidate, RegistryVersion } from '../vault/adapter';
+import type { RegistryConfig } from '../config/schema';
 import { fromHex } from '../lib/bytes';
 import { ensureChain } from './guard';
 import { GET_VAULTS_MAX, PAGE_SIZE, registryV1Abi, registryV2Abi } from './contracts';
@@ -40,6 +41,7 @@ export function makePublicClient(transport: Transport = defaultTransport()): Pub
   return createPublicClient({ chain: chainOf(), transport }) as PublicClient;
 }
 
+/** The message is the registry version that couldn't be confirmed (the UI maps the class, never the message). */
 export class RegistryUnconfirmedError extends Error {
   override name = 'RegistryUnconfirmedError';
 }
@@ -53,113 +55,114 @@ function candidate(registry: RegistryVersion, vaultId: Hex, owner: Hex, blob: He
   return { vaultId, owner, blob: bytes, version: Number(version), registry };
 }
 
-export function createRegistryReader(transport: Transport = defaultTransport()) {
+export function createRegistryReader(transport: Transport = defaultTransport(), registries: readonly RegistryConfig[] = config.registries) {
   const client = createPublicClient({ chain: chainOf(), transport });
-  const v2 = config.registryV2;
-  const v1 = config.registryV1;
   const ready = () => ensureChain(client);
-  const target = (r: RegistryVersion): { address: Hex; abi: Abi; deployBlock: number } => {
-    if (r === 'v2') return { address: v2.address, abi: registryV2Abi as Abi, deployBlock: v2.deployBlock };
-    if (!v1) throw new Error('VaultRegistry v1 is not deployed on this chain');
-    return { address: v1.address, abi: registryV1Abi as Abi, deployBlock: v1.deployBlock };
+  const abiOf = (r: RegistryConfig) => (r.abi === 1 ? registryV1Abi : registryV2Abi) as Abi;
+  const read = (r: RegistryConfig, functionName: string, args: readonly unknown[]) => client.readContract({ address: r.address, abi: abiOf(r), functionName, args });
+  const target = (version = registries[0]!.version): RegistryConfig => {
+    const r = registries.find((x) => x.version === version);
+    if (!r) throw new Error(`no VaultRegistry ${version}`);
+    return r;
   };
 
-  /** Every v2 vaultId under a locator, in insertion order (no cap; pages of PAGE_SIZE). */
-  async function resolveV2(locator: Hex): Promise<Hex[]> {
-    const length = (await client.readContract({ address: v2.address, abi: registryV2Abi, functionName: 'locatorLength', args: [locator] })) as bigint;
+  /** Every vaultId under a locator: kind 2 in insertion order (no cap; pages of PAGE_SIZE), kind 1 capped at 16. */
+  async function resolve(r: RegistryConfig, locator: Hex): Promise<Hex[]> {
+    if (r.abi === 1) return ((await read(r, 'resolveLocator', [locator])) as Hex[]).slice(0, V1_LOCATOR_CAP);
+    const length = (await read(r, 'locatorLength', [locator])) as bigint;
     const out: Hex[] = [];
     for (let start = 0n; start < length; start += BigInt(PAGE_SIZE)) {
-      const page = (await client.readContract({
-        address: v2.address,
-        abi: registryV2Abi,
-        functionName: 'resolveLocator',
-        args: [locator, start, BigInt(PAGE_SIZE)],
-      })) as readonly Hex[];
+      const page = (await read(r, 'resolveLocator', [locator, start, BigInt(PAGE_SIZE)])) as readonly Hex[];
       if (page.length === 0) break;
       out.push(...page);
     }
     return out;
   }
 
-  async function resolveV1(locator: Hex): Promise<Hex[]> {
-    if (!v1) return [];
-    const ids = (await client.readContract({ address: v1.address, abi: registryV1Abi, functionName: 'resolveLocator', args: [locator] })) as Hex[];
-    return ids.slice(0, V1_LOCATOR_CAP);
-  }
-
   /**
-   * v2 records in batches of at most GET_VAULTS_MAX ids (the registry reverts above that). `listed`: the ids came from
-   * v2's own index, so each must have a valid record. Otherwise (checking v1 ids), an empty record means "not in v2".
-   * Anything v2 can't answer consistently is RegistryUnconfirmedError.
+   * Records of `ids` in `r` (kind 2: batches of at most GET_VAULTS_MAX ids; kind 1: one getVault each). `listed`: the
+   * ids came from r's own index. Otherwise (checking an older registry's ids), an empty record means "not here".
+   * Kind 2 must answer consistently (a listed id with no valid record is RegistryUnconfirmedError); legacy kind-1
+   * records that aren't valid are skipped when listed, and unconfirmed when r is asked as the newer registry.
    */
-  async function vaultsV2(ids: readonly Hex[], listed: boolean): Promise<Candidate[]> {
+  async function records(r: RegistryConfig, ids: readonly Hex[], listed: boolean): Promise<Candidate[]> {
     const out: Candidate[] = [];
+    const add = (id: Hex, owner: Hex, blob: Hex, version: number) => {
+      const c = candidate(r.version, id, owner, blob, version);
+      if (c) out.push(c);
+      else if (listed ? r.abi === 2 : owner !== ZERO) throw new RegistryUnconfirmedError(r.version); // an invalid record
+    };
+    if (r.abi === 1) {
+      const rows = await Promise.all(ids.map((id) => read(r, 'getVault', [id]) as Promise<[Hex, Hex, number]>));
+      rows.forEach(([owner, blob, version], j) => add(ids[j]!, owner, blob, version));
+      return out;
+    }
     for (let i = 0; i < ids.length; i += GET_VAULTS_MAX) {
       const batch = ids.slice(i, i + GET_VAULTS_MAX);
-      const rows = (await client.readContract({ address: v2.address, abi: registryV2Abi, functionName: 'getVaults', args: [batch] })) as readonly {
-        owner: Hex;
-        blob: Hex;
-        version: number;
-      }[];
-      if (rows.length !== batch.length) throw new RegistryUnconfirmedError('VaultRegistry v2 returned a different number of vaults');
-      rows.forEach((r, j) => {
-        const absent = r.owner === ZERO;
-        if (absent && !listed) return;
-        const c = candidate('v2', batch[j]!, r.owner, r.blob, r.version);
-        if (!c) throw new RegistryUnconfirmedError('VaultRegistry v2 lists a vault it has no valid record for');
-        out.push(c);
-      });
+      const rows = (await read(r, 'getVaults', [batch])) as readonly { owner: Hex; blob: Hex; version: number }[];
+      if (rows.length !== batch.length) throw new RegistryUnconfirmedError(r.version);
+      rows.forEach((row, j) => add(batch[j]!, row.owner, row.blob, row.version));
     }
     return out;
   }
 
-  const confirmV2 = async <T>(f: () => Promise<T>): Promise<T> => {
+  const confirm = async <T>(r: RegistryConfig, f: () => Promise<T>): Promise<T> => {
     try {
       return await f();
     } catch (e) {
       if (e instanceof RegistryUnconfirmedError) throw e;
-      throw new RegistryUnconfirmedError('VaultRegistry v2 could not be read', { cause: e });
+      throw new RegistryUnconfirmedError(r.version, { cause: e });
     }
   };
 
-  async function getVault(vaultId: Hex, registry: RegistryVersion = 'v2'): Promise<Candidate | null> {
+  async function getVault(vaultId: Hex, registry?: RegistryVersion): Promise<Candidate | null> {
     await ready();
     const t = target(registry);
-    const [owner, blob, version] = (await client.readContract({ address: t.address, abi: t.abi, functionName: 'getVault', args: [vaultId] })) as [Hex, Hex, number];
-    return candidate(registry, vaultId, owner, blob, version);
+    const [owner, blob, version] = (await read(t, 'getVault', [vaultId])) as [Hex, Hex, number];
+    return candidate(t.version, vaultId, owner, blob, version);
   }
 
   /**
-   * v2 is queried first, then v1; the list is oldest first (v1 entries predate every v2 entry). A v1 id that v2 also
-   * has yields v2's record only (authoritative), whichever locator v2 lists it under.
+   * Every registry, newest first. An id one registry lists is first checked against every newer registry (newest
+   * first); the first that holds it yields its record instead, whichever locator lists it there. Reads of any registry
+   * that is newer than another must be confirmed (RegistryUnconfirmedError). The list is oldest first (unlock reverses
+   * it): each registry's own entries, then the newer records of ids it listed, before every newer registry's.
    */
   async function candidatesFor(locator: Hex): Promise<Candidate[]> {
     await ready();
-    const idsV2 = await confirmV2(async () => unique(await resolveV2(locator)));
-    const fromV2 = await confirmV2(() => vaultsV2(idsV2, true));
-    const idsV1 = unique(await resolveV1(locator));
-    const known = new Set(idsV2.map(lower));
-    const unseen = idsV1.filter((id) => !known.has(lower(id)));
-    const shadowed = await confirmV2(() => vaultsV2(unseen, false));
-    const inV2 = new Set(shadowed.map((c) => lower(c.vaultId)));
-    const v1Only = unseen.filter((id) => !inV2.has(lower(id)));
-    const fromV1 = (await Promise.all(v1Only.map((id) => getVault(id, 'v1')))).filter((c): c is Candidate => c !== null);
-    return [...fromV1, ...shadowed, ...fromV2];
+    let out: Candidate[] = [];
+    const seen = new Set<string>();
+    for (const [i, r] of registries.entries()) {
+      const guard = <T>(f: () => Promise<T>) => (i < registries.length - 1 ? confirm(r, f) : f());
+      let ids = unique(await guard(() => resolve(r, locator))).filter((id) => !seen.has(lower(id)));
+      ids.forEach((id) => seen.add(lower(id)));
+      const shadowed: Candidate[] = [];
+      // `records` of no ids makes no request.
+      for (const newer of registries.slice(0, i)) {
+        const pending = ids;
+        const held = await confirm(newer, () => records(newer, pending, false));
+        const found = new Set(held.map((c) => lower(c.vaultId)));
+        ids = ids.filter((id) => !found.has(lower(id)));
+        shadowed.push(...held);
+      }
+      out = [...(await guard(() => records(r, ids, true))), ...shadowed, ...out];
+    }
+    return out;
   }
 
-  /** The v2 vault an account owns (zero if none). Accounts never write to v1. */
+  /** The vault an account owns in the newest registry (zero if none). Accounts never write to older ones. */
   async function vaultOf(owner: Hex): Promise<Hex> {
     await ready();
-    return (await client.readContract({ address: v2.address, abi: registryV2Abi, functionName: 'vaultOf', args: [owner] })) as Hex;
+    return (await read(target(), 'vaultOf', [owner])) as Hex;
   }
 
   /** Every locator registered for a vault (LocatorAdded events, indexed by vaultId). Best effort. */
-  async function locatorsOf(vaultId: Hex, registry: RegistryVersion = 'v2'): Promise<Hex[]> {
+  async function locatorsOf(vaultId: Hex, registry?: RegistryVersion): Promise<Hex[]> {
     await ready();
     const t = target(registry);
     const logs = await client.getContractEvents({
       address: t.address,
-      abi: t.abi,
+      abi: abiOf(t),
       eventName: 'LocatorAdded',
       args: { vaultId },
       fromBlock: BigInt(t.deployBlock),

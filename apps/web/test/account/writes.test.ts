@@ -80,7 +80,7 @@ describe('write confirmation (6.8)', () => {
     const sponsor = { send: vi.fn(async () => ({ userOpHash: '0x01' as Hex, success: true })) };
     await updateVaultOnChain({ account, vaultId: ('0x' + '33'.repeat(32)) as Hex, blob, base: blob }, { client: okClient, sponsor, reader: reader(blob) });
     const calls = (sponsor.send.mock.calls[0] as unknown as [unknown, { to: Hex }[]])[1];
-    expect(calls.map((c) => c.to.toLowerCase())).toEqual([config.registryV2.address.toLowerCase()]);
+    expect(calls.map((c) => c.to.toLowerCase())).toEqual([config.registries[0].address.toLowerCase()]);
   });
 });
 
@@ -115,7 +115,7 @@ describe('harden-gas-sponsorship 5.2: salt-based create on VaultRegistry v2', ()
     expect(r.vaultId).toBe(deriveVaultIdV2(owner, salt));
     const sent = (sponsor.send.mock.calls[0] as unknown as [unknown, { to: Hex; data: Hex }[]])[1];
     expect(sent).toHaveLength(1);
-    expect(sent[0]!.to.toLowerCase()).toBe(config.registryV2.address.toLowerCase());
+    expect(sent[0]!.to.toLowerCase()).toBe(config.registries[0].address.toLowerCase());
     const d = decodeFunctionData({ abi: registryV2Abi, data: sent[0]!.data });
     expect(d.functionName).toBe('createVault');
     expect(d.args).toEqual([salt, '0x010203', locs]);
@@ -188,7 +188,7 @@ describe('add-key asserts nextOwnerIndex == keyCount before signing (review fix 
     );
     expect(r.version).toBe(2);
     const sent = (sponsor.send.mock.calls[0] as unknown as [unknown, { to: Hex }[]])[1];
-    expect(sent.map((c) => c.to.toLowerCase())).toEqual([owner, config.registryV2.address.toLowerCase(), config.registryV2.address.toLowerCase()]);
+    expect(sent.map((c) => c.to.toLowerCase())).toEqual([owner, config.registries[0].address.toLowerCase(), config.registries[0].address.toLowerCase()]);
   });
 });
 
@@ -248,7 +248,7 @@ describe('sponsorship refusal (2.2)', () => {
     const owner0 = toWebAuthnAccount({ credential: { id: 'c', publicKey: ('0x' + 'ab'.repeat(64)) as Hex }, getFn, rpId: 'localhost' });
     const acc = await toCryoShieldSmartAccount({ client: client as never, factory: config.wallet.factory, owners: [owner0], ownerIndex: 0 });
     const { encodeFunctionData } = await import('viem');
-    const calls = [{ to: config.registryV2.address, value: 0n, data: encodeFunctionData({ abi: registryV2Abi, functionName: 'updateVault', args: [('0x' + '33'.repeat(32)) as Hex, '0x01'] }) }];
+    const calls = [{ to: config.registries[0].address, value: 0n, data: encodeFunctionData({ abi: registryV2Abi, functionName: 'updateVault', args: [('0x' + '33'.repeat(32)) as Hex, '0x01'] }) }];
     const err = await createSponsor(client as never, 'http://bundler.invalid/rpc', 'sp_test_policy').send(acc, calls, undefined, nonce).catch((e) => e);
     return { err, methods, getFn };
   }

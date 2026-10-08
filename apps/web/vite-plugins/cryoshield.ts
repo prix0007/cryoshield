@@ -1,6 +1,6 @@
 /**
- * Build-time wiring: validates VITE_* env (fails the build on any problem), loads the deployment record (registry v2,
- * legacy registry v1, and the wallet pair for VITE_RP_ID), exposes both through `virtual:cryoshield-config`, and
+ * Build-time wiring: validates VITE_* env (fails the build on any problem), loads the deployment record (every registry
+ * version, newest first, and the wallet pair for VITE_RP_ID), exposes both through `virtual:cryoshield-config`, and
  * injects the CSP.
  */
 import { join } from 'node:path';
@@ -30,8 +30,8 @@ export function cryoshield(env: Record<string, string | undefined>, contractsDir
       if (id !== RESOLVED_ID) return null;
       const runtime = {
         ...config,
-        registryV1: deployment.v1 ? { address: deployment.v1.address, deployBlock: deployment.v1.deployBlock } : null,
-        registryV2: { address: deployment.v2.address, deployBlock: deployment.v2.deployBlock },
+        // web-registry-versions D1: newest first; [0] takes every write.
+        registries: deployment.registries.map(({ version, abi, address, deployBlock }) => ({ version, abi, address, deployBlock })),
         wallet: { factory: deployment.wallet.factory, implementation: deployment.wallet.implementation },
         // show-vault-onchain-location D1: display name and explorer for the "Where your vault is stored" panel.
         network: networkFor(config.chainId),
@@ -66,16 +66,25 @@ export function cryoshield(env: Record<string, string | undefined>, contractsDir
   };
 }
 
-export function architectureValues(html: string, chainId: number, dep: Pick<Deployment, 'v1' | 'v2' | 'wallet'>, rpId: string): string {
+/** web-registry-versions D5: one row per registry, newest first; older ones are read-only. Values are strictly validated. */
+export function registryRows(registries: Deployment['registries']): string {
+  return registries
+    .map((r, i) => `<tr><th scope="row">VaultRegistry ${r.version}</th><td class="mono">${r.address}${i ? ' (read-only)' : ''}</td></tr>`)
+    .join('\n      ');
+}
+
+export function architectureValues(html: string, chainId: number, dep: Pick<Deployment, 'registries' | 'wallet'>, rpId: string): string {
   const network = NETWORKS[chainId]?.name;
   if (!network) throw new Error(`add-architecture-page: no network name for chain ${chainId}`);
+  if (!dep.registries.every((r) => /^v[1-9][0-9]{0,2}$/.test(r.version) && /^0x[0-9a-fA-F]{40}$/.test(r.address))) {
+    throw new Error('add-architecture-page: invalid registry version or address');
+  }
   return html
     .replaceAll('__CS_NETWORK_UPPER__', network.toUpperCase())
     .replaceAll('__CS_NETWORK__', network)
     .replaceAll('__CS_CHAIN_ID__', String(chainId))
-    .replaceAll('__CS_REGISTRY_V1__', dep.v1 ? `${dep.v1.address} (read-only)` : 'not deployed on this network')
-    .replaceAll('__CS_REGISTRY__', dep.v2.address)
-    .replaceAll('__CS_DEPLOY_BLOCK__', String(dep.v2.deployBlock))
+    .replaceAll('__CS_REGISTRY_ROWS__', registryRows(dep.registries))
+    .replaceAll('__CS_DEPLOY_BLOCK__', String(dep.registries[0].deployBlock))
     .replaceAll('__CS_WALLET_FACTORY__', dep.wallet.factory)
     .replaceAll('__CS_WALLET_IMPL__', dep.wallet.implementation)
     .replaceAll('__CS_RP_ID__', rpId);

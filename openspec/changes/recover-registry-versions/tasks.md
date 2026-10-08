@@ -97,7 +97,7 @@
 ## 7. Follow-ups outside `tools/recover` (not part of this change's implementation)
 
 - [ ] 7.1 [ct] Decide the record key for v3 and later (D5: `contracts.vaultRegistries.v<N>`, proposed) in `contracts/deployments/README.md`, `script/deploy.sh` and the deployment-targets spec, through its own change. Verify: the recovery tool's parity test passes against the new record.
-- [ ] 7.2 [fe] Make the web app and `release-manifest.mjs` read a registry list (`config.registries`), through its own change. Verify: that change's tests.
+- [x] 7.2 [fe] Make the web app and `release-manifest.mjs` read a registry list (`config.registries`), through its own change. Verify: that change's tests. (Done in `web-registry-versions`.)
 
 ## 8. Security review [sec]
 

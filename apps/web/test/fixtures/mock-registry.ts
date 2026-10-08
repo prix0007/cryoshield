@@ -1,12 +1,14 @@
 /**
- * In-memory VaultRegistry v1 and v2 behind a viem `custom` transport (eth_call only). v2 follows the
- * harden-gas-sponsorship vault-registry delta: no locator cap, resolveLocator(locator, start, count) clamped to 256,
- * locatorLength, getVaults reverting above 32 ids.
+ * In-memory VaultRegistry deployments behind a viem `custom` transport (eth_call only). Kind 2 (the v2 interface) follows
+ * the harden-gas-sponsorship vault-registry delta: no locator cap, resolveLocator(locator, start, count) clamped to 256,
+ * locatorLength, getVaults reverting above 32 ids. Kind 1 is the legacy v1 interface. Any version can be mocked (a fake
+ * v3 with the v2 interface: `new MockRegistry('v3', { abi: 2, address })`, web-registry-versions).
  */
 import { custom, decodeFunctionData, encodeErrorResult, encodeFunctionResult, type Abi, type Hex } from 'viem';
 import { config } from 'virtual:cryoshield-config';
 import registryV1Abi from '../../../../contracts/abi/VaultRegistry.json';
 import { registryV2Abi } from '../../src/chain/contracts';
+import type { RegistryConfig } from '../../src/config/schema';
 
 export interface StoredVault {
   owner: Hex;
@@ -27,14 +29,27 @@ export class MockRegistry {
   index = new Map<string, Hex[]>();
   calls: string[] = [];
 
-  constructor(readonly version: 'v1' | 'v2' = 'v2') {}
+  readonly kind: 1 | 2;
+  readonly address: Hex;
 
-  get address(): Hex {
-    return this.version === 'v1' ? config.registryV1!.address : config.registryV2.address;
+  /** A configured registry by version, or any other deployment given its interface kind and address. */
+  constructor(
+    readonly version: `v${number}` = 'v2',
+    at?: { abi: 1 | 2; address: Hex },
+  ) {
+    const c = at ?? (config.registries as readonly RegistryConfig[]).find((r) => r.version === version);
+    if (!c) throw new Error(`no configured registry ${version}`);
+    this.kind = c.abi;
+    this.address = c.address;
+  }
+
+  /** This deployment as a reader config entry. */
+  get config(): RegistryConfig {
+    return { version: this.version, abi: this.kind, address: this.address, deployBlock: 1 };
   }
 
   get abi(): Abi {
-    return (this.version === 'v1' ? registryV1Abi : registryV2Abi) as Abi;
+    return (this.kind === 1 ? registryV1Abi : registryV2Abi) as Abi;
   }
 
   put(vaultId: Hex, v: StoredVault, locators: Hex[]) {
@@ -62,7 +77,7 @@ export class MockRegistry {
     switch (functionName) {
       case 'resolveLocator': {
         const all = this.list(a[0] as string);
-        if (this.version === 'v1') return out(all.slice(0, 16));
+        if (this.kind === 1) return out(all.slice(0, 16));
         const start = Number(a[1] as bigint);
         const count = Math.min(Number(a[2] as bigint), 256);
         return out(start >= all.length ? [] : all.slice(start, start + count));
@@ -84,18 +99,25 @@ export class MockRegistry {
     }
   }
 
-  /** One transport for both registries: `this` plus any others; a registry not given behaves as empty. */
+  /** One transport for every registry: `this` plus any others; a configured registry not given behaves as empty. */
   transport(...others: MockRegistry[]) {
     const regs = [this, ...others];
-    const byVersion = (v: 'v1' | 'v2') => regs.find((r) => r.version === v) ?? new MockRegistry(v);
-    const v1 = byVersion('v1');
-    const v2 = byVersion('v2');
+    const empty = new Map<string, MockRegistry>();
+    const route = (to: string): MockRegistry | null => {
+      const at = to.toLowerCase();
+      const given = regs.find((r) => r.address.toLowerCase() === at);
+      if (given) return given;
+      const c = (config.registries as readonly RegistryConfig[]).find((r) => r.address.toLowerCase() === at);
+      if (!c) return null;
+      if (!empty.has(at)) empty.set(at, new MockRegistry(c.version));
+      return empty.get(at)!;
+    };
     return custom({
       request: async ({ method, params }: { method: string; params: any }) => {
         if (method === 'eth_chainId') return '0x' + config.chainId.toString(16);
         if (method !== 'eth_call') throw new Error(`unsupported ${method}`);
         const { to, data } = params[0];
-        const reg = config.registryV1 && to.toLowerCase() === config.registryV1.address.toLowerCase() ? v1 : to.toLowerCase() === config.registryV2.address.toLowerCase() ? v2 : null;
+        const reg = route(to);
         if (!reg) throw new Error('wrong registry address');
         try {
           return reg.handle(data);

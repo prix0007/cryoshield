@@ -42,7 +42,8 @@ export interface VaultDates {
 export interface HistorySource {
   rpc: { request(args: { method: string; params?: unknown }): Promise<unknown> };
   keccak256: (bytes: Uint8Array) => Hex;
-  registries: { v1: Contract | null; v2: Contract };
+  /** Every configured registry (web-registry-versions); each listed vault is looked up in its own. */
+  registries: readonly Contract[];
 }
 type Rpc = HistorySource['rpc'];
 interface RawLog {
@@ -51,7 +52,7 @@ interface RawLog {
   blockNumber: Hex;
   logIndex: Hex;
 }
-type Contract = { address: Hex; deployBlock: number };
+type Contract = { version: RegistryVersion; address: Hex; deployBlock: number };
 
 export const datesKey = (registry: RegistryVersion, vaultId: Hex) => `${registry}:${vaultId.toLowerCase()}`;
 const big = (h: Hex | string) => BigInt(h);
@@ -137,10 +138,9 @@ export async function vaultDates(
     if (signal?.aborted) throw e;
     return out;
   }
-  for (const r of ['v2', 'v1'] as const) {
-    const reg = registries[r];
-    const listed = vaults.filter((v) => v.registry === r);
-    if (!reg || listed.length === 0) continue;
+  for (const reg of registries) {
+    const listed = vaults.filter((v) => v.registry === reg.version);
+    if (listed.length === 0) continue;
     try {
       for (const [k, d] of await datesFor(rpc, keccak256, reg, listed, range, latest, ts, signal)) out.set(k, d);
     } catch (e) {

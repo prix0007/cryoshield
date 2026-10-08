@@ -10,6 +10,7 @@ import type { Services } from '../../src/ui/services';
 import { acknowledge, renderApp } from './helpers';
 
 const S = { ...S0, location: { ...S0.location, ...LOCATION } };
+const L_REGISTRY = LOCATION.registry;
 
 const EXPLORER = 'https://testnet-explorer.optimism.io';
 const REG1 = ('0x' + 'a1'.repeat(20)) as `0x${string}`;
@@ -25,7 +26,10 @@ const credId = (n: number) => new Uint8Array(48).fill(n);
 const OP_SEPOLIA: Partial<Services> = {
   chainId: 11155420,
   network: { name: 'OP Sepolia testnet', explorerUrl: EXPLORER },
-  registries: { v1: REG1, v2: REG2 },
+  registries: [
+    { version: 'v2', address: REG2 },
+    { version: 'v1', address: REG1 },
+  ],
   arweaveGatewayUrl: 'https://arweave.net',
 };
 
@@ -74,7 +78,8 @@ describe('Where your vault is stored (show-vault-onchain-location 1.3)', () => {
     expect(p.getByText(VAULT_ID)).toBeInTheDocument(); // full value for assistive technology
     expect(p.getByText(OWNER, { exact: false })).toBeInTheDocument();
     expect(p.getByText(REG2, { exact: false })).toBeInTheDocument();
-    expect(p.getByText(S.location.registryV2)).toBeInTheDocument();
+    expect(p.getByText(S.location.registryVersion('v2', false))).toBeInTheDocument();
+    expect(S.location.registryVersion('v2', false)).toBe('Version 2');
     expect(p.getByText('3')).toBeInTheDocument();
     expect(p.getByText(S.location.publicNote)).toBeInTheDocument();
     // Unknown after a plain unlock: no last-save row, no Arweave row.
@@ -154,7 +159,26 @@ describe('Where your vault is stored (show-vault-onchain-location 1.3)', () => {
     await openVault(OP_SEPOLIA, 'v1');
     const p = within(await expand());
     expect(p.getByText(REG1, { exact: false })).toBeInTheDocument();
-    expect(p.getByText(S.location.registryV1)).toBeInTheDocument();
+    expect(p.getByText(S.location.registryVersion('v1', true))).toBeInTheDocument();
+    expect(S.location.registryVersion('v1', true)).toBe('Version 1 (read-only)');
+  });
+
+  it('web-registry-versions D5: any registry is named by its version, and read-only unless it is the newest', async () => {
+    const { default: VaultLocation } = await import('../../src/ui/VaultLocation');
+    const { render } = await import('@testing-library/react');
+    const REG3 = ('0x' + 'a3'.repeat(20)) as `0x${string}`;
+    const base = { network: OP_SEPOLIA.network!, chainId: 11155420, vaultId: VAULT_ID, owner: OWNER, version: 1, arweaveGatewayUrl: 'https://arweave.net' };
+    const registries = [{ version: 'v3', address: REG3 }, { version: 'v2', address: REG2 }, { version: 'v1', address: REG1 }];
+    const v3 = render(<VaultLocation {...base} registries={registries} registry="v3" />);
+    expect(within(v3.container).getByText('Version 3')).toBeInTheDocument();
+    expect(within(v3.container).getByRole('link', { name: new RegExp(REG3) })).toHaveAttribute('href', `${EXPLORER}/address/${REG3}`);
+    v3.unmount();
+    const v2 = render(<VaultLocation {...base} registries={registries} registry="v2" />);
+    expect(within(v2.container).getByText('Version 2 (read-only)')).toBeInTheDocument();
+    expect(within(v2.container).getByText(REG2, { exact: false })).toBeInTheDocument();
+    v2.unmount();
+    const unknown = render(<VaultLocation {...base} registries={registries} registry="v9" />);
+    expect(within(unknown.container).queryByText(L_REGISTRY)).toBeNull(); // no registry row rather than a wrong one
   });
 
   it('shows values without links where the network has no explorer', async () => {

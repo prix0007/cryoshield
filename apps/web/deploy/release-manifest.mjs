@@ -4,8 +4,8 @@
  *   treeHash = sha256 over the lines "<sha256>  <path>\n" (exactly `shasum -a 256` output) for every served file,
  *              paths relative to the site root, sorted bytewise (LC_ALL=C).
  * Anyone can rebuild the tagged commit with the published config and compare (see deploy/README.md).
- * Never records key values: only chain ID, RP ID, registry records (v1 legacy, v2), this RP ID's wallet pair, and
- * connect-src ORIGINS.
+ * Never records key values: only chain ID, RP ID, registry records (every version, newest first, in `registries`; v1 and
+ * v2 also in the legacy `registry`/`registryV2` fields), this RP ID's wallet pair, and connect-src ORIGINS.
  * Usage: node deploy/release-manifest.mjs --site deploy/.build/site --out <file> --commit <sha> --env .env --contracts ../../contracts [--site-release]
  *   --site-release also writes <site>/release.json (served as /release.json; excluded from treeHash).
  *   --caddyfile <path> records the sha256 of the generated Caddyfile (CSP and every response header).
@@ -13,6 +13,8 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
+import { keccak256 } from 'viem';
+import { registryList } from '../vite-plugins/registries.mjs';
 
 function arg(name) {
   const i = process.argv.indexOf(`--${name}`);
@@ -53,11 +55,17 @@ if (!/^(?=.{1,253}$)([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,63}$/.test(env.VIT
   throw new Error(`VITE_RP_ID must be a hostname, got ${JSON.stringify(env.VITE_RP_ID ?? null)}`);
 }
 const chainId = Number(env.VITE_CHAIN_ID);
-const record = JSON.parse(readFileSync(join(arg('contracts'), 'deployments', `${chainId}.json`), 'utf8'));
+const recordPath = join(arg('contracts'), 'deployments', `${chainId}.json`);
+const record = JSON.parse(readFileSync(recordPath, 'utf8'));
+// web-registry-versions D4: the build's own parser (an unknown version fails here too, never published).
+const abiHash = (f) => keccak256(new Uint8Array(readFileSync(join(arg('contracts'), 'abi', f))));
+const registries = registryList(record, recordPath, { 1: abiHash('VaultRegistry.json'), 2: abiHash('VaultRegistryV2.json') });
+// The legacy v1/v2 fields come from the same parsed list, whichever record key named them.
+const v1 = registries.find((r) => r.n === 1);
+const v2 = registries.find((r) => r.n === 2);
 // harden-gas-sponsorship: the build already refused a record without these; the manifest names them too.
-const v2 = record.contracts?.vaultRegistryV2;
 const wallet = record.contracts?.wallets?.[env.VITE_RP_ID];
-if (!v2 || !wallet) throw new Error(`deployments/${chainId}.json has no contracts.vaultRegistryV2 or contracts.wallets["${env.VITE_RP_ID}"]`);
+if (!v2 || !wallet) throw new Error(`deployments/${chainId}.json has no VaultRegistry v2 or contracts.wallets["${env.VITE_RP_ID}"]`);
 const html = readFileSync(join(site, 'index.html'), 'utf8');
 const csp = html.match(/<meta http-equiv="Content-Security-Policy" content="([^"]+)">/)?.[1] ?? '';
 const connect = (csp.split(';').map((d) => d.trim()).find((d) => d.startsWith('connect-src ')) ?? '')
@@ -77,8 +85,11 @@ const manifest = {
     chainId,
     rpId: env.VITE_RP_ID,
     // VaultRegistry v1 (legacy reads); null where v1 was never deployed (OP Mainnet).
-    registry: record.address ? { address: record.address, deployBlock: record.deployBlock } : null,
+    registry: v1 ? { address: v1.address, deployBlock: v1.deployBlock } : null,
     registryV2: { address: v2.address, deployBlock: v2.deployBlock },
+    // Every registry, newest first; the first takes every write (the recovery tool reads this list, D5 of
+    // recover-registry-versions). The two fields above stay for the smoke test and older recovery tools.
+    registries: registries.map(({ version, address, deployBlock, abiHash }) => ({ version, address, deployBlock, abiHash })),
     wallet: { factory: wallet.factory, implementation: wallet.implementation },
     connectOrigins: connect,
   },

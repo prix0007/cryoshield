@@ -30,10 +30,11 @@ export function truncateLabel(label: string): string {
   return cps.length <= LABEL_MAX ? label : cps.slice(0, LABEL_MAX).join('') + '\u2026';
 }
 
-export function summarize(v: { name?: string; archived: boolean; items: readonly SecretItem[]; registry: 'v1' | 'v2'; keyCount: number }): VaultSummary {
+/** `older`: the vault is in an older, read-only registry (web-registry-versions D3). */
+export function summarize(v: { name?: string; archived: boolean; items: readonly SecretItem[]; older: boolean; keyCount: number }): VaultSummary {
   return {
     name: visibleName(v.name),
-    status: v.registry === 'v1' ? 'older' : v.archived ? 'archived' : 'active',
+    status: v.older ? 'older' : v.archived ? 'archived' : 'active',
     count: v.items.length,
     labels: v.items.slice(0, SHOWN).map((it, i) => (INVISIBLE.test(it.label) ? `Secret ${i + 1}` : truncateLabel(capMarks(it.label)))),
     more: Math.max(0, v.items.length - SHOWN),

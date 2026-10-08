@@ -36,6 +36,14 @@ export interface AppEnvConfig {
   appOnlyOrigins: string[];
 }
 
+/** One VaultRegistry deployment (web-registry-versions D1); `abi` is its interface: 1 = VaultRegistry, 2 = VaultRegistryV2. */
+export interface RegistryConfig {
+  version: `v${number}`;
+  abi: 1 | 2;
+  address: `0x${string}`;
+  deployBlock: number;
+}
+
 export class ConfigError extends Error {
   override name = 'ConfigError';
 }
