@@ -67,7 +67,7 @@ describe('a vault created with v3 configured', () => {
     await u.click(await screen.findByRole('button', { name: 'Continue' }));
     // Opened and writable: the edit actions are offered, and no read-only notice.
     await u.click(await screen.findByRole('button', { name: 'Edit secrets' }));
-    expect(screen.queryByText(/earlier test version/)).toBeNull();
+    expect(screen.queryByText(/older, read-only format/)).toBeNull();
     await u.click(await screen.findByRole('button', { name: 'Save' }));
     await vi.waitFor(() => expect(edit).toHaveBeenCalled());
     expect(edit.mock.calls[0]![1]).toMatchObject({ registry: 'v3', vaultId: VAULT_ID });

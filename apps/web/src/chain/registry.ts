@@ -45,6 +45,10 @@ export function makePublicClient(transport: Transport = defaultTransport()): Pub
 export class RegistryUnconfirmedError extends Error {
   override name = 'RegistryUnconfirmedError';
 }
+/** Review W1: a locator's pages don't add up to its locatorLength, so the list would be silently short. */
+export class RegistryIncompleteError extends RegistryUnconfirmedError {
+  override name = 'RegistryIncompleteError';
+}
 
 const lower = (id: Hex) => id.toLowerCase();
 const unique = (ids: readonly Hex[]) => [...new Map(ids.map((id) => [id.toLowerCase(), id])).values()];
@@ -73,7 +77,8 @@ export function createRegistryReader(transport: Transport = defaultTransport(), 
     const out: Hex[] = [];
     for (let start = 0n; start < length; start += BigInt(PAGE_SIZE)) {
       const page = (await read(r, 'resolveLocator', [locator, start, BigInt(PAGE_SIZE)])) as readonly Hex[];
-      if (page.length === 0) break;
+      // locatorLength is the source of truth: an empty, short or long page never ends the list quietly.
+      if (BigInt(page.length) !== (length - start < PAGE_SIZE ? length - start : BigInt(PAGE_SIZE))) throw new RegistryIncompleteError(r.version);
       out.push(...page);
     }
     return out;

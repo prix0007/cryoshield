@@ -17,10 +17,14 @@ import type { RegistryVersion } from '../vault/adapter';
 /** keccak256 of the event signatures (constants keep viem's ABI coder out of this chunk; history.test.ts checks them). */
 export const CREATED = '0xce97d1455c031e2d207f467953389573a1f639ea41eac2279614dea27b5e7322'; // VaultCreated(bytes32,address,uint32,bytes32)
 export const UPDATED = '0x708a8b330fade2f32683d342c347557c666ee86d0dc54d7ed55440620b5d9ba2'; // VaultUpdated(bytes32,uint32,bytes32)
-/** Blocks per eth_getLogs query (public RPCs cap the range). */
+/** Base blocks per eth_getLogs query (public RPCs cap the range); pages grow up to MAX_GROWTH times this. */
 export const LOG_RANGE = 10_000n;
-/** At most this many pages per registry; a longer history (or an absurd latest block) leaves the dates unavailable. */
-export const MAX_PAGES = 200n;
+/** Pages double while the RPC accepts them, up to this factor of the base (1.28M blocks, about 30 days on OP). */
+const MAX_GROWTH = 128n;
+/** At most this many log queries per registry (refused ones included); a vault not found by then shows no date. */
+export const MAX_PAGES = 200;
+/** A latest block at or above this is refused as hostile (OP is near 2^27 blocks). */
+const MAX_BLOCK = 2n ** 40n;
 /** Block timestamps outside 1..4e9 (about year 2096) are refused as hostile. */
 const MAX_TS = 4_000_000_000;
 
@@ -61,6 +65,13 @@ const abortIf = (signal?: AbortSignal) => {
   if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
 };
 
+/**
+ * web-review-followups 2 (review WB1): walks the logs BACKWARD from `latest`, so the newest event of each vault is found
+ * first however old the chain is. A vault drops out of the query once its newest event and its VaultCreated event are
+ * both found. Pages start at `range` and double while the RPC accepts them; a refused page is halved and retried, and a
+ * refusal at the base size makes this registry's dates unavailable. Logs outside the queried window or for another
+ * vault are ignored.
+ */
 async function datesFor(
   rpc: Rpc,
   hash: HistorySource['keccak256'],
@@ -71,27 +82,44 @@ async function datesFor(
   ts: (block: bigint) => Promise<number | null>,
   signal?: AbortSignal,
 ) {
-  const ids = vaults.map((v) => v.vaultId.toLowerCase() as Hex);
   const deploy = BigInt(reg.deployBlock);
-  if (latest < deploy || (latest - deploy) / range + 1n > MAX_PAGES) throw new Error('history too long'); // unavailable
-  const logs: RawLog[] = [];
-  for (let from = deploy; from <= latest; from += range) {
+  if (latest < deploy || latest >= MAX_BLOCK) throw new Error('bad latest block'); // unavailable
+  const order = (a: RawLog, b: RawLog) => (big(a.blockNumber) === big(b.blockNumber) ? Number(big(a.logIndex) - big(b.logIndex)) : big(a.blockNumber) < big(b.blockNumber) ? -1 : 1);
+  const found = vaults.map(() => ({ last: undefined as RawLog | undefined, created: undefined as RawLog | undefined }));
+  let pending = vaults.map((_, i) => i);
+  let size = range;
+  for (let to = latest, pages = 0; pending.length > 0 && to >= deploy && pages < MAX_PAGES; pages++) {
     abortIf(signal);
-    const to = from + range - 1n < latest ? from + range - 1n : latest;
-    const page = (await rpc.request({
-      method: 'eth_getLogs',
-      params: [{ address: reg.address, topics: [[CREATED, UPDATED], ids], fromBlock: hex(from), toBlock: hex(to) }],
-    })) as RawLog[];
-    logs.push(...page);
+    const from = to - size + 1n < deploy ? deploy : to - size + 1n;
+    const ids = pending.map((i) => vaults[i]!.vaultId.toLowerCase());
+    let page: RawLog[];
+    try {
+      page = (await rpc.request({
+        method: 'eth_getLogs',
+        params: [{ address: reg.address, topics: [[CREATED, UPDATED], ids], fromBlock: hex(from), toBlock: hex(to) }],
+      })) as RawLog[];
+    } catch (e) {
+      if (signal?.aborted || size <= range) throw e;
+      size /= 2n; // the RPC refused the range: retry this window smaller
+      continue;
+    }
+    for (const i of pending) {
+      const id = ids[pending.indexOf(i)];
+      const own = page
+        .filter((l) => l.topics[1]?.toLowerCase() === id && (l.topics[0] === CREATED || l.topics[0] === UPDATED) && big(l.blockNumber) >= from && big(l.blockNumber) <= to)
+        .sort(order);
+      const f = found[i]!;
+      f.last ??= own.at(-1);
+      f.created ??= own.find((l) => l.topics[0] === CREATED);
+    }
+    pending = pending.filter((i) => !found[i]!.last || !found[i]!.created);
+    to = from - 1n;
+    if (size < range * MAX_GROWTH) size *= 2n;
   }
   abortIf(signal);
   const out = new Map<string, VaultDates>();
-  for (const v of vaults) {
-    const own = logs
-      .filter((l) => l.topics[1]?.toLowerCase() === v.vaultId.toLowerCase() && (l.topics[0] === CREATED || l.topics[0] === UPDATED))
-      .sort((a, b) => (big(a.blockNumber) === big(b.blockNumber) ? Number(big(a.logIndex) - big(b.logIndex)) : big(a.blockNumber) < big(b.blockNumber) ? -1 : 1));
-    const created = own.find((l) => l.topics[0] === CREATED);
-    const last = own.at(-1);
+  for (const [i, v] of vaults.entries()) {
+    const { last, created } = found[i]!;
     let saved: number | null = null;
     if (last) {
       // Both events' data: (uint32 version, bytes32 blobHash), two ABI words.

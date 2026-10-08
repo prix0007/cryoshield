@@ -61,9 +61,20 @@ describe('a v3 vault through unlock and the vault list', () => {
     const older = await screen.findByRole('region', { name: VAULTS.groupOlder });
     expect(within(older).getByRole('heading', { name: 'Before v3' })).toBeInTheDocument();
     expect(within(older).queryByRole('button', { name: /Edit vault/ })).toBeNull();
+    // web-review-followups 7: the v2 vault is "Read-only vault (older format)", never a "test" vault.
+    expect(within(older).getByText(/^Read-only vault \(older format\) ·/)).toBeInTheDocument();
     // Opening the v2 vault: read-only, no edit actions.
     await u.click(within(older).getByRole('button', { name: /Open/ }));
     expect(await screen.findByRole('heading', { level: 1, name: 'Before v3' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Edit secrets' })).toBeNull();
+  });
+});
+
+describe('web-review-followups 7: read-only copy is version-neutral', () => {
+  it('no read-only label or notice calls the vault a test vault', async () => {
+    const { VAULTS } = await import('../../src/ui/strings-vaults');
+    const { S } = await import('../../src/ui/strings');
+    for (const t of [VAULTS.older, VAULTS.groupOlder, VAULTS.showOlder, S.vault.legacyReadOnly]) expect(t).not.toMatch(/test/i);
+    expect(VAULTS.older).toBe('Read-only vault (older format)');
   });
 });

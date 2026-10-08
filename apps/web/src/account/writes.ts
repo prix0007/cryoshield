@@ -196,6 +196,11 @@ function revertOf(reason: Hex | undefined): WriteError {
   return registryError(reason);
 }
 
+/** web-review-followups 3: re-reads before calling a vault STALE, for a load-balanced RPC that lags a just-landed write. */
+const LAG_RETRIES = 2;
+const LAG_WAIT_MS = 1_500;
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
 /**
  * vault-list-labels-archive D8: every update starts from the current blob, pinned to a nonce.
  * 1. Reads the account's EntryPoint key-0 nonce FIRST (and, when the session pinned one, requires the same value).
@@ -203,21 +208,26 @@ function revertOf(reason: Hex | undefined): WriteError {
  * Returns the nonce, which the caller pins into the user operation: any write from this account that lands after step 1
  * (another tab, another device) consumes that nonce, so this operation then fails validation (AA25, NONCE_CONFLICT)
  * instead of silently overwriting it; one that landed before step 2 changed the blob (STALE).
+ * A nonce below the pin or a different blob may be a lagging RPC (right after this session's own write), so both are
+ * read again, up to LAG_RETRIES times, before STALE. A nonce ABOVE the pin is a write from elsewhere: STALE at once.
  */
 export async function assertCurrent(
-  deps: { reader: Pick<RegistryReader, 'getVault'>; client: Pick<PublicClient, 'readContract'> },
+  deps: { reader: Pick<RegistryReader, 'getVault'>; client: Pick<PublicClient, 'readContract'>; wait?: (ms: number) => Promise<void> },
   p: { vaultId: Hex; base: Uint8Array; owner: Hex; nonce?: bigint | undefined },
 ): Promise<bigint> {
-  let nonce: bigint;
-  let v;
-  try {
-    nonce = await accountNonce(deps.client, p.owner);
-    v = await deps.reader.getVault(p.vaultId);
-  } catch (e) {
-    throw new WriteError('NETWORK', { cause: e });
+  for (let i = 0; ; i++) {
+    let nonce: bigint;
+    let v;
+    try {
+      nonce = await accountNonce(deps.client, p.owner);
+      v = await deps.reader.getVault(p.vaultId);
+    } catch (e) {
+      throw new WriteError('NETWORK', { cause: e });
+    }
+    if (v && bytesEqual(v.blob, p.base) && (p.nonce === undefined || nonce === p.nonce)) return nonce;
+    if (i >= LAG_RETRIES || (p.nonce !== undefined && nonce > p.nonce)) throw new WriteError('STALE');
+    await (deps.wait ?? sleep)(LAG_WAIT_MS);
   }
-  if ((p.nonce !== undefined && nonce !== p.nonce) || !v || !bytesEqual(v.blob, p.base)) throw new WriteError('STALE');
-  return nonce;
 }
 
 /** EntryPoint v0.6 `getNonce`, beside the bundler's EntryPoint use above (D10: the testnet save-budget hint). */
@@ -258,6 +268,8 @@ export interface WriteDeps {
   onProgress?: ProgressListener;
   /** Test hook: the create salt (default: 32 random bytes). */
   randomSalt?: () => Hex;
+  /** Test hook: the wait between the lag re-reads of assertCurrent (default: a real 1.5 s). */
+  wait?: (ms: number) => Promise<void>;
 }
 
 const randomSalt = () => toHex(randomBytes(32));

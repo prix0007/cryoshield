@@ -3,6 +3,8 @@
  * lifetime on testnet (harden-gas-sponsorship D2); the EntryPoint nonce counts the included ones. "About": failed
  * operations may count differently. Pure, so it stays in the initial chunk; the nonce read is in the write stack.
  */
+import { bytesEqual } from '../lib/bytes';
+
 export const SPONSOR_CAP = 50;
 /** Shown only at or below this many. */
 export const BUDGET_HINT_AT = 10;
@@ -19,4 +21,19 @@ const GET_NONCE = '0x35567e1a';
 export async function readNonce(client: { request(a: { method: string; params?: unknown }): Promise<unknown> }, owner: string): Promise<bigint> {
   const data = `${GET_NONCE}${owner.slice(2).toLowerCase().padStart(64, '0')}${'0'.repeat(64)}`;
   return BigInt((await client.request({ method: 'eth_call', params: [{ to: ENTRY_POINT_06, data }, 'latest'] })) as string);
+}
+
+/**
+ * web-review-followups 3: the nonce to pin for a session, read nonce first, then the vault. Only while the chain still
+ * holds the session's own blob (so a lagging RPC right after a write, or a write from elsewhere, never moves the pin),
+ * and only upward (a reverted save that used a nonce). Otherwise undefined: keep the current pin.
+ */
+export async function pinIfCurrent(
+  client: Parameters<typeof readNonce>[0],
+  reader: { getVault(id: `0x${string}`): Promise<{ blob: Uint8Array } | null> },
+  s: { vaultId: `0x${string}`; owner: string; blob: Uint8Array; nonce?: bigint | undefined },
+): Promise<bigint | undefined> {
+  const n = await readNonce(client, s.owner);
+  const v = await reader.getVault(s.vaultId);
+  return v && bytesEqual(v.blob, s.blob) && (s.nonce === undefined || n > s.nonce) ? n : undefined;
 }

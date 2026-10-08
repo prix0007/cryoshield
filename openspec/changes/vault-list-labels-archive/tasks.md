@@ -61,7 +61,7 @@
 
 ## 6. Docs, hardware check and security review [fe] [ow] [sec]
 
-- [ ] 6.1 [fe] Update `docs/system-design.md` (payload v2, the vault list, staleness check, dates) and `docs/compliance/data-inventory.md` (vault names: client-side only, inside the ciphertext; month-only credential labels). Verify: docs review in 6.4.
+- [x] 6.1 [fe] Update `docs/system-design.md` (payload v2, the vault list, staleness check, dates) and `docs/compliance/data-inventory.md` (vault names: client-side only, inside the ciphertext; month-only credential labels). Verify: docs review in 6.4.
 - [ ] 6.2 [fe] Add a two-YubiKey checklist to `apps/web/docs/hardware-test.md`: create a named vault, create a second vault, unlock and see the list, Check another key, rename + archive in one save, archive and clear, STALE from a second browser, recovery `--list` and choose. Verify: the checklist is run on OP Sepolia and recorded.
 - [ ] 6.3 [ow] Release the decoder (1.2) to production and confirm it is live before releasing any writer task. Verify: the release notes name the decoder release and the later writer release.
 - [x] 6.4 [sec] Security review of sections 1–5. Check:

@@ -187,8 +187,13 @@ describe('2.5 / D8 every write starts from the current blob', () => {
 
   it('a vault that is gone is STALE too', async () => {
     const t = await setup();
-    t.reader.getVault.mockResolvedValueOnce(null as never);
-    await expect(saveEdit(t.svc, t.session, [{ label: 'a', secret: 'b' }], () => {})).rejects.toMatchObject({ code: 'STALE' });
+    // Gone for good: still gone after the lag re-reads (web-review-followups 3), which fake timers fast-forward.
+    vi.useFakeTimers({ toFake: ['setTimeout'] });
+    t.reader.getVault.mockResolvedValue(null as never);
+    const done = expect(saveEdit(t.svc, t.session, [{ label: 'a', secret: 'b' }], () => {})).rejects.toMatchObject({ code: 'STALE' });
+    await vi.runAllTimersAsync();
+    await done;
+    vi.useRealTimers();
   });
 });
 

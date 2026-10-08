@@ -235,9 +235,9 @@ describe('harden-gas-sponsorship + D5: one active v2 vault opens directly; older
     expect(screen.queryByText(/This key opens more than one vault/)).toBeNull();
     expect(screen.getByRole('button', { name: 'Edit secrets' })).toBeInTheDocument();
     await u.click(screen.getByRole('button', { name: 'All vaults (2)' }));
-    await u.click(within(await screen.findByRole('region', { name: 'Older test vaults' })).getByRole('button', { name: 'Open Unnamed vault' }));
+    await u.click(within(await screen.findByRole('region', { name: 'Read-only vaults (older format)' })).getByRole('button', { name: 'Open Unnamed vault' }));
     expect(await screen.findByRole('heading', { name: 'Legacy' })).toBeInTheDocument();
-    expect(screen.getByText(/made with an earlier test version/)).toBeInTheDocument();
+    expect(screen.getByText(/in an older, read-only format/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Edit secrets' })).toBeNull();
     await u.click(screen.getByRole('button', { name: 'All vaults (2)' }));
     await u.click(within(await screen.findByRole('region', { name: 'Active vaults' })).getByRole('button', { name: 'Open Unnamed vault' }));
@@ -249,13 +249,13 @@ describe('harden-gas-sponsorship + D5: one active v2 vault opens directly; older
     await unlockWith([v2(), other, v1()]);
     expect(await screen.findByText(/This key opens more than one vault/)).toBeInTheDocument();
     expect(within(screen.getByRole('region', { name: 'Active vaults' })).getAllByRole('button', { name: 'Open Unnamed vault' })).toHaveLength(2);
-    expect(screen.getByRole('button', { name: 'Open an older test vault' })).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByRole('button', { name: 'Open a read-only vault (older format)' })).toHaveAttribute('aria-expanded', 'false');
   });
 
   it('only a v1 vault: the list shows it (expanded), and Open shows it read-only', async () => {
     const u = await unlockWith([v1()]);
-    const older = await screen.findByRole('region', { name: 'Older test vaults' });
-    expect(within(older).getByText(/^Older test vault ·/)).toBeInTheDocument();
+    const older = await screen.findByRole('region', { name: 'Read-only vaults (older format)' });
+    expect(within(older).getByText(/^Read-only vault \(older format\) ·/)).toBeInTheDocument();
     await u.click(within(older).getByRole('button', { name: 'Open Unnamed vault' }));
     expect(await screen.findByRole('heading', { name: 'Legacy' })).toBeInTheDocument();
   });
@@ -265,7 +265,7 @@ describe('harden-gas-sponsorship + D5: one active v2 vault opens directly; older
     await screen.findByRole('heading', { name: 'Current' });
     await u.click(screen.getByRole('button', { name: 'Lock' }));
     expect(screen.queryByText('Legacy')).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Open an older test vault' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Open a read-only vault (older format)' })).toBeNull();
   });
 });
 
@@ -280,7 +280,7 @@ describe('harden-gas-sponsorship: a VaultRegistry v1 vault opens read-only', () 
     await u.click(await screen.findByRole('button', { name: 'Open Unnamed vault' }));
     expect(await screen.findByRole('heading', { name: 'Bitcoin seed' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Edit vault' })).toBeNull();
-    expect(screen.getByText(/made with an earlier test version/)).toBeInTheDocument();
+    expect(screen.getByText(/in an older, read-only format/)).toBeInTheDocument();
     expect(screen.getByText(/create a new vault and copy your secrets into it/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Edit secrets' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Add a key' })).toBeNull();
@@ -296,7 +296,7 @@ describe('harden-gas-sponsorship: a VaultRegistry v1 vault opens read-only', () 
     const u = userEvent.setup();
     await openVaultReal(u);
     expect(screen.getByRole('button', { name: 'Add a key' })).toBeInTheDocument();
-    expect(screen.queryByText(/made with an earlier test version/)).toBeNull();
+    expect(screen.queryByText(/in an older, read-only format/)).toBeNull();
   });
 });
 

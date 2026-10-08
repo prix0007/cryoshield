@@ -270,7 +270,7 @@ describe('Where your vault is stored (show-vault-onchain-location 1.3)', () => {
     await screen.findByRole('heading', { name: 'Seed' });
     await waitFor(() => expect(ops.ensureMirror).toHaveBeenCalledTimes(1));
     fireEvent.click(screen.getByRole('button', { name: S.vault.allVaults(2) }));
-    const older = await screen.findByRole('region', { name: 'Older test vaults' });
+    const older = await screen.findByRole('region', { name: 'Read-only vaults (older format)' });
     fireEvent.click(within(older).getByRole('button', { name: 'Open Unnamed vault' }));
     await screen.findByRole('heading', { name: 'Old' });
     fireEvent.click(screen.getByRole('button', { name: S.vault.allVaults(2) }));

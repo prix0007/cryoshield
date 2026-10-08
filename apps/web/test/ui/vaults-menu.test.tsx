@@ -61,9 +61,11 @@ const unlockReturns = (...taps: unlockMod.OpenedVault[][]) => {
   for (const matches of taps) spy.mockResolvedValueOnce({ credId: id(1), locator: new Uint8Array(32), matches });
   return spy;
 };
+/** The chain holds each listed vault's own blob (vault(n) is filled with n), so its nonce can be pinned (followups 3). */
+const chainReader = { getVault: async (vaultId: `0x${string}`) => ({ vaultId, blob: new Uint8Array(400).fill(parseInt(vaultId.slice(2, 4), 16)) }) } as never;
 async function unlockApp(over: Parameters<typeof renderApp>[0] = {}) {
   const u = userEvent.setup();
-  const r = renderApp(over);
+  const r = renderApp({ reader: chainReader, ...over });
   await u.click(screen.getByRole('button', { name: 'Unlock my vault' }));
   await u.click(screen.getByRole('button', { name: 'Unlock with my key' }));
   return { u, ...r };
@@ -270,12 +272,13 @@ describe('3.3 Edit vault and the archived state', () => {
     expect(stack.metaCalls).toEqual([[{ name: 'Family', archived: false }]]);
   });
 
-  it('a stale vault says "Unlock again" (D8)', async () => {
+  it('a stale vault says so and offers "Reload vault" (D8; web-review-followups 3)', async () => {
     vi.spyOn(ops, 'saveEdit').mockRejectedValue(new WriteError('STALE'));
     const { u } = await openNamed();
     await u.click(screen.getByRole('button', { name: S.vault.edit }));
     await u.click(screen.getByRole('button', { name: 'Save' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent('This vault changed since you opened it. Unlock again.');
+    expect(await screen.findByRole('alert')).toHaveTextContent(S.save.stale);
+    expect(screen.getByRole('button', { name: S.save.reload })).toBeInTheDocument();
   });
 
   it('menu mode: every group expanded, Edit vault only for VaultRegistry v2 vaults', async () => {
@@ -330,6 +333,25 @@ describe('3.3 testnet save-budget hint (D10)', () => {
     await editOn(11155420);
     expect(await screen.findByText(S.save.paused)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+  });
+  it('review WB4: at 0 free saves, Unarchive is blocked too (the same gate as Save)', async () => {
+    stack.nonce = 50;
+    unlockReturns([vault(1, { name: 'Family', archived: true })]);
+    const { u } = await unlockApp({ chainId: 11155420, client: nonceClient() });
+    await u.click(await screen.findByRole('button', { name: 'Open Family' }));
+    const unarchive = await screen.findByRole('button', { name: S.vault.unarchive });
+    await waitFor(() => expect(unarchive).toBeDisabled());
+    expect(screen.getByText(S.save.paused)).toBeInTheDocument();
+    await u.click(unarchive);
+    expect(stack.metaCalls).toEqual([]);
+  });
+  it('review WB4: with saves left, Unarchive works', async () => {
+    stack.nonce = 45;
+    unlockReturns([vault(1, { name: 'Family', archived: true })]);
+    const { u } = await unlockApp({ chainId: 11155420, client: nonceClient() });
+    await u.click(await screen.findByRole('button', { name: 'Open Family' }));
+    const unarchive = await screen.findByRole('button', { name: S.vault.unarchive });
+    expect(unarchive).toBeEnabled();
   });
   it('more than 10 left: no hint', async () => {
     stack.nonce = 3;
@@ -536,5 +558,14 @@ describe('review LOW items', () => {
     expect(screen.getByText(S.save.paused)).toBeInTheDocument();
     await u.click(screen.getByRole('button', { name: VAULTS.sheet.cancel }));
     expect(await screen.findByRole('button', { name: S.vault.editVault })).toBeInTheDocument();
+  });
+});
+
+describe('review W1: an incomplete vault list is never shown', () => {
+  it('unlock says "couldn\'t load all your vaults, try again"', async () => {
+    const { RegistryIncompleteError } = await import('../../src/chain/registry');
+    vi.spyOn(unlockMod, 'unlock').mockRejectedValue(new RegistryIncompleteError('v2'));
+    await unlockApp();
+    expect(await screen.findByRole('alert')).toHaveTextContent(S.unlock.incomplete);
   });
 });

@@ -21,6 +21,22 @@
 | 11 | Domain/DNS (GoDaddy), CAA iodef mail | WHOIS (company, not users) | No user PD | n/a | n/a | n/a |
 | 12 | Desktop recovery tool | Runs locally; contacts preset RPCs and Arweave gateway like #6–7 | IP to RPCs | Neither for local processing; controller only for the default RPC choice | Same as #7 | No telemetry (by design) |
 
+## Inside the ciphertext only (payload v2, `vault-list-labels-archive`)
+
+Payload v2 (`docs/spec/payload-v2.md`) adds two fields, and both exist **only inside the encrypted blob** (rows 5 and 6
+publish the ciphertext; no new plaintext field, tag, event or log carries them):
+
+- **Vault name** (optional, typed by the user at creation or in "Edit vault"). It may contain personal data. It is
+  encrypted client-side with the rest of the payload and is never sent, logged or stored in plaintext: not in a
+  credential, the URL, the page title, `errorReference`, analytics (landing page only) or device storage. Older
+  versions stay readable to anyone with one of the vault's keys and its PIN, like every older version of the vault.
+- **Archived flag** (and the length padding written by "Archive and clear"). Inside the ciphertext only; the blob
+  length is kept, so archiving reveals nothing on-chain beyond the fact that the vault was updated.
+
+**Credential labels** (the WebAuthn user name/display name stored on the security key and shown by browsers) are
+generic and month-only, "CryoShield vault · Oct 2026 (key 1)" (`apps/web/src/webauthn/index.ts`); they never carry
+the vault name or any secret. They sit on the user's key (row 1), never with CryoShield.
+
 ## Browser-side device storage
 
 None. CryoShield's code sets no cookie and uses no localStorage, sessionStorage, IndexedDB, Cache Storage or service

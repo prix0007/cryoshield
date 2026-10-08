@@ -277,3 +277,47 @@ describe('web-registry-versions D2: the newest registry holding a vault ID is au
     await expect(reader.getVault(id(1), 'v9')).rejects.toThrow(/v9/);
   });
 });
+
+describe('review W1: locatorLength is the source of truth for a paged locator', () => {
+  const cut = (reg: MockRegistry, page: (start: number, rows: Hex[]) => Hex[]) => {
+    const real = reg.handle.bind(reg);
+    reg.handle = (data) => {
+      const d = decodeFunctionData({ abi: reg.abi, data });
+      if (d.functionName !== 'resolveLocator') return real(data);
+      const [l, start, count] = d.args as [Hex, bigint, bigint];
+      const all = reg.index.get(l.toLowerCase()) ?? [];
+      const rows = page(Number(start), all.slice(Number(start), Number(start) + Number(count)));
+      return encodeFunctionResult({ abi: reg.abi, functionName: 'resolveLocator', result: rows } as never);
+    };
+  };
+
+  it('an empty page before locatorLength is reached: "couldn\'t load all vaults", never a short list', async () => {
+    const { RegistryIncompleteError } = await import('../../src/chain/registry');
+    const reg = new MockRegistry();
+    for (let i = 1; i <= 300; i++) reg.put(id(i), { owner, blob: blob('00', 1), version: 1 }, [loc]);
+    cut(reg, (start, rows) => (start >= 256 ? [] : rows));
+    await expect(createRegistryReader(reg.transport()).candidatesFor(loc)).rejects.toBeInstanceOf(RegistryIncompleteError);
+  });
+
+  it('a short (or long) page is refused the same way', async () => {
+    const { RegistryIncompleteError } = await import('../../src/chain/registry');
+    const reg = new MockRegistry();
+    for (let i = 1; i <= 10; i++) reg.put(id(i), { owner, blob: blob('00', 1), version: 1 }, [loc]);
+    cut(reg, (_s, rows) => rows.slice(0, 9));
+    await expect(createRegistryReader(reg.transport()).candidatesFor(loc)).rejects.toBeInstanceOf(RegistryIncompleteError);
+    const reg2 = new MockRegistry();
+    reg2.put(id(1), { owner, blob: blob('00', 1), version: 1 }, [loc]);
+    cut(reg2, (_s, rows) => [...rows, id(99)]);
+    await expect(createRegistryReader(reg2.transport()).candidatesFor(loc)).rejects.toBeInstanceOf(RegistryIncompleteError);
+  });
+
+  it('also for the oldest registry, and also when an older registry asks (it is still unconfirmed)', async () => {
+    const { RegistryIncompleteError, RegistryUnconfirmedError } = await import('../../src/chain/registry');
+    const v2 = new MockRegistry('v2');
+    for (let i = 1; i <= 3; i++) v2.put(id(i), { owner, blob: blob('00', 1), version: 1 }, [loc]);
+    cut(v2, () => []);
+    const e = await createRegistryReader(v2.transport(new MockRegistry('v1'))).candidatesFor(loc).catch((x) => x);
+    expect(e).toBeInstanceOf(RegistryIncompleteError);
+    expect(e).toBeInstanceOf(RegistryUnconfirmedError);
+  });
+});

@@ -5,7 +5,8 @@ import { ChunkBoundary, ChunkFailed, cleanItems, useLazyModule, KeyPrompt, Notic
 import { MirrorLine } from './CreateFlow';
 import { ensureMirror, errorReference, isReadOnly, messageFor, mirrorWrite, rewrite, saveAddKey, saveEdit, withPayload, type MirrorItem, type MirrorResult, type VaultSession } from './operations';
 import { testnetName, useServices } from './services';
-import { BUDGET_HINT_AT, readNonce, savesLeft } from '../account/budget';
+import { BUDGET_HINT_AT, pinIfCurrent, savesLeft } from '../account/budget';
+import { WriteError } from '../account/errors';
 import { S } from './strings';
 import { ActionBar, EmptyState } from './chrome';
 import { copySecret, forgetClearListener } from './clipboard';
@@ -33,8 +34,10 @@ export function VaultView(props: {
   /** How many vaults are open (the "All vaults (N)" button), and the way there. */
   vaultCount?: number;
   onAllVaults?: () => void;
-  /** The account nonce read at open (D8): App stores it on the session. */
-  onNonce?: (vaultId: `0x${string}`, nonce: bigint) => void;
+  /** The account nonce to pin (D8), for the session whose blob is `blob`: App stores it if that is still the session. */
+  onNonce?: (vaultId: `0x${string}`, nonce: bigint, blob: Uint8Array) => void;
+  /** STALE: unlock again (one tap) and replace this session with the vault's current version. A message on failure. */
+  onReload?: () => Promise<string | null>;
   /** This vault's Arweave copy known to the session (App state, so it survives a remount; wiped on lock). */
   mirrorItem?: MirrorItem | undefined;
   /** Reports every mirror result with the version it is for; App validates it and keeps the newest version. */
@@ -112,19 +115,37 @@ export function VaultView(props: {
     });
   }
 
-  // D8/D10: when the vault opens, read and pin the account's EntryPoint nonce (one eth_call; no write stack).
-  // It is the base every write of this session is checked against, and it feeds the testnet save-budget hint.
+  // D8/D10: when the vault opens, read and pin the account's EntryPoint nonce (raw eth_calls; no write stack). It is the
+  // base every write of this session is checked against, and it feeds the testnet save-budget hint. web-review-followups
+  // 3: pinned only while the chain holds this session's blob, re-pinned after every write attempt, and never lowered.
   const { onNonce } = props;
-  useEffect(() => {
-    if (readOnly || s.nonce !== undefined || !onNonce) return;
-    let live = true;
-    readNonce(svc.client, s.owner)
-      .then((n) => live && onNonce(s.vaultId, n))
+  const repin = (x: VaultSession) => {
+    if (isReadOnly(x) || !onNonce) return;
+    pinIfCurrent(svc.client, svc.reader, x)
+      .then((n) => n !== undefined && onNonce(x.vaultId, n, x.blob))
       .catch(() => undefined);
-    return () => {
-      live = false;
-    };
-  }, [readOnly, s.nonce, s.vaultId, svc.client, s.owner, onNonce]);
+  };
+  useEffect(() => {
+    if (s.nonce === undefined) repin(s);
+    // repin reads only the session's public fields listed here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [readOnly, s.nonce, s.vaultId, s.blob, svc.client, s.owner, onNonce]);
+  const [stale, setStale] = useState(false);
+  async function reload() {
+    if (!props.onReload) return;
+    setBusy(true);
+    try {
+      const msg = await props.onReload();
+      setError(msg);
+      setErrorRef(undefined);
+      if (!msg) {
+        setStale(false);
+        setMode('view'); // the draft was made from the old version
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
   const left = testnetName(svc.chainId) && s.nonce !== undefined ? savesLeft(Number(s.nonce)) : null;
   const budget = left !== null && left <= BUDGET_HINT_AT ? { text: left === 0 ? S.save.paused : S.save.budget(left), blocked: left === 0 } : undefined;
 
@@ -136,19 +157,27 @@ export function VaultView(props: {
     setStatus(null);
     setProgress(new Set());
     setPrompt(S.edit.touchAny);
+    setStale(false);
+    let after = s;
     try {
       const next = await write(() => setPrompt(S.edit.touchSame));
       setMode('view');
       if (next === s) setProgress(null);
-      else afterWrite(next);
+      else afterWrite((after = next));
     } catch (e) {
-      setProgress(null);
-      setError(messageFor(e));
-      setErrorRef(errorReference(e));
+      failed(e);
     } finally {
       setPrompt(null);
       setBusy(false);
+      repin(after);
     }
+  }
+
+  function failed(e: unknown) {
+    setProgress(null);
+    setError(messageFor(e));
+    setErrorRef(errorReference(e));
+    setStale(e instanceof WriteError && e.code === 'STALE');
   }
 
   const saveDraft = () => run((sign) => saveEdit(svc, s, cleanItems(draft), sign, onProgress));
@@ -160,6 +189,8 @@ export function VaultView(props: {
     setStatus(null);
     setProgress(new Set());
     setPrompt(S.addKey.touchCurrent);
+    setStale(false);
+    let after = s;
     try {
       const { session: next, newLocator } = await saveAddKey(svc, s, {
         onInsertNew: () => confirmStep(S.addKey.insertNew),
@@ -168,16 +199,15 @@ export function VaultView(props: {
         onProgress,
       });
       setMode('view');
-      afterWrite(next, [newLocator]);
+      afterWrite((after = next), [newLocator]);
       setStatus(S.addKey.done);
     } catch (e) {
-      setProgress(null);
-      setError(messageFor(e));
-      setErrorRef(errorReference(e));
+      failed(e);
     } finally {
       setPrompt(null);
       setWaiting(null);
       setBusy(false);
+      repin(after);
     }
   }
 
@@ -204,6 +234,13 @@ export function VaultView(props: {
           {error}
         </Notice>
       )}
+      {stale && props.onReload && (
+        <ActionBar>
+          <Btn onClick={reload} disabled={busy}>
+            {S.save.reload}
+          </Btn>
+        </ActionBar>
+      )}
       {status && <Notice kind="success">{status}</Notice>}
       <CeremonyPresence>{prompt && <KeyPrompt text={prompt} {...(waiting ? { onContinue: waiting } : {})} />}</CeremonyPresence>
       {progress && <SaveProgress reached={progress} {...(mirror && progress.has('confirmed') ? { arweave: mirror.status } : {})} />}
@@ -223,9 +260,11 @@ export function VaultView(props: {
             {s.archived && !readOnly && (
               <div className="notice notice-info notice-inline" role="status">
                 <p className="notice-text">{S.vault.archived}</p>
-                <Btn className="secondary" onClick={() => run((sign) => menu().then((m) => m.saveVaultMeta(ops, svc, s, { ...(s.name !== undefined ? { name: s.name } : {}), archived: false }, sign, onProgress)))} disabled={busy}>
+                {/* Review WB4: the same zero-saves-left gate as every other save. */}
+                <Btn className="secondary" onClick={() => run((sign) => menu().then((m) => m.saveVaultMeta(ops, svc, s, { ...(s.name !== undefined ? { name: s.name } : {}), archived: false }, sign, onProgress)))} disabled={busy || budget?.blocked === true}>
                   {S.vault.unarchive}
                 </Btn>
+                {budget?.blocked && <p className="hint">{S.save.paused}</p>}
               </div>
             )}
             {s.items.length === 0 && <EmptyState>{S.vault.empty}</EmptyState>}
