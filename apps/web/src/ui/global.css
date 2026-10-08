@@ -163,7 +163,8 @@ button.link-button {
   min-height: var(--bar-h);
   align-items: center;
   padding: var(--space-sm) var(--space-sm);
-  margin: var(--space-lg) calc(-1 * var(--space-sm)) var(--space-md);
+  /* align-vault-sections D2: the tray is the column width (no side overhang), like every other block. */
+  margin: var(--space-lg) 0 var(--space-md);
   background: var(--app-frost);
   -webkit-backdrop-filter: var(--blur-frost);
   backdrop-filter: var(--blur-frost);
@@ -201,6 +202,10 @@ button.link-button {
 }
 
 /* ---- Vault actions (vault-view-action-layout D3): an inset grouped list of full-row buttons, then navigation ---- */
+.vault-nav button {
+  /* align-vault-sections D1: full column width, like the blocks above it. */
+  flex: 1 1 100%;
+}
 .group-heading {
   margin: var(--space-lg) 0 var(--space-xs) var(--space-lg);
   font-size: var(--caption-size);
@@ -702,16 +707,17 @@ dd {
 .app-footer {
   max-width: 720px;
   margin: 0 auto;
-  padding: var(--space-lg) var(--space-md) var(--space-xxl);
-  border-top: 1px solid var(--app-hairline);
+  padding: 0 var(--space-md) var(--space-xxl);
 }
+/* align-vault-sections D4: the divider spans the content column, not the gutter. */
 .app-footer ul {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-xs) var(--space-lg);
   list-style: none;
   margin: 0;
-  padding: 0;
+  padding: var(--space-lg) 0 0;
+  border-top: 1px solid var(--app-hairline);
 }
 .app-footer a {
   display: inline-flex;
@@ -761,18 +767,40 @@ dd {
 }
 
 /* "Where your vault is stored" (show-vault-onchain-location): a quiet disclosure under the vault, utility-card rows. */
-.vault-location-disclosure {
-  margin: var(--space-md) 0;
-}
-.vault-location-disclosure .notice-details button.disclosure {
-  min-height: var(--target);
-}
 .vault-location {
   margin-top: var(--space-xs);
   padding: var(--space-md) var(--space-lg);
   background: var(--app-surface);
   border: 1px solid var(--app-hairline);
   border-radius: var(--radius-lg);
+}
+/* align-vault-sections D3: one full-width card, like the Manage vault list; the details expand inside it. */
+.vault-location-disclosure {
+  margin: var(--space-md) 0;
+  background: var(--app-surface);
+  border: 1px solid var(--app-hairline);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+.vault-location-disclosure .notice-details {
+  margin: 0;
+}
+.vault-location-disclosure .notice-details button.disclosure {
+  width: 100%;
+  min-height: var(--target);
+  padding: 11px var(--space-lg);
+  border-radius: 0;
+  text-align: left;
+}
+.vault-location-disclosure .notice-details button.disclosure:focus-visible {
+  outline-offset: -3px;
+}
+.vault-location-disclosure .vault-location {
+  margin: 0;
+  padding-top: 0;
+  background: none;
+  border: 0;
+  border-radius: 0;
 }
 .loc-list {
   margin: 0;
