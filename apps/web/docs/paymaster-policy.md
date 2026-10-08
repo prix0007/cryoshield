@@ -36,17 +36,26 @@ Unlocking still works: reads need only a public RPC. Recovery needs neither Cryo
 
 Starting values from design D2/D3. The founder may tune them; the **Live** columns are the record.
 
+> **Status 2026-10-09 (pre-production review, finding F1 / M2): nothing below is confirmed yet.** The Live testnet
+> column shows, for each row, the value the review recommends for the **production** policy (the one whose id is
+> `VITE_SPONSORSHIP_POLICY_ID` in `production-build`) before the first `gh release create`. The founder sets or
+> checks each value in the Pimlico dashboard and then replaces `_pending_` with the live value and the date, in a docs
+> PR (no key, no secret). Tasks `harden-gas-sponsorship` 1.1 and 1.2 are ticked only then. The dev policy (the id in
+> `development-build`) is a **different** policy and may use smaller caps. See
+> [`docs/reviews/2026-10-09-pre-production.md`](../../../docs/reviews/2026-10-09-pre-production.md).
+
 ### Sponsorship policy
 
 | Pimlico field | Testnet (OP Sepolia) | Mainnet (OP Mainnet, at the gate) | Live testnet (date) | Live mainnet (date) |
 |---|---|---|---|---|
-| `chain_ids.allowlist` | 11155420 only | 10 only | _pending task 1.2_ | _not before task 8.1_ |
-| `user.maximum_user_operation_count` | 50, `never` (lifetime) | 50, `monthly` | | |
-| `user.user_operation_spending` | not set | $1.00, `monthly` | | |
-| `user_operation.user_operation_spending` | $0.50 | $0.10 | | |
-| `global.user_operation_spending` (`daily`) | USD equal to about 0.05 ETH (record the rate used) | $20 | | |
-| `global.maximum_user_operation_count` (`daily`) | 500 | 2,000 | | |
-| Webhook | **off** | **off** | | |
+| `chain_ids.allowlist` | 11155420 only | 10 only | _pending (task 1.2); recommended: `[11155420]` only_ | _not before task 8.1_ |
+| `user.maximum_user_operation_count` | 50, `never` (lifetime) | 50, `monthly` | _pending; recommended: 50, reset `never`_ | |
+| `user.user_operation_spending` | not set | $1.00, `monthly` | _pending; recommended: not set_ | |
+| `user_operation.user_operation_spending` | $0.50 | $0.10 | _pending; recommended: $0.50_ | |
+| `global.user_operation_spending` (`daily`) | USD equal to about 0.05 ETH (record the rate used) | $20 | _pending; recommended: USD of about 0.05 ETH, `daily`; record the ETH/USD rate used_ | |
+| `global.maximum_user_operation_count` (`daily`) | 500 | 2,000 | _pending; recommended: 500, `daily`_ | |
+| Webhook | **off** | **off** | _pending; recommended: off_ | |
+| Start / end time | unset | unset | _pending; recommended: both unset (a policy that expires pauses all saving)_ | |
 
 Why these numbers: a measured create is about 1.5M gas on anvil (`docs/costs.md`), about $0.004 on OP Mainnet. $0.10
 per operation is about 25 times that, to allow for gas spikes and Pimlico pre-charging at maximum cost. A real user
@@ -56,11 +65,11 @@ needs one create, a few edits and one or two add-key operations, far below 50.
 
 One key per environment; never reuse the dev key in production.
 
-| Environment | Allowed origin | Methods | "Policy required" |
-|---|---|---|---|
-| Dev (`cryoshield-web-dev.fly.dev`) | `https://cryoshield-web-dev.fly.dev` | bundler + paymaster on; account APIs off | on, if the dashboard offers it |
-| Testnet production (`cryoshield.app`) | `https://cryoshield.app` | bundler + paymaster on; account APIs off | on, if offered |
-| Mainnet (`cryoshield.app`) | `https://cryoshield.app` | bundler + paymaster on; account APIs off | on, if offered |
+| Environment | Allowed origin | Methods | "Policy required" | Live (date) |
+|---|---|---|---|---|
+| Dev (`cryoshield-web-dev.fly.dev`) | `https://cryoshield-web-dev.fly.dev` | bundler + paymaster on; account APIs off | on, if the dashboard offers it | _pending; recommended: as in this row, on a key used only by `development-build`_ |
+| Testnet production (`cryoshield.app`) | `https://cryoshield.app` | bundler + paymaster on; account APIs off | on, if offered | _pending; recommended: a key **distinct from the dev key**, origin exactly `https://cryoshield.app`, bundler + paymaster on, account APIs off, restricted to the production policy id if the dashboard allows_ |
+| Mainnet (`cryoshield.app`) | `https://cryoshield.app` | bundler + paymaster on; account APIs off | on, if offered | _not before task 8.1_ |
 
 The origin restriction binds browsers only: a script can send any `Origin`. It stops other websites from using our
 key, not scripts.
@@ -69,7 +78,8 @@ key, not scripts.
 
 - **Mainnet:** prepaid only, about **7 days of the global cap ($140)**, and **no card** (a card unlocks a $10
   overdraft). The balance is then the hard bound on spending that bypasses the policy.
-- **Testnet:** Pimlico documents testnet operations as free to sponsor.
+- **Testnet:** Pimlico documents testnet operations as free to sponsor (unconfirmed for our account: question (c)
+  below). Recommended before the first release: no card on file for mainnet.
 
 ## 4. Dashboard facts (task 1.1)
 
@@ -77,7 +87,7 @@ Pimlico's public docs leave these open. The founder confirms each in the dashboa
 
 | Question | Answer | Date |
 |---|---|---|
-| (a) Can a key require a sponsorship policy, or be limited to specific policy IDs? | _pending_ | |
+| (a) Can a key require a sponsorship policy, or be limited to specific policy IDs? | _pending_ (if yes: turn it on for the production key; if no: record "no", and the balance stays the bound) | |
 | (b) Is a policy-less request refused when the balance is empty and there is no card? | _pending_ | |
 | (c) How do USD limits count testnet operations? (If $0, the count limits are the testnet bound.) | _pending_ | |
 | (d) Which origin and method restrictions are available on a key? | _pending_ | |
