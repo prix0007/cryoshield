@@ -96,35 +96,56 @@ Every non-canonical host (`www.cryoshield.app`, `cryoshield-web.fly.dev`, raw IP
 `https://cryoshield.app{uri}`**, except `/healthz`. There is one canonical origin, equal to the RP ID. The redirect
 target host is a constant, so it can't be used as an open redirect.
 
-## 4. DNS and account hardening at GoDaddy [founder]
+## 4. DNS and account hardening (Cloudflare DNS, GoDaddy registrar) [founder]
+
+**Where things live** (checked 2026-10-09, pre-production review `docs/reviews/2026-10-09-pre-production.md`):
+- **Registrar:** GoDaddy (registrar lock on and expiry 2027-10-02, both seen in RDAP on 2026-10-09; confirm
+  auto-renew in the GoDaddy dashboard).
+- **DNS:** Cloudflare. The nameservers at GoDaddy are `carlane.ns.cloudflare.com` and `seamus.ns.cloudflare.com`, so
+  every record below is edited in the **Cloudflare dashboard**, not at GoDaddy.
+- **Every record is DNS-only (grey cloud), never proxied.** TLS terminates at Fly with Fly's Let's Encrypt
+  certificate; a proxied record would put Cloudflare in the middle of our RP ID and would also need Cloudflare's CAs in
+  the CAA set. Check: `curl -sI https://cryoshield.app/` shows no `cf-ray` and no `server: cloudflare`.
 
 **Before touching DNS:**
-- **2FA with a hardware security key** on the GoDaddy account and on every Fly.io account in the `cryoshield` org.
-  Whoever controls DNS or the Fly app can serve a phishing page on our RP ID that captures PRF outputs.
-- Turn off GoDaddy **domain forwarding** and **parking** for `cryoshield.app`, and delete the default "Parked" `A @`
-  record.
-- Enable **auto-renew** and the registrar **domain lock**.
+- **2FA with a hardware security key** on the **Cloudflare** account (it holds DNS), the **GoDaddy** account (it holds
+  the registration and the DS record) and every Fly.io account in the `cryoshield` org. Whoever controls DNS, the
+  registration or the Fly app can serve a phishing page on our RP ID that captures PRF outputs.
+- At GoDaddy: domain **forwarding** and **parking** off, **auto-renew** and the registrar **domain lock** on.
 
-**Records** (GoDaddy → Domain → DNS → Manage DNS for `cryoshield.app`):
+**Records** (Cloudflare → `cryoshield.app` → DNS → Records; Proxy status **DNS only** on every row):
 
 | Type | Name | Value | TTL |
 |---|---|---|---|
-| A | `@` | `66.241.124.125` | 600 |
-| AAAA | `@` | `2a09:8280:1::1a4:b64:0` | 600 |
-| CNAME | `www` | `cryoshield-web.fly.dev` | 600 |
-| CNAME | `_acme-challenge` | `cryoshield.app.rkqjzy6.flydns.net` | 600 |
-| CNAME | `_acme-challenge.www` | `www.cryoshield.app.rkqjzy6.flydns.net` | 600 |
-| CAA | `@` | `0 issue "letsencrypt.org"` | 3600 |
-| CAA | `@` | `0 issuewild ";"` (no wildcard certs) | 3600 |
+| A | `@` | `66.241.124.125` | Auto |
+| AAAA | `@` | `2a09:8280:1::1a4:b64:0` | Auto |
+| CNAME | `www` | `cryoshield.app` | Auto |
+| CNAME | `_acme-challenge` | `cryoshield.app.rkqjzy6.flydns.net` | Auto |
+| CNAME | `_acme-challenge.www` | `www.cryoshield.app.rkqjzy6.flydns.net` | Auto |
+| CAA | `@` | `0 issue "letsencrypt.org"` | Auto |
+| CAA | `@` | `0 issuewild ";"` (no wildcard certs) | Auto |
 
 Notes:
-- **CAA:** Fly.io issues certificates through **Let's Encrypt** (Fly custom-domain docs). Any other CA is refused once
-  the CAA record exists. If Fly ever switches CA, `fly certs show` will report validation errors: update CAA first.
-- **No ALIAS/ANAME at the apex on GoDaddy**, so the apex A/AAAA values are hard-coded copies of Fly's IPs. After any IP
-  change (`fly ips release` / `allocate`, or an app re-creation), re-check `fly ips list --app cryoshield-web` and update
-  both records. A stale record would send users to someone else's server.
-- **DNSSEC:** enable it at GoDaddy (Domain → DNS → DNSSEC), so resolvers can detect forged answers for our RP ID.
-  GoDaddy-hosted DNS signs the zone and publishes DS records at the `.app` registry.
+- **www:** `www.cryoshield.app` is a CNAME to the apex, so it resolves to the same Fly IPs. Fly holds a certificate for
+  it, and Caddy answers every request on that host with a **301 to `https://cryoshield.app{uri}`** (section 3). The
+  app is never served on `www`, and `www` is never an RP ID.
+- **CAA, exactly two records.** Fly.io issues certificates through **Let's Encrypt** (Fly custom-domain docs). With
+  `issue "letsencrypt.org"` and `issuewild ";"`, no other CA may issue for the domain and no CA may issue a wildcard.
+  On 2026-10-09 the live set was Cloudflare's default one instead (five CAs, for both `issue` and `issuewild`:
+  comodoca, digicert, letsencrypt, pki.goog, ssl.com; review M1). Delete those and leave only the two records above. If Fly ever switches CA, `fly certs show` will report validation errors: update CAA first.
+- **`_acme-challenge` CNAMEs** delegate Let's Encrypt's DNS-01 checks to Fly, so renewals keep working;
+  `fly certs show <host> --app cryoshield-web` prints the exact targets to use.
+- **Apex IPs are copies of Fly's.** After any IP change (`fly ips release` / `allocate`, or an app re-creation),
+  re-check `fly ips list --app cryoshield-web` and update both records. A stale record would send users to someone
+  else's server.
+- **DNSSEC (two steps, two dashboards).** On 2026-10-09 the zone was signed but **no DS record was published at the
+  registry**, so DNSSEC was not in effect (review M1).
+  1. Cloudflare → `cryoshield.app` → DNS → Settings → DNSSEC → **Enable**. Cloudflare shows the DS values: key tag,
+     algorithm (13), digest type (2) and digest.
+  2. GoDaddy → My Products → `cryoshield.app` → DNS → **DNSSEC** → Add DS record, with exactly those four values.
+     GoDaddy forwards the DS to the `.app` registry. Cloudflare's DNSSEC page turns to "Success" once the DS is seen.
+- **Do not turn on Cloudflare proxying** for any record later. If that is ever wanted, it is a design change (TLS,
+  CAA and the RP ID's trust boundary all move) and needs its own OpenSpec change.
 - `.app` is on the HSTS preload list, so browsers never use plain HTTP for it.
 
 ## 5. Verify [read-only]
@@ -144,7 +165,12 @@ curl -sI https://cryoshield.app/app/nope | head -1                     # 404 (no
 
 Expected:
 - `https://cryoshield-web.fly.dev/` → 301 to `https://cryoshield.app/`;
-- `dig CAA cryoshield.app +short` shows the CAA records, and `dig DS cryoshield.app +short` shows a DS record (DNSSEC);
+- `dig CAA cryoshield.app +short` shows **exactly** `0 issue "letsencrypt.org"` and `0 issuewild ";"`, and
+  `dig DS cryoshield.app +short` shows a DS record (DNSSEC). Without `dig`:
+  `curl -s -H 'accept: application/dns-json' 'https://dns.google/resolve?name=cryoshield.app&type=CAA'` (two answers) and
+  `...&type=DS` (one answer, and `"AD": true` on a validating query);
+- `dig NS cryoshield.app +short` shows the two Cloudflare nameservers, and `curl -sI https://cryoshield.app/` has no
+  `cf-ray` header (not proxied);
 - the CSP header equals the page's meta CSP followed by `; frame-ancestors 'none'`;
 - `X-Frame-Options: DENY`;
 - HSTS `max-age=63072000; includeSubDomains; preload`;

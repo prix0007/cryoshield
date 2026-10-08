@@ -47,7 +47,7 @@ create it first).
      leaked Fly token);
    - the GitHub audit log (owner settings → Security log), recent workflow runs (`gh run list --workflow deploy.yml`),
      tags and releases (`gh release list`), and ruleset and environment settings;
-   - the registrar and DNS records (GoDaddy history, `dig cryoshield.app A AAAA CAA NS`);
+   - the registrar and DNS records (GoDaddy and Cloudflare audit logs, `dig cryoshield.app A AAAA CAA NS DS`);
    - save them outside GitHub and Fly.
 3. **Cut off the attacker:** rotate the Fly tokens (`docs/deploy.md` → Rotating the Fly tokens), the Pimlico API key,
    and any GitHub token or SSH key that could be involved; review collaborators and the machine account; check

@@ -21,7 +21,7 @@ The dev site is a testnet sandbox. Never send users there.
 
 Dev code ships without a human step, so this boundary is what keeps it away from production vaults. Dev vaults use the dev RP ID and are unrelated to production vaults. `deploy.sh` and `gen-context.mjs` refuse any dev host or dev RP ID under `cryoshield.app`.
 
-**`dev.cryoshield.app` must not serve the app.** Its Fly certificate has been removed, and its DNS records should be deleted (step 0). Until they are gone, any request that still reaches the dev app with that Host header is redirected to `https://cryoshield-web-dev.fly.dev`, never served. The hosting details, DNS and certificates are in [`apps/web/deploy/README.md`](../apps/web/deploy/README.md).
+**`dev.cryoshield.app` must not serve the app.** Its Fly certificate has been removed, and its DNS records are gone (`NXDOMAIN`, checked 2026-10-09; step 0). Should a request still reach the dev app with that Host header, it is redirected to `https://cryoshield-web-dev.fly.dev`, never served. Never re-create a `dev` record. The hosting details, DNS and certificates are in [`apps/web/deploy/README.md`](../apps/web/deploy/README.md).
 
 ## How it works
 
@@ -53,6 +53,8 @@ Only the repository owner can ship to production. Three independent layers enfor
 3. **The environments:** `production` and `production-build` accept **only `v*` tags**, with no branch policy at all, not even `main`. No workflow on any branch can obtain the production token or build config. Because only admins can create tags, **the only path to production secrets is a tag you created.**
 
 The agents' machine account (Write role) therefore cannot ship to production. Agents never create tags or releases.
+
+**Before the first release**, clear the founder checklist in the [pre-production review](reviews/2026-10-09-pre-production.md) (DNSSEC and CAA, the recorded Pimlico limits).
 
 **Cut a release** from `main`:
 
@@ -95,14 +97,14 @@ Run these once. None of them prints a secret value.
 **0. The dev app, and retiring `dev.cryoshield.app`.**
 - **Already done** (2026-10-05): the Fly app `cryoshield-web-dev` exists (org `cryoshield`, region `sin`). It serves on its `fly.dev` name with Fly's own certificate, so it needs **no** DNS record and **no** `fly certs add`.
 - **Already done:** the Fly certificate for `dev.cryoshield.app` has been removed.
-- **To do before the first production release:** delete the `dev` A/AAAA (or CNAME) records for `dev.cryoshield.app` at the DNS provider. A dangling record pointing at Fly could otherwise be claimed by someone else.
+- **Done** (checked 2026-10-09, pre-production review): the `dev.cryoshield.app` records are deleted; the name returns `NXDOMAIN`. Never add a `dev` record again: a dangling record pointing at Fly could be claimed by someone else.
 
 To check:
 
 ```sh
 fly apps list --org cryoshield | grep cryoshield-web-dev
 fly certs list --app cryoshield-web-dev                  # must NOT list dev.cryoshield.app
-dig +short dev.cryoshield.app A; dig +short dev.cryoshield.app AAAA   # must print nothing once the records are gone
+dig +short dev.cryoshield.app A; dig +short dev.cryoshield.app AAAA   # must print nothing (NXDOMAIN since 2026-10-09)
 curl -sI https://cryoshield-web-dev.fly.dev/ | grep -i x-robots-tag     # noindex, nofollow (after the first dev deploy)
 ```
 
@@ -121,7 +123,9 @@ The same command also syncs the `release-tags` ruleset (only admins may create, 
 
 After `harden-release-path` merges, run the two commands again: the dry run shows `release-tags` drifting from `refs/tags/v*` to `~ALL`, and `--apply` widens it. Then check it: the dry run must report `ruleset 'release-tags': in sync`, and a tag push by any non-admin account (the machine user, once it exists) must be refused, for example `refs/tags/probe-1` and `refs/tags/V0.0.1-probe` (`docs/agent-account.md` → verification). A refused push creates nothing.
 
-**2. Fly deploy tokens**, each an **app-scoped deploy token** (it can deploy only its own app, never the other one or the org), valid for one year:
+**2. Fly deploy tokens**, each an **app-scoped deploy token** (it can deploy only its own app, never the other one or the org), valid for one year.
+
+**What is live (production, checked 2026-10-09 with `fly tokens list -a cryoshield-web`):** one deploy token, named **`flyctl deploy token`** (not `github-actions-deploy` as the commands below would name it), **expiring 2027-10-05**. Whether the `FLY_API_TOKEN` secret in `production` is that token cannot be read back from GitHub; the first release's successful deploy step proves the secret works. Put the rotation in your calendar for **September 2027** (section "Rotating the Fly tokens"); rotating also gives the token the conventional name.
 
 ```sh
 fly tokens create deploy -a cryoshield-web-dev --expiry 8760h --name github-actions-deploy-dev \
@@ -219,6 +223,8 @@ A rollback restores the previous *image* only. It uses the **new** commit's Fly 
 ## Rotating the Fly tokens
 
 Rotate once a year, before `--expiry`, or at once if a token may have leaked. For dev, use `-a cryoshield-web-dev`, `--env development`, and re-run with `gh workflow run deploy-dev.yml --ref main -f force=true`.
+
+**Next production rotation: before 2027-10-05**, when the current token (named `flyctl deploy token` in `fly tokens list -a cryoshield-web`) expires. Revoke that token by its ID in the third step. The new token goes straight from `fly` into `gh secret set` through the pipe and is never printed; never paste a token value into a terminal log, an issue or a PR.
 
 ```sh
 fly tokens list -a cryoshield-web                                   # find the old token's ID

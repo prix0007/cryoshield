@@ -14,6 +14,7 @@
 | OP public RPC / PublicNode / dRPC | OP Labs (UNVERIFIED entity) / Allnodes / dRPC | chain reads (web app: OP Labs only) | their privacy pages; OP Labs RPC logging unpublished | 7 |
 | Cloudflare Web Analytics (landing only) | Cloudflare, Inc., US; US + EU data centres | aggregate page analytics on `/` | cloudflare.com/cloudflare-customer-dpa, cloudflare.com/gdpr/subprocessors; EU-US DPF + SCCs | 8 |
 | GitHub | GitHub Inc., US | source, issues, private advisories (the only contact channel), Actions (CI, metrics) | GitHub privacy statement and terms | 9, 10, 13 |
-| GoDaddy | registrar | domain and DNS (no user data) | n/a | 11 |
+| GoDaddy | registrar | domain registration and the DNSSEC DS record (no user data) | n/a | 11 |
+| Cloudflare DNS | Cloudflare, Inc., US | authoritative DNS for `cryoshield.app`, DNS-only (never proxied; no user traffic passes through Cloudflare) | cloudflare.com/cloudflare-customer-dpa | 11 |
 
 There is no mail provider: CryoShield has no email address (`adopt-oss-project-defaults`).

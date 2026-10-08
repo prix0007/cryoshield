@@ -210,7 +210,7 @@ The funded 0.005 ETH (≈ $12.86) covers this about 800 times, so even a 100× g
 | Add key | ≈ 0.51M | 5.3e10 wei | ≈ 5.6e11 wei ≈ **$0.0015** | $0.10 |
 
 - Pimlico's own surcharge on sponsored gas and its pre-charge at maximum cost (refunded after about 15 minutes) are **not** included; task 1.1 of `harden-gas-sponsorship` and the launch-day step 11 record the real per-op charge. Measured numbers replace these estimates in `costs.md`.
-- **Budget arithmetic:** 2,000 ops/day × ~$0.004 ≈ $8/day at today's prices, so the 2,000-operation count cap binds before the $20 spend cap unless gas rises about 2.5×. A typical user (1 create, 3 edits, 1 add-key) costs about $0.008; the $1 per-sender lifetime cap is about 125× that. The ~$140 balance is 7 days at the global cap, or roughly 17,000 typical users at today's prices.
+- **Budget arithmetic:** 2,000 ops/day × ~$0.004 ≈ $8/day at today's prices, so the 2,000-operation count cap binds before the $20 spend cap unless gas rises about 2.5×. A typical user (1 create, 3 edits, 1 add-key) costs about $0.008; the $1 per-sender monthly cap is about 125× that (monthly, not lifetime: `harden-gas-sponsorship` design D2 and its review P5; corrected 2026-10-09 per pre-production review F5). The ~$140 balance is 7 days at the global cap, or roughly 17,000 typical users at today's prices.
 
 ## Communications and copy plan
 

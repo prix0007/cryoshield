@@ -82,7 +82,7 @@ build to compare it with.
 | Chain | v1 top-level | `contracts.vaultRegistryV2` | `contracts.wallets` keys |
 |---|---|---|---|
 | anvil (31337) | yes | yes | `localhost` (local and E2E builds) and `cryoshield.app` (CI `verify-build`); override with `RP_IDS` |
-| OP Sepolia (11155420) | yes (existing, never redeployed) | yes, once the owner broadcasts | `cryoshield.app` (production build), `cryoshield-web-dev.fly.dev` (dev build) |
+| OP Sepolia (11155420) | yes (existing, never redeployed) | yes: `0xA622c92d3D5b54aeA081Cf410224a8A2eCb08cB7`, block 49755277 (source verified on Blockscout 2026-10-06; `script/check-deployments.sh 11155420` all ok on 2026-10-09) | `cryoshield.app` (production build), `cryoshield-web-dev.fly.dev` (dev build) |
 | OP Mainnet (10) | **never** | yes, after the mainnet gate | `cryoshield.app` only, after the mainnet gate |
 
 `contracts.vaultRegistries` exists on no chain yet.

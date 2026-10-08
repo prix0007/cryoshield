@@ -54,7 +54,7 @@ flowchart LR
 - **Writes** go through Pimlico because CryoShield sponsors gas, always under our sponsorship policy (limits per sender, per operation and per day; `apps/web/docs/paymaster-policy.md`). CryoShield runs no paymaster, webhook or proxy. The client allowlist only lets a sponsored operation call VaultRegistry v2 (or the account itself, to add an owner) with `value == 0`. If sponsorship is refused, nothing is sent and the app says "Saving is paused"; there is never an unsponsored fallback.
 - **Abuse can only exhaust the gas budget.** A script making fresh accounts is bounded by the policy's daily global cap; a script skipping the policy (if Pimlico allows it) by the prepaid balance, with no overdraft. Neither can read, change or block any vault.
 - **Reads, unlocks and recovery** never touch Pimlico or Fly. The recovery tool talks to the key over USB and reads the chain or Arweave directly, so it keeps working if the website, the domain or the company disappears.
-- **The domain** `cryoshield.app` is the permanent WebAuthn RP ID. Losing control of it would let an attacker prompt users' keys in a browser. It is protected by DNSSEC, a CAA record (Let's Encrypt only), HSTS preload and registrar lock. The desktop tool is unaffected, because it is not bound by browser origin checks.
+- **The domain** `cryoshield.app` is the permanent WebAuthn RP ID. Losing control of it would let an attacker prompt users' keys in a browser. It is protected by HSTS preload and registrar lock; DNSSEC and a CAA record limited to Let's Encrypt are required but were **not yet in effect** on 2026-10-09 (no DS at the registry; Cloudflare's default five-CA CAA set live). Fixing both is a founder task before the first production release ([pre-production review](reviews/2026-10-09-pre-production.md) M1, runbook `apps/web/deploy/README.md` section 4). The desktop tool is unaffected, because it is not bound by browser origin checks.
 
 ## 2. From one key tap to your secret
 
@@ -222,7 +222,7 @@ The static site is served by a digest-pinned Caddy image that runs as a non-root
 | VaultRegistry v1 (legacy, read-only, OP Sepolia only) | `0xB43f58cF17e64B603aE5588a1DD17E96a0849e44`, deploy block `49568053`; never deployed to OP Mainnet |
 | Smart account | CryoShield Smart Wallet (CBSW v1.1 code + UV and rpIdHash on every signature) on EntryPoint v0.6, from `contracts.wallets.<rpId>.factory`; P-256 precompile at `0x100` |
 | WebAuthn RP ID | `cryoshield.app` (permanent) |
-| Hosting | Fly app `cryoshield-web`, org `cryoshield`, region `sin`; DNSSEC and CAA on |
+| Hosting | Fly app `cryoshield-web`, org `cryoshield`, region `sin`; DNS on Cloudflare (DNS-only), registrar GoDaddy; DNSSEC and the two-record CAA pending (review 2026-10-09 M1) |
 | Vault limits | blob ≤ 1024 bytes · 2–8 keys · no per-locator cap (v2; v1 had 16) |
 | Chain presets | `config/chain-presets.json` (anvil, op-sepolia, op-mainnet, arbitrum-sepolia, arbitrum-one) |
 | License | MIT |
