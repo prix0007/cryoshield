@@ -11,6 +11,11 @@ const src = readFileSync(join(__dirname, '..', '..', 'index.html'), 'utf8');
 const doc = new DOMParser().parseFromString(src, 'text/html');
 const text = (doc.body.textContent ?? '').replace(/\s+/g, ' ');
 const REPO = 'https://github.com/prix0007/cryoshield';
+const BREACH_SOURCES = [
+  { name: 'BleepingComputer', href: 'https://www.bleepingcomputer.com/news/security/cryptocurrency-theft-attacks-traced-to-2022-lastpass-breach/' },
+  { name: 'Kaspersky', href: 'https://www.kaspersky.com/about/press-releases/kaspersky-discovers-new-crypto-stealing-trojan-in-appstore-and-google-play' },
+  { name: 'The Block', href: 'https://www.theblock.co/post/161425/slope-wallet-provider-saved-user-seed-phrases-in-plain-text-solana-security-researchers-find' },
+] as const;
 
 describe('landing structure', () => {
   it('has exactly one h1, the hero headline', () => {
@@ -29,13 +34,14 @@ describe('landing structure', () => {
     expect(doc.querySelector('footer')).not.toBeNull();
   });
 
-  it('presents the story in order: hero, numbers, six scenes, free, final CTA, FAQ', () => {
+  it('presents the story in order: hero, numbers, six scenes and the breaches tile, free, final CTA, FAQ', () => {
     const ids = [...doc.querySelectorAll('main > section')].map((s) => s.id);
-    expect(ids).toEqual(['hero', 'numbers', 'fragile', 'how', 'stored', 'only-you', 'lose-a-key', 'survives', 'timeline', 'free', 'start', 'faq']);
+    expect(ids).toEqual(['hero', 'numbers', 'fragile', 'breaches', 'how', 'stored', 'only-you', 'lose-a-key', 'survives', 'timeline', 'free', 'start', 'faq']);
     const h2 = [...doc.querySelectorAll('main > section h2')].map((h) => h.textContent?.trim());
     expect(h2).toEqual([
       'By the numbers.',
       'Drives fail. Paper fades.',
+      'Where backups leak.',
       'One tap. Sealed in your browser.',
       'Stored on-chain. Copied to Arweave.',
       'Only you can read it.',
@@ -60,7 +66,7 @@ describe('landing structure', () => {
   });
 
   it('hero, Free to use and the final CTA each have one or two pills; every pill goes somewhere real', () => {
-    for (const id of ['hero', 'free', 'start']) {
+    for (const id of ['hero', 'breaches', 'free', 'start']) {
       const n = doc.querySelectorAll(`#${id} a.pill`).length;
       expect(n, id).toBeGreaterThanOrEqual(1);
       expect(n, id).toBeLessThanOrEqual(2);
@@ -104,8 +110,11 @@ describe('landing structure', () => {
   });
 
   it('external links never open a new window and carry rel=noopener noreferrer', () => {
+    // add-landing-breaches D4: besides the repository, only the three cited breach sources.
+    const sources = new Set<string>(BREACH_SOURCES.map((x) => x.href));
     for (const a of doc.querySelectorAll('a[href^="http"]')) {
-      expect(a.getAttribute('href')).toMatch(/^https:\/\/github\.com\/prix0007\/cryoshield/);
+      const href = a.getAttribute('href')!;
+      if (!sources.has(href)) expect(href).toMatch(/^https:\/\/github\.com\/prix0007\/cryoshield/);
       expect(a.getAttribute('target')).toBeNull();
       expect(a.getAttribute('rel')).toBe('noopener noreferrer');
     }
@@ -228,5 +237,92 @@ describe('search keywords and FAQ (improve-landing-seo)', () => {
     expect(hero).toMatch(/seed phrase/i);
     expect(hero).toMatch(/2FA backup codes/);
     expect(doc.querySelector('#start h2')?.textContent).toMatch(/seed phrase/);
+  });
+});
+
+describe('"Where backups leak." breaches tile (add-landing-breaches 1.1)', () => {
+  const tile = doc.querySelector('#breaches')!;
+  const norm = (e: Element | null | undefined) => (e?.textContent ?? '').replace(/\s+/g, ' ').trim();
+  const t = norm(tile);
+
+  it('is a plain light tile right after the fragile scene, not a pinned scene', () => {
+    expect(tile).not.toBeNull();
+    expect(tile.previousElementSibling?.id).toBe('fragile');
+    expect(tile.nextElementSibling?.id).toBe('how');
+    expect(tile.hasAttribute('data-scene')).toBe(false);
+    expect(tile.classList.contains('tile')).toBe(true);
+    expect(tile.classList.contains('tile-parchment')).toBe(true);
+    expect(tile.getAttribute('aria-labelledby')).toBe(tile.querySelector('h2')?.id);
+    expect(norm(tile.querySelector('.tile-lead'))).toBe('Seed phrases often leak from the places people keep them.');
+  });
+
+  it('has three incident cards with a label, the incident, a distinct helps line and a named source', () => {
+    const cards = [...tile.querySelectorAll('.breach-card')];
+    expect(cards).toHaveLength(3);
+    const got = cards.map((c) => ({
+      label: norm(c.querySelector('h3')),
+      incident: norm(c.querySelector('.breach-incident')),
+      helps: norm(c.querySelector('.breach-helps')),
+      source: norm(c.querySelector('a.breach-source')),
+      href: c.querySelector('a.breach-source')?.getAttribute('href'),
+    }));
+    expect(got).toEqual([
+      {
+        label: "A password manager's cloud",
+        incident: 'LastPass, 2022. Attackers stole encrypted vault backups and are believed to have kept cracking weak master passwords offline for years. Blockchain analysts at TRM Labs estimate over $35 million in crypto thefts traced to it through 2025.',
+        helps: 'CryoShield has no master password to crack. Your vault key comes from a secret inside your security key that never leaves it.',
+        source: 'Source: BleepingComputer',
+        href: BREACH_SOURCES[0].href,
+      },
+      {
+        label: 'A screenshot in your photos',
+        incident: 'SparkCat, 2025. Apps on the App Store and Google Play scanned photo galleries with text recognition, hunting for seed phrase screenshots.',
+        helps: 'CryoShield seals your phrase in your browser. Opening it takes a tap on your physical key.',
+        source: 'Source: Kaspersky',
+        href: BREACH_SOURCES[1].href,
+      },
+      {
+        label: "A wallet app's logs",
+        incident: 'Slope, 2022. Security researchers reported that a wallet app sent seed phrases, unencrypted, to its error-logging server, in a breach that hit nearly 8,000 Solana wallets.',
+        helps: 'CryoShield encrypts before anything is stored or sent, and the code is open source, so anyone can check.',
+        source: 'Source: The Block',
+        href: BREACH_SOURCES[2].href,
+      },
+    ]);
+    for (const c of cards) {
+      const icon = c.querySelector('.breach-helps svg');
+      expect(icon?.getAttribute('aria-hidden')).toBe('true');
+      expect(icon?.getAttribute('focusable')).toBe('false');
+      const a = c.querySelector('a.breach-source')!;
+      expect(a.getAttribute('rel')).toBe('noopener noreferrer');
+      expect(a.getAttribute('target')).toBeNull();
+      expect(a.hasAttribute('aria-label')).toBe(false); // the visible text is the accessible name
+    }
+  });
+
+  it('states the honest limit under the cards', () => {
+    const limit = tile.querySelector('.breach-limit');
+    expect(norm(limit)).toBe('One honest limit: no backup can protect a phrase typed on a device that is already infected.');
+    expect(limit?.compareDocumentPosition(tile.querySelector('.breach-grid')!)).toBe(Node.DOCUMENT_POSITION_PRECEDING);
+  });
+
+  it('ends with the call to action and its two pills', () => {
+    expect(norm(tile.querySelector('h3.breach-cta-title'))).toBe('Take your seed phrase out of the cloud.');
+    const pills = [...tile.querySelectorAll('a.pill')].map((a) => [norm(a), a.getAttribute('href'), a.classList.contains('pill-primary')]);
+    expect(pills).toEqual([
+      ['Seal it with your security key', '/app/', true],
+      ['Read the code', REPO, false],
+    ]);
+    expect(tile.querySelector(`a.pill[href="${REPO}"]`)?.getAttribute('rel')).toBe('noopener noreferrer');
+    // ECC review: the call to action carries the same testnet caveat as the final CTA.
+    const caveat = tile.querySelector('.breach-cta .fine');
+    expect(norm(caveat)).toBe('Testnet preview on OP Sepolia, not independently audited. Please keep your existing backups too.');
+    expect(caveat?.compareDocumentPosition(tile.querySelector('.breach-cta .ctas')!)).toBe(Node.DOCUMENT_POSITION_PRECEDING);
+  });
+
+  it('makes no banned or general anti-hacking claim', () => {
+    for (const b of BANNED) expect(t, String(b)).not.toMatch(b);
+    expect(t).not.toMatch(/\b(prevents?|stops?|blocks?) (all )?(hacks?|hackers|attacks?|malware)\b/i);
+    expect(t).not.toMatch(/can(no|')t be (hacked|stolen)/i);
   });
 });

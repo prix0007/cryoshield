@@ -150,6 +150,41 @@
         </div>
       </section>
 
+      <!-- WHERE BACKUPS LEAK (light tile, not a scene): cited incidents, sources checked 2026-10-09 (add-landing-breaches) -->
+      <section id="breaches" class="tile tile-parchment breaches" aria-labelledby="breaches-title">
+        <h2 id="breaches-title" class="tile-title">Where backups leak.</h2>
+        <p class="tile-lead">Seed phrases often leak from the places people keep them.</p>
+        <div class="breach-grid">
+          <article class="breach-card" aria-labelledby="breach-lastpass">
+            <h3 id="breach-lastpass" class="breach-label">A password manager's cloud</h3>
+            <p class="breach-incident"><strong>LastPass, 2022.</strong> Attackers stole encrypted vault backups and are believed to have kept cracking weak master passwords offline for years. Blockchain analysts at TRM Labs estimate over $35 million in crypto thefts traced to it through 2025.</p>
+            <p class="breach-helps"><svg class="breach-check" viewBox="0 0 20 20" aria-hidden="true" focusable="false"><circle cx="10" cy="10" r="10" /><path d="M5.5 10.4l3 3 6-6.4" /></svg><span>CryoShield has no master password to crack. Your vault key comes from a secret inside your security key that never leaves it.</span></p>
+            <a class="breach-source" href="https://www.bleepingcomputer.com/news/security/cryptocurrency-theft-attacks-traced-to-2022-lastpass-breach/" rel="noopener noreferrer">Source: BleepingComputer</a>
+          </article>
+          <article class="breach-card" aria-labelledby="breach-sparkcat">
+            <h3 id="breach-sparkcat" class="breach-label">A screenshot in your photos</h3>
+            <p class="breach-incident"><strong>SparkCat, 2025.</strong> Apps on the App Store and Google Play scanned photo galleries with text recognition, hunting for seed phrase screenshots.</p>
+            <p class="breach-helps"><svg class="breach-check" viewBox="0 0 20 20" aria-hidden="true" focusable="false"><circle cx="10" cy="10" r="10" /><path d="M5.5 10.4l3 3 6-6.4" /></svg><span>CryoShield seals your phrase in your browser. Opening it takes a tap on your physical key.</span></p>
+            <a class="breach-source" href="https://www.kaspersky.com/about/press-releases/kaspersky-discovers-new-crypto-stealing-trojan-in-appstore-and-google-play" rel="noopener noreferrer">Source: Kaspersky</a>
+          </article>
+          <article class="breach-card" aria-labelledby="breach-slope">
+            <h3 id="breach-slope" class="breach-label">A wallet app's logs</h3>
+            <p class="breach-incident"><strong>Slope, 2022.</strong> Security researchers reported that a wallet app sent seed phrases, unencrypted, to its error-logging server, in a breach that hit nearly 8,000 Solana wallets.</p>
+            <p class="breach-helps"><svg class="breach-check" viewBox="0 0 20 20" aria-hidden="true" focusable="false"><circle cx="10" cy="10" r="10" /><path d="M5.5 10.4l3 3 6-6.4" /></svg><span>CryoShield encrypts before anything is stored or sent, and the code is open source, so anyone can check.</span></p>
+            <a class="breach-source" href="https://www.theblock.co/post/161425/slope-wallet-provider-saved-user-seed-phrases-in-plain-text-solana-security-researchers-find" rel="noopener noreferrer">Source: The Block</a>
+          </article>
+        </div>
+        <p class="fine fine-light breach-limit">One honest limit: no backup can protect a phrase typed on a device that is already infected.</p>
+        <div class="breach-cta">
+          <h3 class="breach-cta-title">Take your seed phrase out of the cloud.</h3>
+          <div class="ctas">
+            <a class="pill pill-primary pill-large" href="/app/">Seal it with your security key</a>
+            <a class="pill pill-secondary pill-large" href="https://github.com/prix0007/cryoshield" rel="noopener noreferrer">Read the code</a>
+          </div>
+          <p class="fine fine-light">Testnet preview on OP Sepolia, not independently audited. Please keep your existing backups too.</p>
+        </div>
+      </section>
+
       <!-- SCENE 2: the tap -->
       <section id="how" class="scene tile-light" data-scene="tap" aria-labelledby="how-title">
         <div class="scene-track">

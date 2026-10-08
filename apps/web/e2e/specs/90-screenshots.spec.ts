@@ -163,6 +163,25 @@ test('"Only you can read it." tile (landing-only-you-can-read 2.2): desktop reve
   }
 });
 
+test('"Where backups leak." tile (add-landing-breaches 3.2): light and dark, desktop and phone', async ({ browser }) => {
+  for (const theme of ['light', 'dark'] as const) {
+    for (const [device, width, height] of [['desktop', 1280, 900], ['phone', 390, 844]] as const) {
+      const ctx = await browser.newContext({ viewport: { width, height }, reducedMotion: 'reduce' });
+      await ctx.addInitScript((t) => localStorage.setItem('cryoshield-theme', t), theme);
+      const page = await ctx.newPage();
+      await page.goto(LANDING);
+      // Clip from a full-page capture at scroll 0, so the sticky header is not stitched over the tile.
+      await page.waitForTimeout(300);
+      const clip = await page.locator('#breaches').evaluate((e) => {
+        const r = e.getBoundingClientRect();
+        return { x: r.left + scrollX, y: r.top + scrollY, width: r.width, height: r.height };
+      });
+      await page.screenshot({ path: `${dir}/breaches-${device}-${theme}.png`, fullPage: true, clip });
+      await ctx.close();
+    }
+  }
+});
+
 test('system design page (add-architecture-page 2.2): light, dark and phone', async ({ browser }) => {
   for (const [name, width, height, colorScheme] of [
     ['architecture-light', 1280, 900, 'light'],

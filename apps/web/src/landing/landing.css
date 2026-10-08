@@ -1123,3 +1123,119 @@
     width: 34%;
   }
 }
+
+/* ---- "Where backups leak." cited incidents (add-landing-breaches D2-D5) ----
+   A plain parchment tile (themed by the page tokens above): cards on the canvas surface, a distinct "helps" line with a
+   decorative check, a small source link, the honest limit and a CTA row. Tokens only, so Light and Dark both pass. */
+.breach-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-lg);
+  max-width: 1080px;
+  margin-top: var(--space-xl);
+  margin-bottom: var(--space-lg);
+  text-align: left;
+}
+/* Each card spans four grid rows and shares them (subgrid), so labels, incidents, "helps" lines and sources line up
+   across the cards. Without subgrid the card falls back to a plain column. */
+.breach-card {
+  display: grid;
+  grid-row: span 4;
+  grid-template-rows: subgrid;
+  row-gap: 0;
+  align-content: start;
+  min-width: 0;
+  padding: var(--space-lg);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-lg);
+  background: var(--canvas);
+  color: var(--ink);
+}
+.breach-label {
+  margin: 0 0 var(--space-sm);
+  font-size: var(--caption-size);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1.3;
+  text-transform: uppercase;
+  color: var(--ink-muted-48);
+}
+.breach-incident {
+  margin: 0 0 var(--space-md);
+  color: var(--ink-muted-80);
+}
+.breach-incident strong {
+  color: var(--ink);
+}
+.breach-helps {
+  display: flex;
+  gap: var(--space-sm);
+  align-items: flex-start;
+  margin: 0 0 var(--space-md);
+  padding-top: var(--space-md);
+  border-top: 1px solid var(--hairline);
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--ink);
+}
+.breach-check {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  margin-top: 1px;
+}
+.breach-check circle {
+  fill: var(--color-primary);
+}
+.breach-check path {
+  fill: none;
+  stroke: var(--canvas);
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.breach-source {
+  justify-self: start;
+  align-self: end;
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--target);
+  font-size: var(--caption-size);
+  letter-spacing: -0.224px;
+  color: var(--color-primary);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  overflow-wrap: anywhere;
+}
+.breach-limit {
+  max-width: 760px;
+  margin-bottom: var(--space-xxl);
+}
+.breach-cta-title {
+  margin: 0 auto var(--space-lg);
+  font-size: var(--display-md);
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+.breach-cta .ctas {
+  margin-bottom: 0;
+}
+/* The testnet caveat under the pills (ECC review): centred under them, like the final call to action's note. */
+.breach-cta .fine {
+  margin: var(--space-md) auto 0;
+  text-align: center;
+}
+@media (max-width: 833px) {
+  .breach-grid {
+    grid-template-columns: minmax(0, 1fr);
+    max-width: 560px;
+  }
+}
+@media (max-width: 640px) {
+  .breach-card {
+    padding: var(--space-md);
+  }
+  .breach-cta-title {
+    font-size: 26px;
+  }
+}
