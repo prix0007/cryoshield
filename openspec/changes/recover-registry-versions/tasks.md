@@ -96,7 +96,12 @@
 
 ## 7. Follow-ups outside `tools/recover` (not part of this change's implementation)
 
-- [ ] 7.1 [ct] Decide the record key for v3 and later (D5: `contracts.vaultRegistries.v<N>`, proposed) in `contracts/deployments/README.md`, `script/deploy.sh` and the deployment-targets spec, through its own change. Verify: the recovery tool's parity test passes against the new record.
+- [x] 7.1 [ct] Decide the record key for v3 and later (D5: `contracts.vaultRegistries.v<N>`, proposed) in `contracts/deployments/README.md`, `script/deploy.sh` and the deployment-targets spec, through its own change. Verify: the recovery tool's parity test passes against the new record.
+
+  2026-10-08: decided. The key is `contracts.vaultRegistries.v<N>` = `{address, deployBlock, txHash, abiHash}`, documented in `contracts/deployments/README.md` ("Registry v3 and later"). The web app, the recovery tool and the metrics tool already parse it.
+  - `script/check-deployments.sh` accepts it and validates it offline: keys `v3`…`v999`, exactly the four fields, an `abiHash` of a committed registry ABI, the newest with the v2 ABI, distinct addresses. It still rejects `contracts.vaultRegistryV<N>` as an unknown key. On-chain it fails on any v3 entry until the script can verify that build. Tests: `script/test-check-deployments.sh`.
+  - `script/deploy.sh` and `DeployV2.s.sol` are unchanged: they deploy only v1, v2 and the wallets, and the merge keeps existing `vaultRegistries` entries. A header note names the key. The change that adds VaultRegistry v3 to `contracts/src` makes `deploy.sh` write it, and puts the key into the deployment-targets spec.
+  - No record lists a v3 yet, so the parity test runs against today's records.
 - [x] 7.2 [fe] Make the web app and `release-manifest.mjs` read a registry list (`config.registries`), through its own change. Verify: that change's tests. (Done in `web-registry-versions`.)
 
 ## 8. Security review [sec]

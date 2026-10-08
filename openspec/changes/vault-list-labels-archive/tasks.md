@@ -16,11 +16,13 @@
 ## 0. Plan
 
 - [x] 0.1 [ow] Write this change (proposal, design with D1–D13, the threat model and the risk table, spec deltas, tasks). Verify: `openspec validate vault-list-labels-archive --strict` and `openspec validate --all --strict`.
-- [ ] 0.2 [ow] Archive order and dependencies, before any implementation PR merges:
+- [x] 0.2 [ow] Archive order and dependencies, before any implementation PR merges:
   - the `harden-gas-sponsorship` recovery work (`feat/harden-gas-sponsorship-recover`, registry v1 + v2 reads) is merged;
   - `add-web-app`, `add-desktop-recovery-tool` and `harden-recovery-network-trust` are archived, so `vault-web-app` and `vault-recovery` exist in `openspec/specs/`; or, if any of them can't be archived first, the MODIFIED headers here are re-pointed (moved to ADDED with new names) so archiving this change can't fail.
 
   Verify: `openspec/specs/vault-web-app/spec.md` and `openspec/specs/vault-recovery/spec.md` contain every requirement header this change MODIFIES, word for word, and `openspec validate --all --strict` passes.
+
+  2026-10-08: done. The registry v1 + v2 recovery reads merged in PR #40 (`5631c86`). `add-web-app`, `add-desktop-recovery-tool` and `harden-recovery-network-trust` were archived in PR #44 (`2a2a684`, `openspec/changes/archive/2026-10-08-*`). All 7 MODIFIED headers (5 in `vault-web-app`, 2 in `vault-recovery`) appear word for word in `openspec/specs/`, so no header needed re-pointing. `openspec validate --all --strict` passes. The implementation PRs (#49, #50) merged after #44, so the order held; this tick only records it.
 
 ## 1. Payload v2 codec and vectors [cry] [fe] [rec]
 
@@ -63,6 +65,8 @@
 
 - [x] 6.1 [fe] Update `docs/system-design.md` (payload v2, the vault list, staleness check, dates) and `docs/compliance/data-inventory.md` (vault names: client-side only, inside the ciphertext; month-only credential labels). Verify: docs review in 6.4.
 - [ ] 6.2 [fe] Add a two-YubiKey checklist to `apps/web/docs/hardware-test.md`: create a named vault, create a second vault, unlock and see the list, Check another key, rename + archive in one save, archive and clear, STALE from a second browser, recovery `--list` and choose. Verify: the checklist is run on OP Sepolia and recorded.
+
+  2026-10-08: the checklist is written (`apps/web/docs/hardware-test.md`, section "vault-list-labels-archive (task 6.2)", rows V1–V13). That covers every step above, plus Unarchive, the archived-only list (D13) and a privacy spot check. The task stays **open**: its Verify step is running the checklist on OP Sepolia with two physical keys and recording the results. That is the founder's job.
 - [ ] 6.3 [ow] Release the decoder (1.2) to production and confirm it is live before releasing any writer task. Verify: the release notes name the decoder release and the later writer release.
 - [x] 6.4 [sec] Security review of sections 1–5. Check:
   - the strict canonical codecs agree (vectors, negative cases, the Python bool check, the SHA-256 pin);

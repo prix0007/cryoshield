@@ -36,7 +36,12 @@
 
 - [ ] 6.1 [fe][sec] **Release gate: before any record lists a v3**, pass `REGISTRIES` (from the record) to `smoke.sh` in `deploy.yml` and `deploy-dev.yml`, with a reviewed digest update of `privileged-run-steps.json`. Until then a v3 is checked only for shape, order and presence on `/architecture`, not against the record. Verify: `deploy-workflow.test.mjs` asserts the env is set from the record, and `workflow-policy.mjs` passes.
 - [ ] 6.2 [fe] Once the smoke test and the minimum supported recovery tool read `config.registries`, remove `config.registry`/`config.registryV2` from the release manifest.
+- [ ] 6.3 [fe] Before any record lists a v3: the open items of `docs/reviews/web-registry-versions.md`. P1: wrap a single or oldest registry's own reads in `RegistryUnconfirmedError` (a `[v2]`-only test with a failing RPC). P3: chunk kind-1 `getVault` calls by `GET_VAULTS_MAX`. P4: a case-insensitive near-miss key guard. P5: require v2 in `registryList`, or make `registryV2` nullable. P7–P9: the tidy-ups. R2: move the paymaster provider's allowlist from v2 to v3 in the v3 release (`apps/web/docs/paymaster-policy.md`). Verify: vitest and `pnpm test:deploy`.
+
+> 2026-10-08: 6.1 and 6.2 stay open. Both are gated on a v3 registry, and no record lists one yet.
 
 ## 7. Security review [sec]
 
-- [ ] 7.1 Review D2 (newest-authoritative, no fallback on an unconfirmed newer registry), D1 (unknown ABIs refused) and D6 against the threat model. Record in `apps/web/docs/security-review-registry-versions.md`. Verify: no open CRITICAL or HIGH findings.
+- [x] 7.1 Review D2 (newest-authoritative, no fallback on an unconfirmed newer registry), D1 (unknown ABIs refused) and D6 against the threat model. Record in `docs/reviews/web-registry-versions.md` (beside the other review records, instead of `apps/web/docs/`). Verify: no open CRITICAL or HIGH findings.
+
+  2026-10-08: recorded in `docs/reviews/web-registry-versions.md`. APPROVE, no open CRITICAL or HIGH. PR #54's MEDIUM copy finding is fixed. Still open: P1 (UX, fails closed), P3 (not reachable today) and the LOW items, tracked in 6.3. R1 (a consistently lying RPC can roll a vault back) is accepted as a pre-existing single-RPC residual.
