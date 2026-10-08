@@ -313,7 +313,12 @@ const gz = (f) => gzipSync(readFileSync(join(dist, f)), { level: 9 }).length;
 // (e2e / production) -> 205,576 B / 205,592 B (+873 B / +874 B): the theme script every page loads before first paint
 // (assets/theme-*.js, minified, about 600 B, including the theme-color sync) plus the app's Theme menu markup. It must
 // be initial: it applies the saved theme before the first paint. Headroom before: 211 B; after: about 360 B.
-const APP_BASELINE = 194_689 - 12 * 1024 + 1024 + 1024 + 1024;
+// launch-op-mainnet 4.5/4.6 (2026-10-09): +1 KB, deliberately. Measured gzip: main a59a179 /app UI with this change's
+// network table 205,595 B / 205,605 B (e2e / production) -> 206,461 B / 206,473 B (+866 B / +868 B), all initial on purpose: the status notice
+// must show on every network before anything loads (the Unaudited notice and chip on OP Mainnet, the testnet banner
+// elsewhere), the no-vault help for testnet-preview vaults sits in the unlock screen, and the launch-date helpers decide
+// both. Headroom before: 358 B; after: about 516 B.
+const APP_BASELINE = 194_689 - 12 * 1024 + 1024 + 1024 + 1024 + 1024;
 const APP_ALLOWANCE = 20 * KB;
 const WRITE_STACK_MARKERS = ['eth_sendUserOperation', 'pimlico_getUserOperationGasPrice', 'WalletConfigError'];
 // vault-list-labels-archive 3.1 (design D5): the vault list, the Edit vault sheet, Archive and clear and the dates
