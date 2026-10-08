@@ -1,13 +1,15 @@
 // @vitest-environment node
 /**
  * improve-landing-seo (spec landing-page "Search metadata on public pages", "Structured data and visible FAQ",
- * "Crawl files", "The app is not indexed", "Share image"): unit tests of vite-plugins/seo.ts and the static files.
+ * "Crawl files", "The app is not indexed", "Share image"; add-llms-txt "Crawl files"): unit tests of vite-plugins/seo.ts
+ * and the static files.
  */
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { OG_IMAGE, PUBLIC_PAGES, SITE, extractFaq, sitemapXml, transformSeo } from '../../vite-plugins/seo';
+import { OG_IMAGE, PUBLIC_PAGES, SITE, extractFaq, llmsTxt, publicPageMetas, sitemapXml, transformSeo } from '../../vite-plugins/seo';
+import { BANNED } from '../landing/banned';
 import { stripJsonLd } from '../../scripts/csp-check.mjs';
 
 const web = join(__dirname, '..', '..');
@@ -133,6 +135,63 @@ describe('crawl files', () => {
     const lines = r.split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#'));
     expect(lines).toEqual(['User-agent: *', 'Allow: /', 'Disallow: /app/', `Sitemap: ${SITE}/sitemap.xml`]);
     expect(r).not.toMatch(/^Disallow:\s*\/\s*$/m);
+  });
+
+  it('robots.txt points to llms.txt in a comment (no non-standard directive)', () => {
+    const r = readFileSync(join(web, 'public', 'robots.txt'), 'utf8');
+    expect(r).toMatch(new RegExp(`^# .*${SITE}/llms\\.txt`, 'm'));
+  });
+});
+
+describe('llms.txt (add-llms-txt)', () => {
+  const metas = publicPageMetas(web);
+  const out = llmsTxt(metas);
+
+  it('reads every public page title and description from its source HTML, in sitemap order', () => {
+    expect(metas.map((m) => m.path)).toEqual(PUBLIC_PAGES.map((p) => p.path));
+    for (const m of metas) {
+      expect(m.title.length, m.path).toBeGreaterThan(0);
+      expect(m.description.length, m.path).toBeGreaterThanOrEqual(150);
+    }
+  });
+
+  it('follows the llmstxt.org layout: H1, summary blockquote, status, then H2 link sections', () => {
+    const lines = out.split('\n');
+    expect(lines[0]).toBe('# CryoShield');
+    expect(lines[1]).toBe('');
+    expect(lines[2]).toBe(`> ${metas[0]!.description}`);
+    expect([...out.matchAll(/^## (.+)$/gm)].map((m) => m[1])).toEqual(['Pages', 'Source and specification', 'Optional']);
+    expect(out).toMatch(/testnet preview/i);
+    expect(out).toMatch(/OP Sepolia/);
+    expect(out).toMatch(/not been independently audited/);
+    expect(out.endsWith('\n')).toBe(true);
+    expect(out).not.toMatch(/\n{3,}/);
+  });
+
+  it('links every public page with its canonical URL, title and description', () => {
+    for (const m of metas) expect(out).toContain(`- [${m.title}](${SITE}${m.path}): ${m.description}\n`);
+  });
+
+  it('links the source, the vault format spec, the system design and the recovery tool', () => {
+    const repo = 'https://github.com/prix0007/cryoshield';
+    for (const u of [repo, `${repo}/blob/main/docs/spec/vault-format-v1.md`, `${repo}/blob/main/docs/system-design.md`, `${repo}/tree/main/tools/recover`]) {
+      expect(out).toContain(`](${u})`);
+    }
+    for (const f of ['docs/spec/vault-format-v1.md', 'docs/system-design.md', 'tools/recover/README.md']) {
+      expect(existsSync(join(web, '..', '..', f)), f).toBe(true);
+    }
+    expect(out).toContain(`](${SITE}/.well-known/security.txt)`);
+    expect(out).toContain(`](${SITE}/sitemap.xml)`);
+  });
+
+  it('never lists the app and passes the honesty denylist', () => {
+    expect(out).not.toContain('/app');
+    for (const b of BANNED) expect(out, String(b)).not.toMatch(b);
+  });
+
+  it('carries a changed title or description without another edit', () => {
+    const changed = llmsTxt(metas.map((m) => (m.path === '/devices' ? { ...m, title: 'New devices title' } : m)));
+    expect(changed).toContain(`- [New devices title](${SITE}/devices): `);
   });
 });
 

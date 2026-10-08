@@ -5,6 +5,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { BANNED } from './banned';
 
 const src = readFileSync(join(__dirname, '..', '..', 'index.html'), 'utf8');
 const doc = new DOMParser().parseFromString(src, 'text/html');
@@ -128,30 +129,10 @@ describe('honest copy', () => {
   });
 
   it('makes no claim the code does not back up', () => {
-    const banned = [
-      /\bis audited\b/i,
-      /\baudited by\b/i,
-      /\bfully audited\b/i,
-      /\bmainnet\b/i,
-      /military[- ]grade/i,
-      /bank[- ]grade/i,
-      /unhackable/i,
-      /100% (secure|safe)/i,
-      /quantum[- ](proof|safe|resistant)/i,
-      /\bL1 (hash )?anchor/i,
-      /\bguarantee/i,
-      /\bIPFS\b|\bENS\b/,
-      /recover(y)? (after|without) (losing )?(all|every) keys?/i,
-      /guaranteed/i,
-      /\bforever\b/i,
-      /unbreakable/i,
-      /never lose/i,
-      /(stays|always|will (always )?be) available/i,
-    ];
     // improve-landing-seo (spec "Honest drama"): "forever" only as the user's own question and its negating answer.
     const head = `${doc.title} ${doc.querySelector('meta[name="description"]')?.getAttribute('content') ?? ''}`;
     const allowed = (t: string) => t.replace('How do I back up my seed phrase forever?', '').replace('No backup lasts forever', '');
-    for (const b of banned) {
+    for (const b of BANNED) {
       expect(allowed(text), String(b)).not.toMatch(b);
       expect(head, String(b)).not.toMatch(b);
     }

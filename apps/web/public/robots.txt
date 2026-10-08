@@ -1,4 +1,5 @@
 # https://cryoshield.app: the public pages are for search; /app/ is the vault application (also noindex).
+# A summary for AI assistants: https://cryoshield.app/llms.txt
 User-agent: *
 Allow: /
 Disallow: /app/
