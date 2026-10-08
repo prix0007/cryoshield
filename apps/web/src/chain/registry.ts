@@ -76,9 +76,12 @@ export function createRegistryReader(transport: Transport = defaultTransport(), 
     const length = (await read(r, 'locatorLength', [locator])) as bigint;
     const out: Hex[] = [];
     for (let start = 0n; start < length; start += BigInt(PAGE_SIZE)) {
-      const page = (await read(r, 'resolveLocator', [locator, start, BigInt(PAGE_SIZE)])) as readonly Hex[];
-      // locatorLength is the source of truth: an empty, short or long page never ends the list quietly.
-      if (BigInt(page.length) !== (length - start < PAGE_SIZE ? length - start : BigInt(PAGE_SIZE))) throw new RegistryIncompleteError(r.version);
+      // locatorLength is the source of truth: an empty, short or long page is read once more (L3), then refused.
+      const want = length - start < PAGE_SIZE ? length - start : BigInt(PAGE_SIZE);
+      const get = async () => (await read(r, 'resolveLocator', [locator, start, BigInt(PAGE_SIZE)])) as readonly Hex[];
+      let page = await get();
+      if (BigInt(page.length) !== want) page = await get();
+      if (BigInt(page.length) !== want) throw new RegistryIncompleteError(r.version);
       out.push(...page);
     }
     return out;

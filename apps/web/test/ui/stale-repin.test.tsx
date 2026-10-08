@@ -74,6 +74,43 @@ describe('WB3: a retry after a failed save is not a false STALE', () => {
     expect(edit.mock.calls[1]![1].nonce).toBe(6n);
   });
 
+  it.each(['NOT_CONFIRMED', 'NETWORK'] as const)('M1/L4: %s (the save may have landed) behind a lagging blob read: never re-pinned, so the next save is STALE, not an overwrite', async (code) => {
+    const edit = vi
+      .spyOn(ops, 'saveEdit')
+      .mockImplementationOnce(async () => {
+        chain.nonce = 6n; // the save landed (nonce used) but the RPC still returns the old blob (lag)
+        throw new WriteError(code);
+      })
+      .mockImplementationOnce(async (_svc, s, items) => ({ ...s, items, version: 2 }));
+    const { u } = await openVault();
+    await waitFor(() => expect(true).toBe(true));
+    await save(u);
+    await screen.findByRole('alert');
+    await new Promise((r) => setTimeout(r, 20)); // let any re-pin settle
+    await save(u);
+    await waitFor(() => expect(edit).toHaveBeenCalledTimes(2));
+    // Still pinned to 5: the write stack's assertCurrent then sees nonce 6 > 5 and refuses (STALE), never overwriting.
+    expect(edit.mock.calls[1]![1].nonce).toBe(5n);
+  });
+
+  it('M1: after REVERTED, a nonce that moved by more than one is not adopted', async () => {
+    const edit = vi
+      .spyOn(ops, 'saveEdit')
+      .mockImplementationOnce(async () => {
+        chain.nonce = 7n; // two operations since the pin: not just our own reverted one
+        throw new WriteError('REVERTED');
+      })
+      .mockImplementationOnce(async (_svc, s, items) => ({ ...s, items, version: 2 }));
+    const { u } = await openVault();
+    await waitFor(() => expect(true).toBe(true));
+    await save(u);
+    await screen.findByRole('alert');
+    await new Promise((r) => setTimeout(r, 20));
+    await save(u);
+    await waitFor(() => expect(edit).toHaveBeenCalledTimes(2));
+    expect(edit.mock.calls[1]![1].nonce).toBe(5n);
+  });
+
   it('N2: no pin at open while the RPC still shows another blob (lagging right after a write)', async () => {
     chain.blob = new Uint8Array(400).fill(9);
     const edit = vi.spyOn(ops, 'saveEdit').mockImplementation(async (_svc, s, items) => ({ ...s, items, version: 2 }));
@@ -106,6 +143,18 @@ describe('STALE offers "Reload vault"', () => {
     await u.click(screen.getByRole('button', { name: S.save.reload }));
     expect(await screen.findByRole('heading', { name: 'Changed elsewhere' })).toBeInTheDocument();
     expect(screen.queryByText(S.save.stale)).toBeNull();
+  });
+
+  it('L1: a reload that returns an OLDER version than the session (lagging RPC) is refused: "try again"', async () => {
+    vi.spyOn(ops, 'saveEdit').mockRejectedValue(new WriteError('STALE'));
+    const { u, unlock } = await openVault();
+    await save(u);
+    await screen.findByRole('alert');
+    unlock.mockResolvedValueOnce({ credId: id(1), locator: new Uint8Array(32), matches: [{ ...opened('Older copy', 0, new Uint8Array(400).fill(4)) }] });
+    await u.click(screen.getByRole('button', { name: S.save.reload }));
+    expect(await screen.findByText(S.save.reloadOlder)).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Older copy' })).toBeNull();
+    expect(screen.getByRole('button', { name: S.save.reload })).toBeInTheDocument();
   });
 
   it('a reload whose key no longer opens this vault says so and keeps the session', async () => {

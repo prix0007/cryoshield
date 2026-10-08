@@ -16,6 +16,11 @@
 
 - [x] 2.1 Unit, integration, E2E, typecheck, lint, `verify-build` (e2e and production, within the baseline) and `openspec validate --all --strict`. Verify: all pass.
 
+## 2b. ECC security review of 86fbc66 [fe]
+
+- [x] 2b.1 M1: tests first (`test/ui/stale-repin.test.tsx`: NOT_CONFIRMED and NETWORK with a landed save behind a lagging read keep the pin, so the next save is STALE; REVERTED with a nonce moved by more than one is not adopted). Then re-pin after a failure only for REVERTED/NONCE_CONFLICT at exactly pinned + 1 (D3). Verify: vitest.
+- [x] 2b.2 L1: test first: a reload returning an older version is refused ("try again"). L3: test first: a short page is read once more. Verify: vitest.
+
 ## 3. Security review [sec]
 
-- [ ] 3.1 Review D1 and D3 against the threat model (the pin is only raised on the session's own blob; Reload replaces the session only for the same `registry:vaultId`). Record in `apps/web/docs/security-review-review-followups.md`. Verify: no open CRITICAL or HIGH.
+- [x] 3.1 Review D1 and D3 against the threat model (the pin is only raised on the session's own blob; Reload replaces the session only for the same `registry:vaultId`). Done as the local ECC security review of 86fbc66 (M1 fixed in 2b.1, L1 and L3 in 2b.2). Verify: no open CRITICAL or HIGH.

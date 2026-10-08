@@ -299,6 +299,14 @@ describe('review W1: locatorLength is the source of truth for a paged locator', 
     await expect(createRegistryReader(reg.transport()).candidatesFor(loc)).rejects.toBeInstanceOf(RegistryIncompleteError);
   });
 
+  it('L3: a short page is read once more; a full answer the second time is accepted', async () => {
+    const reg = new MockRegistry();
+    for (let i = 1; i <= 10; i++) reg.put(id(i), { owner, blob: blob('00', 1), version: 1 }, [loc]);
+    let first = true;
+    cut(reg, (_s, rows) => (first ? ((first = false), rows.slice(0, 3)) : rows));
+    expect(await createRegistryReader(reg.transport()).candidatesFor(loc)).toHaveLength(10);
+  });
+
   it('a short (or long) page is refused the same way', async () => {
     const { RegistryIncompleteError } = await import('../../src/chain/registry');
     const reg = new MockRegistry();

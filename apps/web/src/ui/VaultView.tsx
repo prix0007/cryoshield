@@ -119,9 +119,9 @@ export function VaultView(props: {
   // base every write of this session is checked against, and it feeds the testnet save-budget hint. web-review-followups
   // 3: pinned only while the chain holds this session's blob, re-pinned after every write attempt, and never lowered.
   const { onNonce } = props;
-  const repin = (x: VaultSession) => {
+  const repin = (x: VaultSession, exact?: bigint) => {
     if (isReadOnly(x) || !onNonce) return;
-    pinIfCurrent(svc.client, svc.reader, x)
+    pinIfCurrent(svc.client, svc.reader, x, exact)
       .then((n) => n !== undefined && onNonce(x.vaultId, n, x.blob))
       .catch(() => undefined);
   };
@@ -158,26 +158,33 @@ export function VaultView(props: {
     setProgress(new Set());
     setPrompt(S.edit.touchAny);
     setStale(false);
-    let after = s;
     try {
       const next = await write(() => setPrompt(S.edit.touchSame));
       setMode('view');
       if (next === s) setProgress(null);
-      else afterWrite((after = next));
+      else {
+        afterWrite(next);
+        repin(next);
+      }
     } catch (e) {
       failed(e);
     } finally {
       setPrompt(null);
       setBusy(false);
-      repin(after);
     }
   }
 
+  /**
+   * ECC review M1: after a FAILED save, re-pin only when the operation surely did not land (REVERTED: included, nonce
+   * used, blob unchanged; NONCE_CONFLICT), and only to pinned + 1. NOT_CONFIRMED and NETWORK may have landed, and a
+   * lagging read could still show the old blob: the pin stays, so the next save is STALE (Reload), never an overwrite.
+   */
   function failed(e: unknown) {
     setProgress(null);
     setError(messageFor(e));
     setErrorRef(errorReference(e));
     setStale(e instanceof WriteError && e.code === 'STALE');
+    if (e instanceof WriteError && (e.code === 'REVERTED' || e.code === 'NONCE_CONFLICT') && s.nonce !== undefined) repin(s, s.nonce + 1n);
   }
 
   const saveDraft = () => run((sign) => saveEdit(svc, s, cleanItems(draft), sign, onProgress));
@@ -190,7 +197,6 @@ export function VaultView(props: {
     setProgress(new Set());
     setPrompt(S.addKey.touchCurrent);
     setStale(false);
-    let after = s;
     try {
       const { session: next, newLocator } = await saveAddKey(svc, s, {
         onInsertNew: () => confirmStep(S.addKey.insertNew),
@@ -199,7 +205,8 @@ export function VaultView(props: {
         onProgress,
       });
       setMode('view');
-      afterWrite((after = next), [newLocator]);
+      afterWrite(next, [newLocator]);
+      repin(next);
       setStatus(S.addKey.done);
     } catch (e) {
       failed(e);
@@ -207,7 +214,6 @@ export function VaultView(props: {
       setPrompt(null);
       setWaiting(null);
       setBusy(false);
-      repin(after);
     }
   }
 

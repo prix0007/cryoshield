@@ -28,13 +28,21 @@ the cap shows "Date unavailable".
   once, never adopted there.
 - `pinIfCurrent` (initial chunk, raw `eth_call`s): reads the nonce, then the vault, and returns the nonce only if the
   chain holds the session's blob and the nonce is above the current pin. Used at open (instead of pinning blindly)
-  and after every save attempt, successful or not. The App applies it only to the session whose blob was checked.
+  and after a successful save (with the session's new blob). The App applies it only to the session whose blob was
+  checked.
+- **After a failed save (ECC review of 86fbc66, M1, decided 2026-10-08):** re-pin only for `REVERTED` (included,
+  nonce used, blob unchanged) and `NONCE_CONFLICT`, and only when the chain nonce is exactly `pinned + 1`. For
+  `NOT_CONFIRMED`, `NETWORK` and every other failure, never re-pin: the save may have landed while a lagging read
+  still shows the old blob, so moving the pin would let the next save overwrite the user's own landed save from the
+  old base. The pin stays, so the next save is STALE and offers Reload.
 - Why this stays safe: the pin is only raised while the chain still holds exactly the blob this session decrypted
   (another device's save changes the blob, so it is never re-pinned over), and the operation still carries the nonce
   read right before signing, so a write that lands in between fails at the bundler (AA25) instead of overwriting.
 - "Reload vault" on STALE: one unlock (`unlockSessions`), and the same `registry:vaultId` replaces the session; the
   draft is dropped (it was made from the old version). If that key doesn't open this vault, a message says so and
-  the session is kept. A result after a lock is ignored (epoch).
+  the session is kept. A result after a lock is ignored (epoch). A reload that returns an older version than the
+  session (a lagging RPC) is refused with "try again" (L1), so Reload never rolls the session back.
+- A short or empty `resolveLocator` page is read once more before `RegistryIncompleteError` (L3, D5).
 
 ## D4. Unarchive gate (WB4)
 
@@ -60,3 +68,9 @@ Each page must have exactly `min(256, length - start)` ids; otherwise `RegistryI
 | Lagging or lying RPC | Delay dates, return a stale nonce or blob | Make the app adopt another device's state as current, or overwrite it | D3: re-pin only on the session's own blob, never downward; the bundler nonce check |
 | RPC returning short pages | Hide vaults | Silently: the list fails instead | D5 |
 | Hostile RPC on dates | Make dates unavailable | Unbounded queries, fake "Last saved" | D2 bounds and the blobHash check |
+
+## Implementation notes (2026-10-08)
+
+- Bundle: `pinIfCurrent` and `RegistryIncompleteError` stay in the initial chunk (opening a vault pins without the
+  write stack, and the unlock path needs the error class); the baseline is not raised. Measured numbers are in the
+  commit message.

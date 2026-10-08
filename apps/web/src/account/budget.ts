@@ -26,14 +26,16 @@ export async function readNonce(client: { request(a: { method: string; params?: 
 /**
  * web-review-followups 3: the nonce to pin for a session, read nonce first, then the vault. Only while the chain still
  * holds the session's own blob (so a lagging RPC right after a write, or a write from elsewhere, never moves the pin),
- * and only upward (a reverted save that used a nonce). Otherwise undefined: keep the current pin.
+ * and only upward. With `exact` (after a failed save, ECC review M1), only that value: the session's own reverted
+ * operation, never a save that may have landed behind a lagging read. Otherwise undefined: keep the current pin.
  */
 export async function pinIfCurrent(
   client: Parameters<typeof readNonce>[0],
   reader: { getVault(id: `0x${string}`): Promise<{ blob: Uint8Array } | null> },
   s: { vaultId: `0x${string}`; owner: string; blob: Uint8Array; nonce?: bigint | undefined },
+  exact?: bigint,
 ): Promise<bigint | undefined> {
   const n = await readNonce(client, s.owner);
   const v = await reader.getVault(s.vaultId);
-  return v && bytesEqual(v.blob, s.blob) && (s.nonce === undefined || n > s.nonce) ? n : undefined;
+  return v && bytesEqual(v.blob, s.blob) && (exact !== undefined ? n === exact : s.nonce === undefined || n > s.nonce) ? n : undefined;
 }

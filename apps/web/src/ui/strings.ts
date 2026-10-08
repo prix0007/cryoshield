@@ -187,6 +187,7 @@ export const S = {
     retry: 'Try again',
     stale: 'This vault changed since you opened it, maybe on another device. Nothing was saved. Reload it to see the latest version.',
     reload: 'Reload vault',
+    reloadOlder: 'We couldn’t load the latest version yet. Wait a minute, then choose “Reload vault” again.',
     reloadMissing: 'That key didn’t open this vault. Choose “Reload vault” again and use one of this vault’s keys.',
     budget: (n: number) => `About ${n} free saves left`,
     nonceConflict: 'Nothing was saved. Another save for this vault happened at the same moment, or a previous save may still be finishing. Wait a minute, then try again.',

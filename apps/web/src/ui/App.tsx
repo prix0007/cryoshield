@@ -114,6 +114,7 @@ function Shell() {
       const fresh = (await unlockSessions(svc)).find((v) => keyOf(v) === keyOf(current));
       if (epoch.current !== at) return null; // locked meanwhile: drop the result
       if (!fresh) return S.save.reloadMissing;
+      if (fresh.version < current.version) return S.save.reloadOlder; // ECC review L1: a lagging RPC, never a rollback
       setVaults((vs) => vs.map((v) => (keyOf(v) === keyOf(fresh) ? fresh : v)));
       return null;
     } catch (e) {
