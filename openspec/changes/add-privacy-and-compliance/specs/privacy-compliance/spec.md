@@ -2,9 +2,10 @@
 
 ## Purpose
 
-Defines the privacy and compliance controls CryoShield maintains as a static, non-custodial service: a data-flow
-inventory tied to the build, minimal hosting logs, a sub-processor list, erasure handling for immutable data, breach
-response, and the records that map to SOC 2 and to DPDP/GDPR/CCPA obligations.
+Defines the privacy controls CryoShield, an open-source project with no company, maintains as a static,
+non-custodial service: a data-flow inventory tied to the build, minimal hosting logs, a vendor list, erasure handling
+for immutable data, incident response with public notice, and records reviewed on a schedule with a CI-enforced
+mainnet gate. The records state facts; they are not legal advice and make no legal conclusions.
 
 ## ADDED Requirements
 
@@ -48,31 +49,46 @@ with what they contain, their retention (or "unpublished"), and the vendor's rol
 
 #### Scenario: Unknown retention is flagged
 - **WHEN** a vendor's retention period is not published
-- **THEN** the inventory row says "unpublished" and links the open request to the vendor
+- **THEN** the inventory row says "unpublished" and the vendor list links the vendor's public terms
 
 ### Requirement: Erasure request handling
-The project SHALL publish an erasure procedure that deletes everything CryoShield controls (support email, issue
-data on request, vendor-held data via the vendor), and explains that public on-chain and Arweave copies cannot be
+The project SHALL publish an erasure procedure that deletes everything the maintainers control (GitHub issue and
+advisory content on request), points to each vendor for vendor-held data, and explains that public on-chain and Arweave copies cannot be
 deleted, and that destroying or resetting every enrolled key leaves them undecryptable by any known technique
 (crypto-shredding). It SHALL NOT claim that crypto-shredding equals erasure.
 
 #### Scenario: Erasure request received
-- **WHEN** a user emails an erasure request with their account address
-- **THEN** the runbook produces a written reply within the statutory deadline listing what was deleted, what cannot be, and the key-destruction steps
+- **WHEN** a user opens a privacy-request issue or private advisory asking for erasure, with their account address
+- **THEN** the procedure produces a written reply within 15 days (acknowledged within 24 hours) listing what was deleted, what cannot be, and the key-destruction steps, and the maintainers never ask for a secret, PIN or key
 
 ### Requirement: Breach and incident response
-The project SHALL keep an incident runbook with severity levels, an owner on call, evidence preservation, and
-notification clocks for each regime: CERT-In, the Data Protection Board of India and affected Data Principals,
-GDPR supervisory authorities and data subjects, US state notices, and affected users via the site banner.
+The project SHALL keep an incident runbook with severity levels, an incident lead, containment and evidence
+preservation steps, and a public notice to affected users through every channel the project has (GitHub security
+advisory, README, pinned issue, and the site once it is safe), with a deadline per severity. External reporting
+regimes MAY be listed for reference; the runbook SHALL NOT depend on a company, a lawyer or a mailbox. A tabletop
+exercise SHALL run at least yearly and before mainnet.
 
 #### Scenario: Tabletop exercise
 - **WHEN** the team runs the documented tabletop scenario "malicious bundle served from cryoshield.app"
-- **THEN** each notification decision and its deadline is recorded in the exercise log, and the gaps found are filed as issues
+- **THEN** each decision and its deadline is recorded in the exercise log, and each gap found is either fixed in the runbook or recorded with a proposed issue for the maintainer to file
 
 ### Requirement: Compliance records reviewed on a schedule
-The data-flow inventory, sub-processor list, risk register, and legal pages SHALL be reviewed at least every six months
-and before any mainnet deployment. Each review SHALL leave a dated entry naming the reviewer.
+The data-flow inventory, vendor list, risk register, and legal pages SHALL be reviewed at least every six months and
+before any mainnet deployment, including a check of every security claim on the legal pages against `openspec/specs`
+and `docs/reviews`. Each review SHALL leave a dated entry in `docs/compliance/review-log.md` naming the reviewer.
 
 #### Scenario: Mainnet gate
-- **WHEN** a mainnet deployment record is added to `contracts/deployments/`
-- **THEN** a CI check fails unless the review log has an entry dated within the previous 30 days marked `mainnet-gate`
+- **WHEN** a pull request adds a deployment record `contracts/deployments/<chainId>.json` for a chain that is not a local or testnet preset
+- **THEN** a CI check fails unless the chain's launch record `docs/reviews/launch-<preset>.md` exists and the review log has an entry marked `mainnet-gate`, naming a reviewer, dated within the previous 30 days and not in the future
+
+#### Scenario: Unknown chain fails closed
+- **WHEN** a pull request adds `contracts/deployments/<chainId>.json` for a chain id that is not in `config/chain-presets.json`
+- **THEN** the CI check fails and names the chain id
+
+#### Scenario: Testnet records are not gated
+- **WHEN** a pull request adds a record for chain 31337, 11155420 or 421614
+- **THEN** the CI check passes without a launch record or review entry
+
+#### Scenario: Claims check recorded
+- **WHEN** a six-monthly review is logged
+- **THEN** its entry lists each inaccurate security claim found on the legal pages and its fix, or states that none was found

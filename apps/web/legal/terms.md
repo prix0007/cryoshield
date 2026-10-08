@@ -1,6 +1,6 @@
 # Terms of service
 
-**Effective date:** 2026-10-05
+**Effective date:** 2026-10-08
 
 <!--legal-note-->
 
@@ -26,7 +26,8 @@ audited.
 - CryoShield is **non-custodial**: we never hold your secrets, your security keys or anything that can open your vault.
 - **If you lose every security key enrolled for a vault, the vault cannot be opened by anyone, including us.** There
   is no reset and no recovery service. Enrol at least two keys and keep them in different places.
-- You are responsible for your keys, their PINs and the devices you use.
+- Each key needs its PIN (or fingerprint) to open or change a vault. You are responsible for your keys, their PINs
+  and the devices you use.
 
 ## Permanence
 
@@ -104,6 +105,8 @@ protection of mandatory consumer law where you live.
 We will post changes here and update the effective date. The full history is public in our
 [source repository](https://github.com/prix0007/cryoshield/commits/main/apps/web/legal/terms.md).
 
+- 2026-10-08: each key needs its PIN to open or change a vault.
+- 2026-10-05: new "Donations" section (the /support page).
 - 2026-10-03 (revision 2): CryoShield is an open-source project: operator and GitHub contact filled in; the
   disclaimer and liability clauses now mirror the MIT license.
 - 2026-10-03: first draft.

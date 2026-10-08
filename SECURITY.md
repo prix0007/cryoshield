@@ -20,10 +20,12 @@ send real seed phrases, recovery codes, PINs or private keys**, yours or anyone 
 
 In scope:
 - the website and vault app at `https://cryoshield.app` (`apps/web`), including its CSP and security headers;
-- the `VaultRegistry` contract (`contracts/`) and its deployments;
+- the contracts in `contracts/` and their deployments (`contracts/deployments/`): `VaultRegistryV2`, the legacy
+  read-only `VaultRegistry` (v1), and the `CryoShieldSmartWallet` and its factory (the PIN-enforcing smart account);
 - the vault format and cryptography (`packages/vault-crypto`, `docs/spec/vault-format-v1.md`);
 - the desktop recovery tool (`tools/recover`);
-- abuse of the sponsored network fees (paymaster policy bypass, draining).
+- abuse of the sponsored network fees (paymaster policy bypass, draining);
+- the CI and release pipeline in `.github/` (a path from a pull request to the production site or its secrets).
 
 Out of scope:
 - volumetric denial of service, spam, and rate-limit testing against third-party services;
