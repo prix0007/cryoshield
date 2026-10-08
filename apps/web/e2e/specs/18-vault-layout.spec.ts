@@ -1,5 +1,6 @@
-/** align-vault-sections 1.1 (spec vault-web-app "Vault view column alignment"): every block of the open vault shares
- *  the content column's edges, at desktop and phone width; the location card expands inside itself. */
+/** align-vault-sections 1.1, align-vault-list 1.1 (spec vault-web-app "Vault view column alignment"): every block of
+ *  the open vault and of the All vaults screen shares the content column's edges, at desktop and phone width; the
+ *  location card expands inside itself. */
 import { expect, test } from '@playwright/test';
 import { APP } from '../fixtures/routes';
 import { ArweaveStub } from '../fixtures/arweave';
@@ -54,5 +55,26 @@ for (const width of [1024, 390]) {
     await settled(page);
     check(await edges());
     expect(await page.locator('.vault-location').evaluate((el) => getComputedStyle(el).borderTopWidth)).toBe('0px');
+
+    // All vaults screen: the vault cards and the action bar share the same column (align-vault-list).
+    await page.getByRole('button', { name: /^All vaults/ }).click();
+    await expect(page.locator('.vault-row').first()).toBeVisible();
+    await settled(page);
+    const list = await page.evaluate(() => {
+      const main = document.querySelector('.app-main')!;
+      const cs = getComputedStyle(main);
+      const m = main.getBoundingClientRect();
+      const column = { left: m.left + parseFloat(cs.paddingLeft), right: m.right - parseFloat(cs.paddingRight) };
+      const blocks = [...document.querySelectorAll('.vault-row, .action-bar')].map((el, i) => {
+        const r = el.getBoundingClientRect();
+        return { s: `${el.className} #${i}`, left: r.left, right: r.right };
+      });
+      return { column, blocks };
+    });
+    expect(list.blocks.length).toBeGreaterThanOrEqual(2);
+    for (const b of list.blocks) {
+      expect(Math.abs(b.left - list.column.left), `${b.s} left`).toBeLessThanOrEqual(1);
+      expect(Math.abs(b.right - list.column.right), `${b.s} right`).toBeLessThanOrEqual(1);
+    }
   });
 }

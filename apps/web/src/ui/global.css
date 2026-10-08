@@ -851,6 +851,11 @@ bdi {
   overflow-wrap: anywhere;
   vertical-align: bottom;
 }
+/* align-vault-list D1: a list of cards, not a bulleted list; the cards span the content column. */
+.vault-list {
+  list-style: none;
+  padding-left: 0;
+}
 .vault-row {
   max-width: 100%;
   overflow: hidden;
