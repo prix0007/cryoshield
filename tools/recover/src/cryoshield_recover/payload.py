@@ -39,7 +39,11 @@ class PayloadError(Exception):
 @dataclass
 class Item:
     l: str  # noqa: E741 - the wire name; label
-    s: str  # secret
+    s: str = field(repr=False)  # secret
+
+    def __repr__(self) -> str:
+        # Never show the secret in a traceback, log or debug dump (final security review, RT4).
+        return f"Item(l={self.l!r}, s=<redacted>)"
 
 
 @dataclass

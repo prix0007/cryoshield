@@ -24,7 +24,7 @@ from urllib.parse import urlparse
 
 from . import abi
 from .candidates import Candidate, Freshness
-from .config import RegistrySpec
+from .config import BUILT_IN, RegistrySpec
 from .keccak import keccak256
 from .rpc import JsonRpcClient, RpcError, hex_to_bytes, hex_to_int
 
@@ -147,13 +147,16 @@ class Registry:
         label: str = "",
         session: Session | None = None,
         version: int | None = None,
-        trusted: bool = True,
+        trusted: bool = False,
+        builtin: bool = False,
     ) -> None:
         if kind not in (1, 2):
             raise ValueError("registry kind must be 1 or 2")
         self.version = kind if version is None else version  # the deployment's version (v3 may use kind 2)
-        # A supplied registry that differs from every built-in one (recover-registry-versions D10).
+        # A supplied registry that differs from every built-in one (recover-registry-versions D10). Both
+        # flags default to False (fail closed): only Registries.build, from a RegistrySpec, sets them.
         self.trusted = trusted
+        self.builtin = builtin
         self.address = address.lower()
         self.chain_id = chain_id
         self.deploy_block = deploy_block
@@ -170,6 +173,16 @@ class Registry:
     @property
     def warnings(self) -> list[str]:
         return self.session.warnings
+
+    @property
+    def provenance(self) -> str:
+        """Where a copy came from, for --list and the chooser (final security review, N3)."""
+        v = self.version
+        return (
+            f"built-in registry v{v}"
+            if self.builtin
+            else f"SUPPLIED registry v{v} {self.address} (not built in)"
+        )
 
     @property
     def _all(self) -> list[JsonRpcClient]:
@@ -420,6 +433,7 @@ class Registry:
                 versions[(vid, blob)],
                 Freshness.UNVERIFIABLE,
                 support=len(hs),
+                registry=self.provenance,
             )
             for (vid, blob), hs in hosts.items()
         ]
@@ -693,6 +707,7 @@ class Registries:
                     session=session,
                     version=spec.version,
                     trusted=spec.trusted,
+                    builtin=spec.source == BUILT_IN,
                 )
                 for spec in specs
             ]

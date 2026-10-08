@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
@@ -19,7 +19,7 @@ from .secure import wipe, wipe_all
 class UnlockKey:
     """One PRF output (32 bytes, mutable so it can be wiped) and optionally its credential ID."""
 
-    prf: bytearray
+    prf: bytearray = field(repr=False)
     cred_id: bytes | None = None
 
 

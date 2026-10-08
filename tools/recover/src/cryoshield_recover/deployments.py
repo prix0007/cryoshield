@@ -27,6 +27,7 @@ from .config import (
     MAX_BLOCK,
     MAX_VERSION,
     RegistrySpec,
+    UnknownRegistryVersion,
     abi_kind_for,
     parse_address,
     sort_registries,
@@ -81,16 +82,21 @@ def _entry(version: int, entry: object, where: str, source: str) -> RegistrySpec
     abi_hash = entry.get("abiHash")
     if abi_hash is not None and not (isinstance(abi_hash, str) and _HASH.fullmatch(abi_hash)):
         raise DeploymentError(f"{where}: registry v{version} abiHash must be 32 bytes of 0x-hex")
-    kind = abi_kind_for(version, abi_hash=abi_hash, address=address)  # UnknownRegistryVersion: refused
-    return RegistrySpec(
-        version,
-        address,
-        block if block is not None else 0,
-        abi_kind=kind,
-        block_known=block is not None,
-        source=source,
-        trusted=source == BUILT_IN,  # a user's file is supplied data until it matches a built-in (D10)
-    )
+    try:
+        kind = abi_kind_for(version, abi_hash=abi_hash, address=address)
+        return RegistrySpec(
+            version,
+            address,
+            block if block is not None else 0,
+            abi_kind=kind,
+            block_known=block is not None,
+            source=source,
+            trusted=source == BUILT_IN,  # a user's file is supplied data until it matches a built-in (D10)
+        )
+    except UnknownRegistryVersion:
+        raise  # already names the version and says to update the tool
+    except ValueError as e:
+        raise DeploymentError(f"{where}: registry v{version}: {e}") from None
 
 
 def _collect(found: list[tuple[int, object]], where: str, source: str) -> list[RegistrySpec]:

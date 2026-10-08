@@ -252,9 +252,11 @@ def combine_registries(
       one, so a genuine vault in a built-in registry is never hidden. Only ``only`` (--registries-only)
       leaves the built-ins out.
     - It is trusted only when the chain has no built-in registry, or with ``trust_custom``."""
-    if len(supplied) > MAX_SUPPLIED:
-        raise ValueError(f"at most {MAX_SUPPLIED} registries can be supplied in one run")
     by_key = {(b.version, b.address): b for b in builtin}
+    # Count only entries that differ from the built-ins (PR #48 review): restating the project's own
+    # record must never hit the cap.
+    if sum(1 for s in supplied if (s.version, s.address) not in by_key) > MAX_SUPPLIED:
+        raise ValueError(f"at most {MAX_SUPPLIED} registries can be supplied in one run")
     result: dict[tuple[int, str], RegistrySpec] = {} if only else dict(by_key)
     for s in supplied:
         b = by_key.get((s.version, s.address))

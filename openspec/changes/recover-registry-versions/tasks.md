@@ -16,7 +16,7 @@
 
 ## 1. Registry model and flag grammar [rec]
 
-- [x] 1.1 [rec] Test first (`test_registry_versions.py`): `parse_registry_flag` accepts `ADDR`, `ADDR@B`, `ADDR:vN`, `ADDR@B:vN`, `ADDR@B:vN:abi=vK`. It rejects a bad address, a negative, non-decimal or ≥2^63 block, `v0`, `v01`, `v1000`, an `abi=` for v1/v2 that differs from the version, and `abi=v3`. Unknown `vN` without `abi=` raises "doesn't know registry vN; update cryoshield-recover". Then implement `RegistrySpec`, `KNOWN_ABI_KINDS`, `parse_registry_flag` and `merge_registries` (D1, D6, D7) in `config.py`. Verify: pytest.
+- [x] 1.1 [rec] Test first (`test_registry_versions.py`): `parse_registry_flag` accepts `ADDR`, `ADDR@B`, `ADDR:vN`, `ADDR@B:vN`, `ADDR@B:vN:abi=vK`. It rejects a bad address, a negative, non-decimal or ≥2^63 block, `v0`, `v01`, `v1000`, an `abi=` for v1/v2 that differs from the version, and `abi=v3`. Unknown `vN` without `abi=` raises "doesn't know registry vN; update cryoshield-recover". Then implement `RegistrySpec`, `KNOWN_ABI_KINDS`, `parse_registry_flag`, `resolve_flags`, `combine_registries` and `sort_registries` (D1, D6, D7) in `config.py`. Verify: pytest.
 - [x] 1.2 [rec] Test first: the pinned ABI hashes equal keccak256 of `contracts/abi/VaultRegistry.json` and `VaultRegistryV2.json`; presets are sorted newest first, with unique versions and addresses, and at most 8 entries. Then replace the preset and `Config` field pairs with `registries` lists. Verify: pytest.
 
 ## 2. Deployment records and release files [rec]
@@ -101,7 +101,7 @@
 
 ## 8. Security review [sec]
 
-- [ ] 8.1 [sec] Review sections 1–4 against the design's threat model. Check:
+- [x] 8.1 [sec] Review sections 1–4 against the design's threat model. Check:
   - the D2 rule equals PR #40 for v1 + v2 and never calls a copy current while a newer registry's history is unverifiable;
   - supplied registries are always announced with the security note;
   - unknown ABIs are refused, never guessed;

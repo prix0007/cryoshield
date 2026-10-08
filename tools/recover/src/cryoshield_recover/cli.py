@@ -6,6 +6,7 @@ import argparse
 import dataclasses
 import logging
 import math
+import re
 import sys
 from collections.abc import Callable, Sequence
 from pathlib import Path
@@ -59,6 +60,24 @@ def _timeout(text: str) -> float:
     return value
 
 
+_DIGITS = re.compile(r"[0-9]{1,19}")
+
+
+def _block_arg(text: str) -> int:
+    """A block number: ASCII digits only (no sign, underscores, spaces or other scripts), below 2^63."""
+    if not _DIGITS.fullmatch(text) or int(text) >= MAX_BLOCK:
+        raise argparse.ArgumentTypeError(f"not a block number: {text!r}")
+    return int(text)
+
+
+def _chain_id_arg(text: str) -> int:
+    """A chain ID: ASCII digits, greater than 0, below 2^63."""
+    value = _block_arg(text)
+    if value == 0:
+        raise argparse.ArgumentTypeError("a chain ID must be greater than 0")
+    return value
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="cryoshield-recover",
@@ -105,11 +124,11 @@ def build_parser() -> argparse.ArgumentParser:
     g.add_argument("--registry-v2", metavar="ADDRESS", help="deprecated: use --registry ADDRESS@BLOCK:v2")
     g.add_argument(
         "--chain-id",
-        type=int,
+        type=_chain_id_arg,
         help="expected chain ID; alone, selects the preset with that ID; otherwise overrides it",
     )
-    g.add_argument("--deploy-block", type=int, help="deprecated: use --registry ADDRESS@BLOCK:v1")
-    g.add_argument("--deploy-block-v2", type=int, help="deprecated: use --registry ADDRESS@BLOCK:v2")
+    g.add_argument("--deploy-block", type=_block_arg, help="deprecated: use --registry ADDRESS@BLOCK:v1")
+    g.add_argument("--deploy-block-v2", type=_block_arg, help="deprecated: use --registry ADDRESS@BLOCK:v2")
     g.add_argument(
         "--arweave-graphql", action="append", metavar="URL", help="Arweave GraphQL endpoint (repeatable)"
     )
@@ -232,7 +251,30 @@ def _registries(a: argparse.Namespace, cfg: Config, file_specs: list[RegistrySpe
         except ValueError as e:
             raise ValueError(f"--registry-v2: {e}") from None
     from_flags, notes = resolve_flags([*builtin, *supplied.values()], flags)
-    supplied.update({s.version: s for s in from_flags})
+    for s in from_flags:
+        file_entry = supplied.get(s.version)
+        builtin_keys = {(b.version, b.address) for b in builtin}
+        same = file_entry is not None and (
+            file_entry.address,
+            file_entry.deploy_block,
+            file_entry.abi_kind,
+        ) == (
+            s.address,
+            s.deploy_block,
+            s.abi_kind,
+        )
+        if (
+            file_entry is not None
+            and not same
+            # A file entry equal to a built-in one stays in the list anyway, unless --registries-only.
+            and ((file_entry.version, file_entry.address) not in builtin_keys or a.registries_only)
+        ):
+            # Never drop a file's entry silently in favour of a flag (PR #48 review).
+            raise ValueError(
+                f"registry v{s.version} is given twice (in the deployment file and as --registry); give "
+                "each version once"
+            )
+        supplied[s.version] = s
     for flag, version, block in (
         ("--deploy-block-v2", 2, a.deploy_block_v2),
         ("--deploy-block", 1, a.deploy_block),
@@ -254,6 +296,14 @@ def _registries(a: argparse.Namespace, cfg: Config, file_specs: list[RegistrySpe
         builtin, list(supplied.values()), only=a.registries_only, trust_custom=a.trust_custom_registries
     )
     cfg.trust_custom = a.trust_custom_registries
+    for spec in cfg.registries:
+        base = next((b for b in builtin if (b.version, b.address) == (spec.version, spec.address)), None)
+        if base is not None and spec.deploy_block < base.deploy_block:
+            notes.append(
+                f"registry v{spec.version} is searched from block {spec.deploy_block}, lower than its "
+                f"deployment block {base.deploy_block}; that is safe but slower, and on public servers the "
+                "history search may run out of time."
+            )
     cfg.notes.extend(notes)
     kept = {(s.version, s.address) for s in cfg.registries}
     cfg.dropped_builtin = [s.version for s in builtin if (s.version, s.address) not in kept]

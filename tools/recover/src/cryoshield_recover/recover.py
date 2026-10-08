@@ -54,6 +54,7 @@ class VaultSummary:
     archived: bool = False
     items: int | None = None
     labels: list[str] = field(default_factory=list)
+    source: str = ""  # provenance of the copy summarised (final security review, N3)
 
     @property
     def state(self) -> str:
@@ -74,7 +75,7 @@ class VaultSummary:
 
 @dataclass
 class Result:
-    secret: bytearray
+    secret: bytearray = field(repr=False)
     candidate: Candidate
     ignored: int
     warnings: list[str] = field(default_factory=list)
@@ -88,14 +89,24 @@ class _Group:
 
     cand: Candidate
     decoded: DecodedVault
-    secret: bytearray | None
+    secret: bytearray | None = field(repr=False)
+
+
+def provenance(cand: Candidate) -> str:
+    """Where a copy came from, for --list, the vault chooser and the copy chooser (security review N3)."""
+    source = {"arweave": "Arweave archive", "file": "your file"}.get(
+        cand.source, cand.registry or "blockchain"
+    )
+    if cand.untrusted and "SUPPLIED" not in source:
+        source = f"SUPPLIED {cand.untrusted} (not built in)"
+    return source
 
 
 def summarize(cand: Candidate, d: DecodedVault, secret: bytearray | None) -> VaultSummary:
     """A vault's public summary. Decoding creates Python strings that can't be wiped (README)."""
     keys = f"any 1 of {d.count} keys" if d.threshold == 1 else f"{d.threshold} of {d.count} keys"
     freshness = "unverified" if cand.contested else cand.freshness.value
-    base = VaultSummary(cand.vault_id or bytes(32), freshness, keys, "locked")
+    base = VaultSummary(cand.vault_id or bytes(32), freshness, keys, "locked", source=provenance(cand))
     if secret is None:
         return base
     try:
@@ -119,13 +130,14 @@ def _option(index: int, s: VaultSummary) -> str:
     """One line of the vault chooser: the status first in a fixed column, then public metadata, and the
     name last and quoted (made inert), so a name can't pass as a status. Never a label or secret."""
     head = f"{index + 1:>2}. [{s.state:<8}] 0x{s.vault_id.hex()[:8]}…{s.vault_id.hex()[-4:]}"
+    src = f", from {s.source}"
     if s.contents == "locked":
-        return f"{head}  needs {s.keys} (Shamir), {s.freshness_text}"
+        return f"{head}  needs {s.keys} (Shamir), {s.freshness_text}{src}"
     if s.contents != "ok":
         what = "made by a newer CryoShield" if s.contents == "newer-version" else "contents not a vault list"
-        return f"{head}  {what}, {s.freshness_text}"
+        return f"{head}  {what}, {s.freshness_text}{src}"
     count = f"{s.items} item{'s' if s.items != 1 else ''}"
-    return f"{head}  {count}, {s.keys}, {s.freshness_text}  name: {display_name(s.name)}"
+    return f"{head}  {count}, {s.keys}, {s.freshness_text}{src}  name: {display_name(s.name)}"
 
 
 def _default_registry(cfg: Config) -> Registries:
@@ -456,7 +468,7 @@ class Recovery:
         labels = [
             # Public metadata only. No claimed version: it is attacker-writable and could nudge the user
             # toward an older copy (security review round 2).
-            f"Copy {i + 1}: from {c.source} ({c.origin}); returned by {c.support} source(s); "
+            f"Copy {i + 1}: from {provenance(c)} ({c.origin}); returned by {c.support} source(s); "
             f"status: {c.freshness.value} (unverified)"
             for i, c in enumerate(options)
         ]

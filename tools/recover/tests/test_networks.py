@@ -220,7 +220,7 @@ def test_deployments_file_not_read_at_runtime(monkeypatch: pytest.MonkeyPatch) -
 
 # ------------------------------------------------------------------ 4.4 parity
 def test_presets_match_presets_json() -> None:
-    ref = json.loads(PRESETS_JSON.read_text())
+    ref = json.loads(PRESETS_JSON.read_text(encoding="utf-8"))
     expected = {p["name"]: p["chainId"] for p in ref["presets"]}
     assert {name: p.chain_id for name, p in NETWORKS.items()} == expected
     for p in ref["presets"]:

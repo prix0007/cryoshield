@@ -31,7 +31,7 @@
 
 ### D1. Registry model
 
-`RegistrySpec(version: int, address: str, deploy_block: int, abi_kind: 1 | 2, block_known: bool, source: str)`.
+`RegistrySpec(version: int, address: str, deploy_block: int, abi_kind: int, block_known: bool, source: str, trusted: bool)`. `abi_kind` is 1 or 2 after validation; 0 on input means "the version's own kind".
 - `version` ≥ 1 is the deployment's version (`v3` → 3). `abi_kind` is the read ABI the tool uses: 1 is the v1 views (`resolveLocator(bytes32)`, `getVault`), and 2 is the v2 views (paged `resolveLocator`, `locatorLength`, `getVaults`). Both share the `VaultCreated`/`VaultUpdated` event layout.
 - A chain's list is sorted trusted first, then untrusted (D10), and by `version`, descending, within each group, so the newest comes first. Addresses are unique, and a version appears at most once per group; a duplicate is a usage error.
 - At most `MAX_REGISTRIES = 8` entries. Each registry keeps its own resolve (30 s) and fetch (60 s) budgets and per-RPC caps, so the worst-case time grows with the count. The cap bounds that, and 8 is far above the expected v1–v3.
@@ -223,7 +223,7 @@ Secrets: no change to key handling. The new code handles only public addresses, 
 
 ## Migration
 
-- Users: none for the defaults, and the old flags still work. One change: a `--registry` or `--registry-v2` address that differs from the built-in one is now read **beside** the built-in registry and is not trusted. Before, it replaced the built-in. `--registries-only` gives the old replacing behaviour.
+- Users: none for the defaults, and the old flags still work. One change: a `--registry` or `--registry-v2` address that differs from the built-in one is now read **beside** the built-in registry and is not trusted. Before, it replaced the built-in. `--registries-only` leaves the built-ins out, but on a chain with built-ins the supplied entries still stay untrusted (never current) unless `--trust-custom-registries` is also given; the old "replace and trust" behaviour needs both flags.
 - A v3 release:
   1. contracts add `contracts.vaultRegistries.v3` (with `abiHash`) to the records;
   2. the parity test fails and prints the preset line;

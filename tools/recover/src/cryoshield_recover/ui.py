@@ -107,6 +107,7 @@ class Console:
         for s in summaries:
             print(f"\n0x{s.vault_id.hex()}", file=self.stdout)
             print(f"  status: {s.state}, {s.freshness_text}", file=self.stdout)
+            print(f"  source: {s.source}", file=self.stdout)
             if s.contents == "ok":
                 print(f"  {_count(s.items)}, {s.keys}", file=self.stdout)
                 print(f"  name: {display_name(s.name)}", file=self.stdout)
@@ -128,17 +129,25 @@ class Console:
             self.show_secret(secret)
             return
         escaped_any = False
-        print("\n----- BEGIN SECRETS -----", file=self.stdout)
-        print(f"Status: {'ARCHIVED' if p.archived else 'ACTIVE'}", file=self.stdout)
-        print(f"Vault: {display_name(p.name)}", file=self.stdout)
+        # The status and name live INSIDE the banner, and every item line starts with a fixed "  - "
+        # marker (continuation lines "    | "), so no label or secret can imitate a header, an item
+        # boundary or the banner (security reviews RT5 and the review of 7d16c8d).
+        status = "ARCHIVED" if p.archived else "ACTIVE"
+        print(
+            f"\n----- BEGIN SECRETS (status: {status}; vault: {display_name(p.name)}) -----", file=self.stdout
+        )
         if not p.items:
-            print("(no items)", file=self.stdout)
+            print("  (no items)", file=self.stdout)
         for item in p.items:
             value, escaped = inert_secret(item.s)
             escaped_any = escaped_any or escaped
             label = inert_label(item.l) or "(no label)"
-            sep = "\n" if "\n" in value else " "
-            print(f"{label}:{sep}{value}", file=self.stdout)
+            if "\n" in value:
+                print(f"  - {label}:", file=self.stdout)
+                for line in value.split("\n"):
+                    print(f"    | {line}", file=self.stdout)
+            else:
+                print(f"  - {label}: {value}", file=self.stdout)
         print("----- END SECRETS -----", file=self.stdout, flush=True)
         self._escaped_note(escaped_any)
         self._after_show()
@@ -150,7 +159,8 @@ class Console:
             body, escaped = secret.hex(), False
             self.info("(The secret is not text; showing it as hexadecimal.)")
         print("\n----- BEGIN SECRET -----", file=self.stdout)
-        print(body, file=self.stdout)
+        for line in body.split("\n"):
+            print(f"| {line}", file=self.stdout)  # prefixed: the raw text can't forge the framing (RT5)
         print("----- END SECRET -----", file=self.stdout, flush=True)
         self._escaped_note(escaped)
         self._after_show()
