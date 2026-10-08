@@ -159,6 +159,18 @@ describe('release manifest', () => {
     expect(Object.keys(m.config)).toEqual(['chainId', 'rpId', 'registry', 'registryV2', 'registries', 'wallet', 'connectOrigins']);
   });
 
+  it('the legacy v1/v2 fields come from the parsed list (a v2 listed only under contracts.vaultRegistries)', () => {
+    const d = fixture(['index.html', 'assets/index-abc.js', 'assets/index-def.css']);
+    const recPath = join(d, 'contracts', 'deployments', '11155420.json');
+    const rec = JSON.parse(readFileSync(recPath, 'utf8'));
+    rec.contracts.vaultRegistries = { v2: rec.contracts.vaultRegistryV2 };
+    delete rec.contracts.vaultRegistryV2;
+    writeFileSync(recPath, JSON.stringify(rec));
+    const m = JSON.parse(run(d).json);
+    expect(m.config.registryV2).toEqual({ address: '0x00000000000000000000000000000000000000a2', deployBlock: 9 });
+    expect(m.config.registry).toEqual({ address: '0xB43f58cF17e64B603aE5588a1DD17E96a0849e44', deployBlock: 7 });
+  });
+
   it('refuses a registry version the app does not know instead of publishing it', () => {
     const d = fixture(['index.html', 'assets/index-abc.js', 'assets/index-def.css'], { vaultRegistries: { v3: { address: A3, deployBlock: 12, txHash: '0x', abiHash: '0x' + '99'.repeat(32) } } });
     expect(() => run(d)).toThrow(/doesn't know VaultRegistry v3/);

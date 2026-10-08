@@ -25,9 +25,16 @@
 
 - [x] 5.1 Run unit, integration (after `forge build` and `FOUNDRY_PROFILE=v1 forge build`), E2E, typecheck, lint, `verify-build` (e2e and production; the `/app` initial JS must not exceed the unchanged baseline) and `openspec validate --all --strict`. Verify: all pass.
 
+## 5b. ECC review of dc4cdd6 [fe]
+
+- [x] 5b.1 HIGH: test first (`test/ui/create-v3.test.tsx`, v3 config fixture): a created vault is tagged with the newest registry (create, open writable, edit, mirror Retry naming v3). Then replace the `'v2'` literal in `saveNewVault` with `WRITE_REGISTRY.version`. Verify: vitest.
+- [x] 5b.2 MEDIUM: test first: a `contracts` key starting with `vaultRegistry` that is not exactly `vaultRegistryV<N>` (or `vaultRegistries`) fails the build. Then implement. Verify: vitest.
+- [x] 5b.3 MEDIUM: three-registry read tests: a malformed newer record, a `getVaults` row-count mismatch, an id in v2+v1 but not v3, more than 32 ids across registries, a middle registry with the v1 interface (`test/chain/registry.test.ts`), and a v3 vault through unlock and the vault list (`test/ui/vaults-v3.test.tsx`). Verify: vitest.
+- [x] 5b.4 LOW: `release-manifest.mjs` takes the legacy v1/v2 fields from the parsed list (test first); design A3 (an ABI match is not a behaviour match); 6.1 made a release gate. Verify: `pnpm test:deploy`.
+
 ## 6. Follow-ups
 
-- [ ] 6.1 [fe][sec] When v3 ships: pass `REGISTRIES` (from the record) to `smoke.sh` in `deploy.yml` and `deploy-dev.yml`, with a reviewed digest update of `privileged-run-steps.json`.
+- [ ] 6.1 [fe][sec] **Release gate: before any record lists a v3**, pass `REGISTRIES` (from the record) to `smoke.sh` in `deploy.yml` and `deploy-dev.yml`, with a reviewed digest update of `privileged-run-steps.json`. Until then a v3 is checked only for shape, order and presence on `/architecture`, not against the record. Verify: `deploy-workflow.test.mjs` asserts the env is set from the record, and `workflow-policy.mjs` passes.
 - [ ] 6.2 [fe] Once the smoke test and the minimum supported recovery tool read `config.registries`, remove `config.registry`/`config.registryV2` from the release manifest.
 
 ## 7. Security review [sec]

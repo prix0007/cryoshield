@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { decodeFunctionData, type Hex } from 'viem';
+import { decodeFunctionData, encodeFunctionResult, type Hex } from 'viem';
 import { createRegistryReader } from '../../src/chain/registry';
 import { MockRegistry } from '../fixtures/mock-registry';
 
@@ -211,6 +211,61 @@ describe('web-registry-versions D2: the newest registry holding a vault ID is au
       throw new Error('rpc down');
     };
     await expect(reader.candidatesFor(loc)).rejects.toBeInstanceOf(RegistryUnconfirmedError);
+  });
+
+  it('an id in v2 and v1 but not in v3: v2\'s copy only', async () => {
+    const { v2, v1, reader } = setup();
+    v2.put(id(4), { owner, blob: blob('22'), version: 3 }, [loc]);
+    v1.put(id(4), { owner, blob: blob('11'), version: 1 }, [loc]);
+    expect(brief(await reader.candidatesFor(loc))).toEqual([['v2', id(4), 3]]);
+  });
+
+  it('a malformed record in a newer registry (owner set, empty blob) is unconfirmed, never the older copy', async () => {
+    const { RegistryUnconfirmedError } = await import('../../src/chain/registry');
+    const { v3, v1, reader } = setup();
+    v3.put(id(6), { owner, blob: '0x', version: 2 }, [('0x' + 'dd'.repeat(32)) as Hex]);
+    v1.put(id(6), { owner, blob: blob('11'), version: 1 }, [loc]);
+    await expect(reader.candidatesFor(loc)).rejects.toBeInstanceOf(RegistryUnconfirmedError);
+  });
+
+  it('a getVaults row-count mismatch in a newer registry is unconfirmed', async () => {
+    const { RegistryUnconfirmedError } = await import('../../src/chain/registry');
+    const { v3, v1, reader } = setup();
+    v1.put(id(6), { owner, blob: blob('11'), version: 1 }, [loc]);
+    const real = v3.handle.bind(v3);
+    v3.handle = (data) => {
+      const d = decodeFunctionData({ abi: v3.abi, data });
+      if (d.functionName !== 'getVaults') return real(data);
+      return encodeFunctionResult({ abi: v3.abi, functionName: 'getVaults', result: [] } as never);
+    };
+    await expect(reader.candidatesFor(loc)).rejects.toBeInstanceOf(RegistryUnconfirmedError);
+  });
+
+  it('more than 32 ids across registries: newer registries are asked in getVaults batches of at most 32', async () => {
+    const { v3, v2, v1, reader } = setup();
+    for (let i = 1; i <= 40; i++) v2.put(id(i), { owner, blob: blob('22'), version: 1 }, [loc]);
+    for (let i = 41; i <= 56; i++) v1.put(id(i), { owner, blob: blob('11'), version: 1 }, [loc]);
+    v3.put(id(40), { owner, blob: blob('33'), version: 9 }, [('0x' + 'ee'.repeat(32)) as Hex]); // the 40th: in the 2nd batch
+    const c = await reader.candidatesFor(loc);
+    expect(c).toHaveLength(56);
+    expect(c.filter((x) => x.registry === 'v3').map((x) => [x.vaultId, x.version])).toEqual([[id(40), 9]]);
+    // v3 is asked about v2's 40 ids in 2 batches and about v1's 16 in 1.
+    expect(v3.calls.filter((x) => x === 'getVaults')).toHaveLength(3);
+  });
+
+  it('a middle registry with the v1 interface: it is asked with getVault, and its copy beats the oldest', async () => {
+    const A2b = '0x00000000000000000000000000000000000000b2' as Hex;
+    const v3 = new MockRegistry('v3', { abi: 2, address: A3 });
+    const mid = new MockRegistry('v2', { abi: 1, address: A2b });
+    const v1 = new MockRegistry('v1');
+    const reader = createRegistryReader(v3.transport(mid, v1), [v3.config, mid.config, v1.config]);
+    mid.put(id(2), { owner, blob: blob('22'), version: 2 }, [loc]);
+    mid.put(id(3), { owner, blob: blob('23'), version: 5 }, [('0x' + 'ab'.repeat(32)) as Hex]);
+    v1.put(id(3), { owner, blob: blob('11'), version: 1 }, [loc]);
+    expect(brief(await reader.candidatesFor(loc))).toEqual(expect.arrayContaining([['v2', id(2), 2], ['v2', id(3), 5]]));
+    expect((await reader.candidatesFor(loc)).some((c) => c.registry === 'v1')).toBe(false);
+    expect(mid.calls).toContain('getVault');
+    expect(mid.calls).not.toContain('getVaults');
   });
 
   it('getVault, locatorsOf and vaultOf default to the newest registry; getVault takes any version', async () => {

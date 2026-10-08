@@ -8,7 +8,7 @@ import { credentialLabel, enrollKey, ENROLL, evaluatePrf, KeyError, type Enrolle
 import { addKeyToBlob, createVaultBlob, editVaultBlob } from '../vault/adapter';
 import { payloadOf, withItems, type PayloadErrorCode, type SecretItem, type VaultPayloadInput } from '../vault/payload';
 import type { RegistryVersion } from '../vault/adapter';
-import { isOlder } from '../config';
+import { isOlder, WRITE_REGISTRY } from '../config';
 import { notify, WriteError, type ProgressListener } from '../account/errors';
 import { loadWriteStack } from '../account/lazy';
 import { bytesEqual, toHex, wipe } from '../lib/bytes';
@@ -156,7 +156,7 @@ export async function saveNewVault(
     };
     const res = await createVaultOnChain({ account, build }, { client: svc.client, sponsor: svc.sponsor, reader: svc.reader, onSign, ...(onProgress ? { onProgress } : {}) });
     return {
-      session: { vaultId: res.vaultId, owner: res.owner, version: res.version, blob: res.blob, ...payloadOf(payload), credIds: keys.map((k) => k.credId), registry: 'v2', ...lastSaveOf(res) },
+      session: { vaultId: res.vaultId, owner: res.owner, version: res.version, blob: res.blob, ...payloadOf(payload), credIds: keys.map((k) => k.credId), registry: WRITE_REGISTRY.version, ...lastSaveOf(res) },
       locators: res.locators,
     };
   } finally {

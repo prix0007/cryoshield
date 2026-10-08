@@ -113,6 +113,12 @@ No key material or secret is involved: the change handles only public addresses,
 
 - **A1:** the record key for v3+ is not decided (7.1). The parser accepts both proposed shapes, like the recovery tool.
 - **A2:** v1 on OP Mainnet stays refused (existing rule); no other per-version chain rule is added.
+- **A3: an ABI match is not a behaviour match.** An `abiHash` equal to `VaultRegistryV2.json` proves only that v3's
+  *interface* is v2's byte for byte, so the app can encode and decode its calls. It says nothing about the semantics
+  (caps, events, who may write). A v3 whose behaviour differs (for example, a different `getVaults` limit or a new
+  write rule) must ship with a new ABI file, so its hash matches nothing and the build fails until the app is
+  updated. Reviewing a new registry's semantics stays a contracts and security-review task, never inferred from the
+  hash.
 
 ## Implementation notes (frontend, 2026-10-08)
 

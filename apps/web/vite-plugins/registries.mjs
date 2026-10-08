@@ -49,8 +49,11 @@ export function registryList(record, where, abiHashes) {
   const found = [];
   if (record.address !== undefined) found.push(entry(where, 'address', 1, record, abiHashes));
   for (const [k, e] of Object.entries(contracts)) {
+    if (!k.startsWith('vaultRegistry') || k === 'vaultRegistries') continue;
     const m = RECORD_KEY.exec(k);
-    if (m) found.push(entry(where, `contracts.${k}`, Number(m[1]), e, abiHashes));
+    // A near miss (vaultRegistryv3, vaultRegistry3, vaultRegistryV03) would silently skip a registry: refuse it.
+    if (!m || k !== m[0]) throw new Error(`${where}: contracts has an invalid registry key ${JSON.stringify(k)} (expected vaultRegistryV2, vaultRegistryV3, …)`);
+    found.push(entry(where, `contracts.${k}`, Number(m[1]), e, abiHashes));
   }
   if (contracts.vaultRegistries !== undefined) {
     if (!isObj(contracts.vaultRegistries)) throw new Error(`${where}: contracts.vaultRegistries must be an object keyed v3, v4, …`);

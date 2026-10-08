@@ -94,6 +94,12 @@ describe('registryList: an ordered list of every registry version', () => {
   });
 
   it('ignores unrelated contracts keys (wallets)', () => {
-    expect(brief(rec({ vaultRegistryV2: v2, wallets: { 'cryoshield.app': {} }, vaultRegistryFoo: 1 }))).toHaveLength(2);
+    expect(brief(rec({ vaultRegistryV2: v2, wallets: { 'cryoshield.app': {} }, registryNotes: 'x' }))).toHaveLength(2);
+  });
+
+  it('refuses a near-miss registry key instead of silently skipping a registry (ECC review of dc4cdd6)', () => {
+    for (const k of ['vaultRegistryv3', 'vaultRegistry3', 'vaultRegistryV03', 'vaultRegistryV0', 'vaultRegistryV1000', 'vaultRegistryFoo', 'vaultRegistry', 'vaultRegistryV3 ', 'vaultRegistryV3\n']) {
+      expect(() => list(rec({ vaultRegistryV2: v2, [k]: v3 })), JSON.stringify(k)).toThrow(/registry key/);
+    }
   });
 });

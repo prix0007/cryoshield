@@ -60,10 +60,12 @@ const record = JSON.parse(readFileSync(recordPath, 'utf8'));
 // web-registry-versions D4: the build's own parser (an unknown version fails here too, never published).
 const abiHash = (f) => keccak256(new Uint8Array(readFileSync(join(arg('contracts'), 'abi', f))));
 const registries = registryList(record, recordPath, { 1: abiHash('VaultRegistry.json'), 2: abiHash('VaultRegistryV2.json') });
+// The legacy v1/v2 fields come from the same parsed list, whichever record key named them.
+const v1 = registries.find((r) => r.n === 1);
+const v2 = registries.find((r) => r.n === 2);
 // harden-gas-sponsorship: the build already refused a record without these; the manifest names them too.
-const v2 = record.contracts?.vaultRegistryV2;
 const wallet = record.contracts?.wallets?.[env.VITE_RP_ID];
-if (!v2 || !wallet) throw new Error(`deployments/${chainId}.json has no contracts.vaultRegistryV2 or contracts.wallets["${env.VITE_RP_ID}"]`);
+if (!v2 || !wallet) throw new Error(`deployments/${chainId}.json has no VaultRegistry v2 or contracts.wallets["${env.VITE_RP_ID}"]`);
 const html = readFileSync(join(site, 'index.html'), 'utf8');
 const csp = html.match(/<meta http-equiv="Content-Security-Policy" content="([^"]+)">/)?.[1] ?? '';
 const connect = (csp.split(';').map((d) => d.trim()).find((d) => d.startsWith('connect-src ')) ?? '')
@@ -83,7 +85,7 @@ const manifest = {
     chainId,
     rpId: env.VITE_RP_ID,
     // VaultRegistry v1 (legacy reads); null where v1 was never deployed (OP Mainnet).
-    registry: record.address ? { address: record.address, deployBlock: record.deployBlock } : null,
+    registry: v1 ? { address: v1.address, deployBlock: v1.deployBlock } : null,
     registryV2: { address: v2.address, deployBlock: v2.deployBlock },
     // Every registry, newest first; the first takes every write (the recovery tool reads this list, D5 of
     // recover-registry-versions). The two fields above stay for the smoke test and older recovery tools.
