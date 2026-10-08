@@ -195,7 +195,7 @@ This is the review that PR #32 lacked; that PR is folded into this change. The a
 - **Before the first production release:** the DNS records for `dev.cryoshield.app` are deleted (its Fly certificate is already removed), so nothing under `cryoshield.app` other than the production site serves the app. The owner is doing this now (tasks 7.10).
 - **Production:** the owner-published release is the human step that CI-C1 asked for. No required reviewer is added on top.
 - **Re-gate before OP Mainnet.** Before `production-build` points at OP Mainnet, **all** of the following must hold:
-  1. `production` regains a required reviewer (`"required_reviewers": ["@owner"]`, then `apply.sh --environments --apply`), so a mainnet deploy needs both a release and an approval.
+  1. ~~`production` regains a required reviewer (`"required_reviewers": ["@owner"]`, then `apply.sh --environments --apply`), so a mainnet deploy needs both a release and an approval.~~ **Superseded** by the founder's decision of 2026-10-08: the owner-only release tag is the production human gate for mainnet too (`launch-op-mainnet` design → Go/no-go G1). Items 2 and 3 still apply.
   2. CI-H1 is closed: agents use the machine account only (`docs/agent-account.md`).
   3. The owner's account has hardware-key 2FA.
 

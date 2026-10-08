@@ -236,9 +236,42 @@ gh workflow run deploy.yml --ref <current vX.Y.Z>                   # prove the 
 
 If a Pimlico key changes, re-run step 3 of the setup. If any other value changes, re-run step 4 or 5, then redeploy.
 
-## Before OP Mainnet
+## Switching production to OP Mainnet
 
-Production's chain is changed only through `production-build` variables (`VITE_CHAIN_ID`, `VITE_RPC_URL`, the bundler and policy), plus a deployment record in `contracts/deployments/<chainId>.json`. Before that switch, meet the re-gate criterion in `openspec/changes/archive/2026-10-08-split-dev-and-release-deploys/design.md` → Security review:
-- a required reviewer back on `production`;
-- agents only through the machine account;
-- hardware-key 2FA on the owner's account.
+The plan, its go/no-go criteria (G1 to G11) and the launch-day runbook are in the OpenSpec change
+[`launch-op-mainnet`](../openspec/changes/launch-op-mainnet/design.md) (design → Go/no-go criteria, Launch-day
+runbook). Follow that runbook; this section is only the summary.
+
+**The human gate is the owner's release.** Founder decision of 2026-10-08 (CI-C1): production deploys only from a `v*`
+release the owner publishes (admin-only tags, the owner-only workflow gate, tag-only `production` environments), and
+that is the human step for mainnet too. The earlier re-gate item "a required reviewer back on `production`" is
+superseded. Still required before the switch: agents act only through the machine account (CI-H1), and the owner's
+account has hardware-key 2FA (G1).
+
+**Same tag on both chains (design D3).** Production's chain changes only through four `production-build` values
+(`VITE_CHAIN_ID`, `VITE_RPC_URL`, `VITE_SPONSORSHIP_POLICY_ID` and the `VITE_BUNDLER_URL` secret) plus a committed
+`contracts/deployments/10.json`. There is no separate testnet release first (founder, 2026-10-09): production goes from
+the 2026-10-05 build to the switch release `vA`, in two back-to-back steps on launch day:
+
+1. Publish `vA` with `production-build` still on OP Sepolia; wait for the deploy and smoke test (`/release.json` shows
+   chain 11155420).
+2. Save the four current values offline, set the mainnet ones, redeploy the same tag with
+   `gh workflow run deploy.yml --ref vA`, and enable the mainnet Pimlico policy once the smoke test is green
+   (`/release.json` shows chain 10, registry v2 and no v1).
+
+Do not set the mainnet values before tagging: `vA` would never be proven on OP Sepolia, and a failure could not be told
+apart from a chain problem (design D3, Sequencing). After the switch, **only `vA` and later tags are rollback targets**:
+an older tag has no `10.json`, and its chain-10 build fails by design.
+
+**Rollback (design D4):**
+
+| What fails | When | Rollback | User impact |
+|---|---|---|---|
+| Contract deploy or verification | Before the switch | None needed: contracts are immutable and unused. Retry verification | None |
+| `vA` on OP Sepolia | Before the switch | `gh workflow run deploy.yml --ref <previous tag>` (normal release rollback) | Same as any release |
+| The mainnet build or smoke test | At the switch | Automatic image rollback by the `release` job; then restore the four values | None (no mainnet users yet) |
+| A defect found before the announcement | Soft-launch window | Restore the four values and redeploy `vA` (chain rollback). The founder's test vault stays readable with the recovery tool | Founder only |
+| A front-end defect after the announcement | Post-launch | Redeploy the last good mainnet-capable tag (`vA` or later). **Do not** roll the chain back | Short outage at worst |
+| A contract defect after the announcement | Post-launch | Pause saving (stop the Pimlico policy), then a new versioned registry or wallet in its own OpenSpec change | Saving paused; reading and recovery keep working |
+| Sponsorship abuse or budget exhausted | Post-launch | Pimlico shows "Saving is paused". Review usage before raising any cap ([paymaster runbook](../apps/web/docs/paymaster-policy.md)) | Saving paused |
+| Site down | Any time | Nothing is at risk: vaults are on-chain and the recovery tool works without the site | Use the recovery tool |
