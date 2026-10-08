@@ -71,7 +71,7 @@ test('mainnet record without any mainnet-gate entry fails', () => {
   const r = run({ added: ['contracts/deployments/10.json'], reviewLog: log('## 2027-02-28: six-monthly (reviewer: @prix0007)') });
   assert.equal(r.ok, false);
   assert.match(r.message, /mainnet-gate/);
-  assert.match(r.message, new RegExp(REVIEW_LOG.replace(/[./]/g, '\\$&')));
+  assert.ok(r.message.includes(REVIEW_LOG), r.message);
 });
 
 test(`a mainnet-gate entry older than ${WINDOW_DAYS} days fails; exactly ${WINDOW_DAYS} days passes`, () => {
