@@ -528,6 +528,27 @@ describe('review M2/M3: the dates lookup', () => {
     });
     expect(signal.aborted).toBe(true);
   });
+
+  it('progress-feedback D5: while dates load, each row shows a small spinner and is busy; then they go', async () => {
+    const rpc = chainRpc();
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const request = vi.fn(async (a: { method: string; params: unknown[] }) => {
+      await gate;
+      return rpc.request(a as never);
+    });
+    unlockReturns([vault(1), vault(2)]);
+    await unlockApp({ client: { request } as never });
+    const loading = await screen.findAllByText(VAULTS.loadingDates);
+    expect(loading).toHaveLength(2);
+    for (const p of loading) {
+      expect(p).toHaveAttribute('aria-busy', 'true');
+      expect(p.querySelector('.spinner')).toHaveAttribute('aria-hidden', 'true');
+    }
+    release();
+    await waitFor(() => expect(screen.getAllByText(/^Created /)).toHaveLength(2));
+    expect(document.querySelector('.vault-row .spinner')).toBeNull();
+  });
 });
 
 describe('review LOW items', () => {

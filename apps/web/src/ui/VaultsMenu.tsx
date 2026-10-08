@@ -14,7 +14,8 @@ import type { VaultSession } from './operations';
 import { isOlder } from '../config';
 import { KeyPrompt, Notice } from './components';
 import { ActionBar } from './chrome';
-import { Btn, CeremonyPresence, Disclosure } from './motionkit';
+import { Btn, CeremonyPresence, Disclosure, OpenProgress, PHASE_STEP, Spinner } from './motionkit';
+import type { UnlockPhase } from '../chain/unlock';
 import { VAULTS as V } from './strings-vaults';
 
 export { archiveAndClear, saveVaultMeta } from './vault-meta';
@@ -60,7 +61,8 @@ function Row(props: { v: VaultSession; dates: ReadonlyMap<string, VaultDates>; o
           {s.more > 0 && ` ${V.more(s.more)}`}
         </p>
       )}
-      <p className="hint" aria-live="polite">
+      <p className={d === undefined ? 'hint loading' : 'hint'} aria-live="polite" aria-busy={d === undefined}>
+        {d === undefined && <Spinner />}
         {d === undefined ? V.loadingDates : `${V.created} ${fmt(d.created)} · ${V.saved} ${fmt(d.saved)}`}
       </p>
       {!v.payloadError && (
@@ -98,7 +100,7 @@ export default function VaultsMenu(props: {
   /** Menu mode: open the vault's Edit vault sheet (vaults in the newest registry only). */
   onEdit?: (v: VaultSession) => void;
   /** One more key ceremony, merged by vault ID (D6). Resolves to a message to show, or null when vaults were added. */
-  onCheckAnother: () => Promise<string | null>;
+  onCheckAnother: (onPhase: (p: UnlockPhase) => void) => Promise<string | null>;
   onBack: () => void;
   /** Public RPC, keccak-256 and registries for the dates (D9); passed in, see chain/history.ts. */
   history: HistorySource;
@@ -107,6 +109,8 @@ export default function VaultsMenu(props: {
   /** Which `registry:vaultId` has been fetched (or is being fetched), at which version. */
   const fetched = useRef(new Map<string, number>());
   const [busy, setBusy] = useState(false);
+  /** progress-feedback D4: Check another key's unlock step; null when idle. */
+  const [at, setAt] = useState<number | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => heading.current?.focus(), []);
@@ -154,11 +158,13 @@ export default function VaultsMenu(props: {
   async function another() {
     if (busy) return; // not `disabled`: disabling the pressed button mid-press would leave its press animation stuck
     setBusy(true);
+    setAt(0);
     setNote(null);
     try {
-      setNote(await props.onCheckAnother());
+      setNote(await props.onCheckAnother((p) => setAt(PHASE_STEP[p])));
     } finally {
       setBusy(false);
+      setAt(null);
     }
   }
 
@@ -170,7 +176,8 @@ export default function VaultsMenu(props: {
       {props.mode === 'picker' && active.length > 1 && <p>{V.pickerIntro}</p>}
       {props.mode === 'picker' && active.length === 0 && archived.length > 0 && <Notice kind="info">{V.archivedOnly}</Notice>}
       {note && <Notice kind="info">{note}</Notice>}
-      <CeremonyPresence>{busy && <KeyPrompt text={V.checking} />}</CeremonyPresence>
+      <CeremonyPresence>{busy && at === 0 && <KeyPrompt text={V.checking} />}</CeremonyPresence>
+      <OpenProgress at={at} />
       {active.length > 0 && <Group title={V.groupActive}>{active.map(row)}</Group>}
       {archived.length > 0 &&
         (expand ? (

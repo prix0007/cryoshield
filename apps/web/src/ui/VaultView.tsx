@@ -11,7 +11,8 @@ import { S } from './strings';
 import { ActionBar, EmptyState } from './chrome';
 import { copySecret, forgetClearListener } from './clipboard';
 import type { SaveStage } from '../account/errors';
-import { AnimatePresence, Btn, CeremonyPresence, Collapse, CopyFeedback, Disclosure, m, SaveProgress, StepTransition, useDirection, useReduced } from './motionkit';
+import { AnimatePresence, Btn, CeremonyPresence, Collapse, CopyFeedback, Disclosure, Loading, m, OpenProgress, PHASE_STEP, SaveProgress, StepTransition, useDirection, useReduced } from './motionkit';
+import type { UnlockPhase } from '../chain/unlock';
 import { reveal } from './motion';
 
 /** show-vault-onchain-location D3: the panel content is a separate chunk, fetched when the disclosure first opens. */
@@ -37,7 +38,7 @@ export function VaultView(props: {
   /** The account nonce to pin (D8), for the session whose blob is `blob`: App stores it if that is still the session. */
   onNonce?: (vaultId: `0x${string}`, nonce: bigint, blob: Uint8Array) => void;
   /** STALE: unlock again (one tap) and replace this session with the vault's current version. A message on failure. */
-  onReload?: () => Promise<string | null>;
+  onReload?: (onPhase: (p: UnlockPhase) => void) => Promise<string | null>;
   /** Focus the vault heading on mount (after a successful Reload remounted this view). */
   focusTitle?: boolean;
   /** This vault's Arweave copy known to the session (App state, so it survives a remount; wiped on lock). */
@@ -77,6 +78,11 @@ export function VaultView(props: {
   const unblur = reveal(reduced);
   // Save checklist for edit / add key: only stages the write path really reported (app-motion-ux D5).
   const [progress, setProgress] = useState<ReadonlySet<SaveStage> | null>(null);
+  /** progress-feedback D2: a failed save keeps its progress, stopped at the failed step, while the user stays on the
+   *  screen it failed on (the mode); leaving that screen hides it. */
+  const [saveFailed, setSaveFailed] = useState<Mode | null>(null);
+  /** Reload's unlock step (D4); null when idle. */
+  const [opening, setOpening] = useState<number | null>(null);
   const onProgress = (stage: SaveStage) => {
     setProgress((prev) => new Set(prev ?? []).add(stage));
     if (stage === 'sent') setPrompt(null); // signed and accepted: no more touches
@@ -153,12 +159,17 @@ export function VaultView(props: {
     if (!props.onReload) return;
     setBusy(true);
     setPrompt(S.edit.touchAny);
+    setOpening(0);
     try {
       // On success the App replaces the session and remounts this view (a new key), which focuses the heading.
-      const msg = await props.onReload();
+      const msg = await props.onReload((p) => {
+        setPrompt(null);
+        setOpening(PHASE_STEP[p]);
+      });
       if (msg) setError(msg);
     } finally {
       setPrompt(null);
+      setOpening(null);
       setBusy(false);
     }
   }
@@ -177,6 +188,7 @@ export function VaultView(props: {
     setErrorRef(undefined);
     setStatus(null);
     setProgress(new Set());
+    setSaveFailed(null);
     setPrompt(S.edit.touchAny);
     setStale(false);
     try {
@@ -194,7 +206,7 @@ export function VaultView(props: {
 
   /** A failed save never moves the pin (ECC reviews M1 and 88255e2): the next save is STALE and offers Reload. */
   function failed(e: unknown) {
-    setProgress(null);
+    setSaveFailed(mode);
     setError(messageFor(e));
     setErrorRef(errorReference(e));
     setStale(e instanceof WriteError && e.code === 'STALE');
@@ -209,6 +221,7 @@ export function VaultView(props: {
     setErrorRef(undefined);
     setStatus(null);
     setProgress(new Set());
+    setSaveFailed(null);
     setPrompt(S.addKey.touchCurrent);
     setStale(false);
     try {
@@ -262,7 +275,8 @@ export function VaultView(props: {
       )}
       {status && <Notice kind="success">{status}</Notice>}
       <CeremonyPresence>{prompt && <KeyPrompt text={prompt} {...(waiting ? { onContinue: waiting } : {})} />}</CeremonyPresence>
-      {progress && <SaveProgress reached={progress} {...(mirror && progress.has('confirmed') ? { arweave: mirror.status } : {})} />}
+      <OpenProgress at={opening} />
+      {progress && (saveFailed ?? mode) === mode && <SaveProgress tap failed={saveFailed !== null} reached={progress} arweave={progress.has('confirmed') ? mirror?.status : undefined} />}
       {mirror && <MirrorLine result={mirror} fastIndexUrl={svc.fastIndexUrl} onRetry={() => {
         setMirror({ status: 'pending' });
         void mirrorWrite(svc, { vaultId: s.vaultId, version: s.version, blob: s.blob, locators: [props.locator], registry: s.registry }).then((r) => {
@@ -367,7 +381,7 @@ export function VaultView(props: {
             <div className="vault-location-disclosure">
               <Disclosure label={S.location.title}>
                 <ChunkBoundary fallback={<p className="hint">{S.location.failed}</p>}>
-                <Suspense fallback={<p className="hint">{S.location.loading}</p>}>
+                <Suspense fallback={<Loading text={S.location.loading} />}>
                   <VaultLocation
                     network={svc.network}
                     chainId={svc.chainId}
@@ -410,9 +424,7 @@ export function VaultView(props: {
               {budget && <p className="hint">{budget.text}</p>}
             </>
           ) : (
-            <p className="hint" role="status">
-              {S.location.loading}
-            </p>
+            <Loading text={S.location.loading} />
           )
         )}
 

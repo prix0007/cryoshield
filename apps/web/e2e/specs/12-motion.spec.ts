@@ -96,7 +96,7 @@ test('motion: transitions end at rest, focus follows, the checklist ticks in rea
   await expect(page.getByText('Backup copy saved.')).toBeVisible({ timeout: 15_000 });
   await expect
     .poll(() => page.evaluate(() => (window as unknown as { __stages: string[] }).__stages))
-    .toEqual(['Encrypted on this device', 'Network fee sponsored', 'Signed and sent', 'Confirmed on-chain', 'Backup copy saved to Arweave']);
+    .toEqual(['Encrypted on this device', 'Network fee sponsored', 'Signed and sent', 'Confirmed on-chain', 'Backup copy saved to Arweave · in the background']);
   await atRest(page);
   await axe(page, 'done');
 

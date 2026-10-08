@@ -258,6 +258,58 @@ test('vault actions (vault-view-action-layout): Edit secrets, Manage vault, navi
   await page.screenshot({ path: `${dir}/app-vault-actions-dark.png` });
 });
 
+test('progress feedback (progress-feedback 2.3): a save mid-way and the unlock loader, light and dark', async ({ page }) => {
+  await page.setViewportSize({ width: 1024, height: 900 });
+  const arweave = new ArweaveStub();
+  await arweave.install(page);
+  // Hold the bundler's eth_sendUserOperation, and the chain RPC during an unlock, so the real progress pauses mid-way.
+  let holdSend = false;
+  let holdChain = false;
+  await page.route('http://127.0.0.1:4337/**', async (route) => {
+    if (holdSend && (route.request().postData() ?? '').includes('eth_sendUserOperation')) await new Promise((r) => setTimeout(r, 6_000));
+    await route.continue();
+  });
+  await page.route('http://127.0.0.1:8545/**', async (route) => {
+    if (holdChain) await new Promise((r) => setTimeout(r, 1_500));
+    await route.continue();
+  });
+  await page.goto(APP);
+  const keys = await VirtualKeys.attach(page);
+  await keys.add();
+  await keys.add();
+  await createVault(page, keys, [{ label: 'Bitcoin seed', secret: 'abandon ability able about' }]);
+  await page.getByRole('button', { name: 'Continue' }).click();
+
+  holdSend = true;
+  await page.getByRole('button', { name: 'Edit secrets' }).click();
+  await page.locator('#secret-0').fill('abandon ability able about zoo');
+  await keys.use(0);
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page.locator('.stage-done').filter({ hasText: 'Network fee sponsored' })).toBeVisible({ timeout: 30_000 });
+  await page.waitForTimeout(500);
+  await page.locator('.progress').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: `${dir}/app-progress-save.png` });
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await page.waitForTimeout(200);
+  await page.screenshot({ path: `${dir}/app-progress-save-dark.png` });
+  await page.emulateMedia({ colorScheme: 'light' });
+  holdSend = false;
+  await expect(page.getByText('Saved.', { exact: true })).toBeVisible({ timeout: 60_000 });
+
+  await page.getByRole('button', { name: 'Lock', exact: true }).click();
+  holdChain = true;
+  await page.getByRole('button', { name: 'Unlock my vault' }).click();
+  await keys.use(1);
+  await page.getByRole('button', { name: 'Unlock with my key' }).click();
+  await expect(page.getByRole('progressbar', { name: 'Opening progress' })).toHaveAttribute('aria-valuenow', /[12]/, { timeout: 15_000 });
+  await page.waitForTimeout(150);
+  await page.screenshot({ path: `${dir}/app-progress-unlock.png` });
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await page.waitForTimeout(150);
+  await page.screenshot({ path: `${dir}/app-progress-unlock-dark.png` });
+  holdChain = false;
+});
+
 test('supported devices page (add-supported-devices-page 4.x): light, dark, phone, and the app key error link', async ({ browser }) => {
   for (const [name, colorScheme, viewport] of [
     ['devices-light', 'light', { width: 1280, height: 900 }],

@@ -274,7 +274,11 @@ const gz = (f) => gzipSync(readFileSync(join(dist, f)), { level: 9 }).length;
 // the nonce pin at vault open (one raw eth_call, so unlocking still never fetches the write stack), and the retryable
 // chunk fallbacks. The list, the dates, the Edit vault sheet and the name/archive/clear writes are a lazy chunk
 // (VAULT_LIST_MARKERS below). Headroom without this: under 0 B; with it: about 0.9 KB.
-const APP_BASELINE = 194_689 - 12 * 1024 + 1024;
+// progress-feedback (2026-10-08, founder request): +1 KB, deliberately. Measured gzip: 74fc3c1 (vault-view-action-layout)
+// e2e 203,832 B / production 203,841 B -> 204,574 B / 204,588 B (+742 B / +747 B), all initial on purpose: the one
+// shared progress view (bar, step states, reassurance, live text) must render before the lazy write stack loads, plus
+// the unlock phases (unlock, Reload, Check another key) and the delayed loaders. Headroom before: 64 B; after: 341 B.
+const APP_BASELINE = 194_689 - 12 * 1024 + 1024 + 1024;
 const APP_ALLOWANCE = 20 * KB;
 const WRITE_STACK_MARKERS = ['eth_sendUserOperation', 'pimlico_getUserOperationGasPrice', 'WalletConfigError'];
 // vault-list-labels-archive 3.1 (design D5): the vault list, the Edit vault sheet, Archive and clear and the dates

@@ -49,6 +49,8 @@ export function CreateFlow(props: {
   const [ackAdult, setAckAdult] = useState(false);
   // Save checklist: stages the write path has REALLY reported (app-motion-ux D5).
   const [reached, setReached] = useState<ReadonlySet<SaveStage>>(new Set());
+  /** progress-feedback D2: a failed save shows its stopped progress above the editor until the next Save. */
+  const [saveFailed, setSaveFailed] = useState(false);
   // Bumped by the idle wipe so the old step is dropped at once, with no exit animation.
   const [epoch, setEpoch] = useState(0);
   const dir = useDirection(STEP_ORDER, step);
@@ -89,6 +91,7 @@ export function CreateFlow(props: {
     setErrorRef(undefined);
     setBusy(true);
     setStep('saving');
+    setSaveFailed(false);
     setReached(new Set());
     setPrompt(S.save.waitingForKey);
     try {
@@ -124,6 +127,7 @@ export function CreateFlow(props: {
       setPrompt(null);
       setError(messageFor(e, 'create'));
       setErrorRef(errorReference(e));
+      setSaveFailed(true);
       setStep('secrets');
     } finally {
       setBusy(false);
@@ -195,6 +199,7 @@ export function CreateFlow(props: {
         {step === 'secrets' && (
           <div>
             <StepHeading>{S.create.secretsTitle}</StepHeading>
+            {saveFailed && <SaveProgress reached={reached} failed />}
             <div className="editor">
               <label htmlFor={nameId}>{S.create.name}</label>
               <input
