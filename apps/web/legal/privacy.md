@@ -1,6 +1,6 @@
 # Privacy policy
 
-**Effective date:** 2026-10-05
+**Effective date:** 2026-10-08
 
 <!--legal-note-->
 
@@ -26,10 +26,12 @@ There is no email address.
 
 ## What we never see
 
-- Your secrets (seed phrases, recovery codes) or their labels. They are encrypted in your browser before anything is
-  sent.
+- Your secrets (seed phrases, recovery codes), their labels, or the name you give a vault. They are encrypted in your
+  browser before anything is sent.
 - Your security keys, the secret each key produces for this site (the WebAuthn PRF output), or the key that locks
-  your vault. These exist only in your browser's memory for a moment and are then wiped.
+  your vault. The key's secret is wiped from memory as soon as it has been used. While a vault is open, its contents
+  exist only in your browser's memory, and are cleared when you lock it, after 5 minutes without activity, or when
+  you leave the page.
 - Any account, name, email address or phone number. CryoShield has no accounts.
 
 This also means we **cannot** recover, read, change or hand over your vault, for you or for anyone else.
@@ -56,14 +58,22 @@ under their own policies; several do not publish how long. Our full inventory is
 
 ## Public and permanent data
 
-When you save a vault, these items are published on the public blockchain **and** on Arweave:
+When you save a vault, these items are published on the public blockchain, in CryoShield's public vault registry
+contract, **and** on Arweave:
 
-- the encrypted vault (ciphertext), which is unreadable without one of your keys;
-- your vault's account address and vault ID;
-- a "locator" for each enrolled key (a value derived from the key, used to find the vault);
+- the encrypted vault (ciphertext). Everything inside it, including your secrets, their labels and the vault's name,
+  is unreadable without one of your enrolled keys **and** that key's PIN (or fingerprint);
+- every earlier version of the encrypted vault: saving a change adds a new version, and the old ones stay public;
+- your vault's account address and vault ID. The account is a CryoShield smart account controlled only by your keys:
+  every change it makes needs one of your keys and that key's PIN;
+- each enrolled key's public signing key, stored in that account;
+- a "locator" for each enrolled key (a value derived from the key, used to find the vault). A key has the same locator
+  for every vault it opens, so the locator links those vaults to each other;
 - the number of keys, each key's credential ID, and the settings needed to unlock it (site name `cryoshield.app`,
   salts and algorithm identifiers);
-- the times of each save.
+- the approximate size of the vault. It is padded, so only a size range shows, but that can be enough to tell, for
+  example, a 12-word seed phrase from a 24-word one;
+- the times of each save, and, on Arweave, a one-time upload address that your browser creates for that session.
 
 **This data is permanent. It cannot be deleted by us or by anyone else**, because public blockchains and Arweave are
 designed so that nobody can remove what has been written. An Arweave gateway may hide an item, but the network keeps it.
@@ -104,6 +114,10 @@ the vault app at `/app/`, and not these legal pages.
 - **Integrity:** the beacon script is pinned to a version we reviewed; a changed script is refused by your browser.
 
 More detail is in the [cookie policy](/cookies).
+
+**Statistics from public data.** Separately, a scheduled job in our GitHub repository counts vaults, keys and Arweave
+copies from the public blockchain and Arweave data. It reads no visitor data and no analytics. It reports weekly
+totals only, never shows a group of fewer than 3, and each report is kept for 90 days as a GitHub Actions artifact.
 
 ## Donations
 
@@ -165,7 +179,8 @@ child is correspondence; we would explain how to make a vault unreadable by rese
 ## Security
 
 Your vault is encrypted on your device with AES-256-GCM, using keys derived from your security keys. CryoShield is a
-**testnet preview** and has **not been independently audited**. Please report vulnerabilities as described in our
+**testnet preview** and has **not been independently audited**. Our internal security reviews are public in the
+[repository](https://github.com/prix0007/cryoshield/tree/main/docs/reviews). Please report vulnerabilities as described in our
 [security policy](https://github.com/prix0007/cryoshield/blob/main/SECURITY.md).
 
 ## Changes
@@ -173,6 +188,11 @@ Your vault is encrypted on your device with AES-256-GCM, using keys derived from
 We will update the effective date at the top whenever this policy changes, and record each change below. The full
 history is public in our [source repository](https://github.com/prix0007/cryoshield/commits/main/apps/web/legal/privacy.md).
 
+- 2026-10-08: "Public and permanent data" now lists every public item (earlier versions, each key's public signing
+  key, the size range, the Arweave upload address) and says that unlocking needs a key **and** its PIN; vault names
+  are listed as encrypted; how long an open vault stays in memory; the statistics job that reads only public data;
+  a link to our security reviews.
+- 2026-10-05: new "Donations" section (the /support page).
 - 2026-10-04: the vault app also checks the Arweave copy on Turbo's index (`turbo-gateway.com`), which lists it
   before it settles.
 - 2026-10-03 (revision 2): CryoShield is an open-source project: operator, contact (GitHub only, no email) and

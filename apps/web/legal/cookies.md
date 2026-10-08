@@ -1,6 +1,6 @@
 # Cookie policy
 
-**Effective date:** 2026-10-03 (revision 2)
+**Effective date:** 2026-10-08
 
 <!--legal-note-->
 
@@ -12,7 +12,9 @@
 
 Nothing. The table below lists every cookie and every kind of browser storage that any CryoShield page, or any third
 party embedded in one, creates on your device. Today every cell is "None". An automated test loads each page, runs the
-vault app's create and unlock steps, and fails if anything appears that is not listed here.
+vault app's create and unlock steps, and fails if anything appears that is not listed here. The table lists the
+pages that test visits; the build also refuses any browser-storage code in every script it ships, including the
+`/architecture`, `/devices` and `/support` pages.
 
 <!--storage-inventory-->
 
@@ -53,5 +55,6 @@ Questions about this policy: open an issue in the [repository](https://github.co
 The full history is public in our
 [source repository](https://github.com/prix0007/cryoshield/commits/main/apps/web/legal/cookies.md).
 
+- 2026-10-08: says which pages the table covers and that the build checks every other page too.
 - 2026-10-03 (revision 2): contact via GitHub (open-source project; no email address).
 - 2026-10-03: first draft.
