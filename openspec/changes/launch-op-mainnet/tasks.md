@@ -30,10 +30,10 @@
 
 ## 3. Recovery tool [rec]
 
-- [ ] 3.1 [rec] Test first in `tools/recover/tests`: the `op-mainnet` preset's `registry_v2` and `deploy_block_v2` equal `contracts.vaultRegistryV2` in `contracts/deployments/10.json` when that file exists (extend `test_built_in_registry_matches_deployment_records` to every record present), and `registry` (v1) stays the placeholder for chain 10. The test fails until 7.3 adds the record and the preset is regenerated. Verify: pytest shows the failure, then green in 7.3.
-- [ ] 3.2 [rec] Test first: with no network flag the tool uses `op-mainnet`, prints that it does, and `--testnet` still selects `op-sepolia` (Q2). Update the `deployment-targets` "Recovery tool default network" scenarios' tests. Then change `DEFAULT_NETWORK`. Verify: pytest, ruff, `mypy --strict`.
-- [ ] 3.3 [rec] Test first: against a local anvil chain seeded with a v2-only deployment (no v1) and a vault, the tool with the `op-mainnet`-shaped preset (v1 placeholder) finds and opens the vault, and reports no v1 lookups. Verify: pytest (integration marker).
-- [ ] 3.4 [rec] Update `tools/recover/README.md`: mainnet is the default, testnet vaults need `--testnet`, mainnet has only VaultRegistry v2. Verify: docs reviewed in 6.1.
+- [x] 3.1 [rec] Test first in `tools/recover/tests`: the `op-mainnet` preset's `registry_v2` and `deploy_block_v2` equal `contracts.vaultRegistryV2` in `contracts/deployments/10.json` when that file exists (extend `test_built_in_registry_matches_deployment_records` to every record present), and `registry` (v1) stays the placeholder for chain 10. The test fails until 7.3 adds the record and the preset is regenerated. Verify: pytest shows the failure, then green in 7.3.
+- [x] 3.2 [rec] Test first: with no network flag the tool uses `op-mainnet`, prints that it does, and `--testnet` still selects `op-sepolia` (Q2). Update the `deployment-targets` "Recovery tool default network" scenarios' tests. Then change `DEFAULT_NETWORK`. Verify: pytest, ruff, `mypy --strict`.
+- [x] 3.3 [rec] Test first: against a local anvil chain seeded with a v2-only deployment (no v1) and a vault, the tool with the `op-mainnet`-shaped preset (v1 placeholder) finds and opens the vault, and reports no v1 lookups. Verify: pytest (integration marker).
+- [x] 3.4 [rec] Update `tools/recover/README.md`: mainnet is the default, testnet vaults need `--testnet`, mainnet has only VaultRegistry v2. Verify: docs reviewed in 6.1.
 
 ## 4. Honest copy [fe]
 

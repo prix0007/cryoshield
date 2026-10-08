@@ -47,3 +47,16 @@ def test_readme_exit_codes_match() -> None:
     text = README.read_text()
     for code in ExitCode:
         assert re.search(rf"^\| {code.value} \|", text, re.M), f"exit code {code.value} undocumented"
+
+
+def test_readme_documents_the_mainnet_default() -> None:
+    """launch-op-mainnet 3.4: mainnet is the default, testnet vaults need --testnet, mainnet is v2-only."""
+    from cryoshield_recover.config import DEFAULT_NETWORK, TESTNET
+
+    text = README.read_text()
+    assert f"| `{DEFAULT_NETWORK}` (**default**) |" in text
+    assert f"| `{TESTNET}` (`--testnet`) |" in text
+    assert f"the built-in default, `{DEFAULT_NETWORK}`" in text
+    assert "testnet preview" in text
+    assert "OP Mainnet has only VaultRegistry v2" in text
+    assert "OP Sepolia by default" not in text and "not decided yet" not in text
