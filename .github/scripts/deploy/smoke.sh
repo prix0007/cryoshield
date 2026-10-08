@@ -11,6 +11,8 @@
 #        REGISTRIES (optional, web-registry-versions D6): every registry of the record, newest first, as
 #                   "v3=0x… v2=0x… v1=0x…"; when set, /release.json's config.registries must be exactly this list,
 #      BASE_URL (default https://cryoshield.app),
+#      EXPECT_TREE_HASH (optional, harden-release-path D3: the build job's tree_hash output, sha256:<64 hex>; when
+#                        set, /release.json's treeHash must equal it),
 #      EXPECT_NOINDEX (true on the development site: every page must send X-Robots-Tag: noindex, nofollow;
 #                      false, the default, on production: no page may send a noindex X-Robots-Tag),
 #      SMOKE_ATTEMPTS (default 10), SMOKE_SLEEP seconds (default 15)
@@ -26,12 +28,14 @@ WALLET_FACTORY_ADDRESS="${WALLET_FACTORY_ADDRESS:-}"
 DONATION_ADDRESS="${DONATION_ADDRESS:-}"
 REGISTRIES="${REGISTRIES:-}"
 EXPECT_NOINDEX="${EXPECT_NOINDEX:-false}"
+EXPECT_TREE_HASH="${EXPECT_TREE_HASH:-}"
 [[ "$EXPECT_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "smoke: EXPECT_SHA must be a full 40-hex commit" >&2; exit 2; }
 [ -z "$REGISTRY_ADDRESS" ] || [[ "$REGISTRY_ADDRESS" =~ ^0x[0-9a-fA-F]{40}$ ]] || { echo "smoke: REGISTRY_ADDRESS must be empty or 0x + 40 hex" >&2; exit 2; }
 [[ "$REGISTRY_V2_ADDRESS" =~ ^0x[0-9a-fA-F]{40}$ ]] || { echo "smoke: REGISTRY_V2_ADDRESS must be 0x + 40 hex" >&2; exit 2; }
 [[ "$WALLET_FACTORY_ADDRESS" =~ ^0x[0-9a-fA-F]{40}$ ]] || { echo "smoke: WALLET_FACTORY_ADDRESS must be 0x + 40 hex" >&2; exit 2; }
 [[ "$DONATION_ADDRESS" =~ ^0x[0-9a-fA-F]{40}$ ]] || { echo "smoke: DONATION_ADDRESS must be 0x + 40 hex" >&2; exit 2; }
 [[ "$EXPECT_NOINDEX" =~ ^(true|false)$ ]] || { echo "smoke: EXPECT_NOINDEX must be true or false" >&2; exit 2; }
+[ -z "$EXPECT_TREE_HASH" ] || [[ "$EXPECT_TREE_HASH" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "smoke: EXPECT_TREE_HASH must be empty or sha256:<64 lower-case hex>" >&2; exit 2; }
 REG_ITEM='v[1-9][0-9]{0,2}=0x[0-9a-fA-F]{40}'
 [ -z "$REGISTRIES" ] || [[ "$REGISTRIES" =~ ^$REG_ITEM( $REG_ITEM)*$ ]] || { echo "smoke: REGISTRIES must be 'vN=0x<40 hex>' entries separated by single spaces" >&2; exit 2; }
 
@@ -107,6 +111,17 @@ check_once() {
         header_has referrer-policy "no-referrer" || errors+=("$p: referrer-policy is not no-referrer")
         header_has cross-origin-opener-policy "same-origin" || errors+=("$p: cross-origin-opener-policy missing")
         header_has cross-origin-resource-policy "same-origin" || errors+=("$p: cross-origin-resource-policy missing")
+        # harden-release-path D5 (review L5): the landing document never gets WebAuthn; the app gets it for itself only.
+        # Substring checks: 'get=()' cannot match 'get=(self)'.
+        if [ "$p" = "/" ]; then
+          for pp in "publickey-credentials-get=()" "publickey-credentials-create=()"; do
+            header_has permissions-policy "$pp" || errors+=("/: permissions-policy must contain $pp (no WebAuthn on the landing page)")
+          done
+        else
+          for pp in "publickey-credentials-get=(self)" "publickey-credentials-create=(self)"; do
+            header_has permissions-policy "$pp" || errors+=("/app/: permissions-policy must contain $pp")
+          done
+        fi
         ;;
       /architecture)
         cp "$TMP/b" "$TMP/arch"
@@ -128,6 +143,10 @@ check_once() {
   fetch /release.json
   live="$(jq -r '.commit // empty' "$TMP/b" 2>/dev/null || true)"
   [ "$status" = "200" ] && [ "$live" = "$EXPECT_SHA" ] || errors+=("/release.json reports ${live:-nothing} (HTTP $status), expected $EXPECT_SHA")
+  if [ -n "$EXPECT_TREE_HASH" ]; then
+    tree="$(jq -r '.treeHash // empty' "$TMP/b" 2>/dev/null || true)"
+    [ "$tree" = "$EXPECT_TREE_HASH" ] || errors+=("/release.json treeHash is ${tree:-missing}, expected $EXPECT_TREE_HASH (the build job's output)")
+  fi
   # The live build's contracts equal the deployment record (v2 and this RP ID's wallet always; v1 only where it exists).
   v2="$(release_field .config.registryV2.address)"
   [ "$v2" = "$(lc "$REGISTRY_V2_ADDRESS")" ] || errors+=("/release.json registry v2 is $v2, expected $REGISTRY_V2_ADDRESS")

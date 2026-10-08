@@ -1,6 +1,6 @@
 # Agent account: agents work without admin rights
 
-OpenSpec change `gate-production-deploys` (audit CI-H1). The owner's account `prix0007` is a repository admin. An agent using the owner's `gh` login could change the `main` ruleset, the `production` environment or the repository settings. Agents therefore push and open PRs as a separate **machine user** with the **Write** role. Write cannot change rulesets, environments, secrets or settings, and cannot create `v*` tags (ruleset `release-tags`). Production deploys only from a release the owner publishes (change `split-dev-and-release-deploys`), so **the machine user cannot ship to production**; its merges reach the development site https://cryoshield-web-dev.fly.dev only.
+OpenSpec change `gate-production-deploys` (audit CI-H1). The owner's account `prix0007` is a repository admin. An agent using the owner's `gh` login could change the `main` ruleset, the `production` environment or the repository settings. Agents therefore push and open PRs as a separate **machine user** with the **Write** role. Write cannot change rulesets, environments, secrets or settings, and cannot create any tag (ruleset `release-tags` covers every tag, `~ALL`; change `harden-release-path`). Production deploys only from a release the owner publishes (change `split-dev-and-release-deploys`), so **the machine user cannot ship to production**; its merges reach the development site https://cryoshield-web-dev.fly.dev only.
 
 Everything below is done by the founder. Agents never create credentials.
 
@@ -123,7 +123,7 @@ Do not probe the rulesets or the environments with a write: a ruleset `PUT` of `
 
 Then, as the owner, confirm that nothing changed: `.github/rulesets/apply.sh --with-ecc-review --environments` must report "in sync".
 
-To see that the machine user cannot release, as the machine user: pushing a tag `v0.0.0-probe` must be rejected by the `release-tags` ruleset, and `gh workflow run deploy.yml --ref <existing tag>` must end with its `detect` job **skipped** (the production workflow runs only for the owner). A dispatch on `main` cannot even reach the production environments, which accept only `v*` tags.
+To see that the machine user cannot release, as the machine user: pushing **any** tag must be rejected by the `release-tags` ruleset, which covers every tag (`~ALL`). Try `refs/tags/v0.0.0-probe`, `refs/tags/probe-1` and `refs/tags/V0.0.1-probe` (for example `git push origin HEAD:refs/tags/probe-1`); each must be refused, and a refused push creates nothing, so there is nothing to clean up. Also `gh workflow run deploy.yml --ref <existing tag>` must end with its `detect` job **skipped** (the production workflow runs only for the owner). A dispatch on `main` cannot even reach the production environments, which accept only `v*` tags.
 
 **What Write still allows** (once the machine user is in `.github/trusted-authors.json`).
 - **Changing the scripts that the release jobs run with a Fly token.** The machine user can open PRs that change `.github/scripts/deploy/`, `apps/web/fly.toml`, `apps/web/fly.dev.toml` or the Docker context, and those PRs auto-merge.

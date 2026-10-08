@@ -891,7 +891,41 @@ function checkDeploy(file, name, wf, on) {
     }
   }
   for (const key of Object.keys(pinnedDeploy)) if (!seenPinned.has(key)) err(`privileged-run-steps.json pins ${name} '${key}', which no longer exists (remove stale digests)`);
+  checkContextHandOff(wf, profile, err);
   return errors;
+}
+
+// harden-release-path D3/D4 (pre-production review L4): the deploy context's hashes cross from build to release as
+// job outputs (through GitHub, not the artifact); the release job and the smoke test compare against them.
+const VERIFY_CONTEXT_RUN = '.github/scripts/deploy/verify-context.sh';
+const CONTEXT_OUTPUTS = { tree_hash: '${{ steps.context-hash.outputs.tree_hash }}', caddyfile_hash: '${{ steps.context-hash.outputs.caddyfile_hash }}' };
+const BUILD_TREE = '${{ needs.build.outputs.tree_hash }}';
+const BUILD_CADDY = '${{ needs.build.outputs.caddyfile_hash }}';
+function checkContextHandOff(wf, profile, err) {
+  const jobs = isObj(wf.jobs) ? wf.jobs : {};
+  const stepsOf = (j) => (isObj(j) && Array.isArray(j.steps) ? j.steps.filter(isObj) : []);
+  const build = jobs.build;
+  const outs = isObj(build) && isObj(build.outputs) ? build.outputs : {};
+  const outsOk = Object.keys(outs).length === Object.keys(CONTEXT_OUTPUTS).length && Object.entries(CONTEXT_OUTPUTS).every(([k, v]) => norm(outs[k]) === v);
+  if (!outsOk) err(`job 'build' outputs must be exactly ${JSON.stringify(CONTEXT_OUTPUTS)} (harden-release-path: the context hashes cross jobs through GitHub)`);
+  const bsteps = stepsOf(build);
+  const hash = bsteps.find((s) => s.id === 'context-hash');
+  if (!hash || norm(hash.run) !== VERIFY_CONTEXT_RUN || !isObj(hash.env) || hash.env.ROLE !== 'build' || bsteps.indexOf(hash) < bsteps.findIndex((s) => s.id === 'build')) {
+    err(`job 'build' must have a step with id context-hash, after the step with id build, running ${VERIFY_CONTEXT_RUN} with ROLE: build`);
+  }
+  const releaseEntry = Object.entries(jobs).find(([, j]) => isObj(j) && envName(j.environment) === profile.releaseEnv);
+  if (!releaseEntry) return;
+  const [rid, release] = releaseEntry;
+  if (![].concat(release.needs ?? []).includes('build')) err(`job '${rid}' must need build (its context hashes)`);
+  const rsteps = stepsOf(release);
+  const verify = rsteps.find((s) => s.id === 'verify-context');
+  const venv = verify && isObj(verify.env) ? verify.env : {};
+  const recheckAt = rsteps.findIndex((s) => s.id === profile.recheck.id);
+  if (!verify || norm(verify.run) !== VERIFY_CONTEXT_RUN || venv.ROLE !== 'release' || norm(venv.EXPECT_TREE_HASH) !== BUILD_TREE || norm(venv.EXPECT_CADDYFILE_HASH) !== BUILD_CADDY || rsteps.indexOf(verify) > recheckAt) {
+    err(`job '${rid}' must have a step with id verify-context, before ${profile.recheck.id}, running ${VERIFY_CONTEXT_RUN} with ROLE: release, EXPECT_TREE_HASH: ${BUILD_TREE} and EXPECT_CADDYFILE_HASH: ${BUILD_CADDY}`);
+  }
+  const smoke = rsteps.find((s) => s.id === 'smoke');
+  if (!smoke || !isObj(smoke.env) || norm(smoke.env.EXPECT_TREE_HASH) !== BUILD_TREE) err(`job '${rid}' step smoke must pass EXPECT_TREE_HASH: ${BUILD_TREE} (the live treeHash equals the build's)`);
 }
 
 

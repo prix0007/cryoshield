@@ -148,6 +148,10 @@ jobs:
       name: development-build # build config only; never the Fly token
     permissions:
       contents: read # checkout only
+    # harden-release-path D3: the context hashes reach the release job through GitHub, not through the artifact.
+    outputs:
+      tree_hash: ${{ steps.context-hash.outputs.tree_hash }}
+      caddyfile_hash: ${{ steps.context-hash.outputs.caddyfile_hash }}
     steps:
       - name: Checkout the tested commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -183,12 +187,14 @@ jobs:
         env:
           DEPLOY_TARGET: development
         run: apps/web/deploy/deploy.sh --build-only
-      - name: Check the manifest names the tested commit
+      # Checks the manifest and release.json name the tested commit and match the built files, then publishes the
+      # tree and Caddyfile hashes as this job's outputs (harden-release-path D3).
+      - name: Hash the deploy context (job outputs for the release job)
+        id: context-hash
         env:
+          ROLE: build
           SHA: ${{ needs.detect.outputs.sha }}
-        run: |
-          [ "$(jq -r .commit apps/web/deploy/.build/release-manifest.json)" = "$SHA" ] \
-            || { echo "::error::release manifest commit differs from the tested commit"; exit 1; }
+        run: .github/scripts/deploy/verify-context.sh
       - name: Upload the deploy context (site, Caddyfile, release manifest)
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -235,20 +241,17 @@ jobs:
         with:
           name: deploy-context-${{ needs.detect.outputs.sha }}
           path: apps/web/deploy/.build
-      - name: Verify the context against its release manifest
+      # harden-release-path D3 (review L4): the artifact must match the BUILD JOB'S OUTPUTS (they cross jobs through
+      # GitHub), not only the manifest that travels inside it. A compromised build job could still forge both
+      # consistently: residual risk, design.md (ECC #5).
+      - name: Verify the context against the build job's hashes and its release manifest
+        id: verify-context
         env:
+          ROLE: release
           SHA: ${{ needs.detect.outputs.sha }}
-        run: |
-          set -euo pipefail
-          m=apps/web/deploy/.build/release-manifest.json
-          [ "$(jq -r .commit "$m")" = "$SHA" ] || { echo "::error::manifest commit differs from the tested commit"; exit 1; }
-          tree="sha256:$(cd apps/web/deploy/.build/site && find . -type f ! -path ./release.json | sed 's#^\./##' | LC_ALL=C sort \
-            | while IFS= read -r f; do sha256sum "$f"; done | sha256sum | cut -d' ' -f1)"
-          [ "$tree" = "$(jq -r .treeHash "$m")" ] || { echo "::error::site tree hash $tree differs from the manifest"; exit 1; }
-          [ "$(jq -r .commit apps/web/deploy/.build/site/release.json)" = "$SHA" ] || { echo "::error::release.json names another commit"; exit 1; }
-          caddy="sha256:$(sha256sum apps/web/deploy/.build/Caddyfile | cut -d' ' -f1)"
-          [ "$caddy" = "$(jq -r .caddyfile "$m")" ] || { echo "::error::Caddyfile hash $caddy differs from the manifest"; exit 1; }
-          # Integrity only: a compromised build could forge a consistent manifest. Residual risk, design.md (ECC #5).
+          EXPECT_TREE_HASH: ${{ needs.build.outputs.tree_hash }}
+          EXPECT_CADDYFILE_HASH: ${{ needs.build.outputs.caddyfile_hash }}
+        run: .github/scripts/deploy/verify-context.sh
       - name: Install flyctl (pinned, checksum-verified)
         run: |
           set -euo pipefail
@@ -314,6 +317,7 @@ jobs:
         if: steps.head-check.outputs.current == 'true'
         env:
           EXPECT_SHA: ${{ needs.detect.outputs.sha }}
+          EXPECT_TREE_HASH: ${{ needs.build.outputs.tree_hash }} # the live /release.json treeHash (harden-release-path D3)
           BASE_URL: ${{ env.SITE_URL }}
           EXPECT_NOINDEX: "true"
         run: |

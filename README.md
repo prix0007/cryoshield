@@ -177,7 +177,7 @@ To change protection, edit those files in a PR and re-run the script after it me
 There are two targets (OpenSpec change `split-dev-and-release-deploys`):
 
 - **Development, https://cryoshield-web-dev.fly.dev** (OP Sepolia, not indexed). It is served on its own `fly.dev` name, a different registrable domain from `cryoshield.app`, so its RP ID can never reach production vaults. Every new commit on `main` is deployed there automatically by `.github/workflows/deploy-dev.yml`.
-- **Production, https://cryoshield.app.** It is deployed only when the repository owner publishes a release: `gh release create vX.Y.Z --target main --generate-notes`. `.github/workflows/deploy.yml` then deploys that tag. Only admins can create `v*` tags (ruleset `release-tags`), and the workflow runs only for the owner.
+- **Production, https://cryoshield.app.** It is deployed only when the repository owner publishes a release: `gh release create vX.Y.Z --target main --generate-notes`. `.github/workflows/deploy.yml` then deploys that tag. Only admins can create tags, `v*` or any other (ruleset `release-tags`, `~ALL`), and the workflow runs only for the owner.
 
 Both pipelines run the same stages:
 
@@ -186,7 +186,7 @@ Both pipelines run the same stages:
 3. **build** (no deploy token): run the guarded `DEPLOY_TARGET=<target> apps/web/deploy/deploy.sh --build-only` in the target's build environment (`development-build` or `production-build`).
 4. **release** (Environment `development` or `production`, no manual approval): run pinned flyctl on the verified build artifact, then check the routes, headers (noindex on dev only), registry address and `/release.json`. On failure, roll back to the previous image automatically in the same job.
 
-Neither pipeline runs on pull requests. To roll production back, run `gh workflow run deploy.yml --ref vX.Y.Z` with an earlier release tag. Production secrets are reachable only from `v*` tags, which only admins can create. To redeploy dev, run `gh workflow run deploy-dev.yml --ref main -f force=true`. See [`docs/deploy.md`](docs/deploy.md) for first-time setup and token rotation.
+Neither pipeline runs on pull requests. To roll production back, run `gh workflow run deploy.yml --ref vX.Y.Z` with an earlier release tag. Production secrets are reachable only from `v*` tags, and only admins can create tags. To redeploy dev, run `gh workflow run deploy-dev.yml --ref main -f force=true`. See [`docs/deploy.md`](docs/deploy.md) for first-time setup and token rotation.
 
 ## Support the project
 
