@@ -94,12 +94,19 @@ describe('device-storage inventory guard', () => {
       'assets/theme-0a1b2c3d.js': 'localStorage.getItem("cryoshield-theme")',
       'assets/index-ab12cd34.js': 'export const x=1',
     };
-    expect(storageApiOutsideAllowedFiles(files, inv)).toEqual([]);
-    expect(storageApiOutsideAllowedFiles({ ...files, 'assets/vault-1234abcd.js': 'window.localStorage.setItem("k","v")' }, inv)).toEqual([
-      'assets/vault-1234abcd.js uses localStorage (allowed only in assets/theme-*.js)',
+    const referenced = ['assets/theme-0a1b2c3d.js']; // the theme script the pages actually load
+    expect(storageApiOutsideAllowedFiles(files, inv, referenced)).toEqual([]);
+    expect(storageApiOutsideAllowedFiles({ ...files, 'assets/vault-1234abcd.js': 'window.localStorage.setItem("k","v")' }, inv, referenced)).toEqual([
+      'assets/vault-1234abcd.js uses localStorage (allowed only in assets/theme-0a1b2c3d.js)',
     ]);
     // A file merely named like the theme asset elsewhere does not count.
-    expect(storageApiOutsideAllowedFiles({ 'assets/x/theme-0a1b2c3d.js.map.js': 'localStorage' }, inv)).toHaveLength(1);
+    expect(storageApiOutsideAllowedFiles({ 'assets/x/theme-0a1b2c3d.js.map.js': 'localStorage' }, inv, referenced)).toHaveLength(1);
+    // Review: a second, unreferenced theme-named asset is not allowed, even with a valid-looking name.
+    expect(storageApiOutsideAllowedFiles({ ...files, 'assets/theme-deadbeef.js': 'localStorage.setItem("x","y")' }, inv, referenced)).toEqual([
+      'assets/theme-deadbeef.js uses localStorage (allowed only in assets/theme-0a1b2c3d.js)',
+    ]);
+    // No referenced theme script: nothing may use localStorage.
+    expect(storageApiOutsideAllowedFiles(files, inv, [])).toHaveLength(1);
     // Unlisted APIs are still flagged by unlistedStorageApis.
     expect(unlistedStorageApis('sessionStorage.setItem("a","b")', inv)).toEqual(['sessionStorage']);
   });

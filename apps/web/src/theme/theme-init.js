@@ -29,9 +29,18 @@
       // Storage blocked or full: the choice still applies to this page, it just isn't remembered.
     }
   };
+  // The browser chrome colour: each theme-color meta keeps its own (per-scheme) colour for System; a forced choice
+  // sets every meta to the colour the page declares for that scheme. Plain attribute values, no HTML sink.
+  const themeColor = (choice) => {
+    const metas = [...document.querySelectorAll('meta[name="theme-color"]')];
+    for (const m of metas) if (m.dataset.themeDefault === undefined) m.dataset.themeDefault = m.content;
+    const forced = metas.find((m) => (m.getAttribute('media') ?? '').includes(choice));
+    for (const m of metas) m.content = valid(choice) && forced ? forced.dataset.themeDefault : m.dataset.themeDefault;
+  };
   const apply = (choice) => {
     if (valid(choice)) root.dataset.theme = choice;
     else delete root.dataset.theme;
+    themeColor(choice);
   };
   const current = () => (valid(root.dataset.theme) ? root.dataset.theme : 'system');
   const sync = () => {

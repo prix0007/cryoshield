@@ -249,8 +249,11 @@ dd a {
   flex: none;
   color: var(--body-on-dark);
 }
+/* Until the script runs (static pages), the switch keeps its space but is invisible, unfocusable and out of the
+   accessibility tree: no layout shift when it appears (review L4). */
 .theme-switch[hidden] {
-  display: none;
+  display: flex;
+  visibility: hidden;
 }
 .theme-icon {
   position: absolute;
@@ -311,13 +314,16 @@ dd a {
   outline: 2px solid var(--color-primary-on-dark);
   outline-offset: -2px;
 }
-/* Windows High Contrast / forced colours drops box-shadows: draw a real 1px system-colour border instead. */
+/* Windows High Contrast / forced colours drops box-shadows: the same inner pill as a 1px system-colour outline drawn
+   inside the transparent border, so the 44px target is kept. */
 @media (forced-colors: active) {
   .theme-switch select {
-    height: 34px;
-    min-height: 34px;
-    margin: 5px 0;
-    border: 1px solid ButtonText;
+    outline: 1px solid ButtonText;
+    outline-offset: -7px;
+  }
+  .theme-switch select:focus-visible {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
   }
 }
 /* No zoom on focus on touch devices (iOS zooms into controls under 16px). */

@@ -111,7 +111,9 @@
   --app-error: var(--error-ink);
   --app-input-border: var(--input-border);
   --app-frost: var(--frost-light);
-  --app-accent-soft: rgba(0, 102, 204, 0.1); /* highlighted boxes in the system-design figures */
+  /* Highlighted boxes in the system-design figures. 0.08 (was 0.1) keeps the link-blue label on it >= 4.5:1
+     (4.58:1 over parchment; 4.45:1 at 0.1), add-theme-switch review L6. */
+  --app-accent-soft: rgba(0, 102, 204, 0.08);
   --app-disabled-bg: var(--surface-pearl); /* disabled pills: Ink Muted 48 on Pearl (4.86:1) */
   --app-disabled-ink: var(--ink-muted-48);
 

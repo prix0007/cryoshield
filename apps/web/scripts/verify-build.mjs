@@ -182,15 +182,18 @@ if (leftovers.length) fail(`[${label}] ${leftovers.join('; ')}`);
 // Device-storage inventory (spec legal-pages): no shipped bundle may reference a storage API not listed.
 const unlisted = unlistedStorageApis(js, storageInventory);
 if (unlisted.length) fail(`[${label}] bundle uses ${unlisted.join(', ')}, which legal/storage-inventory.json (the /cookies table) does not list`);
-// add-theme-switch D5: a listed API only in its allowed asset (localStorage only in the theme script).
-const jsFiles = Object.fromEntries(all.filter((f) => f.endsWith('.js')).map((f) => [relative(dist, f), readFileSync(f, 'utf8')]));
-const misplaced = storageApiOutsideAllowedFiles(jsFiles, storageInventory);
-if (misplaced.length) fail(`[${label}] ${misplaced.join('; ')}`);
-// Every page loads the theme script (it applies the saved theme before the first paint).
+// add-theme-switch D1/D5: every page loads exactly one theme script, the same one, and only that referenced asset may
+// use a listed storage API (localStorage); not any other file, not even a stray theme-named one.
+const themeSrcs = new Set();
 for (const page of pages) {
-  const themeTags = readFileSync(page, 'utf8').match(/<script src="\/assets\/theme-[0-9a-f]{8}\.js"><\/script>/g) ?? [];
+  const themeTags = [...readFileSync(page, 'utf8').matchAll(/<script src="\/(assets\/theme-[0-9a-f]{8}\.js)"><\/script>/g)];
   if (themeTags.length !== 1) fail(`[${label}] ${relative(dist, page)}: expected exactly one theme script, found ${themeTags.length}`);
+  themeSrcs.add(themeTags[0][1]);
 }
+if (themeSrcs.size !== 1) fail(`[${label}] pages load different theme scripts: ${[...themeSrcs].join(', ')}`);
+const jsFiles = Object.fromEntries(all.filter((f) => f.endsWith('.js')).map((f) => [relative(dist, f), readFileSync(f, 'utf8')]));
+const misplaced = storageApiOutsideAllowedFiles(jsFiles, storageInventory, [...themeSrcs]);
+if (misplaced.length) fail(`[${label}] ${misplaced.join('; ')}`);
 console.log(`ok   [${label}] legal pages present; no unlisted device-storage API in any bundle; localStorage only in the theme script`);
 // add-privacy-and-compliance 5.1: RFC 9116 security.txt, Expires in the future and <= 365 days ahead.
 const stxt = join(dist, '.well-known', 'security.txt');
@@ -298,10 +301,10 @@ const gz = (f) => gzipSync(readFileSync(join(dist, f)), { level: 9 }).length;
 // the one shared progress view (bar, step states, reassurance, live text) must render before the lazy write stack
 // loads, plus the unlock phases (unlock, Reload, Check another key) and the delayed loaders. Headroom before: 35 B;
 // after: 211 B.
-// add-theme-switch (2026-10-08, founder request): +1 KB, deliberately. Measured gzip (e2e): 204,703 B -> 205,461 B
-// (+758 B): the theme script every page loads before first paint (assets/theme-*.js, minified, 489 B) plus the app's
-// Theme menu markup. It must be initial: it applies the saved theme before the first paint. Headroom before: 211 B;
-// after: 492 B.
+// add-theme-switch (2026-10-08, founder request): +1 KB, deliberately. Measured gzip: 204,703 B / 204,718 B
+// (e2e / production) -> 205,576 B / 205,592 B (+873 B / +874 B): the theme script every page loads before first paint
+// (assets/theme-*.js, minified, about 600 B, including the theme-color sync) plus the app's Theme menu markup. It must
+// be initial: it applies the saved theme before the first paint. Headroom before: 211 B; after: about 360 B.
 const APP_BASELINE = 194_689 - 12 * 1024 + 1024 + 1024 + 1024;
 const APP_ALLOWANCE = 20 * KB;
 const WRITE_STACK_MARKERS = ['eth_sendUserOperation', 'pimlico_getUserOperationGasPrice', 'WalletConfigError'];

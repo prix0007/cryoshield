@@ -154,6 +154,139 @@ test('a tampered value is ignored (System), and the preference is never sent any
   for (const s of sent.filter((x) => x.startsWith(baseURL!))) expect(s).not.toMatch(/theme=dark|"dark"/);
 });
 
+test('review L1: 320px on a touch phone (coarse pointer, 16px select text) fits on every page with no horizontal scroll', async ({ browser }) => {
+  const ctx = await browser.newContext({ viewport: { width: 320, height: 640 }, isMobile: true, hasTouch: true });
+  const page = await ctx.newPage();
+  for (const p of PAGES) {
+    await page.goto(p);
+    expect(await page.evaluate(() => matchMedia('(pointer: coarse)').matches), 'coarse pointer').toBe(true);
+    const s = themeSelect(page);
+    await expect(s).toBeVisible();
+    expect(await s.evaluate((e) => getComputedStyle(e).fontSize)).toBe('16px');
+    const box = (await s.boundingBox())!;
+    expect(box.x + box.width, `${p} switch inside the viewport`).toBeLessThanOrEqual(320);
+    const glyph = (await page.locator('.global-nav .wordmark-glyph').boundingBox())!;
+    expect(glyph.width, `${p} wordmark glyph not squeezed`).toBeGreaterThanOrEqual(18);
+    const { sw, cw } = await page.evaluate(() => ({ sw: document.documentElement.scrollWidth, cw: document.documentElement.clientWidth }));
+    expect(sw, `${p} horizontal scroll`).toBeLessThanOrEqual(cw);
+  }
+  await ctx.close();
+});
+
+test('review L2: in forced-colors mode the switch keeps a 44px target and a visible system-colour border', async ({ page }) => {
+  await page.emulateMedia({ forcedColors: 'active' });
+  for (const p of ['/privacy', APP]) {
+    await page.goto(p);
+    const s = themeSelect(page);
+    const box = (await s.boundingBox())!;
+    expect(box.height, p).toBeGreaterThanOrEqual(44);
+    const st = await s.evaluate((e) => {
+      const cs = getComputedStyle(e);
+      return { outline: cs.outlineStyle, offset: parseFloat(cs.outlineOffset), width: parseFloat(cs.outlineWidth) };
+    });
+    // The visible boundary is an outline drawn inside the transparent border (box-shadows are dropped in forced colours).
+    expect(st.outline, p).toBe('solid');
+    expect(st.width, p).toBeGreaterThanOrEqual(1);
+    expect(st.offset, p).toBeLessThan(0);
+  }
+});
+
+test('review L4: the switch reserves its space before the script runs (no layout shift), but is not shown or focusable', async ({ browser }) => {
+  const xOf = async (javaScriptEnabled: boolean) => {
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, javaScriptEnabled });
+    const page = await ctx.newPage();
+    await page.goto('/privacy');
+    const r = {
+      links: (await page.locator('.global-nav-links').boundingBox())!.x,
+      switchW: (await page.locator('[data-theme-switch]').boundingBox())?.width ?? 0,
+      visible: await page.locator('[data-theme-switch]').isVisible(),
+    };
+    await ctx.close();
+    return r;
+  };
+  const off = await xOf(false);
+  const on = await xOf(true);
+  expect(off.visible).toBe(false); // hidden without the script
+  expect(on.visible).toBe(true);
+  expect(off.switchW).toBeGreaterThan(0); // space reserved
+  expect(off.links).toBe(on.links); // the nav links do not move when the switch appears
+});
+
+test('review M2: the theme-color metas follow a forced choice; System restores the per-scheme colours', async ({ page }) => {
+  const metas = () => page.locator('meta[name="theme-color"]').evaluateAll((ms) => ms.map((m) => [m.getAttribute('media'), (m as HTMLMetaElement).content]));
+  await page.goto('/privacy');
+  const defaults = await metas();
+  expect(defaults).toEqual([
+    ['(prefers-color-scheme: light)', '#ffffff'],
+    ['(prefers-color-scheme: dark)', '#000000'],
+  ]);
+  await choose(page, 'dark');
+  expect((await metas()).map((m) => m[1])).toEqual(['#000000', '#000000']);
+  await page.goto(APP); // restored before paint on the next page too
+  expect((await metas()).map((m) => m[1])).toEqual(['#000000', '#000000']);
+  await choose(page, 'light');
+  expect((await metas()).map((m) => m[1])).toEqual(['#ffffff', '#ffffff']);
+  await choose(page, 'system');
+  expect(await metas()).toEqual(defaults);
+});
+
+test('review L6: /architecture highlighted labels are >= 4.5:1 on their box in forced Light and Dark', async ({ page }) => {
+  await page.goto('/architecture');
+  for (const theme of THEMES) {
+    await choose(page, theme);
+    // The label colour against the highlight box composited over the figure background.
+    const ratio = await page.evaluate(() => {
+      const parse = (c: string) => (c.match(/[\d.]+/g) ?? []).map(Number);
+      const lum = ([r, g, b]: number[]) => {
+        const f = (v: number) => ((v /= 255) <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
+        return 0.2126 * f(r!) + 0.7152 * f(g!) + 0.0722 * f(b!);
+      };
+      const text = parse(getComputedStyle(document.querySelector('.arch-hl-text')!).fill);
+      const [r, g, b, a = 1] = parse(getComputedStyle(document.querySelector('.arch-hl')!).fill);
+      const fig = parse(getComputedStyle(document.querySelector('.arch-doc figure')!).backgroundColor);
+      const box = [r!, g!, b!].map((v, i) => a * v + (1 - a) * fig[i]!);
+      const [x, y] = [lum(text), lum(box)].sort((p, q) => q - p);
+      return (x! + 0.05) / (y! + 0.05);
+    });
+    expect(ratio, theme).toBeGreaterThanOrEqual(4.5);
+  }
+});
+
+test('review H1: the Copy chip (white on blue) passes axe colour contrast in forced Light and Dark', async ({ page, context }) => {
+  test.setTimeout(240_000);
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  const arweave = new ArweaveStub();
+  await arweave.install(page);
+  await page.goto(APP);
+  const keys = await VirtualKeys.attach(page);
+  await keys.add();
+  await keys.add();
+  await createVault(page, keys, [{ label: 'Seed', secret: 'correct horse battery staple' }]);
+  await page.getByRole('button', { name: 'Continue' }).click();
+  await expect(page.getByRole('heading', { name: 'Seed' })).toBeVisible({ timeout: 30_000 });
+  // One Copy (a second one re-pops the chip mid-audit); the chip stays for the clipboard countdown while the theme flips.
+  await page.getByRole('button', { name: 'Copy Seed' }).click();
+  for (const theme of THEMES) {
+    await choose(page, theme);
+    await expect(page.locator('.copy-chip')).toHaveCount(1);
+    await expect(page.locator('.copy-chip')).toBeVisible();
+    await settled(page);
+    // Audit the settled chip, not a frame of its pop-in (Motion fades it in).
+    await expect
+      .poll(() =>
+        page.locator('.copy-chip').evaluate((e) => {
+          let o = 1;
+          for (let n: Element | null = e; n; n = n.parentElement) o *= Number(getComputedStyle(n).opacity);
+          return o;
+        }),
+      )
+      .toBe(1);
+    const r = await new AxeBuilder({ page }).include('.copy-feedback').withRules(['color-contrast']).analyze();
+    expect(r.violations.flatMap((v) => v.nodes.map((n) => `${theme}: ${v.id} ${n.target.join(' ')} ${n.failureSummary}`))).toEqual([]);
+    expect(r.passes.some((p) => p.id === 'color-contrast'), `${theme}: the chip text was checked`).toBe(true);
+  }
+});
+
 for (const theme of THEMES) {
   test(`axe (colour contrast included) in forced ${theme}: every public page`, async ({ page }) => {
     // The opposite device scheme, so the forced choice (not the media query) is what is audited.

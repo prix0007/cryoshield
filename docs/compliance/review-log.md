@@ -33,6 +33,25 @@ review re-checks everything in a six-monthly review, plus the items listed under
 
 ---
 
+## 2026-10-08: claims-check (reviewer: frontend engineer agent, add-theme-switch)
+
+Founder decision 2026-10-08: a Theme menu (System, Light, Dark) whose choice is remembered in the browser. That made
+the "nothing is stored on your device" claims untrue, so `/privacy` and `/cookies` were revised (effective date
+"2026-10-08 (revision 3)") and checked against the shipped code:
+
+| Page | Was | Now | Source |
+|---|---|---|---|
+| /cookies | "No page stores anything on your device"; meta description "stores nothing on your device" | no cookies; a page never stores anything by itself; picking Light or Dark keeps one key, `cryoshield-theme` (`light` or `dark`), never sent anywhere, removed by choosing System or clearing the site's data; a new "Saved only if you choose it" table | `legal/storage-inventory.json` `preferences`; `src/theme/theme-init.js` |
+| /privacy | no section on device storage; /support "stores nothing on your device" | new "On your device" section with the same facts; /support "stores nothing in your browser except the optional theme choice" | as above |
+| /cookies | consent trigger: "browser storage that is not strictly necessary" | "...not strictly necessary and that you did not ask for yourself (the theme setting is saved only when you pick it)" | the key is written only on an explicit choice |
+
+Enforcement checked: `verify-build` allows `localStorage` only in the one theme script every page references
+(`storageApiOutsideAllowedFiles`), still refuses every other storage API, and checks each page loads exactly that
+script; E2E `08-legal.spec.ts` sweeps every route before a choice (nothing stored), after Dark (only
+`cryoshield-theme`) and after System (nothing); E2E `19-theme.spec.ts` checks no request carries the key or value.
+`data-inventory.md` (row 1 and "Browser-side device storage"), `erasure-procedure.md` and `legal-analysis.md` updated
+to match. Not legal advice.
+
 ## 2026-10-08: claims-check, six-monthly (reviewer: security-reviewer agent)
 
 First review, as part of rescoping `add-privacy-and-compliance` to the open-source project (founder decision
@@ -56,7 +75,8 @@ Inaccuracies found and fixed (commit "fix(legal): make every security claim ..."
 | /terms | PIN not mentioned | each key needs its PIN to open or change a vault | as above |
 | /cookies | table implied it covers every page | says which pages the sweep visits and that the build scans every shipped script | `verify-build.mjs` storage scan |
 
-Confirmed accurate, unchanged: no cookies or storage; no request logs (container test); landing-only beacon with
+Confirmed accurate, unchanged: no cookies or storage (true at this review; since add-theme-switch, later the same
+day, the only storage is the optional theme preference, see the entry above); no request logs (container test); landing-only beacon with
 GPC/DNT suppression and SRI; testnet and not independently audited; non-custodial, no recovery after all keys are lost;
 opening never depends on sponsorship; Fly in Singapore; GitHub-only contact; operator and Grievance Officer wording
 (`project-contact`).

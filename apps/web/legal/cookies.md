@@ -1,6 +1,6 @@
 # Cookie policy
 
-**Effective date:** 2026-10-08 (revision 2)
+**Effective date:** 2026-10-08 (revision 3)
 
 <!--legal-note-->
 
@@ -69,7 +69,7 @@ Questions about this policy: open an issue in the [repository](https://github.co
 The full history is public in our
 [source repository](https://github.com/prix0007/cryoshield/commits/main/apps/web/legal/cookies.md).
 
-- 2026-10-08 (revision 2): the Theme menu. If you pick Light or Dark, your browser remembers that one choice
+- 2026-10-08 (revision 3): the Theme menu. If you pick Light or Dark, your browser remembers that one choice
   (`cryoshield-theme`), listed in the new "Saved only if you choose it" table. It is never sent anywhere.
 - 2026-10-08: says which pages the table covers and that the build checks every other page too.
 - 2026-10-03 (revision 2): contact via GitHub (open-source project; no email address).

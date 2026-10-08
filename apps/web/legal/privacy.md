@@ -1,6 +1,6 @@
 # Privacy policy
 
-**Effective date:** 2026-10-08 (revision 2)
+**Effective date:** 2026-10-08 (revision 3)
 
 <!--legal-note-->
 
@@ -197,7 +197,7 @@ Your vault is encrypted on your device with AES-256-GCM, using keys derived from
 We will update the effective date at the top whenever this policy changes, and record each change below. The full
 history is public in our [source repository](https://github.com/prix0007/cryoshield/commits/main/apps/web/legal/privacy.md).
 
-- 2026-10-08 (revision 2): new "On your device" section. The site now has a Theme menu (System, Light, Dark); if you
+- 2026-10-08 (revision 3): new "On your device" section. The site now has a Theme menu (System, Light, Dark); if you
   pick Light or Dark, your browser remembers that one choice (`cryoshield-theme`). It is never sent anywhere.
 - 2026-10-08: "Public and permanent data" now lists every public item (earlier versions, each key's public signing
   key, the size range, the Arweave upload address) and says that unlocking needs a key **and** its PIN; vault names

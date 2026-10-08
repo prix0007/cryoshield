@@ -140,6 +140,49 @@ describe('token contrast (WCAG 2.2 AA)', () => {
   });
 });
 
+describe('white on blue (add-theme-switch review H1/M1)', () => {
+  // White text or a white check mark sits on a blue fill in: the copy chip, the key-slot badge, the done stage icon.
+  // The link blue fails with white in dark (3.01:1); the fill blue passes in both themes.
+  it('the link blue is too light for white in dark, the fill blue is AA in both themes', () => {
+    expect(contrast(resolve(dark, '--on-primary'), resolve(dark, '--app-link'))).toBeLessThan(4.5);
+    for (const theme of [light, dark]) expect(contrast(resolve(theme, '--on-primary'), resolve(theme, '--color-primary-fill'))).toBeGreaterThanOrEqual(4.5);
+  });
+  const g = readFileSync(join(__dirname, '..', '..', 'src', 'ui', 'global.css'), 'utf8');
+  const rule = (sel: string) => {
+    const at = g.indexOf(`\n${sel} {`);
+    expect(at, sel).toBeGreaterThan(-1);
+    return block(g, at);
+  };
+  it.each(['.copy-chip', '.key-slot-badge', '.stage-done .stage-icon'])('%s fills with --color-primary-fill, never the link blue', (sel) => {
+    const body = rule(sel);
+    expect(body).toMatch(/background:\s*var\(--color-primary-fill\)/);
+    expect(body).not.toMatch(/var\(--app-link\)/);
+  });
+  it('no rule puts white (--on-primary) text on a --app-link background', () => {
+    for (const m of g.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+      const body = m[2]!;
+      if (/background:\s*var\(--app-link\)/.test(body)) expect(body, m[1]!.trim()).not.toMatch(/var\(--on-primary\)/);
+    }
+  });
+});
+
+describe('/architecture highlighted labels (add-theme-switch review L6)', () => {
+  // .arch-hl-text (--app-link, 12-13px) sits on .arch-hl (--app-accent-soft, translucent) inside a figure on --app-bg.
+  const over = (rgba: string, bg: string) => {
+    const m = rgba.match(/^rgba\((\d+),\s*(\d+),\s*(\d+),\s*([\d.]+)\)$/)!;
+    const a = Number(m[4]);
+    const b = [1, 3, 5].map((i) => parseInt(bg.slice(i, i + 2), 16));
+    return '#' + [1, 2, 3].map((i, k) => Math.round(a * Number(m[i]) + (1 - a) * b[k]!).toString(16).padStart(2, '0')).join('');
+  };
+  it.each([
+    ['light', light],
+    ['dark', dark],
+  ] as const)('%s: link text on the soft accent over the figure is >= 4.5', (_n, theme) => {
+    const bg = over(theme['--app-accent-soft']!, resolve(theme, '--app-bg'));
+    expect(contrast(resolve(theme, '--app-link'), bg)).toBeGreaterThanOrEqual(4.5);
+  });
+});
+
 describe('theme blocks (add-theme-switch D2)', () => {
   it('the forced-dark block and the system-dark block are identical', () => {
     expect(mediaAt).toBeGreaterThan(0);

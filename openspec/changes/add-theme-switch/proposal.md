@@ -47,8 +47,8 @@ stores nothing on your device, that copy must change, honestly, to disclose exac
 - any other preference, setting or storage (the app's vault data stays in memory only, unchanged);
 - syncing the theme across devices or sending it anywhere;
 - the landing page's dark story tiles, which stay dark in both themes (they are the page's cinematic rhythm);
-- the favicon (it already follows the device scheme) and the `theme-color` meta tags (they keep following the device;
-  the global nav they colour is black in both themes);
+- the favicon (it already follows the device scheme). (The `theme-color` metas DO follow a forced choice: review
+  M2, design D1.)
 
 **Runtime dependencies:** none. No new package, no network request, no CryoShield-operated backend. The theme script
 is a static same-origin file.

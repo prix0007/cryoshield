@@ -18,8 +18,8 @@
 Goals: a System / Light / Dark switch on every page, the saved choice applied before first paint under the unchanged
 CSP, one fail-safe storage key, honest privacy copy, and WCAG 2.2 AA contrast in both themes with automated coverage.
 
-Non-goals: other preferences, cross-device sync, theming the landing's dark story tiles, changing the favicon or the
-`theme-color` metas, any change to vault behaviour or vault storage (still memory only).
+Non-goals: other preferences, cross-device sync, theming the landing's dark story tiles, changing the favicon, any
+change to vault behaviour or vault storage (still memory only).
 
 ## Decisions
 
@@ -36,6 +36,9 @@ theme logic for every page, including the React app:
 3. **On DOMContentLoaded:** set each switch's value from `<html data-theme>` and unhide `[data-theme-switch][hidden]`
    wrappers (the static pages render the switch `hidden`, so it never shows without the script).
 4. **Other tabs:** a `storage` event for the key re-applies it, so open tabs stay consistent.
+5. **Browser chrome colour (review M2):** a forced choice sets every `<meta name="theme-color">` to the colour the
+   page declares for that scheme (read from the meta whose `media` names it); System restores each meta's own value
+   (kept in `data-theme-default`). Only attribute values change (`meta.content`), no HTML sink.
 
 The applied choice is read back from `<html data-theme>`, not from storage, so a theme chosen while storage throws
 still applies to the open page.
@@ -141,3 +144,30 @@ touched.
 | Supply chain | No new dependency. | Pass |
 
 Recorded by the frontend engineer; the ECC code and accessibility reviews are listed in tasks.md section 5.
+
+## Accessibility review (ECC a11y and code reviews of 742e8e2, applied)
+
+Contrast, white (`--on-primary`) on blue, dark theme (WCAG 1.4.3 for text, 1.4.11 for the check-mark graphics):
+
+| Element | Before (`--app-link` #2997ff) | After (`--color-primary-fill` #0066cc) | Light theme |
+|---|---|---|---|
+| `.copy-chip` (14px text), H1 | 3.01:1 (fail) | 5.57:1 | 5.57:1, unchanged |
+| `.key-slot-badge` (white check), M1 | 3.01:1 (0.01 margin) | 5.57:1 | 5.57:1, unchanged |
+| `.stage-done .stage-icon` (white check; border too), M1 | 3.01:1 | 5.57:1 | 5.57:1, unchanged |
+
+The fill blue still separates from the dark surfaces (3.03:1 on `#1d1d1f`, 3.77:1 on black). Guarded by
+`test/ui/tokens.test.ts` ("white on blue") and the E2E axe check on the live Copy chip in both themes
+(`19-theme.spec.ts` "review H1", which fails at 3.01:1 with the old colour; verified).
+
+Other findings:
+- **M2** `theme-color` metas follow the forced choice (D1 step 5); unit + E2E tests.
+- **L1** 320px with a coarse pointer (16px select text): fits on all 8 pages, no horizontal scroll, wordmark glyph
+  not squeezed (E2E). No padding change needed.
+- **L2** Forced colours: the inner pill is a 1px `ButtonText` outline inside the transparent border, so the select
+  keeps its 44px target (E2E with `forcedColors: 'active'`).
+- **L4** The hidden switch keeps its box (`visibility: hidden`, still unfocusable and out of the accessibility tree),
+  so the nav does not shift when the script reveals it (E2E with JavaScript off vs on).
+- **L6** `/architecture` `.arch-hl-text` (link blue on the soft accent over the figure) was 4.45:1 in Light; the
+  Light `--app-accent-soft` alpha went from 0.10 to 0.08: 4.58:1 (Dark 6.0:1). Unit + E2E (computed) tests.
+- Code review: compliance row 1 and the review log corrected and dated; legal revision labels made unique
+  ("revision 3"); the storage allowlist accepts only the theme script the pages actually reference.

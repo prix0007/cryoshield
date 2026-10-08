@@ -48,8 +48,9 @@
   every page has exactly one theme script; the theme script may be shared by `/` and `/app/`; `/app` baseline +1 KB,
   measured and recorded in verify-build).
 - [x] 3.3 Copy: `legal/cookies.md`, `legal/privacy.md` (new "On your device" section), the `/cookies` meta
-  description; effective dates "2026-10-08 (revision 2)" and changelog entries. Compliance records updated:
-  `docs/compliance/data-inventory.md`, `erasure-procedure.md`, `legal-analysis.md`.
+  description; effective dates "2026-10-08 (revision 3)" (unique label, code review) and changelog entries.
+  Compliance records updated: `docs/compliance/data-inventory.md` (row 1 and "Browser-side device storage"),
+  `erasure-procedure.md`, `legal-analysis.md`, and a dated `review-log.md` claims-check entry.
 - [x] 3.4 Lint: `eslint.config.js` stays unchanged (config-protection hook; design D5); the theme script's API
   surface is pinned by 1.1 and its storage by 3.2. 1.5 passes and `pnpm lint` is green.
 
@@ -66,10 +67,12 @@
 
 ## 5. Reviews
 
-- [ ] 5.1 ECC accessibility review (contrast and the switch, both themes) against the diff. **Not run:** the
-  implementing agent had no Agent tool to launch `ecc:a11y-architect`; the overwatcher should run it. A self-audit
-  was done instead (below).
-- [ ] 5.2 ECC code review. **Not run** for the same reason; the PR's ECC review gate will also review it.
+- [x] 5.1 ECC accessibility review (contrast and the switch, both themes) of 742e8e2, run by the overwatcher. All
+  findings applied with tests first: H1 copy chip, M1 key-slot badge and done-stage icon (3.01:1 -> 5.57:1), M2
+  theme-color metas, L1 320px coarse pointer (fits, no change), L2 forced colours keeps 44px, L4 no layout shift,
+  L6 architecture highlight label (4.45:1 -> 4.58:1). Ratios recorded in design.md "Accessibility review".
+- [x] 5.2 ECC code review of 742e8e2, run by the overwatcher. Applied: compliance row 1 and review log (dated entry,
+  line 59 corrected), unique legal revision labels, storage allowlist limited to the referenced theme script.
 - [x] 5.3 Security review recorded in design.md ("Security review"): non-secret preference storage, CSP, guards.
 
 ### Self-audit (contrast and accessibility), both themes
@@ -78,7 +81,8 @@ Fixed:
 - Filled pills and the skip link would have been white on `#2997ff` (2.9:1) in dark: new `--color-primary-fill`
   (`#0066cc`, 5.57:1) in both themes; its edge is ≥ 3:1 on both dark page surfaces.
 - At 320 px the wordmark glyph was squeezed to a dot by the switch: `flex: none` (screenshot check).
-- Forced-colours mode drops the switch's inset outline: a real 1px `ButtonText` border there.
+- Forced-colours mode drops the switch's inset box-shadow: a 1px `ButtonText` outline inside the transparent
+  border there (keeps the 44px target, review L2).
 - The architecture page's own `color-scheme: light dark` on `<body>` would have overridden a forced Light for native
   controls: removed (the root decides).
 
@@ -88,7 +92,6 @@ light scenes (tap, survive) and hero illustration remain legible in dark (screen
 quiet zone.
 
 Deferred (not blocking AA):
-- `theme-color` metas still follow the device, not a forced choice (browser chrome colour only).
 - In dark, the "Free to use" parchment tile, the black final CTA and the FAQ are close in tone (`#1d1d1f`, `#000`,
   `#000`); sections are separated by headings, not colour.
 - The select's accessible name is "Theme" and its visible text is the current value (System/Light/Dark), the native
