@@ -254,9 +254,18 @@ def _registries(a: argparse.Namespace, cfg: Config, file_specs: list[RegistrySpe
     for s in from_flags:
         file_entry = supplied.get(s.version)
         builtin_keys = {(b.version, b.address) for b in builtin}
+        same = file_entry is not None and (
+            file_entry.address,
+            file_entry.deploy_block,
+            file_entry.abi_kind,
+        ) == (
+            s.address,
+            s.deploy_block,
+            s.abi_kind,
+        )
         if (
             file_entry is not None
-            and file_entry.address != s.address
+            and not same
             # A file entry equal to a built-in one stays in the list anyway, unless --registries-only.
             and ((file_entry.version, file_entry.address) not in builtin_keys or a.registries_only)
         ):

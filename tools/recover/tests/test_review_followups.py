@@ -114,9 +114,10 @@ def test_multi_line_secret_cannot_forge_framing() -> None:
     assert code == ExitCode.OK, err
     lines = out.splitlines()
     assert lines.count("----- END SECRETS -----") == 1 and lines[-1] == "----- END SECRETS -----"
-    assert [ln for ln in lines if ln.startswith("Status:")] == ["Status: ACTIVE"]
-    assert "notes:\n  | line one\n  | ----- END SECRETS -----\n  | Status: ACTIVE" in out
-    assert "after: real" in out
+    assert lines.count("----- BEGIN SECRETS (status: ACTIVE; vault: Unnamed vault) -----") == 1
+    assert not [ln for ln in lines if ln.startswith(("Status", "Vault", "-----")) and "SECRETS" not in ln]
+    assert "  - notes:\n    | line one\n    | ----- END SECRETS -----\n    | Status: ACTIVE" in out
+    assert "  - after: real" in out
 
 
 def test_raw_fallback_cannot_forge_framing() -> None:
@@ -260,3 +261,100 @@ def test_file_value_errors_keep_their_context(tmp_path: Path) -> None:
 def test_resolve_flags_still_refuses_duplicates() -> None:
     with pytest.raises(ValueError, match="twice"):
         resolve_flags([], [config.parse_registry_flag("0x" + "b2" * 20 + ":v2")] * 2)
+
+
+# ------------------------------------------------------------------ review of 7d16c8d
+def test_item_named_status_cannot_pass_as_a_header() -> None:
+    p = VaultPayload(2, "Real", True, [Item("Status", "ACTIVE"), Item("Vault", '"Other"')])
+    with FakeChain() as c:
+        c.add_vault(VID, blob_for(VID, payload.write(p)), [LOC_A])
+        code, out, err = main(c)
+    assert code == ExitCode.OK, err
+    assert '----- BEGIN SECRETS (status: ARCHIVED; vault: "Real") -----' in out
+    assert "  - Status: ACTIVE" in out and '  - Vault: "Other"' in out
+    body = out.split("-----\n", 1)[1].split("----- END SECRETS -----")[0]
+    assert all(line.startswith(("  - ", "    | ", "  (no items)")) for line in body.splitlines())
+
+
+def test_copy_chooser_shows_provenance() -> None:
+    """MEDIUM: the chooser for tied copies of ONE vault names each copy's registry, like --list."""
+    with FakeChain() as c:
+        c.enable_v2()
+        v3 = c.add_registry(REGISTRY_V3)
+        data = payload.write(VaultPayload(1, None, False, [Item("a", "b")]))
+        c.add_vault(VID, blob_for(VID, data), [LOC_A])
+        v3.add_vault_v2(VID, blob_for(VID, data), [LOC_A])  # a different blob of the same vault
+        cfg = cfg_for(c, use_arweave=False)
+        cfg.registries = [
+            *cfg.registries,
+            RegistrySpec(3, REGISTRY_V3, 0, abi_kind=2, source="--registry", trusted=False),
+        ]
+        c.logs_error = True  # no history: the built-in copy can't be confirmed, so the copies tie
+        ui = RecUI(pick=lambda options: 0)
+        Recovery(cfg, FakePrfSource([PhysicalKey.named("A")], ui=ui), ui).run()
+    copies = ui.choices[-1]
+    assert copies and all(o.startswith("Copy ") for o in copies)  # the copy chooser, not the vault one
+    assert any("from built-in registry v1" in o for o in copies)
+    assert any("from SUPPLIED registry v3" in o and "not built in" in o for o in copies)
+
+
+def test_registry_trust_flags_default_to_false() -> None:
+    from cryoshield_recover.chain import Registry
+
+    reg = Registry(["https://n.example/rpc"], "0x" + "ab" * 20, 1)
+    assert reg.trusted is False and reg.builtin is False
+    assert reg.provenance.startswith("SUPPLIED registry v1")
+
+
+def test_flag_differing_only_in_block_from_a_file_entry_is_refused(tmp_path: Path) -> None:
+    doc = json.loads(RECORD.read_text(encoding="utf-8"))
+    a3 = "0x" + "a3" * 20
+    doc["contracts"]["vaultRegistries"] = {"v3": {"address": a3, "deployBlock": 1, "abiHash": V2_HASH}}
+    f = tmp_path / "r.json"
+    f.write_text(json.dumps(doc), encoding="utf-8")
+    parse = cli.build_parser().parse_args
+    with pytest.raises(RecoveryError) as ei:
+        cli.config_from_args(parse(["--deployment-file", str(f), "--registry", f"{a3}@5:v3:abi=v2"]))
+    assert "twice" in ei.value.message
+    same = cli.config_from_args(parse(["--deployment-file", str(f), "--registry", f"{a3}@1:v3:abi=v2"]))
+    assert [(s.version, s.deploy_block) for s in same.registries if s.version == 3] == [(3, 1)]
+
+
+SECRET_FIELD_NAMES = {
+    "secret",
+    "prf",
+    "s",
+    "plaintext",
+    "data_key",
+    "wrap_key",
+    "key",
+    "share",
+    "shares",
+    "pin",
+}
+
+
+def test_every_dataclass_keeps_secret_fields_out_of_repr() -> None:
+    """Walk every dataclass in the package: a field that can hold a secret (by name, or any bytearray,
+    the type the tool uses for wipeable secret buffers) must be repr=False."""
+    import dataclasses
+    import importlib
+    import pkgutil
+
+    import cryoshield_recover
+
+    checked = []
+    for mod_info in pkgutil.iter_modules(cryoshield_recover.__path__):
+        if mod_info.name == "__main__":
+            continue  # runs the CLI on import; it defines no dataclass
+        mod = importlib.import_module(f"cryoshield_recover.{mod_info.name}")
+        for obj in vars(mod).values():
+            if not (
+                isinstance(obj, type) and dataclasses.is_dataclass(obj) and obj.__module__ == mod.__name__
+            ):
+                continue
+            for f in dataclasses.fields(obj):
+                if f.name in SECRET_FIELD_NAMES or "bytearray" in str(f.type):
+                    checked.append(f"{obj.__name__}.{f.name}")
+                    assert f.repr is False, f"{obj.__name__}.{f.name} would appear in repr()"
+    assert {"Item.s", "Result.secret", "_Group.secret", "Assertion.prf", "UnlockKey.prf"} <= set(checked)

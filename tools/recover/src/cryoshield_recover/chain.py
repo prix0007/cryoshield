@@ -147,13 +147,14 @@ class Registry:
         label: str = "",
         session: Session | None = None,
         version: int | None = None,
-        trusted: bool = True,
-        builtin: bool = True,
+        trusted: bool = False,
+        builtin: bool = False,
     ) -> None:
         if kind not in (1, 2):
             raise ValueError("registry kind must be 1 or 2")
         self.version = kind if version is None else version  # the deployment's version (v3 may use kind 2)
-        # A supplied registry that differs from every built-in one (recover-registry-versions D10).
+        # A supplied registry that differs from every built-in one (recover-registry-versions D10). Both
+        # flags default to False (fail closed): only Registries.build, from a RegistrySpec, sets them.
         self.trusted = trusted
         self.builtin = builtin
         self.address = address.lower()

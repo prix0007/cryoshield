@@ -87,7 +87,7 @@ def test_interactive_list_then_choose_the_archived_vault(two: Two) -> None:
     code = _main(two.args, console, _key("A"))
     assert code == ExitCode.OK, err.getvalue()
     assert "This key opens 2 vaults" in err.getvalue()
-    assert 'Status: ARCHIVED\nVault: "Family"' in out.getvalue()
+    assert '(status: ARCHIVED; vault: "Family")' in out.getvalue()
     assert "GitHub codes: 1a2b3-c4d5e" in out.getvalue() and "Email 2FA: JBSWY3DP" in out.getvalue()
     assert not any(s in err.getvalue() for s in SECRETS)
 
@@ -97,7 +97,8 @@ def test_interactive_choose_the_v1_vault(two: Two) -> None:
     code = _main(two.args, console, _key("A"))
     assert code == ExitCode.OK, err.getvalue()
     assert (
-        "Vault: Unnamed vault" in out.getvalue() and "Bitcoin seed: abandon abandon about" in out.getvalue()
+        "vault: Unnamed vault)" in out.getvalue()
+        and "  - Bitcoin seed: abandon abandon about" in out.getvalue()
     )
 
 

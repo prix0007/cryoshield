@@ -58,9 +58,19 @@ Status: **Fixed** (in the commit named) · **Accepted** (with the rationale) · 
 
 | # | Sev | Finding | Status |
 |---|---|---|---|
-| RT4 | MED | A dataclass `repr()` could print secret values in a traceback or debug dump | **Fixed**: `Item.__repr__` redacts `s`. `Result.secret`, `_Group.secret`, `Assertion.prf` and `UnlockKey.prf` are `repr=False`. The last-resort handler still prints only the exception type (`test_reprs_never_contain_secret_values`, `test_verbose_failure_never_prints_payload_objects`) |
-| RT5 | MED | A newline in a secret could print fake framing ("----- END SECRETS -----", "Status: …") | **Fixed**: every line of a multi-line secret is printed with the fixed prefix `  \| `, and every line of the raw fallback with `\| `. `--output` stays byte-exact (`test_multi_line_secret_cannot_forge_framing`, `test_raw_fallback_cannot_forge_framing`, `test_output_file_stays_byte_exact`) |
-| N3 | LOW | `--list` didn't say when the summarised copy came from a supplied registry | **Fixed**: each `--list` block has a "source:" line (built-in registry vN, SUPPLIED registry vN 0x… (not built in), the Arweave archive, or your file), beside "(may be outdated)". The chooser shows the same (`test_list_marks_the_source_registry`, `test_chooser_marks_supplied_copies`) |
+| RT4 | MED | A dataclass `repr()` could print secret values in a traceback or debug dump | **Fixed**: `Item.s`, `Result.secret`, `_Group.secret`, `Assertion.prf` and `UnlockKey.prf` are `repr=False`, and `Item.__repr__` shows `<redacted>`. `test_every_dataclass_keeps_secret_fields_out_of_repr` walks every dataclass in the package and fails if a field that can hold a secret (by name, or any `bytearray`) appears in `repr()`. The last-resort handler still prints only the exception type (`test_reprs_never_contain_secret_values`, `test_verbose_failure_never_prints_payload_objects`). Values that are not dataclass fields (local variables in a traceback) are outside what this test covers |
+| RT5 | MED | A newline in a secret could print fake framing ("----- END SECRETS -----", "Status: …") | **Fixed**: the status and name are inside the BEGIN banner, every item line starts with `  - `, every continuation line with `    \| `, and every raw-fallback line with `\| `, so neither a label nor a secret can imitate a header, an item or a banner. `--output` stays byte-exact (`test_multi_line_secret_cannot_forge_framing`, `test_item_named_status_cannot_pass_as_a_header`, `test_raw_fallback_cannot_forge_framing`, `test_output_file_stays_byte_exact`) |
+| N3 | LOW | `--list` didn't say when the summarised copy came from a supplied registry | **Fixed**: each `--list` block has a "source:" line (built-in registry vN, SUPPLIED registry vN 0x… (not built in), the Arweave archive, or your file), beside "(may be outdated)". The vault chooser and the chooser for tied copies of one vault show the same (`test_list_marks_the_source_registry`, `test_chooser_marks_supplied_copies`, `test_copy_chooser_shows_provenance`) |
+
+### Local security review of `7d16c8d` (no CRITICAL or HIGH)
+
+| # | Sev | Finding | Status |
+|---|---|---|---|
+| F1 | MED | The chooser for tied copies of one vault showed no registry provenance | **Fixed**: each copy says "from built-in registry vN" or "from SUPPLIED registry vN 0x… (not built in)" (`test_copy_chooser_shows_provenance`) |
+| F2 | LOW | `Registry(trusted=..., builtin=...)` defaulted to True | **Fixed**: both default to False (fail closed); only `Registries.build` sets them, from a `RegistrySpec` (`test_registry_trust_flags_default_to_false`) |
+| F3 | LOW | The flag-vs-file refusal compared only the address | **Fixed**: it compares (address, deploy block, ABI kind) (`test_flag_differing_only_in_block_from_a_file_entry_is_refused`) |
+| F4 | LOW | An item labelled "Status" with the value "ACTIVE" looked like a header | **Fixed**: the headers are inside the banner, and items have a fixed marker (`test_item_named_status_cannot_pass_as_a_header`) |
+| F5 | LOW | The record claimed "every repr" was redacted without a test that proves it | **Fixed**: the dataclass-walk test; the RT4 and checklist wording is narrowed to what it proves |
 
 The other recovery-tool items in that record (RT1, RT2, RT3, RT6 and RT7) belong to `vault-list-labels-archive` and are tracked there.
 
@@ -72,12 +82,12 @@ The other recovery-tool items in that record (RT1, RT2, RT3, RT6 and RT7) belong
 - **The file parser is bounded and strict:** pass. It has a 1 MiB cap, rejects duplicate keys and deep nesting, uses `fullmatch`, quotes names and strips control characters from them, and keeps the context in errors.
 - **No default run reads repository files:** pass (`test_deployments_file_not_read_at_runtime`).
 - **Per-registry budgets hold with 3 registries:** pass (`test_hung_v3_cannot_starve_v2_or_v1`). The history deadline is shared, and there are at most 4 supplied and 8 total registries.
-- **No secret reaches the startup summary or any error:** pass. The summary shows only public addresses, blocks and file names. Secrets are redacted from every `repr` (RT4).
+- **No secret reaches the startup summary or any error:** pass. The summary shows only public addresses, blocks and file names. No dataclass field that can hold a secret appears in `repr()`, as checked by `test_every_dataclass_keeps_secret_fields_out_of_repr` (RT4).
 
 ## Evidence
 
 On `fix/recover-review-followups`:
-- `CRYOSHIELD_REQUIRE_FOUNDRY=1 uv run pytest -q`: 877 passed, 5 skipped (opt-in hardware and network); the anvil v1 + v2 tests are included;
+- `CRYOSHIELD_REQUIRE_FOUNDRY=1 uv run pytest -q`: 882 passed, 5 skipped (opt-in hardware and network); the anvil v1 + v2 tests are included;
 - `ruff check`, `ruff format --check` and `mypy --strict src`: clean;
 - `openspec validate --all --strict`: passes.
 

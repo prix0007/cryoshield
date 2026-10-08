@@ -163,8 +163,8 @@ def single(data: bytes) -> FakeChain:
 def test_structured_display_after_confirmation(two: FakeChain) -> None:
     code, out, err = main(two, answer="2\nshow\n")
     assert code == ExitCode.OK, err
-    assert 'Status: ARCHIVED\nVault: "Family"' in out
-    assert "GitHub codes:\n  | 1a2b3-c4d5e\n  | 6f7g8" in out and "Email: JBSW" in out
+    assert '(status: ARCHIVED; vault: "Family")' in out
+    assert "  - GitHub codes:\n    | 1a2b3-c4d5e\n    | 6f7g8" in out and "  - Email: JBSW" in out
     # Names and labels may appear before the confirmation; secret values never do.
     before = err.split('Type "show"')[0]
     assert "Family" in before and "GitHub codes" in before
@@ -218,7 +218,7 @@ def test_invisible_name_is_unnamed() -> None:
     with single(payload.write(VaultPayload(2, "\u200d\u200c", False, [Item("a", "b")]))) as c:
         code, out, err = main(c)
     assert code == ExitCode.OK, err
-    assert "Vault: Unnamed vault" in out
+    assert "vault: Unnamed vault)" in out
 
 
 def test_cleared_vault_is_shown_as_empty() -> None:
@@ -226,7 +226,7 @@ def test_cleared_vault_is_shown_as_empty() -> None:
     with single(cleared) as c:
         code, out, err = main(c)
     assert code == ExitCode.OK, err
-    assert 'Status: ARCHIVED\nVault: "Family"' in out and "(no items)" in out
+    assert '(status: ARCHIVED; vault: "Family")' in out and "(no items)" in out
 
 
 # ------------------------------------------------------------------ 5.2 --list
@@ -343,7 +343,7 @@ def test_blank_looking_names_are_unnamed(name: str) -> None:
     with single(payload.write(VaultPayload(2, name, False, [Item("a", "b")]))) as c:
         code, out, err = main(c)
     assert code == ExitCode.OK, err
-    assert "Vault: Unnamed vault" in out
+    assert "vault: Unnamed vault)" in out
 
 
 def test_combining_runs_are_capped_and_joiners_kept() -> None:
@@ -353,7 +353,7 @@ def test_combining_runs_are_capped_and_joiners_kept() -> None:
         with single(payload.write(VaultPayload(2, name, False, [Item("a", "b")]))) as c:
             code, out, err = main(c)
         assert code == ExitCode.OK, err
-        assert f"Vault: {expected}" in out
+        assert f"vault: {expected})" in out
 
 
 def test_outdated_copy_is_marked_in_list_and_chooser() -> None:
@@ -422,7 +422,7 @@ def test_backslash_in_a_secret_is_escaped() -> None:
     with single(payload.write(VaultPayload(1, None, False, [Item("path", "C:\\new")]))) as c:
         code, out, err = main(c)
     assert code == ExitCode.OK
-    assert "path: C:\\\\new" in out and "use --output for the exact bytes" in err
+    assert "  - path: C:\\\\new" in out and "use --output for the exact bytes" in err
 
 
 def test_decrypted_buffers_are_decoded_in_place(two: FakeChain, monkeypatch: pytest.MonkeyPatch) -> None:

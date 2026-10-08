@@ -92,16 +92,21 @@ class _Group:
     secret: bytearray | None = field(repr=False)
 
 
-def summarize(cand: Candidate, d: DecodedVault, secret: bytearray | None) -> VaultSummary:
-    """A vault's public summary. Decoding creates Python strings that can't be wiped (README)."""
-    keys = f"any 1 of {d.count} keys" if d.threshold == 1 else f"{d.threshold} of {d.count} keys"
-    freshness = "unverified" if cand.contested else cand.freshness.value
+def provenance(cand: Candidate) -> str:
+    """Where a copy came from, for --list, the vault chooser and the copy chooser (security review N3)."""
     source = {"arweave": "Arweave archive", "file": "your file"}.get(
         cand.source, cand.registry or "blockchain"
     )
     if cand.untrusted and "SUPPLIED" not in source:
         source = f"SUPPLIED {cand.untrusted} (not built in)"
-    base = VaultSummary(cand.vault_id or bytes(32), freshness, keys, "locked", source=source)
+    return source
+
+
+def summarize(cand: Candidate, d: DecodedVault, secret: bytearray | None) -> VaultSummary:
+    """A vault's public summary. Decoding creates Python strings that can't be wiped (README)."""
+    keys = f"any 1 of {d.count} keys" if d.threshold == 1 else f"{d.threshold} of {d.count} keys"
+    freshness = "unverified" if cand.contested else cand.freshness.value
+    base = VaultSummary(cand.vault_id or bytes(32), freshness, keys, "locked", source=provenance(cand))
     if secret is None:
         return base
     try:
@@ -463,7 +468,7 @@ class Recovery:
         labels = [
             # Public metadata only. No claimed version: it is attacker-writable and could nudge the user
             # toward an older copy (security review round 2).
-            f"Copy {i + 1}: from {c.source} ({c.origin}); returned by {c.support} source(s); "
+            f"Copy {i + 1}: from {provenance(c)} ({c.origin}); returned by {c.support} source(s); "
             f"status: {c.freshness.value} (unverified)"
             for i, c in enumerate(options)
         ]
