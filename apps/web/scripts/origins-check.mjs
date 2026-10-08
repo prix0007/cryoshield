@@ -24,3 +24,15 @@ export function checkOrigins(csp, inventory) {
   }
   return { listed, missing };
 }
+
+/**
+ * launch-op-mainnet 4.4 (spec legal-pages "RPC origin must be disclosed"): the built /privacy page's
+ * "Blockchain access (RPC)" row must name the host of the configured VITE_RPC_URL. Returns the missing host (or []).
+ * Loopback and *.invalid endpoints (dev, E2E, verify-build fixtures) are exempt.
+ */
+export function checkRpcDisclosed(privacyHtml, rpcUrl) {
+  const host = new URL(rpcUrl).hostname;
+  if (host === 'localhost' || host === '127.0.0.1' || host === '[::1]' || host.endsWith('.invalid')) return [];
+  const row = [...privacyHtml.matchAll(/<tr>([\s\S]*?)<\/tr>/g)].map((m) => m[1]).find((r) => r.includes('Blockchain access (RPC)'));
+  return row && row.includes(host) ? [] : [host];
+}

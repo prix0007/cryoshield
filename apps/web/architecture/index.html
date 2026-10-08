@@ -30,7 +30,7 @@
     <p>CryoShield runs exactly one thing: a static website on Fly. Everything else is either on your device or third-party infrastructure that never sees a plaintext secret.</p>
     <figure>
       <div class="arch-scroll" tabindex="0" aria-labelledby="arch-cap-1">
-      <svg viewBox="0 0 1000 560" role="img" aria-label="Architecture: the browser app and recovery tool on the user's device talk to the security key, to Pimlico for sponsored writes, to public RPCs for reads, and to Arweave for the mirror. The VaultRegistry on OP Sepolia and Arweave hold the encrypted vault. CryoShield only operates the static site host.">
+      <svg viewBox="0 0 1000 560" role="img" aria-label="Architecture: the browser app and recovery tool on the user's device talk to the security key, to Pimlico for sponsored writes, to public RPCs for reads, and to Arweave for the mirror. The VaultRegistry on __CS_NET_NAME__ and Arweave hold the encrypted vault. CryoShield only operates the static site host.">
         <defs>
           <marker id="arch-ar1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker>
         </defs>
@@ -263,7 +263,7 @@
   <section aria-labelledby="s5">
     <h2 id="s5">Live reference values</h2>
     <div class="table-wrap"><table class="arch-table">
-      <tr><th scope="row">Network</th><td>__CS_NETWORK__, chain __CS_CHAIN_ID__ (mainnet will be OP Mainnet)</td></tr>
+      <tr><th scope="row">Network</th><td>__CS_NETWORK__, chain __CS_CHAIN_ID__<!--net:testnet--> (mainnet will be OP Mainnet)<!--/net--></td></tr>
       __CS_REGISTRY_ROWS__
       <tr><th scope="row">Deploy block</th><td class="mono">__CS_DEPLOY_BLOCK__</td></tr>
       <tr><th scope="row">Smart account</th><td>CryoShield Smart Wallet (Coinbase Smart Wallet v1.1 code that also requires the key's PIN and this RP ID on every signature) on EntryPoint v0.6, P-256 precompile at <code>0x100</code></td></tr>

@@ -19,7 +19,7 @@ import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { gzipSync } from 'node:zlib';
-import { checkOrigins } from './origins-check.mjs';
+import { checkOrigins, checkRpcDisclosed } from './origins-check.mjs';
 import { checkNoPlaceholders, storageApiOutsideAllowedFiles, unlistedStorageApis } from './legal-check.mjs';
 import { checkSecurityTxt } from './securitytxt-check.mjs';
 import { analyticsLeaks, landingCspDiff, policyDrift } from './analytics-check.mjs';
@@ -38,7 +38,9 @@ const expectHost = hostIdx > 0 ? process.argv[hostIdx + 1] : undefined;
 
 const PROD_ENV = {
   VITE_CHAIN_ID: process.env.VERIFY_CHAIN_ID ?? '31337', // any chain with a contracts/deployments/<id>.json
-  VITE_RPC_URL: 'https://rpc.verify.invalid',
+  // launch-op-mainnet 4.4: VERIFY_RPC_URL (e.g. https://mainnet.optimism.io with VERIFY_CHAIN_ID=10) checks the real
+  // privacy disclosure of that RPC; the default .invalid fixture is exempt.
+  VITE_RPC_URL: process.env.VERIFY_RPC_URL ?? 'https://rpc.verify.invalid',
   VITE_BUNDLER_URL: 'https://bundler.verify.invalid/rpc?apikey=pim_public',
   VITE_SPONSORSHIP_POLICY_ID: 'sp_verify',
   VITE_TURBO_UPLOAD_URL: 'https://upload.ardrive.io',
@@ -159,6 +161,12 @@ if (analyticsOn) {
 }
 console.log(`ok   [${label}] analytics confined to the landing document${analyticsOn ? ' (beacon pinned to the lock; disclosed on /privacy and /cookies)' : ' (no beacon in this build)'}`);
 const html = pages.map((f) => readFileSync(f, 'utf8')).join('\n');
+// launch-op-mainnet 4.4: the privacy sub-processor table names the configured RPC host.
+if (label === 'production' && !realEnv) {
+  const undisclosed = checkRpcDisclosed(readFileSync(join(dist, 'privacy', 'index.html'), 'utf8'), PROD_ENV.VITE_RPC_URL);
+  if (undisclosed.length) fail(`[${label}] /privacy does not name the RPC host ${undisclosed.join(', ')} in its sub-processor table`);
+  console.log(`ok   [${label}] /privacy names the RPC host of ${PROD_ENV.VITE_RPC_URL}`);
+}
 // add-privacy-and-compliance 3.2: the legal pages exist.
 for (const p of ['privacy', 'terms', 'cookies', 'architecture', 'devices', 'support']) {
   if (!all.includes(join(dist, p, 'index.html'))) fail(`[${label}] missing legal page ${p}/index.html`);

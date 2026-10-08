@@ -47,7 +47,8 @@ describe('legal pages', () => {
 
   it('/privacy reflects the data-flow inventory, the permanence caveat and crypto-shredding', () => {
     const t = page('privacy/index.html').body.textContent!.replace(/\s+/g, ' ');
-    for (const v of ['Fly.io', 'Pimlico', 'OP Sepolia', 'Arweave', 'sepolia.optimism.io', 'ArDrive Turbo', 'Cloudflare', 'GitHub']) expect(t, v).toContain(v);
+    // The network and RPC rows follow the build's chain and RPC (launch-op-mainnet 4.3: test/legal/network.test.ts).
+    for (const v of ['Fly.io', 'Pimlico', 'Arweave', 'ArDrive Turbo', 'Cloudflare', 'GitHub']) expect(t, v).toContain(v);
     expect(t).toMatch(/cannot be deleted by us or by anyone else/);
     expect(t).toMatch(/unreadable only until the encryption method is broken/);
     expect(t).toMatch(/crypto-shredding/);

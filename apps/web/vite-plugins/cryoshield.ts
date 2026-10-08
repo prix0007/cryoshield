@@ -66,11 +66,14 @@ export function cryoshield(env: Record<string, string | undefined>, contractsDir
   };
 }
 
-/** web-registry-versions D5: one row per registry, newest first; older ones are read-only. Values are strictly validated. */
+/**
+ * web-registry-versions D5: one row per registry, newest first; older ones are read-only. Values are strictly validated.
+ * launch-op-mainnet 4.7: a network without VaultRegistry v1 (OP Mainnet) says so instead of omitting it.
+ */
 export function registryRows(registries: Deployment['registries']): string {
-  return registries
-    .map((r, i) => `<tr><th scope="row">VaultRegistry ${r.version}</th><td class="mono">${r.address}${i ? ' (read-only)' : ''}</td></tr>`)
-    .join('\n      ');
+  const rows = registries.map((r, i) => `<tr><th scope="row">VaultRegistry ${r.version}</th><td class="mono">${r.address}${i ? ' (read-only)' : ''}</td></tr>`);
+  if (!registries.some((r) => r.version === 'v1')) rows.push('<tr><th scope="row">VaultRegistry v1</th><td>none on this network</td></tr>');
+  return rows.join('\n      ');
 }
 
 export function architectureValues(html: string, chainId: number, dep: Pick<Deployment, 'registries' | 'wallet'>, rpId: string): string {

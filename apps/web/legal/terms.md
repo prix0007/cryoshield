@@ -1,12 +1,12 @@
 # Terms of service
 
-**Effective date:** 2026-10-08
+**Effective date:** 2026-10-09
 
 <!--legal-note-->
 
-> **In short.** CryoShield is a free, open-source **testnet preview** that has **not been independently audited**.
+> **In short.** <!--net:testnet-->CryoShield is a free, open-source **testnet preview** that has **not been independently audited**.<!--/net--><!--net:mainnet-->CryoShield is free and open source. It runs on **__CS_NET_NAME__** and has **not been independently audited**.<!--/net-->
 > It never holds your secrets or keys. If you lose every enrolled key, nobody can open your vault. What you save is
-> published permanently. Please don't rely on it as your only backup yet.
+> published permanently. Please don't rely on it as your only backup<!--net:testnet--> yet<!--/net-->.
 
 ## Who we are
 
@@ -14,12 +14,12 @@ These terms apply to your use of the website at `cryoshield.app`, run by CryoShi
 behind it. Questions: open an issue in the [repository](https://github.com/prix0007/cryoshield); security reports go through
 [private vulnerability reporting](https://github.com/prix0007/cryoshield/security/advisories/new).
 
-## Testnet and unaudited
+## Network and audit status
 
-CryoShield currently runs on **OP Sepolia, a test network**, and its code has **not been independently audited**. The
-test network may be reset or retired. We give no warranty that CryoShield is secure or that a vault will remain
-available. Do not store high-value secrets as your only copy until CryoShield runs on a main network and has been
-audited.
+<!--net:testnet-->CryoShield currently runs on **__CS_NET_NAME__, a test network**, and its code has **not been independently audited**. The
+test network may be reset or retired.<!--/net--><!--net:mainnet-->CryoShield runs on **__CS_NET_NAME__**, and its code has **not been independently audited**.<!--/net-->
+We give no warranty that CryoShield is secure or that a vault will remain available. Do not store high-value secrets
+in CryoShield as your only copy.
 
 ## Your keys, your responsibility
 
@@ -105,6 +105,8 @@ protection of mandatory consumer law where you live.
 We will post changes here and update the effective date. The full history is public in our
 [source repository](https://github.com/prix0007/cryoshield/commits/main/apps/web/legal/terms.md).
 
+- 2026-10-09: the audit-status section is now "Network and audit status" and names the network the site runs on.
+  CryoShield still has not been independently audited; don't keep high-value secrets here as your only copy.
 - 2026-10-08: each key needs its PIN to open or change a vault.
 - 2026-10-05: new "Donations" section (the /support page).
 - 2026-10-03 (revision 2): CryoShield is an open-source project: operator and GitHub contact filled in; the

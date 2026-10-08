@@ -5,11 +5,27 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { BANNED } from './banned';
+import { BANNED, bannedFor } from './banned';
+import { resolveNetworkCopy } from '../../vite-plugins/network-copy';
 
-const src = readFileSync(join(__dirname, '..', '..', 'index.html'), 'utf8');
-const doc = new DOMParser().parseFromString(src, 'text/html');
-const text = (doc.body.textContent ?? '').replace(/\s+/g, ' ');
+/** launch-op-mainnet 4.2: the page as the build ships it for a chain (network blocks resolved; scripts never run). */
+const raw = readFileSync(join(__dirname, '..', '..', 'index.html'), 'utf8');
+function landing(chainId: number) {
+  const src = resolveNetworkCopy(raw, { chainId, rpId: 'cryoshield.app', now: Date.parse('2026-10-09T00:00:00Z'), rpc: { host: 'rpc.example', vendor: 'Example' } });
+  const doc = new DOMParser().parseFromString(src, 'text/html');
+  return { src, doc, text: (doc.body.textContent ?? '').replace(/\s+/g, ' ') };
+}
+const { src, doc, text } = landing(11155420);
+/** Visible text outside any collapsible (the FAQ answers are behind <details>). */
+const outsideDetails = (d: Document) =>
+  [...d.querySelectorAll('main > section')]
+    .map((s) => {
+      const c = s.cloneNode(true) as HTMLElement;
+      c.querySelectorAll('details').forEach((x) => x.remove());
+      return c.textContent ?? '';
+    })
+    .join(' ')
+    .replace(/\s+/g, ' ');
 const REPO = 'https://github.com/prix0007/cryoshield';
 const BREACH_SOURCES = [
   { name: 'BleepingComputer', href: 'https://www.bleepingcomputer.com/news/security/cryptocurrency-theft-attacks-traced-to-2022-lastpass-breach/' },
@@ -123,18 +139,12 @@ describe('landing structure', () => {
 
 describe('honest copy', () => {
   it('states testnet (OP Sepolia), not audited, and all-keys-lost outside any collapsible', () => {
-    const outsideDetails = [...doc.querySelectorAll('main > section')]
-      .map((s) => {
-        const c = s.cloneNode(true) as HTMLElement;
-        c.querySelectorAll('details').forEach((d) => d.remove());
-        return c.textContent ?? '';
-      })
-      .join(' ')
-      .replace(/\s+/g, ' ');
-    expect(outsideDetails).toMatch(/OP Sepolia/);
-    expect(outsideDetails).toMatch(/test network/i);
-    expect(outsideDetails).toMatch(/not been independently audited/);
-    expect(outsideDetails).toMatch(/If you lose every key, nobody can open the vault/);
+    const t = outsideDetails(doc);
+    expect(t).toMatch(/OP Sepolia/);
+    expect(t).toMatch(/Testnet preview/);
+    expect(t).toMatch(/test network/i);
+    expect(t).toMatch(/not been independently audited/);
+    expect(t).toMatch(/If you lose every key, nobody can open the vault/);
   });
 
   it('makes no claim the code does not back up', () => {
@@ -160,6 +170,105 @@ describe('honest copy', () => {
 
   it('uses no Apple names or marks', () => {
     expect(text).not.toMatch(/\b(Apple|iPhone|iPad|Mac|macOS|Safari|iCloud|Touch ID|Face ID|SF Pro)\b/);
+  });
+});
+
+/**
+ * launch-op-mainnet 4.2 (spec landing-page "Honest landing content", both scenarios): the same page built for OP Sepolia
+ * and for OP Mainnet. Scripts never run here (static HTML), so this is what a visitor sees with scripts off.
+ */
+describe('honest copy follows the build chain (launch-op-mainnet 4.2)', () => {
+  const testnet = landing(11155420);
+  const mainnet = landing(10);
+  const norm = (e: Element | null | undefined) => (e?.textContent ?? '').replace(/\s+/g, ' ').trim();
+  const head = (d: Document) => `${d.title} ${d.querySelector('meta[name="description"]')?.getAttribute('content') ?? ''}`;
+
+  it('OP Mainnet: names OP Mainnet, says unaudited and the all-keys-lost rule outside any collapsible; no testnet wording', () => {
+    const t = outsideDetails(mainnet.doc);
+    expect(t).toMatch(/OP Mainnet/);
+    expect(t).toMatch(/not been independently audited/);
+    expect(t).toMatch(/If you lose every key, nobody can open the vault/);
+    for (const all of [mainnet.text, head(mainnet.doc), mainnet.src]) expect(all).not.toMatch(/OP Sepolia|testnet|test network/i);
+  });
+
+  it('OP Mainnet: the chips, the hero strip and the calls to action carry the new status', () => {
+    expect(norm(mainnet.doc.querySelector('.sub-nav .chip'))).toBe('Unaudited');
+    expect(norm(mainnet.doc.querySelector('#hero .status-strip'))).toBe(
+      'Runs on OP Mainnet. Your vault is encrypted on your device and stored on OP Mainnet, with an extra copy on Arweave when that upload succeeds. CryoShield has not been independently audited, so please keep your existing backups too.',
+    );
+    for (const sel of ['#breaches .breach-cta .fine', '#start .fine']) {
+      expect(norm(mainnet.doc.querySelector(sel)), sel).toBe('Runs on OP Mainnet, not independently audited. Please keep your existing backups too.');
+    }
+    expect(norm(mainnet.doc.querySelector('footer .legal'))).toBe('CryoShield contributors. MIT licensed. Runs on OP Mainnet, not independently audited. YubiKey is a trademark of Yubico.');
+    expect(mainnet.doc.querySelector('meta[name="description"]')?.getAttribute('content')).toMatch(/Free, open source, unaudited\.$/);
+  });
+
+  it('OP Sepolia: the testnet wording is unchanged', () => {
+    expect(norm(testnet.doc.querySelector('.sub-nav .chip'))).toBe('Testnet preview');
+    expect(norm(testnet.doc.querySelector('#hero .status-strip'))).toBe(
+      'Testnet preview. Your vault is encrypted on your device and stored on OP Sepolia, a test network, with an extra copy on Arweave when that upload succeeds. Test networks can be reset, and CryoShield has not been independently audited yet.',
+    );
+    for (const sel of ['#breaches .breach-cta .fine', '#start .fine']) {
+      expect(norm(testnet.doc.querySelector(sel)), sel).toBe('Testnet preview on OP Sepolia, not independently audited. Please keep your existing backups too.');
+    }
+    expect(testnet.doc.querySelector('meta[name="description"]')?.getAttribute('content')).toMatch(/Free, open source, testnet\.$/);
+  });
+
+  it('OP Mainnet: the FAQ answers name OP Mainnet and the audit status, and "forever" stays honest', () => {
+    const answer = (q: string) => norm([...mainnet.doc.querySelectorAll('#faq details')].find((x) => x.querySelector('summary')?.textContent === q)?.querySelector('p'));
+    const forever = answer('How do I back up my seed phrase forever?');
+    expect(forever).toMatch(/^No backup lasts forever/);
+    expect(forever).toMatch(/at least one of your keys/);
+    expect(forever).toMatch(/OP Mainnet/);
+    expect(forever).toMatch(/not been independently audited/);
+    expect(answer('Is it safe to use today?')).toMatch(/^CryoShield runs on OP Mainnet and has not been independently audited\./);
+    expect(answer('Where should I store 2FA backup codes?')).toMatch(/not been independently audited, keep a printed copy/);
+    expect(mainnet.text.match(/forever/gi)).toHaveLength(2);
+  });
+
+  it.each([
+    ['OP Sepolia', 11155420],
+    ['OP Mainnet', 10],
+  ] as const)('%s: the denylist finds no affirmative claim, in the text or the head', (_n, chainId) => {
+    const page = landing(chainId);
+    const allowed = (t: string) => t.replace('How do I back up my seed phrase forever?', '').replace('No backup lasts forever', '');
+    for (const b of bannedFor(chainId)) {
+      expect(allowed(page.text), String(b)).not.toMatch(b);
+      expect(head(page.doc), String(b)).not.toMatch(b);
+    }
+  });
+
+  it('the mainnet denylist allows "OP Mainnet" only as the name, and never a readiness claim', () => {
+    const b = bannedFor(10);
+    const hit = (t: string) => b.some((r) => r.test(t));
+    expect(hit('Runs on OP Mainnet.')).toBe(false);
+    for (const t of ['Now on mainnet.', 'Mainnet-ready', 'OP Mainnet-ready', 'production ready', 'Battle-tested', 'It is audited.']) expect(hit(t), t).toBe(true);
+    expect(bannedFor(11155420).some((r) => r.test('Runs on OP Mainnet.'))).toBe(true);
+    expect(bannedFor(999).some((r) => r.test('Runs on OP Mainnet.'))).toBe(true); // unknown chain = testnet
+  });
+
+  it('4.6: the production testnet build carries the dated "moving" strip only in its window, never on dev', () => {
+    const at = (rpId: string, now: string) =>
+      new DOMParser().parseFromString(
+        resolveNetworkCopy(raw, { chainId: 11155420, rpId, now: Date.parse(now), rpc: { host: 'h', vendor: 'v' }, dates: { moveNoticeFrom: '2026-10-12', switchDate: '2026-10-19' } }),
+        'text/html',
+      );
+    const strips = (d: Document) => [...d.querySelectorAll('#hero .status-strip')].map((p) => norm(p));
+    const MOVING = 'CryoShield is moving to OP Mainnet. Vaults created during the testnet preview will not move; you can still read them with the recovery tool. Create a new vault after the switch.';
+    expect(strips(at('cryoshield.app', '2026-10-15T00:00:00Z'))).toContain(MOVING);
+    expect(strips(at('cryoshield.app', '2026-10-19T00:00:00Z'))).not.toContain(MOVING);
+    expect(strips(at('cryoshield-web-dev.fly.dev', '2026-10-15T00:00:00Z'))).not.toContain(MOVING);
+    // The one deliberate exception to "no mainnet on a testnet build" (design D6): the dated notice names the target
+    // network. Everything else on the page still passes the testnet denylist.
+    const d = at('cryoshield.app', '2026-10-15T00:00:00Z');
+    const rest = (d.body.textContent ?? '').replace(/\s+/g, ' ').replace(MOVING, '').replace('How do I back up my seed phrase forever?', '').replace('No backup lasts forever', '');
+    for (const b of BANNED) expect(rest, String(b)).not.toMatch(b);
+  });
+
+  it('every network block in the source resolves, and no unresolved marker ships for either chain', () => {
+    expect(raw).toMatch(/<!--net:testnet-->/);
+    expect(raw).toMatch(/<!--net:mainnet-->/);
+    for (const p of [testnet, mainnet]) expect(p.src).not.toMatch(/<!--\/?net|__CS_NET_/);
   });
 });
 
@@ -314,7 +423,7 @@ describe('"Where backups leak." breaches tile (add-landing-breaches 1.1)', () =>
       ['Read the code', REPO, false],
     ]);
     expect(tile.querySelector(`a.pill[href="${REPO}"]`)?.getAttribute('rel')).toBe('noopener noreferrer');
-    // ECC review: the call to action carries the same testnet caveat as the final CTA.
+    // ECC review: the call to action carries the same network caveat as the final CTA (chain-driven: launch-op-mainnet 4.2).
     const caveat = tile.querySelector('.breach-cta .fine');
     expect(norm(caveat)).toBe('Testnet preview on OP Sepolia, not independently audited. Please keep your existing backups too.');
     expect(caveat?.compareDocumentPosition(tile.querySelector('.breach-cta .ctas')!)).toBe(Node.DOCUMENT_POSITION_PRECEDING);
