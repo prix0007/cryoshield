@@ -179,6 +179,10 @@ jobs:
           node .github/scripts/openspec-gate.mjs "${RUNNER_TEMP}/changed-files"
       - name: Legal pages change their effective date with their text (add-privacy-and-compliance 3.5)
         run: node apps/web/scripts/check-legal-dates.mjs --base "${BASE_SHA}"
+      - name: Mainnet deployment records need a launch record and a mainnet-gate review (add-privacy-and-compliance 7.6)
+        run: |
+          git -c core.quotePath=false diff -z --name-only --no-renames --diff-filter=A "${BASE_SHA}...${HEAD_SHA}" > "${RUNNER_TEMP}/added-files"
+          node .github/scripts/mainnet-gate.mjs "${RUNNER_TEMP}/added-files"
       - name: Install gitleaks (pinned, checksum-verified)
         run: |
           curl -fsSL --retry 3 -o "${RUNNER_TEMP}/gitleaks.tar.gz" \
