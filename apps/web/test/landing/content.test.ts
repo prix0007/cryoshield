@@ -146,6 +146,7 @@ describe('honest copy', () => {
       /\bforever\b/i,
       /unbreakable/i,
       /never lose/i,
+      /(stays|always|will (always )?be) available/i,
     ];
     // improve-landing-seo (spec "Honest drama"): "forever" only as the user's own question and its negating answer.
     const head = `${doc.title} ${doc.querySelector('meta[name="description"]')?.getAttribute('content') ?? ''}`;

@@ -81,7 +81,7 @@ export const S = {
   },
 
   testnet: (network: string) =>
-    `Testnet preview: CryoShield runs on ${network}, a test network, and has not been independently audited. Please don’t rely on it as your only backup yet.`,
+    `Testnet preview: your vault is encrypted on your device and stored on ${network}, a test network, with an extra copy on Arweave when that upload succeeds. Test networks can be reset, and CryoShield has not been independently audited yet.`,
 
   editor: {
     label: 'Name',
