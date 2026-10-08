@@ -21,7 +21,7 @@ source). Pairing them with a call to action gives visitors a reason to act now.
   `aria-hidden`), and a source link ("Source: BleepingComputer", "Source: Kaspersky", "Source: The Block"):
   - LastPass, 2022 (stolen encrypted vault backups, weak master passwords cracked offline);
   - SparkCat, 2025 (store apps scanning photo galleries for seed phrase screenshots);
-  - Slope, 2022 (a wallet app sending seed phrases in plain text to its logging server).
+  - Slope, 2022 (researchers reported a wallet app sending seed phrases, unencrypted, to its error-logging server).
 - **One honest limit** under the cards: no backup can protect a phrase typed on an infected device.
 - **A closing call to action**: "Take your seed phrase out of the cloud." with two pills, "Seal it with your security
   key" (`/app/`) and "Read the code" (the GitHub repository).

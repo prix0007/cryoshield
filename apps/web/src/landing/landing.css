@@ -1220,6 +1220,11 @@
 .breach-cta .ctas {
   margin-bottom: 0;
 }
+/* The testnet caveat under the pills (ECC review): centred under them, like the final call to action's note. */
+.breach-cta .fine {
+  margin: var(--space-md) auto 0;
+  text-align: center;
+}
 @media (max-width: 833px) {
   .breach-grid {
     grid-template-columns: minmax(0, 1fr);

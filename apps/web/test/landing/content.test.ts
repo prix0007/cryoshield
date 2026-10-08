@@ -253,7 +253,7 @@ describe('"Where backups leak." breaches tile (add-landing-breaches 1.1)', () =>
     expect(tile.classList.contains('tile')).toBe(true);
     expect(tile.classList.contains('tile-parchment')).toBe(true);
     expect(tile.getAttribute('aria-labelledby')).toBe(tile.querySelector('h2')?.id);
-    expect(norm(tile.querySelector('.tile-lead'))).toBe('Seed phrases are rarely lost to genius hackers. They leak from the places people keep them.');
+    expect(norm(tile.querySelector('.tile-lead'))).toBe('Seed phrases often leak from the places people keep them.');
   });
 
   it('has three incident cards with a label, the incident, a distinct helps line and a named source', () => {
@@ -269,8 +269,8 @@ describe('"Where backups leak." breaches tile (add-landing-breaches 1.1)', () =>
     expect(got).toEqual([
       {
         label: "A password manager's cloud",
-        incident: 'LastPass, 2022. Attackers stole encrypted vault backups, then cracked weak master passwords offline for years. Investigators traced over $35 million in crypto thefts to it through 2025.',
-        helps: 'CryoShield has no master password to crack. Your vault key is derived inside your security key, from a secret that never leaves it.',
+        incident: 'LastPass, 2022. Attackers stole encrypted vault backups and are believed to have kept cracking weak master passwords offline for years. Blockchain analysts at TRM Labs estimate over $35 million in crypto thefts traced to it through 2025.',
+        helps: 'CryoShield has no master password to crack. Your vault key comes from a secret inside your security key that never leaves it.',
         source: 'Source: BleepingComputer',
         href: BREACH_SOURCES[0].href,
       },
@@ -283,7 +283,7 @@ describe('"Where backups leak." breaches tile (add-landing-breaches 1.1)', () =>
       },
       {
         label: "A wallet app's logs",
-        incident: 'Slope, 2022. A wallet app sent seed phrases in plain text to its logging server, and thousands of Solana wallets were drained.',
+        incident: 'Slope, 2022. Security researchers reported that a wallet app sent seed phrases, unencrypted, to its error-logging server, in a breach that hit nearly 8,000 Solana wallets.',
         helps: 'CryoShield encrypts before anything is stored or sent, and the code is open source, so anyone can check.',
         source: 'Source: The Block',
         href: BREACH_SOURCES[2].href,
@@ -314,6 +314,10 @@ describe('"Where backups leak." breaches tile (add-landing-breaches 1.1)', () =>
       ['Read the code', REPO, false],
     ]);
     expect(tile.querySelector(`a.pill[href="${REPO}"]`)?.getAttribute('rel')).toBe('noopener noreferrer');
+    // ECC review: the call to action carries the same testnet caveat as the final CTA.
+    const caveat = tile.querySelector('.breach-cta .fine');
+    expect(norm(caveat)).toBe('Testnet preview on OP Sepolia, not independently audited. Please keep your existing backups too.');
+    expect(caveat?.compareDocumentPosition(tile.querySelector('.breach-cta .ctas')!)).toBe(Node.DOCUMENT_POSITION_PRECEDING);
   });
 
   it('makes no banned or general anti-hacking claim', () => {

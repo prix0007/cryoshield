@@ -39,9 +39,9 @@ the light theme and dark in the dark theme with no new tokens.
 |---|---|---|---|
 | LastPass, 2022 | Encrypted vault backups stolen; weak master passwords cracked offline; over $35 million in crypto thefts traced through 2025 | BleepingComputer, https://www.bleepingcomputer.com/news/security/cryptocurrency-theft-attacks-traced-to-2022-lastpass-breach/ | TRM Labs traced $28 million (late 2024 to early 2025) plus $7 million (September 2025); backups stolen from GoTo cloud storage; weak or reused master passwords vulnerable to offline cracking, ongoing since the breach. |
 | SparkCat, 2025 | Store apps scanned galleries with text recognition for seed phrase screenshots | Kaspersky, https://www.kaspersky.com/about/press-releases/kaspersky-discovers-new-crypto-stealing-trojan-in-appstore-and-google-play | Reported February 2025; apps in the App Store and Google Play (active since at least March 2024) used OCR / machine learning to scan galleries for recovery-phrase screenshots. "2025" is the year it was disclosed. |
-| Slope, 2022 | Seed phrases sent in plain text to a logging server; thousands of Solana wallets drained | The Block, https://www.theblock.co/post/161425/slope-wallet-provider-saved-user-seed-phrases-in-plain-text-solana-security-researchers-find | Otter found the mobile app sent mnemonics (over TLS, unencrypted by the app) to its Sentry server, stored as readable text; nearly 8,000 Solana wallets affected. |
+| Slope, 2022 | Researchers reported seed phrases sent unencrypted to an error-logging server; nearly 8,000 Solana wallets hit | The Block, https://www.theblock.co/post/161425/slope-wallet-provider-saved-user-seed-phrases-in-plain-text-solana-security-researchers-find | Otter found the mobile app sent mnemonics (over TLS, unencrypted by the app) to its Sentry server, stored as readable text; nearly 8,000 Solana wallets affected. |
 
-"Plain text" follows the source's own headline: the phrases were not encrypted by the app (the transport was TLS).
+The copy says "unencrypted" (by the app; the transport was TLS) and reports it as the researchers' finding, as the source does.
 
 ## Honesty review
 
@@ -63,3 +63,19 @@ the light theme and dark in the dark theme with no new tokens.
 Not crypto, contracts, the paymaster, secret handling or CI. The change adds static HTML and CSS only. CSP unchanged
 (no inline style or script; `scripts/csp-check` and `verify-build` stay green). Links use `rel="noopener noreferrer"`
 and no `target`. N/A beyond this note.
+
+## ECC review (2026-10-09)
+
+The code review approved the change with three MEDIUM copy-accuracy findings, all fixed:
+
+- The LastPass "helps" line said the vault key "is derived inside your security key". The key returns a PRF output to
+  the browser, which derives the wrap key with HKDF; only the credential secret stays inside the key. The line now
+  says "Your vault key comes from a secret inside your security key that never leaves it."
+- The Slope card was firmer than The Block (which reports researchers' findings and "nearly 8,000" wallets, with no
+  drained count). It now says "Security researchers reported that a wallet app sent seed phrases, unencrypted, to its
+  error-logging server, in a breach that hit nearly 8,000 Solana wallets."
+- The call to action lacked the testnet caveat every other conversion point carries. It now ends with "Testnet
+  preview on OP Sepolia, not independently audited. Please keep your existing backups too."
+
+LOW findings also applied: the LastPass card attributes the estimate to TRM Labs and says cracking is "believed" to
+have continued, and the lead no longer makes the unsourced "rarely lost to genius hackers" claim.
