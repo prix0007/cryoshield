@@ -51,9 +51,13 @@ a secret. `/privacy` "Public and permanent data" lists all of it.
 
 ## Browser-side device storage
 
-None. CryoShield's code sets no cookie and uses no localStorage, sessionStorage, IndexedDB, Cache Storage or service
-worker on any route (`apps/web/legal/storage-inventory.json`, enforced by a build scan of every shipped script and an
-E2E sweep). The Cloudflare beacon (row 8) states it uses no client-side state.
+One optional preference, nothing else. If the visitor picks Light or Dark in the Theme menu (`add-theme-switch`), the
+browser keeps `localStorage["cryoshield-theme"]` = `light` or `dark` on every route; choosing System deletes it, and
+clearing the site's data in the browser removes it. It holds no identifier, is not personal data, and is never sent
+anywhere. Apart from it, CryoShield's code sets no cookie and uses no localStorage, sessionStorage, IndexedDB, Cache
+Storage or service worker on any route (`apps/web/legal/storage-inventory.json`, enforced by a build scan of every
+shipped script, which allows `localStorage` only in the theme script, and an E2E sweep before and after choosing a
+theme). The Cloudflare beacon (row 8) states it uses no client-side state.
 
 ## Sources
 

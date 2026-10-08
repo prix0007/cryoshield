@@ -1,6 +1,7 @@
 {
-  "$comment": "Device-storage inventory (add-privacy-and-compliance, spec legal-pages 'Device-storage inventory'). Single source for the table on /cookies. Enforced by verify-build (no storage API in any shipped bundle unless listed under 'apis') and by e2e/specs/08-legal.spec.ts (per-route sweep). Audit 2026-10-03: no source file or bundled dependency in the shipped build references document.cookie, localStorage, sessionStorage, indexedDB, caches, serviceWorker, cookieStore or navigator.storage.",
-  "apis": [],
+  "$comment": "Device-storage inventory (add-privacy-and-compliance, spec legal-pages 'Device-storage inventory'; add-theme-switch D5). Single source for the tables on /cookies. 'routes' lists what each page stores on its own: nothing. 'preferences' lists what is stored only when the visitor chooses it: the theme. Enforced by verify-build (no storage API in any shipped bundle unless listed under 'apis', and a listed API only in the asset named by 'apiFiles') and by e2e/specs/08-legal.spec.ts (per-route sweep, before and after choosing a theme). Audit 2026-10-08: the only storage access in the shipped build is localStorage in src/theme/theme-init.js (assets/theme-<hash>.js); no document.cookie, sessionStorage, indexedDB, caches, serviceWorker, cookieStore or navigator.storage.",
+  "apis": ["localStorage"],
+  "apiFiles": { "localStorage": "theme" },
   "routes": {
     "/": { "cookies": [], "localStorage": [], "sessionStorage": [], "indexedDB": [], "cacheStorage": [], "serviceWorkers": [] },
     "/app/": { "cookies": [], "localStorage": [], "sessionStorage": [], "indexedDB": [], "cacheStorage": [], "serviceWorkers": [] },
@@ -8,6 +9,17 @@
     "/terms": { "cookies": [], "localStorage": [], "sessionStorage": [], "indexedDB": [], "cacheStorage": [], "serviceWorkers": [] },
     "/cookies": { "cookies": [], "localStorage": [], "sessionStorage": [], "indexedDB": [], "cacheStorage": [], "serviceWorkers": [] }
   },
+  "preferences": [
+    {
+      "key": "cryoshield-theme",
+      "storage": "localStorage",
+      "values": ["light", "dark"],
+      "where": "Every page (one key for the whole site)",
+      "purpose": "Remembers the theme you picked in the Theme menu, so every page opens in it.",
+      "saved": "Only when you choose Light or Dark. Choosing System deletes it.",
+      "lifetime": "Until you choose System or clear this site's data in your browser. It holds no identifier and is never sent anywhere."
+    }
+  ],
   "thirdParty": [
     {
       "who": "Cloudflare Web Analytics beacon",

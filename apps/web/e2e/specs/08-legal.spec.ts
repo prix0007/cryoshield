@@ -61,6 +61,20 @@ test('device storage on every route equals the published inventory (create + unl
   }
 });
 
+test('choosing a theme stores only the listed preference on every route, and System removes it (add-theme-switch)', async ({ page }) => {
+  const prefs = (JSON.parse(readFileSync(new URL('../../legal/storage-inventory.json', import.meta.url), 'utf8')) as { preferences: { key: string; values: string[] }[] }).preferences;
+  for (const route of Object.keys(inventory.routes)) {
+    await page.goto(route);
+    await page.getByRole('navigation', { name: 'Site' }).getByRole('combobox', { name: 'Theme' }).selectOption('dark');
+    const s = await sweep(page);
+    expect(s, `${route} after Dark`).toEqual({ ...inventory.routes[route], localStorage: prefs.map((p) => p.key) });
+    expect(await page.evaluate((k) => localStorage.getItem(k), prefs[0]!.key)).toBe('dark');
+    expect(prefs[0]!.values).toContain('dark');
+    await page.getByRole('navigation', { name: 'Site' }).getByRole('combobox', { name: 'Theme' }).selectOption('system');
+    expect(await sweep(page), `${route} after System`).toEqual(inventory.routes[route]);
+  }
+});
+
 test('the published /cookies table matches the inventory file', async ({ page }) => {
   await page.goto('/cookies');
   const rows = await page.locator('[data-testid="storage-inventory"] tbody tr').evaluateAll((trs) =>

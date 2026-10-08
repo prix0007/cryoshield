@@ -14,3 +14,20 @@ export const STORAGE_APIS = ['localStorage', 'sessionStorage', 'indexedDB', 'doc
 export function unlistedStorageApis(js, inventory) {
   return STORAGE_APIS.filter((api) => js.includes(api) && !inventory.apis.includes(api));
 }
+
+/**
+ * add-theme-switch D5: a listed storage API may appear only in the shipped asset its `apiFiles` entry names
+ * (`assets/<prefix>-<hash>.js`), so the theme exception can't cover storage use anywhere else.
+ * `files` maps dist-relative paths to their text.
+ */
+export function storageApiOutsideAllowedFiles(files, inventory) {
+  const out = [];
+  for (const api of inventory.apis) {
+    const prefix = inventory.apiFiles?.[api];
+    const allowed = prefix ? new RegExp(`^assets/${prefix}-[0-9a-f]{8}\\.js$`) : null;
+    for (const [name, text] of Object.entries(files)) {
+      if (text.includes(api) && !(allowed && allowed.test(name))) out.push(`${name} uses ${api} (allowed only in ${prefix ? `assets/${prefix}-*.js` : 'no file'})`);
+    }
+  }
+  return out;
+}

@@ -11,8 +11,8 @@ import { join } from 'node:path';
 export const LEGAL_NOTE =
   '<p class="legal-note">Written for an open-source project; not legal advice. Suggestions welcome via <a href="https://github.com/prix0007/cryoshield/issues" rel="noopener noreferrer">GitHub</a>.</p>';
 
-/** The only raw lines the renderer emits: build-time markers, replaced after rendering (legal note, inventory table). */
-export const LEGAL_MARKERS: ReadonlySet<string> = new Set(['<!--legal-note-->', '<!--storage-inventory-->']);
+/** The only raw lines the renderer emits: build-time markers, replaced after rendering (legal note, inventory tables). */
+export const LEGAL_MARKERS: ReadonlySet<string> = new Set(['<!--legal-note-->', '<!--storage-inventory-->', '<!--storage-preferences-->']);
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
@@ -126,9 +126,31 @@ export function renderMarkdown(md: string): string {
   return out.join('\n');
 }
 
+export interface StoragePreference {
+  key: string;
+  storage: string;
+  values: string[];
+  where: string;
+  purpose: string;
+  saved: string;
+  lifetime: string;
+}
+
 export interface StorageInventory {
   routes: Record<string, { cookies: string[]; localStorage: string[]; sessionStorage: string[]; indexedDB: string[]; cacheStorage: string[]; serviceWorkers: string[] }>;
+  preferences?: StoragePreference[];
   thirdParty: { who: string; route: string; entries: string[]; note: string }[];
+}
+
+/** add-theme-switch D5: the preferences stored only when the visitor chooses them (the theme), on /cookies. */
+export function preferencesTable(inv: StorageInventory): string {
+  const rows = (inv.preferences ?? [])
+    .map(
+      (p) =>
+        `<tr><th scope="row"><code>${esc(p.key)}</code></th><td>${esc(p.storage)}</td><td>${p.values.map((v) => `<code>${esc(v)}</code>`).join(' or ')}</td><td>${esc(p.where)}. ${esc(p.purpose)}</td><td>${esc(p.saved)}</td><td>${esc(p.lifetime)}</td></tr>`,
+    )
+    .join('');
+  return `<div class="table-wrap"><table class="inventory" data-testid="storage-preferences"><thead><tr><th scope="col">Name</th><th scope="col">Where</th><th scope="col">Value</th><th scope="col">What it is for</th><th scope="col">When it is saved</th><th scope="col">How long it stays</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
 /** The device-storage inventory table on /cookies, generated from legal/storage-inventory.json (single source). */
@@ -149,9 +171,9 @@ export function inventoryTable(inv: StorageInventory): string {
 export function renderLegalPage(root: string, name: string): string {
   const md = readFileSync(join(root, 'legal', `${name}.md`), 'utf8');
   let html = renderMarkdown(md).replace('<!--legal-note-->', LEGAL_NOTE);
-  if (html.includes('<!--storage-inventory-->')) {
+  if (html.includes('<!--storage-inventory-->') || html.includes('<!--storage-preferences-->')) {
     const inv = JSON.parse(readFileSync(join(root, 'legal', 'storage-inventory.json'), 'utf8')) as StorageInventory;
-    html = html.replace('<!--storage-inventory-->', inventoryTable(inv));
+    html = html.replace('<!--storage-inventory-->', () => inventoryTable(inv)).replace('<!--storage-preferences-->', () => preferencesTable(inv));
   }
   return html;
 }

@@ -20,7 +20,7 @@ import { readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { gzipSync } from 'node:zlib';
 import { checkOrigins } from './origins-check.mjs';
-import { checkNoPlaceholders, unlistedStorageApis } from './legal-check.mjs';
+import { checkNoPlaceholders, storageApiOutsideAllowedFiles, unlistedStorageApis } from './legal-check.mjs';
 import { checkSecurityTxt } from './securitytxt-check.mjs';
 import { analyticsLeaks, landingCspDiff, policyDrift } from './analytics-check.mjs';
 import { donationViolations, validateDonation } from './donation-check.mjs';
@@ -182,7 +182,16 @@ if (leftovers.length) fail(`[${label}] ${leftovers.join('; ')}`);
 // Device-storage inventory (spec legal-pages): no shipped bundle may reference a storage API not listed.
 const unlisted = unlistedStorageApis(js, storageInventory);
 if (unlisted.length) fail(`[${label}] bundle uses ${unlisted.join(', ')}, which legal/storage-inventory.json (the /cookies table) does not list`);
-console.log(`ok   [${label}] legal pages present; no unlisted device-storage API in any bundle`);
+// add-theme-switch D5: a listed API only in its allowed asset (localStorage only in the theme script).
+const jsFiles = Object.fromEntries(all.filter((f) => f.endsWith('.js')).map((f) => [relative(dist, f), readFileSync(f, 'utf8')]));
+const misplaced = storageApiOutsideAllowedFiles(jsFiles, storageInventory);
+if (misplaced.length) fail(`[${label}] ${misplaced.join('; ')}`);
+// Every page loads the theme script (it applies the saved theme before the first paint).
+for (const page of pages) {
+  const themeTags = readFileSync(page, 'utf8').match(/<script src="\/assets\/theme-[0-9a-f]{8}\.js"><\/script>/g) ?? [];
+  if (themeTags.length !== 1) fail(`[${label}] ${relative(dist, page)}: expected exactly one theme script, found ${themeTags.length}`);
+}
+console.log(`ok   [${label}] legal pages present; no unlisted device-storage API in any bundle; localStorage only in the theme script`);
 // add-privacy-and-compliance 5.1: RFC 9116 security.txt, Expires in the future and <= 365 days ahead.
 const stxt = join(dist, '.well-known', 'security.txt');
 if (!all.includes(stxt)) fail(`[${label}] missing .well-known/security.txt`);
@@ -289,7 +298,11 @@ const gz = (f) => gzipSync(readFileSync(join(dist, f)), { level: 9 }).length;
 // the one shared progress view (bar, step states, reassurance, live text) must render before the lazy write stack
 // loads, plus the unlock phases (unlock, Reload, Check another key) and the delayed loaders. Headroom before: 35 B;
 // after: 211 B.
-const APP_BASELINE = 194_689 - 12 * 1024 + 1024 + 1024;
+// add-theme-switch (2026-10-08, founder request): +1 KB, deliberately. Measured gzip (e2e): 204,703 B -> 205,461 B
+// (+758 B): the theme script every page loads before first paint (assets/theme-*.js, minified, 489 B) plus the app's
+// Theme menu markup. It must be initial: it applies the saved theme before the first paint. Headroom before: 211 B;
+// after: 492 B.
+const APP_BASELINE = 194_689 - 12 * 1024 + 1024 + 1024 + 1024;
 const APP_ALLOWANCE = 20 * KB;
 const WRITE_STACK_MARKERS = ['eth_sendUserOperation', 'pimlico_getUserOperationGasPrice', 'WalletConfigError'];
 // vault-list-labels-archive 3.1 (design D5): the vault list, the Edit vault sheet, Archive and clear and the dates
@@ -325,10 +338,11 @@ function appBudget(label) {
   console.log(`ok   [${label}] the vault list and its dates are one lazy /app chunk (${[...menuChunks][0]})`);
   if (bytes > APP_BASELINE + APP_ALLOWANCE) fail(`[${label}] /app initial JS ${bytes} B exceeds baseline + 20 KB (${APP_BASELINE + APP_ALLOWANCE} B)`);
   // The landing bundle stays unchanged: /app's Motion for React never shares a chunk with the landing page
-  // (vite-plugins/app-motion-isolation.ts). Only Vite's tiny preload helper is common to both.
+  // (vite-plugins/app-motion-isolation.ts). Only Vite's tiny preload helper and the theme script (add-theme-switch D1,
+  // a dependency-free classic script every page loads) are common to both.
   const land = splitGraph('index.html');
   const landing = new Set([...land.initial, ...land.lazy]);
-  const shared = [...initial, ...lazy].filter((f) => landing.has(f) && !/\/preload-helper-[\w-]+\.js$/.test(f));
+  const shared = [...initial, ...lazy].filter((f) => landing.has(f) && !/\/preload-helper-[\w-]+\.js$/.test(f) && !/^assets\/theme-[0-9a-f]{8}\.js$/.test(f));
   if (shared.length) fail(`[${label}] /app shares chunks with the landing page: ${shared.join(', ')}`);
   console.log(`ok   [${label}] /app initial JS within budget`);
 }
