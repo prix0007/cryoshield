@@ -23,6 +23,22 @@ function table(heading: string): string[][] {
   return rows.slice(2);
 }
 
+/** launch-op-mainnet 4.8: what is wrong with any OP Mainnet claim in these table rows ([name, firmware/platform, status, notes]). */
+function mainnetClaimProblems(rows: string[][], now: number): string[] {
+  const FLOWS = /\b(create|unlock|edit|add(ing)? (a )?key|recovery tool)\b/i;
+  const out: string[] = [];
+  for (const r of rows) {
+    if (!/OP Mainnet/i.test(r.join(' | '))) continue;
+    const status = (r[2] ?? '').replace(/\*\*/g, '');
+    if (!status.startsWith('Tested')) out.push(`${r[0]}: names OP Mainnet but is not "Tested"`);
+    const date = status.match(/\d{4}-\d{2}-\d{2}/)?.[0];
+    if (!date) out.push(`${r[0]}: an OP Mainnet claim needs a date`);
+    else if (Date.parse(`${date}T00:00:00Z`) > now + 14 * 3600_000) out.push(`${r[0]}: the OP Mainnet test date ${date} is in the future`);
+    if (!(status.match(/\(([^)]*)\)/)?.[1] ?? '').match(FLOWS)) out.push(`${r[0]}: an OP Mainnet claim must list the flows tested`);
+  }
+  return out;
+}
+
 describe('docs/supported-devices.md content', () => {
   it('has a "Last reviewed" date that is a real date and not in the future', () => {
     const m = md.match(/\*\*Last reviewed:\*\*\s*(\d{4}-\d{2}-\d{2})/);
@@ -67,6 +83,20 @@ describe('docs/supported-devices.md content', () => {
     expect(tested[0]![3]).toMatch(/before\*\* credProtect level 3/);
     expect(tested[0]![3]).toMatch(/not yet confirmed/);
     for (const r of table('Browsers')) expect(r[2]).not.toMatch(/Tested/);
+  });
+
+  // launch-op-mainnet 4.8 (spec supported-devices "Mainnet test record"): a row may name OP Mainnet only as a dated,
+  // past "Tested" result that lists the flows tested. The YubiKey row changes only after the launch test (task 7.9).
+  it('a row naming OP Mainnet is "Tested", dated not in the future, and lists the flows tested', () => {
+    const now = Date.now();
+    expect(mainnetClaimProblems(table('Keys'), now)).toEqual([]);
+    expect(mainnetClaimProblems(table('Browsers'), now)).toEqual([]);
+    // The guard itself, on rows that would be dishonest:
+    const row = (status: string, notes = '') => [['YubiKey 5 series', '5.2 or newer', status, notes]];
+    expect(mainnetClaimProblems(row('**Expected to work** on OP Mainnet'), now)).toEqual(['YubiKey 5 series: names OP Mainnet but is not "Tested"', 'YubiKey 5 series: an OP Mainnet claim needs a date', 'YubiKey 5 series: an OP Mainnet claim must list the flows tested']);
+    expect(mainnetClaimProblems(row('**Tested on OP Mainnet (create, unlock, edit, add key, recovery tool)**, 2999-01-01'), now)).toEqual(['YubiKey 5 series: the OP Mainnet test date 2999-01-01 is in the future']);
+    expect(mainnetClaimProblems(row('**Tested**, 2026-10-03', 'Works on OP Mainnet.'), now)).toEqual(['YubiKey 5 series: an OP Mainnet claim must list the flows tested']);
+    expect(mainnetClaimProblems(row('**Tested on OP Mainnet (create, unlock, edit, add key, recovery tool)**, 2026-10-09'), now)).toEqual([]);
   });
 
   it('quotes the app’s real refusal messages verbatim (stays in sync with the UI)', () => {
