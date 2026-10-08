@@ -86,7 +86,7 @@ test('keyboard-only create and unlock; every screen passes axe', async ({ page }
   await audit(page, 'create/done');
   await press('Continue');
   await audit(page, 'vault');
-  await press('Vault details');
+  await press('Details & backup file');
   await audit(page, 'details');
   await press('Close');
   await press('Lock');
@@ -210,6 +210,10 @@ test('the vault editor (Save + Cancel stacked on a phone) never hides the focuse
     { label: 'Two', secret: 'b' },
   ]);
   await page.getByRole('button', { name: 'Continue' }).click();
+  // vault-view-action-layout D2: the open vault (Edit secrets alone in the bar, then Manage vault and navigation).
+  await settled(page);
+  await page.locator('#vault-title').focus();
+  await tabCheckingFocus(page, 10);
   await page.getByRole('button', { name: 'Edit secrets' }).click();
   await expect(page.getByRole('heading', { name: 'Edit secrets' })).toBeFocused();
   await settled(page);

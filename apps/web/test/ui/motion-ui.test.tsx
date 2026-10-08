@@ -130,7 +130,7 @@ describe('security behaviour is never held back by an exit animation', () => {
 
   it('returning to the vault list (Close, Cancel) focuses the vault heading after the transition', async () => {
     await unlocked();
-    fireEvent.click(screen.getByRole('button', { name: 'Vault details' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Details & backup file' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Close' }));
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Your vault', level: 1 })).toHaveFocus());
     fireEvent.click(screen.getByRole('button', { name: 'Edit secrets' }));

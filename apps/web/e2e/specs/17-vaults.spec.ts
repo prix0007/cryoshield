@@ -174,7 +174,7 @@ test('Edit vault, keyboard only: rename and archive in one update; then the arch
   await unlock(page, keys, 0);
   await expect(page.getByRole('heading', { name: NAME, level: 1 })).toBeVisible({ timeout: 30_000 });
 
-  await press(page, 'Edit vault');
+  await press(page, 'Rename or archive');
   await expect(page.getByRole('heading', { name: 'Edit vault' })).toBeFocused({ timeout: 15_000 });
   await audit(page, 'edit vault');
   await page.keyboard.press('Tab');
@@ -213,7 +213,7 @@ test('Archive and clear: confirmation required, one update, the blob keeps its l
   const vault = vaultIdOf(arweave);
   await unlock(page, keys, 0);
   await expect(page.getByRole('heading', { name: NAME, level: 1 })).toBeVisible({ timeout: 30_000 });
-  await press(page, 'Edit vault');
+  await press(page, 'Rename or archive');
   await press(page, 'Archive and clear…');
   const clear = page.getByRole('button', { name: 'Archive and clear', exact: true });
   await expect(clear).toBeDisabled();

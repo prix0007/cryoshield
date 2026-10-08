@@ -53,12 +53,13 @@ export function GlobalNav() {
   );
 }
 
-export function SubNav({ name }: { name: string }) {
+export function SubNav({ name, action }: { name: string; action?: ReactNode }) {
   return (
     <div className="sub-nav">
       <div className="sub-nav-inner">
         <p className="sub-nav-name">{name}</p>
         <p className="chip">Testnet</p>
+        {action}
       </div>
     </div>
   );

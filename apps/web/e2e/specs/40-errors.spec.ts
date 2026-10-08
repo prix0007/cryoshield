@@ -83,8 +83,8 @@ test('mirror failure is non-blocking with Retry; the next unlock self-heals; dow
   await unlockWith(page, keys, 0);
   await expect(page.getByRole('heading', { name: 'Seed' })).toBeVisible();
 
-  // Vault details: download is byte-identical to the mirrored (on-chain) blob.
-  await page.getByRole('button', { name: 'Vault details' }).click();
+  // Details & backup file: download is byte-identical to the mirrored (on-chain) blob.
+  await page.getByRole('button', { name: 'Details & backup file' }).click();
   const vaultId = (await page.getByTestId('vault-id').textContent())!;
   const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Download encrypted backup file' }).click()]);
   expect(download.suggestedFilename()).toBe(`cryoshield-${vaultId.slice(2, 10)}.cryo`);
