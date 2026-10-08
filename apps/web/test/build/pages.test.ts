@@ -150,4 +150,12 @@ describe('search metadata in the built pages', () => {
     expect(meta(app, 'meta[name="robots"]')).toEqual(['noindex']);
     expect(app.querySelector('link[rel="canonical"]')).toBeNull();
   });
+
+  it('llms.txt is in the build output, lists the seven canonical URLs and never /app/ (add-llms-txt)', () => {
+    const t = html('llms.txt');
+    expect(t.startsWith('# CryoShield\n')).toBe(true);
+    const links = [...t.matchAll(/^- \[[^\]]+\]\((https:\/\/cryoshield\.app\/[^)]*)\): /gm)].map((m) => m[1]);
+    expect(links.slice(0, PUBLIC_PAGES.length)).toEqual(PUBLIC_PAGES.map((p) => `${SITE}${p.path}`));
+    expect(t).not.toContain('/app');
+  });
 });

@@ -1,0 +1,21 @@
+/** The landing page's honesty denylist (spec landing-page "Honest landing content"), shared by every test of public copy. */
+export const BANNED: readonly RegExp[] = [
+  /\bis audited\b/i,
+  /\baudited by\b/i,
+  /\bfully audited\b/i,
+  /\bmainnet\b/i,
+  /military[- ]grade/i,
+  /bank[- ]grade/i,
+  /unhackable/i,
+  /100% (secure|safe)/i,
+  /quantum[- ](proof|safe|resistant)/i,
+  /\bL1 (hash )?anchor/i,
+  /\bguarantee/i,
+  /\bIPFS\b|\bENS\b/,
+  /recover(y)? (after|without) (losing )?(all|every) keys?/i,
+  /guaranteed/i,
+  /\bforever\b/i,
+  /unbreakable/i,
+  /never lose/i,
+  /(stays|always|will (always )?be) available/i,
+];

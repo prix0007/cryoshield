@@ -12,7 +12,7 @@ export default defineConfig(({ mode }) => {
   return {
     // Multi-page: unknown paths are 404 (no SPA fallback), as in production.
     appType: 'mpa',
-    plugins: [appMotionIsolation(`${root}/src/ui/`), react(), legalPagesPlugin(root), donationPlugin(root), seoPlugin(), cryoshield(env, process.env.CRYOSHIELD_CONTRACTS_DIR ?? defaultContractsDir(root), mode, root)],
+    plugins: [appMotionIsolation(`${root}/src/ui/`), react(), legalPagesPlugin(root), donationPlugin(root), seoPlugin(root), cryoshield(env, process.env.CRYOSHIELD_CONTRACTS_DIR ?? defaultContractsDir(root), mode, root)],
     // Always build against the vault-crypto source (never a stale dist/).
     resolve: { alias: [{ find: /^@cryoshield\/vault-crypto$/, replacement: `${root}/../../packages/vault-crypto/src/index.ts` }] },
     build: {

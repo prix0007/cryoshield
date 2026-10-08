@@ -45,13 +45,17 @@ test('the FAQ opens by keyboard and the FAQ section passes axe', async ({ page }
   expect(r.violations.map((v) => `${v.id} ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`)).toEqual([]);
 });
 
-test('robots.txt and sitemap.xml are served; /app/ is noindex', async ({ page, request }) => {
+test('robots.txt, sitemap.xml and llms.txt are served; /app/ is noindex', async ({ page, request }) => {
   const robots = await request.get('/robots.txt');
   expect(robots.status()).toBe(200);
   expect(await robots.text()).toContain('Disallow: /app/');
   const sitemap = await request.get('/sitemap.xml');
   expect(sitemap.status()).toBe(200);
   expect(await sitemap.text()).toContain('<loc>https://cryoshield.app/</loc>');
+  const llms = await request.get('/llms.txt'); // add-llms-txt
+  expect(llms.status()).toBe(200);
+  expect(llms.headers()['content-type']).toMatch(/^text\/plain/);
+  expect(await llms.text()).toMatch(/^# CryoShield\n/);
   const og = await request.get('/og-image.png');
   expect(og.status()).toBe(200);
   await page.goto('/app/');

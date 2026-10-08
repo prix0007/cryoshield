@@ -8,7 +8,11 @@
  *  - The landing page's FAQPage JSON-LD is generated from the visible FAQ markup (D5), so the two can't drift. The
  *    block is a non-executed data block that scripts/csp-check.mjs `stripJsonLd` accepts (D6): "<" is escaped.
  *  - /app/ must stay noindex (D10).
+ *  - add-llms-txt: llms.txt (llmstxt.org) is generated from the public pages' source titles and descriptions (D1), so
+ *    it follows the pages; its only hand-written prose is the status line, which restates the preview banner (D2).
  */
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { Plugin } from 'vite';
 
 export const SITE = 'https://cryoshield.app';
@@ -177,7 +181,49 @@ export function sitemapXml(): string {
   ].join('\n');
 }
 
-export function seoPlugin(): Plugin {
+export type PageMeta = { path: string; title: string; description: string };
+
+/** Each public page's title and description, read from its source HTML under `root`, in sitemap order. */
+export function publicPageMetas(root: string): PageMeta[] {
+  return PUBLIC_PAGES.map((p) => ({ path: p.path, ...pageMeta(readFileSync(join(root, p.html), 'utf8'), p.html) }));
+}
+
+/** What the preview banner says; changes with it at the mainnet launch. */
+const LLMS_STATUS =
+  'CryoShield is a free, open-source project with no company behind it. It is a testnet preview: vaults are stored on OP Sepolia, a test network, with an extra copy on Arweave when that upload succeeds. Test networks can be reset, and CryoShield has not been independently audited yet.';
+
+/** llms.txt (https://llmstxt.org): H1, summary, status, then link sections. The landing page (`/`) gives the summary. */
+export function llmsTxt(pages: readonly PageMeta[]): string {
+  const landing = pages.find((p) => p.path === '/');
+  if (!landing) throw new Error('[seo] llms.txt: no landing page meta');
+  const link = (title: string, url: string, note: string) => `- [${title}](${url}): ${note}`;
+  return [
+    '# CryoShield',
+    '',
+    `> ${landing.description}`,
+    '',
+    LLMS_STATUS,
+    '',
+    '## Pages',
+    '',
+    ...pages.map((p) => link(p.title, `${SITE}${p.path}`, p.description)),
+    '',
+    '## Source and specification',
+    '',
+    link('Source code', REPO, 'the web app, the contracts and the recovery tool, all open source'),
+    link('Vault format v1', `${REPO}/blob/main/docs/spec/vault-format-v1.md`, 'the published vault format, with cross-implementation test vectors'),
+    link('System design', `${REPO}/blob/main/docs/system-design.md`, 'the architecture: client-side encryption, on-chain storage, the Arweave copy'),
+    link('Recovery tool', `${REPO}/tree/main/tools/recover`, 'an open-source desktop tool that opens a vault with a security key from public data, without CryoShield'),
+    '',
+    '## Optional',
+    '',
+    link('security.txt', `${SITE}/.well-known/security.txt`, 'how to report a vulnerability'),
+    link('Sitemap', `${SITE}/sitemap.xml`, 'the public pages'),
+    '',
+  ].join('\n');
+}
+
+export function seoPlugin(root: string): Plugin {
   return {
     name: 'cryoshield-seo',
     transformIndexHtml: {
@@ -191,6 +237,7 @@ export function seoPlugin(): Plugin {
     },
     generateBundle() {
       this.emitFile({ type: 'asset', fileName: 'sitemap.xml', source: sitemapXml() });
+      this.emitFile({ type: 'asset', fileName: 'llms.txt', source: llmsTxt(publicPageMetas(root)) });
     },
   };
 }

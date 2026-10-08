@@ -231,6 +231,7 @@ describe('served by the container', () => {
     ['/site.webmanifest', /^application\/manifest\+json$/],
     // improve-landing-seo: crawl files and the share image.
     ['/robots.txt', /^text\/plain$/],
+    ['/llms.txt', /^text\/plain$/], // add-llms-txt
     ['/sitemap.xml', /^(application|text)\/xml$/],
     ['/og-image.png', /^image\/png$/],
   ])('%s is served with the right content type and every security header (add-brand-icon 1.2)', async (p, type) => {

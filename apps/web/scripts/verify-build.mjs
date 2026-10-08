@@ -198,6 +198,16 @@ if (!/^Disallow: \/app\/$/m.test(robots) || /^Disallow:\s*\/\s*$/m.test(robots) 
 if (readFileSync(join(dist, 'sitemap.xml'), 'utf8').includes('/app')) fail(`[${label}] sitemap.xml lists /app`);
 if (!/<meta name="robots" content="noindex"/.test(readFileSync(join(dist, 'app', 'index.html'), 'utf8'))) fail(`[${label}] app/index.html is not noindex`);
 console.log(`ok   [${label}] robots.txt, sitemap.xml and og-image.png present; /app/ noindex`);
+// add-llms-txt: llms.txt present, starts with the H1, links every sitemap URL, never mentions /app/.
+const llmsPath = join(dist, 'llms.txt');
+if (!all.includes(llmsPath)) fail(`[${label}] missing llms.txt`);
+const llms = readFileSync(llmsPath, 'utf8');
+if (!llms.startsWith('# CryoShield\n')) fail(`[${label}] llms.txt must start with "# CryoShield"`);
+if (llms.includes('/app')) fail(`[${label}] llms.txt mentions /app`);
+for (const [, loc] of readFileSync(join(dist, 'sitemap.xml'), 'utf8').matchAll(/<loc>([^<]+)<\/loc>/g)) {
+  if (!llms.includes(`](${loc})`)) fail(`[${label}] llms.txt does not link ${loc}`);
+}
+console.log(`ok   [${label}] llms.txt present and links every public page`);
 if (!readFileSync(join(dist, '_headers'), 'utf8').includes("frame-ancestors 'none'")) fail('_headers lacks frame-ancestors');
 console.log(`ok   [${label}] strict CSP in ${pages.length} pages (app CSP everywhere but the landing document) and _headers`);
 landingBudget(label);
