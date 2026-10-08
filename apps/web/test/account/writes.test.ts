@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { concat, decodeFunctionData, encodeErrorResult, encodeFunctionResult, getAddress, keccak256, pad, type Hex } from 'viem';
 import { config } from 'virtual:cryoshield-config';
-import { createVaultOnChain, registryError, updateVaultOnChain, WriteError } from '../../src/account/writes';
+import { assertCurrent, createVaultOnChain, registryError, updateVaultOnChain, WriteError } from '../../src/account/writes';
 import { deriveVaultIdV2, registryV2Abi } from '../../src/chain/contracts';
 
 const owner = '0x00000000000000000000000000000000000000aa' as Hex;
@@ -301,8 +301,9 @@ describe('every update starts from the current blob (STALE)', () => {
   it('assertCurrent passes on the same blob and throws STALE on another blob or none', async () => {
     const { assertCurrent } = await import('../../src/account/writes');
     await expect(assertCurrent({ reader: reader(base), client: okClient }, { vaultId, base, owner })).resolves.toBe(5n);
-    await expect(assertCurrent({ reader: reader(new Uint8Array([7, 7, 8])), client: okClient }, { vaultId, base, owner })).rejects.toMatchObject({ code: 'STALE' });
-    await expect(assertCurrent({ reader: reader(null), client: okClient }, { vaultId, base, owner })).rejects.toMatchObject({ code: 'STALE' });
+    const wait = async () => undefined; // lag re-reads (web-review-followups 3) without real delays
+    await expect(assertCurrent({ reader: reader(new Uint8Array([7, 7, 8])), client: okClient, wait }, { vaultId, base, owner })).rejects.toMatchObject({ code: 'STALE' });
+    await expect(assertCurrent({ reader: reader(null), client: okClient, wait }, { vaultId, base, owner })).rejects.toMatchObject({ code: 'STALE' });
   });
 
   it('reads EntryPoint.getNonce(owner, 0) BEFORE the vault, and is STALE when the nonce moved since the session pinned it', async () => {
@@ -353,10 +354,11 @@ describe('every update starts from the current blob (STALE)', () => {
     const client = { getChainId: async () => 31337, call: vi.fn(async () => ({ data: '0x' })), readContract: vi.fn(async () => 2n) };
     const err = await addKeyOnChain(
       { account, vaultId, blob, base, newLocator: ('0x' + '44'.repeat(32)) as Hex, newPublicKey: ('0x' + 'aa'.repeat(64)) as Hex, keyCountBefore: 2 },
-      { client: client as never, sponsor: sponsor as never, reader: seq(null), onSign },
+      { client: client as never, sponsor: sponsor as never, reader: seq(null), onSign, wait: async () => undefined },
     ).catch((e) => e);
     expect(err.code).toBe('STALE');
-    expect(client.readContract.mock.calls.map((c) => (c as unknown as [{ functionName: string }])[0].functionName)).toEqual(['getNonce']); // never nextOwnerIndex
+    // Only nonce reads (the first and the lag re-reads), never nextOwnerIndex.
+    expect(new Set(client.readContract.mock.calls.map((c) => (c as unknown as [{ functionName: string }])[0].functionName))).toEqual(new Set(['getNonce']));
     expect(onSign).not.toHaveBeenCalled();
     expect(sponsor.send).not.toHaveBeenCalled();
   });
@@ -410,5 +412,42 @@ describe('testnet save budget (D10)', () => {
   ])('nonce %i leaves about %i free saves', async (nonce, left) => {
     const { savesLeft } = await import('../../src/account/budget');
     expect(savesLeft(nonce)).toBe(left);
+  });
+});
+
+describe('web-review-followups 3: assertCurrent tolerates a lagging RPC, and still fails safe', () => {
+  const base = new Uint8Array([1, 2, 3]);
+  const vid = ('0x' + '33'.repeat(32)) as Hex;
+  /** Answers from a list, one per read (the last repeats). */
+  const seq = (nonces: bigint[], blobs: Uint8Array[]) => {
+    let n = 0;
+    let b = 0;
+    return {
+      client: { readContract: vi.fn(async () => nonces[Math.min(n++, nonces.length - 1)]!) },
+      reader: { getVault: vi.fn(async (vaultId: Hex) => ({ vaultId, owner, blob: blobs[Math.min(b++, blobs.length - 1)]!, version: 1, registry: 'v2' as const })) },
+      wait: vi.fn(async () => undefined),
+    };
+  };
+
+  it('a pinned nonce the RPC has not caught up with yet: re-read, then pass with the pinned value', async () => {
+    const d = seq([5n, 5n, 6n], [base]);
+    expect(await assertCurrent(d as never, { vaultId: vid, base, owner, nonce: 6n })).toBe(6n);
+    expect(d.wait).toHaveBeenCalledTimes(2);
+  });
+
+  it('a blob the RPC has not caught up with yet: re-read, then pass', async () => {
+    const d = seq([6n], [new Uint8Array([9]), base]);
+    expect(await assertCurrent(d as never, { vaultId: vid, base, owner, nonce: 6n })).toBe(6n);
+  });
+
+  it('still different after the re-reads: STALE (at most 3 reads)', async () => {
+    const d = seq([6n], [new Uint8Array([9])]);
+    await expect(assertCurrent(d as never, { vaultId: vid, base, owner, nonce: 6n })).rejects.toMatchObject({ code: 'STALE' });
+    expect(d.reader.getVault).toHaveBeenCalledTimes(3);
+  });
+
+  it('a nonce ABOVE the pin is a write from elsewhere: STALE, never adopted here', async () => {
+    const d = seq([7n], [base]);
+    await expect(assertCurrent(d as never, { vaultId: vid, base, owner, nonce: 6n })).rejects.toMatchObject({ code: 'STALE' });
   });
 });

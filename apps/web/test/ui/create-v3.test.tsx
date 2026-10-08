@@ -18,6 +18,8 @@ beforeEach(async () => {
   vi.doMock('virtual:cryoshield-config', () => ({
     config: Object.freeze({ ...base, registries: [{ version: 'v3', abi: 2, address: A3, deployBlock: 12 }, ...base.registries] }),
   }));
+  // The open pin (web-review-followups D3) needs a chain these fakes don't model; stale-repin.test.tsx covers it.
+  vi.spyOn(await import('../../src/account/budget'), 'pinIfCurrent').mockResolvedValue(0n);
   vi.doMock('../../src/account/stack', async () => ({
     newVaultAccount: async () => ({ getAddress: async () => OWNER }),
     createVaultOnChain: async ({ build }: { build: (id: Hex) => Promise<{ blob: Uint8Array; locators: Hex[] }> }) => {
@@ -67,7 +69,7 @@ describe('a vault created with v3 configured', () => {
     await u.click(await screen.findByRole('button', { name: 'Continue' }));
     // Opened and writable: the edit actions are offered, and no read-only notice.
     await u.click(await screen.findByRole('button', { name: 'Edit secrets' }));
-    expect(screen.queryByText(/earlier test version/)).toBeNull();
+    expect(screen.queryByText(/older, read-only format/)).toBeNull();
     await u.click(await screen.findByRole('button', { name: 'Save' }));
     await vi.waitFor(() => expect(edit).toHaveBeenCalled());
     expect(edit.mock.calls[0]![1]).toMatchObject({ registry: 'v3', vaultId: VAULT_ID });

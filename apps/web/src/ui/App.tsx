@@ -10,6 +10,7 @@ import { ActionBar, AppFooter, GlobalNav, SubNav, useFocusClearOfActionBar } fro
 import { unlockMessage, unlockSessions, UnlockFlow, type Unlocked } from './UnlockFlow';
 import { UnlockError } from '../chain/unlock';
 import { keccak256 } from 'viem';
+import { bytesEqual } from '../lib/bytes';
 import { config, isOlder, WRITE_REGISTRY } from '../config';
 import { useAutoLock } from './useAutoLock';
 import { VaultView } from './VaultView';
@@ -40,7 +41,7 @@ export function App({ services }: { services?: Services }) {
 function Shell() {
   const svc = useServices();
   const [screen, setScreen] = useState<Screen>({ name: 'home' });
-  // vault-list-labels-archive D7: the ONLY place decrypted vaults live (the open one, the list, older test vaults).
+  // vault-list-labels-archive D7: the ONLY place decrypted vaults live (the open one, the list, read-only older vaults).
   // Lock, idle, page hide and 60 s hidden replace it with [] in one assignment.
   const [vaults, setVaults] = useState<VaultSession[]>([]);
   const [openKey, setOpenKey] = useState<string | null>(null);
@@ -97,13 +98,38 @@ function Shell() {
   // D6: one more key ceremony; its vaults are merged by vault ID, never duplicated, and nothing is stored.
   // D8: the nonce read when a vault opens; a later write (which sets its own) is never overwritten.
   const pinNonce = useCallback(
-    (vaultId: string, n: bigint) => setVaults((vs) => vs.map((v) => (!isOlder(v.registry) && v.vaultId === vaultId && v.nonce === undefined ? { ...v, nonce: n } : v))),
+    // The open pin (D3): only for the session whose blob was checked, and only while it has none.
+    (vaultId: string, n: bigint, blob: Uint8Array) =>
+      setVaults((vs) => vs.map((v) => (!isOlder(v.registry) && v.vaultId === vaultId && bytesEqual(v.blob, blob) && v.nonce === undefined ? { ...v, nonce: n } : v))),
     [],
   );
   const history = useMemo(() => ({ rpc: svc.client, keccak256: (b: Uint8Array) => keccak256(b), registries: config.registries }), [svc.client]);
   const menu = useLazyModule(loadMenu, screen.name === 'vaults');
   const vaultsRef = useRef(vaults);
   vaultsRef.current = vaults;
+  /** Bumped by a successful Reload so the vault view remounts (it is part of the view's key). */
+  const [reloads, setReloads] = useState(0);
+  const focusVault = useRef(false);
+  useEffect(() => {
+    focusVault.current = false; // consumed by the view that mounted with it
+  }, [reloads]);
+  /** STALE: one more unlock; the same vault replaces this session (D7: still the only decrypted copy). */
+  const reload = async (current: VaultSession): Promise<string | null> => {
+    const at = epoch.current;
+    try {
+      const fresh = (await unlockSessions(svc)).find((v) => keyOf(v) === keyOf(current));
+      if (epoch.current !== at) return null; // locked meanwhile: drop the result
+      if (!fresh) return S.save.reloadMissing;
+      if (fresh.version < current.version) return S.save.reloadOlder; // ECC review L1: a lagging RPC, never a rollback
+      setVaults((vs) => vs.map((v) => (keyOf(v) === keyOf(fresh) ? fresh : v)));
+      // A new view (no carried-over Show, mirror or heal state), pinned afresh at open, with focus on its heading.
+      focusVault.current = true;
+      setReloads((n) => n + 1);
+      return null;
+    } catch (e) {
+      return e instanceof UnlockError ? S.save.reloadMissing : unlockMessage(e);
+    }
+  };
   const checkAnother = async (): Promise<string | null> => {
     const at = epoch.current;
     try {
@@ -175,11 +201,12 @@ function Shell() {
             <CreateFlow
               onCancel={() => setScreen({ name: 'home' })}
               onMirror={(vaultId, version, r) => recordMirror(vaultKey(WRITE_REGISTRY.version, vaultId), version, r)}
-              onDone={(s) => {
+              onSaved={(s) => {
+                // WEB-M2: under the Shell's auto-lock from the moment it is saved; a lock returns home and unmounts the flow.
                 setVaults([s]);
                 setOpenKey(keyOf(s));
-                setScreen({ name: 'vault', fresh: true });
               }}
+              onDone={() => setScreen({ name: 'vault', fresh: true })}
             />
           )}
           {screen.name === 'unlock' && allowed && (
@@ -210,7 +237,8 @@ function Shell() {
           )}
           {screen.name === 'vault' && session && (
             <VaultView
-              key={`${keyOf(session)}:${screen.edit ? 'edit' : ''}`}
+              key={`${keyOf(session)}:${reloads}:${screen.edit ? 'edit' : ''}`}
+              focusTitle={focusVault.current}
               session={session}
               locator={session.locator ?? '0x'}
               freshMirror={screen.fresh}
@@ -220,6 +248,7 @@ function Shell() {
               vaultCount={vaults.length}
               onAllVaults={() => setScreen({ name: 'vaults', mode: 'menu' })}
               onNonce={pinNonce}
+              onReload={() => reload(session)}
               mirrorItem={mirrorItems[vaultKey(session.registry, session.vaultId)]}
               onMirror={(version, r) => recordMirror(vaultKey(session.registry, session.vaultId), version, r)}
             />

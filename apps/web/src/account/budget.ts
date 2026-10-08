@@ -3,6 +3,8 @@
  * lifetime on testnet (harden-gas-sponsorship D2); the EntryPoint nonce counts the included ones. "About": failed
  * operations may count differently. Pure, so it stays in the initial chunk; the nonce read is in the write stack.
  */
+import { bytesEqual } from '../lib/bytes';
+
 export const SPONSOR_CAP = 50;
 /** Shown only at or below this many. */
 export const BUDGET_HINT_AT = 10;
@@ -19,4 +21,26 @@ const GET_NONCE = '0x35567e1a';
 export async function readNonce(client: { request(a: { method: string; params?: unknown }): Promise<unknown> }, owner: string): Promise<bigint> {
   const data = `${GET_NONCE}${owner.slice(2).toLowerCase().padStart(64, '0')}${'0'.repeat(64)}`;
   return BigInt((await client.request({ method: 'eth_call', params: [{ to: ENTRY_POINT_06, data }, 'latest'] })) as string);
+}
+
+/**
+ * web-review-followups 3 (ECC review of 88255e2): the nonce to pin when a vault opens (or reopens after Reload).
+ * Reads the nonce, then the vault, then the nonce again, and accepts only when both nonce reads agree and the chain holds
+ * the session's own blob; one retry after `waitMs`. Otherwise undefined: the caller refuses to save (STALE, Reload).
+ * Never used after a write: a failed attempt never moves the pin, a successful one moves it locally.
+ */
+export async function pinIfCurrent(
+  client: Parameters<typeof readNonce>[0],
+  reader: { getVault(id: `0x${string}`): Promise<{ blob: Uint8Array } | null> },
+  s: { vaultId: `0x${string}`; owner: string; blob: Uint8Array },
+  waitMs = 1_500,
+): Promise<bigint | undefined> {
+  for (let i = 0; i < 2; i++) {
+    if (i) await new Promise((r) => setTimeout(r, waitMs));
+    const a = await readNonce(client, s.owner);
+    const v = await reader.getVault(s.vaultId);
+    const b = await readNonce(client, s.owner);
+    if (a === b && v && bytesEqual(v.blob, s.blob)) return a;
+  }
+  return undefined;
 }

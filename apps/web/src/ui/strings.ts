@@ -109,6 +109,7 @@ export const S = {
     noOther: 'That key didn’t open any other vault.',
     networkError: 'We couldn’t reach the network. Check your connection and try again.',
     unconfirmed: 'We couldn’t confirm the latest version of your vault, so we didn’t open it. Check your connection and try again.',
+    incomplete: 'We couldn’t load all of your vaults, so we didn’t show a partial list. Check your connection and try again.',
   },
 
   vault: {
@@ -136,7 +137,7 @@ export const S = {
     archived: 'This vault is archived.',
     unarchive: 'Unarchive',
     legacyReadOnly:
-      'This vault was made with an earlier test version. You can open it and copy your secrets, but not change it. To keep editing, create a new vault and copy your secrets into it.',
+      'This vault is in an older, read-only format. You can open it and copy your secrets, but not change it. To keep editing, create a new vault and copy your secrets into it.',
   },
 
   edit: {
@@ -184,7 +185,10 @@ export const S = {
     notConfirmed: 'We couldn’t confirm the save yet. Please unlock again in a minute to check.',
     loadFailed: 'Nothing was saved. Part of the app didn’t load. Check your connection and try again, or reload the page (your unsaved changes will be lost).',
     retry: 'Try again',
-    stale: 'This vault changed since you opened it. Unlock again.',
+    stale: 'This vault changed since you opened it, maybe on another device. Nothing was saved. Reload it to see the latest version.',
+    reload: 'Reload vault',
+    reloadOlder: 'We couldn’t load the latest version yet. Wait a minute, then choose “Reload vault” again.',
+    reloadMissing: 'That key didn’t open this vault. Choose “Reload vault” again and use one of this vault’s keys.',
     budget: (n: number) => `About ${n} free saves left`,
     nonceConflict: 'Nothing was saved. Another save for this vault happened at the same moment, or a previous save may still be finishing. Wait a minute, then try again.',
   },

@@ -3,7 +3,7 @@ import { decodeVault } from '@cryoshield/vault-crypto';
 import { unlock, UnlockError, type OpenedVault } from '../chain/unlock';
 import { KeyError } from '../webauthn';
 import { ChainMismatchError } from '../chain/guard';
-import { RegistryUnconfirmedError } from '../chain/registry';
+import { RegistryIncompleteError, RegistryUnconfirmedError } from '../chain/registry';
 import { isOlder } from '../config';
 import { toHex } from '../lib/bytes';
 import { KeyPrompt, Notice, StepHeading } from './components';
@@ -51,6 +51,7 @@ export async function unlockSessions(svc: Services): Promise<VaultSession[]> {
 /** Plain message for an unlock failure. */
 export function unlockMessage(e: unknown): string {
   if (e instanceof KeyError || e instanceof ChainMismatchError) return messageFor(e);
+  if (e instanceof RegistryIncompleteError) return S.unlock.incomplete;
   if (e instanceof RegistryUnconfirmedError) return S.unlock.unconfirmed;
   return S.unlock.networkError;
 }

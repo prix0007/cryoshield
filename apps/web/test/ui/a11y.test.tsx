@@ -43,7 +43,7 @@ describe('vault list and Edit vault sheet accessibility (vault-list-labels-archi
     expect(await run(container)).toEqual([]);
     await u.click(screen.getByRole('button', { name: 'Open Work' }));
     await u.click(await screen.findByRole('button', { name: 'All vaults (4)' }));
-    await screen.findByRole('region', { name: 'Older test vaults' });
+    await screen.findByRole('region', { name: 'Read-only vaults (older format)' });
     expect(await run(container)).toEqual([]);
     await u.click(screen.getByRole('button', { name: 'Edit vault Work' }));
     await u.click(await screen.findByRole('button', { name: 'Archive and clear…' }));

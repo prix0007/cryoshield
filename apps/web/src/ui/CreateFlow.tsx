@@ -15,7 +15,13 @@ const STEP_ORDER: readonly Step[] = ['intro', 'keys', 'secrets', 'saving', 'done
 const MAX_KEYS = 8;
 
 export function CreateFlow(props: {
-  onDone: (s: VaultSession) => void;
+  /**
+   * WEB-M2: the new decrypted vault goes to the Shell the moment it is saved, so it is under the same auto-lock as an
+   * unlocked vault (idle, pagehide, hidden); a lock there unmounts this flow. This flow keeps only public data.
+   */
+  onSaved: (s: VaultSession) => void;
+  /** Continue: open the vault handed over by onSaved. */
+  onDone: () => void;
   onCancel: () => void;
   /** Every mirror result, even one that arrives after Continue (show-vault-onchain-location). */
   onMirror?: (vaultId: `0x${string}`, version: number, r: MirrorResult) => void;
@@ -32,7 +38,8 @@ export function CreateFlow(props: {
   const [name, setName] = useState('');
   const nameBad = name !== '' && !validName(name);
   const nameId = useId();
-  const [session, setSession] = useState<VaultSession | null>(null);
+  /** Public facts of the saved vault (for the Arweave retry); the decrypted session lives only in the Shell. */
+  const [saved, setSaved] = useState<Pick<VaultSession, 'vaultId' | 'version' | 'blob'> | null>(null);
   const [mirror, setMirror] = useState<MirrorResult | { status: 'pending' }>({ status: 'pending' });
   // Locators known from creation, reused on Retry (fix-arweave-mirror-status D2).
   const [knownLocators, setKnownLocators] = useState<`0x${string}`[]>([]);
@@ -101,7 +108,11 @@ export function CreateFlow(props: {
       setError(null);
       keys.forEach((k) => wipe(k.prf));
       setKeys([]);
-      setSession(s);
+      // WEB-M2: drop this flow's plaintext; the Shell now holds the session under its auto-lock.
+      setItems([{ label: '', secret: '' }]);
+      setName('');
+      setSaved({ vaultId: s.vaultId, version: s.version, blob: s.blob });
+      props.onSaved(s);
       setStep('done');
       setPrompt(null);
       setKnownLocators(locators);
@@ -224,7 +235,7 @@ export function CreateFlow(props: {
           </div>
         )}
 
-        {step === 'done' && session && (
+        {step === 'done' && saved && (
           <div className="card">
             <StepHeading>{S.create.doneTitle}</StepHeading>
             <Notice kind="success">{S.save.saved}</Notice>
@@ -234,13 +245,13 @@ export function CreateFlow(props: {
             ))}
             <MirrorLine result={mirror} fastIndexUrl={svc.fastIndexUrl} onRetry={() => {
               setMirror({ status: 'pending' });
-              void mirrorWrite(svc, { vaultId: session.vaultId, version: session.version, blob: session.blob, locators: knownLocators }).then((r) => {
+              void mirrorWrite(svc, { vaultId: saved.vaultId, version: saved.version, blob: saved.blob, locators: knownLocators }).then((r) => {
                 setMirror(r);
-                props.onMirror?.(session.vaultId, session.version, r);
+                props.onMirror?.(saved.vaultId, saved.version, r);
               });
             }} />
             <ActionBar>
-              <Btn onClick={() => props.onDone(session)}>{S.create.continue}</Btn>
+              <Btn onClick={props.onDone}>{S.create.continue}</Btn>
             </ActionBar>
           </div>
         )}
