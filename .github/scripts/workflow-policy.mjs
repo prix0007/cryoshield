@@ -493,8 +493,12 @@ export function checkWorkflow(file, text) {
       errors.push(`${file}: job '${id}' uses ${JSON.stringify(job.permissions)}; list only the scopes it needs (read-only)`);
     } else {
       // Read-only allow-list (security review MEDIUM-5). A job that needs a write scope needs a spec change here.
+      // The deploy workflows' `supersede` job (actions: write) is gone (split-dev-and-release-deploys D2). The single
+      // exception is WRITE_EXCEPTIONS below (deployments-check failure issue), checked by checkWriteException.
+      const exception = WRITE_EXCEPTIONS[name]?.job === id;
+      if (exception) errors.push(...checkWriteException(file, name, id, job, on));
       for (const [scope, level] of Object.entries(job.permissions)) {
-        // No exceptions: the deploy workflows' `supersede` job (actions: write) is gone (split-dev-and-release-deploys D2).
+        if (exception && scope === 'issues' && level === 'write') continue;
         if (level !== 'read' && level !== 'none') errors.push(`${file}: job '${id}' requests ${scope}: ${level}; only read/none is allowed (no write scopes)`);
       }
     }
@@ -512,6 +516,7 @@ export function checkWorkflow(file, text) {
   }
 
   if (Object.hasOwn(SCHEDULED_READ_ONLY, name)) errors.push(...checkScheduled(file, name, wf, on));
+  if (Object.hasOwn(WRITE_EXCEPTIONS, name)) errors.push(...checkWriteExceptionWorkflow(file, name, wf, on));
 
   // Deployments (OpenSpec changes add-continuous-deploy D7, gate-production-deploys, split-dev-and-release-deploys D7).
   const mentionsToken = strings(wf).some((s) => /FLY_API_TOKEN/i.test(s));
@@ -615,6 +620,63 @@ function checkScheduled(file, name, wf, on) {
       if (!Number.isInteger(days) || days < 1 || days > profile.artifact.maxRetentionDays) err(`${label}: retention-days must be set, at most ${profile.artifact.maxRetentionDays}`);
     }
   }
+  return errors;
+}
+
+// The only job allowed a write scope (harden-gas-sponsorship security review, deployments-check): it opens or updates one
+// GitHub issue when the scheduled on-chain record check fails, so a failure is not missed. It must stay minimal:
+// exactly `issues: write`, reachable only from schedule/workflow_dispatch (never a PR), no checkout or third-party
+// actions (only `run:` steps calling gh with the job's own token), and it runs only after the check job failed.
+export const WRITE_EXCEPTIONS = {
+  'deployments-check.yml': { job: 'report-failure', permissions: { issues: 'write' }, needs: 'deployments-check' },
+};
+
+// Workflow-wide rules for a WRITE_EXCEPTIONS file. It cannot use the SCHEDULED_READ_ONLY profile (its check job needs
+// Foundry and its scripts; its report job uses gh with the job token), so the same intent is enforced here: scheduled or
+// manual only, no dispatch inputs, no secrets, the job token only inside the exception job, and every other job
+// read-only (exactly contents: read) with non-persisted checkout credentials.
+export function checkWriteExceptionWorkflow(file, name, wf, on) {
+  const want = WRITE_EXCEPTIONS[name];
+  const errors = [];
+  const err = (m) => errors.push(`${file}: ${m}`);
+  if (Object.hasOwn(SCHEDULED_READ_ONLY, name)) err('a workflow cannot be both read-only scheduled and a write exception');
+  for (const t of on) if (!SCHEDULED_TRIGGERS.includes(t)) err(`trigger '${t}' is not allowed (write-exception workflows run only on ${SCHEDULED_TRIGGERS.join(' and ')})`);
+  const dispatch = isObj(wf.on) ? wf.on.workflow_dispatch : undefined;
+  if (isObj(dispatch) && dispatch.inputs !== undefined) err('workflow_dispatch may not take inputs');
+  const secretRefs = exprsOf(wf).filter((e) => /\bsecrets\b/i.test(e)).length + strings(wf).filter((x) => x === 'inherit').length;
+  if (secretRefs) err(`secrets must not be referenced (${secretRefs} reference(s))`);
+  const tokenRe = /\bgithub\s*\.\s*token\b|\bgithub\s*\[\s*['"]token['"]\s*\]/i;
+  if (exprsOf({ env: wf.env }).some((e) => tokenRe.test(e))) err('github.token may only be referenced inside the exception job');
+  if (!isObj(wf.jobs) || !isObj(wf.jobs[want.job])) err(`the exception job '${want.job}' is missing`);
+  for (const [id, job] of Object.entries(isObj(wf.jobs) ? wf.jobs : {})) {
+    if (!isObj(job) || id === want.job) continue;
+    if (exprsOf(job).some((e) => tokenRe.test(e))) err(`job '${id}': github.token may only be referenced inside the exception job '${want.job}'`);
+    const perms = isObj(job.permissions) ? job.permissions : {};
+    if (JSON.stringify(perms) !== JSON.stringify({ contents: 'read' })) err(`job '${id}' must hold exactly contents: read, found ${JSON.stringify(perms)}`);
+    for (const step of Array.isArray(job.steps) ? job.steps.filter(isObj) : []) {
+      if (/^actions\/checkout@/.test(String(step.uses ?? '')) && (!isObj(step.with) || step.with['persist-credentials'] !== false)) {
+        err(`job '${id}': checkout must set persist-credentials: false`);
+      }
+    }
+  }
+  return errors;
+}
+
+export function checkWriteException(file, name, id, job, on) {
+  const want = WRITE_EXCEPTIONS[name];
+  const errors = [];
+  const where = `${file}: job '${id}' (write exception)`;
+  const perms = isObj(job.permissions) ? job.permissions : {};
+  if (JSON.stringify(Object.entries(perms).sort()) !== JSON.stringify(Object.entries(want.permissions).sort())) {
+    errors.push(`${where} must request exactly ${JSON.stringify(want.permissions)}, found ${JSON.stringify(perms)}`);
+  }
+  const bad = on.filter((t) => t !== 'schedule' && t !== 'workflow_dispatch');
+  if (bad.length) errors.push(`${where}: its workflow may only be triggered by schedule/workflow_dispatch, found ${bad.join(', ')}`);
+  const needs = [].concat(job.needs ?? []);
+  if (needs.length !== 1 || needs[0] !== want.needs) errors.push(`${where} must need exactly '${want.needs}'`);
+  if (String(job.if ?? '').replace(/\s+/g, '') !== 'failure()') errors.push(`${where} must run only when the check failed (if: failure())`);
+  const steps = Array.isArray(job.steps) ? job.steps : [];
+  if (steps.some((st) => isObj(st) && st.uses !== undefined)) errors.push(`${where} may not use actions (no checkout, no third-party code): run steps only`);
   return errors;
 }
 

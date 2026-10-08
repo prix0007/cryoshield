@@ -66,6 +66,7 @@ jobs:
       pull-requests: read # paths-filter lists the PR's changed files via the API
     outputs:
       contracts: ${{ steps.filter.outputs.contracts }}
+      deployments: ${{ steps.filter.outputs.deployments }}
       vault-crypto: ${{ steps.filter.outputs.vault-crypto }}
       recover: ${{ steps.filter.outputs.recover }}
       web: ${{ steps.filter.outputs.web }}
@@ -88,6 +89,11 @@ jobs:
               - *ci
               - contracts/**
               - .github/slither-triage.json
+            # Public deployment records and their checker: verified against the chain (deployments-onchain).
+            deployments:
+              - contracts/deployments/**
+              - contracts/script/check-deployments.sh
+              - contracts/script/deploy.sh
             vault-crypto:
               - *ci
               - *pnpm
@@ -272,6 +278,30 @@ jobs:
       # forge test rewrites per-call snapshots (vm.snapshotGasLastCall); fail if they drifted from the committed file.
       - name: Per-call gas snapshot check
         run: git diff --exit-code -- snapshots/
+      # GAS.md is generated from snapshots/*.json; fail if it drifted (security review C6).
+      - name: GAS.md matches the gas snapshots
+        run: script/gas-md.sh --check
+      # ERC-7562 opcode/storage traces need forge's tracer (-vvv); CRYOSHIELD_REQUIRE_TRACE turns a skip into a failure
+      # (security review C4).
+      - name: ERC-7562 validation traces
+        run: forge test --mc CryoShieldSmartWalletErc7562Test -vvv
+        env:
+          CRYOSHIELD_REQUIRE_TRACE: "1"
+      # Spec-named checks that previously ran only locally (security review C3).
+      - name: ABI export is up to date
+        run: script/export-abi.sh --check
+      - name: Storage layout identical to CBSW v1.1
+        run: script/check-storage-layout.sh
+      - name: Deploy script presets, gates and arguments
+        run: script/test-deploy-args.sh
+      - name: Anvil end-to-end deploy and recovery
+        run: script/anvil-e2e.sh
+      # The anvil deploy is deterministic: it must reproduce the committed 31337 record and ABIs byte for byte.
+      - name: Anvil deploy reproduces the committed record and ABIs
+        run: git diff --exit-code -- deployments/ abi/
+      # Public records are complete and well-formed, and the checker is fail-closed (offline; no RPC).
+      - name: Deployment records complete (offline) and checker self-test
+        run: script/check-deployments.sh --offline && script/test-check-deployments.sh
       - name: Set up uv
         uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
@@ -283,6 +313,34 @@ jobs:
           uvx --from "slither-analyzer==${SLITHER_VERSION}" slither .
           --filter-paths "lib/|test/|script/"
           --triage-database ../.github/slither-triage.json
+
+  # A PR that changes a public deployment record (or its checker) is verified against the chain: tx status, block,
+  # CREATE2 derivation, init code == build, runtime code, implementation()/RP_ID_HASH and ABI hashes
+  # (contracts/script/check-deployments.sh). Public RPCs only (eth_* reads); no secrets, no keys, nothing is sent.
+  # PR-only so push and deploy CI never depend on a third-party RPC; deployments-check.yml re-checks weekly.
+  deployments-onchain:
+    name: deployments-onchain
+    needs: changes
+    if: github.event_name == 'pull_request' && needs.changes.outputs.deployments == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read # checkout only
+    defaults:
+      run:
+        working-directory: contracts
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Foundry
+        uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1.9.1
+        with:
+          version: ${{ env.FOUNDRY_VERSION }}
+          cache: false
+      - name: Public deployment records match the chain
+        run: script/check-deployments.sh
 
   vault-crypto:
     name: vault-crypto
@@ -535,7 +593,7 @@ jobs:
   # The only check the main ruleset requires. Skipped jobs count as success; failed or cancelled ones do not.
   ci-ok:
     name: ci-ok
-    needs: [changes, pr-checks, workflow-lint, contracts, vault-crypto, recover, web, web-e2e, metrics, openspec]
+    needs: [changes, pr-checks, workflow-lint, contracts, deployments-onchain, vault-crypto, recover, web, web-e2e, metrics, openspec]
     if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 5

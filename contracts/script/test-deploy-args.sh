@@ -54,7 +54,7 @@ for spec in "op_mainnet 10 OP_MAINNET_RPC_URL https://explorer.optimism.io/api/"
   "arbitrum_sepolia 421614 ARBITRUM_SEPOLIA_RPC_URL https://arbitrum-sepolia.blockscout.com/api/" \
   "arbitrum_one 42161 ARBITRUM_ONE_RPC_URL https://arbitrum.blockscout.com/api/"; do
   set -- $spec
-  out="$(plan BROADCAST=1 DEPLOYER_ACCOUNT=a RP_IDS=cryoshield.app CRYOSHIELD_MAINNET_GATE=approved "$3=http://rpc.invalid" "$DEPLOY" "$1" 2>&1)"; rc=$?
+  out="$(plan BROADCAST=1 DEPLOYER_ACCOUNT=a RP_IDS=cryoshield.app CRYOSHIELD_MAINNET_GATE="approved:$2" "$3=http://rpc.invalid" "$DEPLOY" "$1" 2>&1)"; rc=$?
   check "$1 plan succeeds" test "$rc" -eq 0
   check "$1 chainId=$2" grep -q "chainId=$2" <<<"$out"
   check "$1 verifier blockscout $4" grep -q -- "verify-args: --verifier blockscout --verifier-url $4$" <<<"$out"
@@ -74,6 +74,49 @@ check "op_mainnet default RP ID is cryoshield.app only" grep -q "^rpIds=cryoshie
 out="$(plan BROADCAST=1 DEPLOYER_ACCOUNT=a OP_MAINNET_RPC_URL=x "$DEPLOY" op_mainnet 2>&1)"; rc=$?
 check "op_mainnet broadcast refused without the gate" test "$rc" -ne 0
 check "op_mainnet gate message" grep -q "CRYOSHIELD_MAINNET_GATE" <<<"$out"
+# Mainnet gate is fail-closed (security review C9): every preset that is not local/testnet needs the gate to broadcast.
+for spec in "op_sepolia OP_SEPOLIA_RPC_URL allow 11155420" "arbitrum_sepolia ARBITRUM_SEPOLIA_RPC_URL allow 421614" \
+  "op_mainnet OP_MAINNET_RPC_URL gate 10" "arbitrum_one ARBITRUM_ONE_RPC_URL gate 42161"; do
+  set -- $spec
+  out="$(plan BROADCAST=1 DEPLOYER_ACCOUNT=a RP_IDS=cryoshield.app "$2=http://rpc.invalid" "$DEPLOY" "$1" 2>&1)"; rc=$?
+  if [[ "$3" == "allow" ]]; then
+    check "$1 broadcast plan needs no mainnet gate" test "$rc" -eq 0
+  else
+    check "$1 broadcast refused without the mainnet gate" test "$rc" -ne 0
+    check "$1 refusal names CRYOSHIELD_MAINNET_GATE" grep -q "CRYOSHIELD_MAINNET_GATE" <<<"$out"
+    out="$(plan BROADCAST=1 DEPLOYER_ACCOUNT=a RP_IDS=cryoshield.app CRYOSHIELD_MAINNET_GATE="approved:$4" "$2=http://rpc.invalid" "$DEPLOY" "$1" 2>&1)"; rc=$?
+    check "$1 broadcast plan allowed with approved:$4" test "$rc" -eq 0
+    for wrong in approved yes "approved:1" "approved:$4x" "approved: $4"; do
+      out="$(plan BROADCAST=1 DEPLOYER_ACCOUNT=a RP_IDS=cryoshield.app CRYOSHIELD_MAINNET_GATE="$wrong" "$2=http://rpc.invalid" "$DEPLOY" "$1" 2>&1)"; rc=$?
+      check "$1 gate refuses '$wrong' (only approved:$4)" test "$rc" -ne 0
+    done
+    # An approval for the OTHER mainnet must not open this one.
+    other=10; [[ "$4" == 10 ]] && other=42161
+    out="$(plan BROADCAST=1 DEPLOYER_ACCOUNT=a RP_IDS=cryoshield.app CRYOSHIELD_MAINNET_GATE="approved:$other" "$2=http://rpc.invalid" "$DEPLOY" "$1" 2>&1)"; rc=$?
+    check "$1 gate refuses another chain's approval (approved:$other)" test "$rc" -ne 0
+  fi
+done
+# Every preset in config/chain-presets.json is classified; the default testnet is a testnet; non-testnets are gated.
+kinds_ok() {
+  local key kind def
+  def="$(jq -r '.defaultTestnet' "$PRESETS_JSON")"
+  for key in $(jq -r '.presets[].foundryKey' "$PRESETS_JSON"); do
+    kind="$(run "$DEPLOY" --list-presets | awk -v k="$key" '$1 == k {print $5}')"
+    [[ "$kind" == local || "$kind" == testnet || "$kind" == mainnet ]] || return 1
+  done
+  [[ "$(run "$DEPLOY" --list-presets | awk -v k="${def//-/_}" '$1 == k {print $5}')" == testnet ]]
+}
+check "every chain-presets.json preset has a kind (local/testnet/mainnet)" kinds_ok
+# Fail-closed: a preset whose kind is missing or unknown is treated as mainnet.
+MUTDEPLOY="$(mktemp -d)/deploy.sh"
+sed -E 's#^(arbitrum_one +42161 +ARBITRUM_ONE_RPC_URL +[^ ]+) +mainnet$#\1#' "$DEPLOY" >"$MUTDEPLOY"
+chmod +x "$MUTDEPLOY"
+check "mutation removed arbitrum_one's kind" bash -c '! grep -qE "^arbitrum_one .* mainnet$" "$1"' _ "$MUTDEPLOY"
+out="$(cd "$ROOT" && plan BROADCAST=1 DEPLOYER_ACCOUNT=a RP_IDS=cryoshield.app ARBITRUM_ONE_RPC_URL=x bash "$MUTDEPLOY" arbitrum_one 2>&1)"; rc=$?
+check "preset with no kind is gated (fail-closed)" test "$rc" -ne 0
+check "fail-closed refusal is the mainnet gate (kind unset)" grep -q "kind unset) broadcast is gated" <<<"$out"
+rm -rf "$(dirname "$MUTDEPLOY")"
+
 out="$(plan RP_IDS="https://cryoshield.app" RPC_URL=x "$DEPLOY" anvil 2>&1)"; rc=$?
 check "invalid RP ID refused" test "$rc" -ne 0
 out="$(plan DEPLOYER_ADDRESS=0x000000000000000000000000000000000000dEaD ARBITRUM_ONE_RPC_URL=x "$DEPLOY" arbitrum_one 2>&1)"; rc=$?

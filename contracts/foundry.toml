@@ -25,7 +25,7 @@ remappings = [
 ]
 
 # The static immutability check (test/Immutability.t.sol) reads the contract source.
-fs_permissions = [{ access = "read", path = "./src" }, { access = "read", path = "./test/fixtures" }, { access = "read", path = "./lib/cbsw-v1.1.0/src" }, { access = "read", path = "../packages/vault-crypto/test-vectors" }]
+fs_permissions = [{ access = "read", path = "./src" }, { access = "read", path = "./test/fixtures" }, { access = "read", path = "./deployments" }, { access = "read", path = "./lib/cbsw-v1.1.0/src" }, { access = "read", path = "../packages/vault-crypto/test-vectors" }]
 
 [fuzz]
 runs = 1_000

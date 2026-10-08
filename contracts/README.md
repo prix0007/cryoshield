@@ -125,7 +125,15 @@ CBSW v1.1.0 is vendored and pruned in [`lib/cbsw-v1.1.0/`](lib/cbsw-v1.1.0/READM
 anvil `localhost cryoshield.app`, op_sepolia `cryoshield.app cryoshield-web-dev.fly.dev`, op_mainnet `cryoshield.app`).
 On OP Sepolia it verifies the existing v1 (bytecode + record) and never redeploys it. VaultRegistry v1 is built with
 the `v1` Foundry profile so its bytecode (and CREATE2 address `0xB43f…9e44`) stays byte-identical to the deployed one.
-OP Mainnet broadcasts additionally require `CRYOSHIELD_MAINNET_GATE=approved` (task 8.1, founder approval).
+Broadcasts to any mainnet preset (every preset whose `kind` in `deploy.sh` is not `local` or `testnet`, e.g.
+`op_mainnet` and `arbitrum_one`; fail-closed for presets without a kind) additionally require
+`CRYOSHIELD_MAINNET_GATE=approved:<chainId>` (for example `approved:10`; task 8.1, founder approval). Transactions are
+sent one at a time (`--slow`).
+
+> **The mainnet gate is an accident guard, not access control.** It stops a mistyped preset or a copied command from
+> broadcasting to a mainnet, and binding it to the chain ID stops an approval for one mainnet from opening another.
+> Anyone who holds the deployer keystore and its password can set the variable: protecting that keystore is the real
+> control, and the founder's recorded approval (task 8.1) is the process control.
 
 ```sh
 # OP Sepolia dry run (no keys, nothing sent)
@@ -140,7 +148,24 @@ OP_SEPOLIA_RPC_URL=https://sepolia.optimism.io DEPLOYER_ACCOUNT=cryoshield-deplo
 ### Extra checks
 
 ```sh
-forge test --mc CryoShieldSmartWalletErc7562Test -vvv   # ERC-7562 opcode/storage traces (skipped without -vvv)
+CRYOSHIELD_REQUIRE_TRACE=1 forge test --mc CryoShieldSmartWalletErc7562Test -vvv   # ERC-7562 traces (CI; fails without the tracer)
 script/check-storage-layout.sh                          # storage layout == CBSW v1.1
-script/anvil-e2e.sh                                     # v1 + v2 + wallet pairs on a throwaway anvil
+script/export-abi.sh --check                            # committed ABIs are current
+script/test-deploy-args.sh                              # presets, mainnet gate (fail-closed), argv, no secrets
+script/anvil-e2e.sh && git diff --exit-code -- deployments/ abi/   # anvil deploy reproduces the 31337 record
+script/gas-md.sh --check                                # GAS.md == snapshots/*.json (regenerate: script/gas-md.sh)
+script/check-deployments.sh [chainId...]                # NETWORK: public records vs chain (code, block, tx, init code)
+CRYOSHIELD_NETWORK_TESTS=1 script/test-check-deployments.sh   # NETWORK: the checker also rejects tampered records
 ```
+
+All but the two NETWORK checks run in the CI `contracts` job (the offline `check-deployments.sh --offline`
+completeness check and the offline part of the self-test run there too). The NETWORK checks run:
+- on every PR that changes `contracts/deployments/**`, `check-deployments.sh` or `deploy.sh` (CI job
+  `deployments-onchain`, part of `ci-ok`; public RPCs, no secrets);
+- weekly and on demand in `.github/workflows/deployments-check.yml`. When that run fails, its `report-failure` job opens
+  (or comments on) one tracking issue; it is the repository's only job with a write scope (`issues: write`).
+
+> **Schedule caveat:** GitHub disables scheduled workflows after 60 days without repository activity. If the repository
+> goes quiet, re-enable "Deployments check" in the Actions tab (or run it by hand) so the weekly check keeps running. `test/DeployV2.t.sol` pins the predicted
+CREATE2 addresses to the live OP Sepolia record, so any change to `src/`, the compiler settings or the remappings
+fails `forge test`.

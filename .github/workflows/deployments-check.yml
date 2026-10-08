@@ -1,0 +1,79 @@
+# Weekly check that the committed public-chain deployment records match the chain
+# (OpenSpec change harden-gas-sponsorship, security review W2).
+# Read-only: public RPCs only (eth_getCode, eth_call, transactions and receipts). No secrets, no keys, nothing is sent.
+# It never updates anything; a mismatch fails the run and prints every failed check.
+
+name: Deployments check
+
+on:
+  schedule:
+    - cron: '41 5 * * 2' # Tuesdays 05:41 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deployments-check
+  cancel-in-progress: true
+
+env:
+  FOUNDRY_VERSION: v1.1.0
+
+jobs:
+  deployments-check:
+    name: deployments-check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read # checkout only
+    defaults:
+      run:
+        working-directory: contracts
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Foundry
+        uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1.9.1
+        with:
+          version: ${{ env.FOUNDRY_VERSION }}
+          cache: false
+      # Every public record (deployments/*.json except 31337) against its chain, then the tamper self-test.
+      - name: Records match the chain
+        run: script/check-deployments.sh
+      - name: Checker rejects tampered records (non-vacuity)
+        run: script/test-check-deployments.sh
+        env:
+          CRYOSHIELD_NETWORK_TESTS: "1"
+
+  # The repository's only job with a write scope (workflow-policy WRITE_EXCEPTIONS, checkWriteException): when the
+  # scheduled check fails, open ONE tracking issue (or comment on it if already open) so the failure is not missed.
+  # issues: write is needed for exactly that; there is no checkout and no third-party action, only gh with this
+  # job's own short-lived token, and the workflow cannot be triggered by a pull request.
+  report-failure:
+    name: report-failure
+    needs: deployments-check
+    if: failure()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      issues: write # open or comment on the one tracking issue when the check fails (WRITE_EXCEPTIONS)
+    steps:
+      - name: Open or update the tracking issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title="Deployment records do not match the chain (deployments-check)"
+          body="The on-chain deployment record check failed: ${RUN_URL}
+          See contracts/script/check-deployments.sh. Do not edit a record to make it pass: find out why it differs."
+          num="$(gh issue list --state open --search "\"${title}\" in:title" --json number,title \
+            --jq "map(select(.title == \"${title}\"))[0].number // empty")"
+          if [ -n "$num" ]; then
+            gh issue comment "$num" --body "$body"
+          else
+            gh issue create --title "$title" --body "$body"
+          fi

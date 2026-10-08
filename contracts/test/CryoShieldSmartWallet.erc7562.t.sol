@@ -14,7 +14,8 @@ import {WalletTestBase} from "./WalletBase.t.sol";
 ///      - storage is only touched on the account itself (STO-010; the account is the sender).
 ///      forge only records debug traces when its tracer is on, so run these with:
 ///          forge test --mc CryoShieldSmartWalletErc7562Test -vvv
-///      Under a plain `forge test` they are SKIPPED (reported as skipped, never as passed).
+///      Under a plain `forge test` they are SKIPPED (reported as skipped, never as passed). CI runs them with -vvv and
+///      CRYOSHIELD_REQUIRE_TRACE=1, which turns a missing tracer into a failure.
 contract CryoShieldSmartWalletErc7562Test is WalletTestBase {
     address internal constant P256_PRECOMPILE = address(0x100);
 
@@ -30,6 +31,10 @@ contract CryoShieldSmartWalletErc7562Test is WalletTestBase {
     function _startTrace() internal {
         try vm.startDebugTraceRecording() {}
         catch {
+            // CI sets CRYOSHIELD_REQUIRE_TRACE=1 so a missing tracer fails the job instead of skipping silently.
+            if (vm.envOr("CRYOSHIELD_REQUIRE_TRACE", false)) {
+                revert("forge tracer required (CRYOSHIELD_REQUIRE_TRACE=1): run with -vvv");
+            }
             vm.skip(true, "needs the forge tracer: forge test --mc CryoShieldSmartWalletErc7562Test -vvv");
         }
     }

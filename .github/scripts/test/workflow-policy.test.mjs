@@ -135,3 +135,94 @@ test('CLI exit code', () => {
   assert.equal(r.status, 1);
   assert.match(r.stderr, /a\.yaml/);
 });
+
+// harden-gas-sponsorship security review: the deployments-check failure issue is the only write-scoped job.
+const reportJob = `
+name: Deployments check
+on:
+  schedule:
+    - cron: '41 5 * * 2'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  deployments-check:
+    name: deployments-check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Check
+        run: echo check
+  report-failure:
+    name: report-failure
+    needs: deployments-check
+    if: failure()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      - name: Open or update the tracking issue
+        run: gh issue list
+`;
+const dcErrs = (text, file = 'deployments-check.yml') => checkWorkflow(file, text);
+const dcExpect = (text, re, file) => {
+  const e = dcErrs(text, file);
+  assert.ok(e.some((m) => re.test(m)), `expected ${re} in ${JSON.stringify(e)}`);
+};
+
+test('deployments-check report-failure may hold exactly issues: write', () => assert.deepEqual(dcErrs(reportJob), []));
+
+test('the issues: write exception is bound to its file and job name', () => {
+  dcExpect(reportJob, /requests issues: write; only read\/none/, 'other.yml');
+  dcExpect(reportJob.replaceAll('report-failure', 'report-other'), /requests issues: write; only read\/none/);
+});
+
+test('the write exception rejects any other scope, trigger, need, condition or action', () => {
+  dcExpect(reportJob.replace('      issues: write\n', '      issues: write\n      contents: write\n'), /must request exactly/);
+  dcExpect(reportJob.replace('      issues: write\n', '      issues: write\n      contents: read\n'), /must request exactly/);
+  dcExpect(reportJob.replace('  workflow_dispatch:\n', '  workflow_dispatch:\n  pull_request:\n'), /schedule\/workflow_dispatch/);
+  dcExpect(reportJob.replace('  workflow_dispatch:\n', '  workflow_dispatch:\n  push:\n'), /schedule\/workflow_dispatch/);
+  dcExpect(reportJob.replace('    needs: deployments-check\n', ''), /must need exactly/);
+  dcExpect(reportJob.replace('    if: failure()\n', '    if: always()\n'), /if: failure\(\)/);
+  dcExpect(
+    reportJob.replace('        run: gh issue list\n', '        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1\n'),
+    /may not use actions/,
+  );
+});
+
+test('other write scopes on the exception job are still rejected', () => {
+  dcExpect(reportJob.replace('      issues: write\n', '      pull-requests: write\n'), /requests pull-requests: write/);
+});
+
+test('write-exception workflow: other jobs read-only, no secrets, token only in the exception job, no inputs', () => {
+  dcExpect(reportJob.replace('    permissions:\n      contents: read\n    steps:\n      - name: Check', '    permissions:\n      contents: read\n      actions: read\n    steps:\n      - name: Check'), /job 'deployments-check' must hold exactly contents: read/);
+  dcExpect(reportJob.replace('        run: echo check\n', '        run: echo check\n        env:\n          T: ${{ github.token }}\n'), /github\.token may only be referenced inside the exception job/);
+  dcExpect(reportJob.replace('        run: gh issue list\n', '        run: gh issue list\n        env:\n          S: ${{ secrets.X }}\n'), /secrets must not be referenced/);
+  dcExpect(reportJob.replace('  workflow_dispatch:\n', '  workflow_dispatch:\n    inputs:\n      x:\n        type: string\n'), /workflow_dispatch may not take inputs/);
+  dcExpect(reportJob.replace('        run: echo check\n', '        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1\n'), /persist-credentials: false/);
+});
+
+test('the deployments-check report job holds the ONLY write scope in the repository', async () => {
+  const { readdirSync, readFileSync } = await import('node:fs');
+  const { parse } = await import('yaml');
+  const { SCHEDULED_READ_ONLY, WRITE_EXCEPTIONS } = await import('../workflow-policy.mjs');
+  const dir = new URL('../../workflows/', import.meta.url);
+  const writes = [];
+  for (const f of readdirSync(dir).filter((x) => /\.ya?ml$/.test(x))) {
+    const wf = parse(readFileSync(new URL(f, dir), 'utf8'));
+    const tops = Object.entries(wf.permissions ?? {}).filter(([, l]) => l === 'write');
+    for (const [scope] of tops) writes.push(`${f}:<top>:${scope}`);
+    for (const [id, job] of Object.entries(wf.jobs ?? {})) {
+      for (const [scope, level] of Object.entries(job?.permissions ?? {})) if (level === 'write') writes.push(`${f}:${id}:${scope}`);
+    }
+  }
+  // Privileged workflows (PRIVILEGED) carry their own reviewed write scopes; this test is about everything else.
+  const { PRIVILEGED } = await import('../workflow-policy.mjs');
+  const nonPrivileged = writes.filter((w) => !Object.hasOwn(PRIVILEGED, w.split(':')[0]));
+  assert.deepEqual(nonPrivileged, ['deployments-check.yml:report-failure:issues']);
+  assert.deepEqual(Object.keys(WRITE_EXCEPTIONS), ['deployments-check.yml']);
+  assert.ok(!Object.hasOwn(SCHEDULED_READ_ONLY, 'deployments-check.yml'));
+});
