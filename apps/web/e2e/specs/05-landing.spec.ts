@@ -142,3 +142,31 @@ test('"Only you can read it." at 390 px: no horizontal overflow, axe clean', asy
   const r = await new AxeBuilder({ page }).include('#only-you').withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa']).analyze();
   expect(r.violations.map((v) => v.id)).toEqual([]);
 });
+
+test('"Where backups leak.": the breaches tile renders between the fragile and how scenes, and its CTA opens the app (add-landing-breaches 1.2)', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto(LANDING);
+  const order = await page.locator('main > section').evaluateAll((ss) => ss.map((s) => s.id));
+  const at = order.indexOf('fragile');
+  expect(order.slice(at, at + 3)).toEqual(['fragile', 'breaches', 'how']);
+  const tile = page.locator('#breaches');
+  await tile.scrollIntoViewIfNeeded();
+  await expect(tile.getByRole('heading', { level: 2, name: 'Where backups leak.' })).toBeVisible();
+  await expect(tile.getByRole('heading', { level: 3 })).toHaveText([
+    "A password manager's cloud",
+    'A screenshot in your photos',
+    "A wallet app's logs",
+    'Take your seed phrase out of the cloud.',
+  ]);
+  for (const name of ['Source: BleepingComputer', 'Source: Kaspersky', 'Source: The Block']) {
+    const link = tile.getByRole('link', { name });
+    await expect(link).toBeVisible();
+    expect(await link.getAttribute('target')).toBeNull();
+    await expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+  }
+  await expect(tile.getByText('One honest limit: no backup can protect a phrase typed on a device that is already infected.')).toBeVisible();
+  await expect(tile.getByRole('link', { name: 'Read the code' })).toHaveAttribute('href', 'https://github.com/prix0007/cryoshield');
+  await tile.getByRole('link', { name: 'Seal it with your security key' }).click();
+  await expect(page).toHaveURL(/\/app\/$/);
+  await expect(page.getByRole('button', { name: 'Unlock my vault' })).toBeVisible();
+});

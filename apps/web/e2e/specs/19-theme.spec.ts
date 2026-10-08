@@ -288,6 +288,34 @@ test('review H1: the Copy chip (white on blue) passes axe colour contrast in for
 });
 
 for (const theme of THEMES) {
+  test(`add-landing-breaches 1.3: the breaches tile passes axe in forced ${theme} at 1280 and 390 px, one column on a phone`, async ({ page }) => {
+    // The opposite device scheme, so the forced choice (not the media query) is what is audited.
+    await page.emulateMedia({ colorScheme: theme === 'dark' ? 'light' : 'dark' });
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.goto(LANDING);
+    await choose(page, theme);
+    const tile = page.locator('#breaches');
+    const audit = async (label: string) => {
+      await tile.scrollIntoViewIfNeeded();
+      const r = await new AxeBuilder({ page }).include('#breaches').withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa']).analyze();
+      expect(r.violations.map((v) => `${label}: ${v.id} ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`)).toEqual([]);
+      expect(r.passes.some((x) => x.id === 'color-contrast'), `${label}: color-contrast checked something`).toBe(true);
+    };
+    const lefts = () => tile.locator('.breach-card').evaluateAll((cs) => cs.map((c) => Math.round(c.getBoundingClientRect().left)));
+    // The tile follows the theme: the parchment surface is #1d1d1f in Dark and light in Light.
+    const bg = await tile.evaluate((e) => getComputedStyle(e).backgroundColor);
+    if (theme === 'dark') expect(bg).toBe('rgb(29, 29, 31)');
+    else expect(bg).not.toBe('rgb(29, 29, 31)');
+    expect(new Set(await lefts()).size, 'three columns on desktop').toBe(3);
+    await audit(`${theme} 1280`);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await audit(`${theme} 390`);
+    expect(new Set(await lefts()).size, 'one column on a phone').toBe(1);
+    const { sw, cw } = await page.evaluate(() => ({ sw: document.documentElement.scrollWidth, cw: document.documentElement.clientWidth }));
+    expect(sw, 'no horizontal scroll at 390').toBeLessThanOrEqual(cw);
+    for (const right of await tile.locator('.breach-card').evaluateAll((cs) => cs.map((c) => c.getBoundingClientRect().right))) expect(right).toBeLessThanOrEqual(390);
+  });
+
   test(`axe (colour contrast included) in forced ${theme}: every public page`, async ({ page }) => {
     // The opposite device scheme, so the forced choice (not the media query) is what is audited.
     await page.emulateMedia({ colorScheme: theme === 'dark' ? 'light' : 'dark' });
