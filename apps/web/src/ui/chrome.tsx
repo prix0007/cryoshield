@@ -18,6 +18,31 @@ function NavLink({ label, href }: { label: string; href: string }) {
   );
 }
 
+/**
+ * Theme switch (add-theme-switch D1/D4). Uncontrolled: src/theme/theme-init.js (loaded in <head> on every page)
+ * handles every change through one delegated listener (applies, remembers, syncs). The app only shows the current
+ * choice, read from <html data-theme>. No storage access here.
+ */
+function ThemeSwitch() {
+  const current = document.documentElement.dataset.theme;
+  return (
+    <div className="theme-switch" data-theme-switch="">
+      <svg className="theme-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+        <circle cx="8" cy="8" r="6.25" />
+        <path d="M8 1.75a6.25 6.25 0 0 1 0 12.5Z" />
+      </svg>
+      <label className="sr-only" htmlFor="theme-select">
+        Theme
+      </label>
+      <select id="theme-select" data-theme-select="" defaultValue={current === 'light' || current === 'dark' ? current : 'system'}>
+        <option value="system">System</option>
+        <option value="light">Light</option>
+        <option value="dark">Dark</option>
+      </select>
+    </div>
+  );
+}
+
 export function GlobalNav() {
   return (
     <nav className="global-nav" aria-label="Site">
@@ -36,6 +61,7 @@ export function GlobalNav() {
             </li>
           ))}
         </ul>
+        <ThemeSwitch />
         <details className="nav-menu">
           <summary aria-label="Menu">
             <span className="nav-menu-icon" aria-hidden="true" />

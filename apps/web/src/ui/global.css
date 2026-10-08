@@ -2,9 +2,7 @@
    WCAG 2.2 AA: text >= 4.5:1, focus ring >= 3:1, targets >= 44x44, reflow to 320px, focus never hidden behind the
    floating action bar (scroll-padding-bottom). Colours only via tokens. */
 
-:root {
-  color-scheme: light dark;
-}
+/* color-scheme follows the theme (tokens.css, add-theme-switch D2). */
 /* fix-floating-bar-focus (WCAG 2.4.11): focus scrolling keeps a field clear of the floating action bar. The padding is
    the bar's real footprint: its sticky offset, border, vertical padding and rows of 44px targets, plus a gap. On phones
    the buttons stack one per row, so the row count follows the number of buttons (:has). No layout-changing animation

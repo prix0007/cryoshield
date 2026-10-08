@@ -1,4 +1,6 @@
-/* Legal pages (/privacy, /terms, /cookies): the landing visual language, no JS. Colours only from tokens. */
+/* Legal-layout pages (/privacy, /terms, /cookies, /devices, /support): the landing visual language. Colours only from
+   tokens; the whole .legal-page body follows the theme through the page tokens (landing.css, add-theme-switch D2).
+   The only script is the theme script. */
 @import '../ui/tokens.css';
 @import '../ui/chrome.css';
 @import '../landing/landing.css';

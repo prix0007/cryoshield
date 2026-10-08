@@ -2,11 +2,35 @@
    Every graphic's default (no JS, reduced motion) look is its FINAL, informative state; motion.ts arms them. */
 
 .landing {
-  /* The landing page is not themed: its tiles are explicitly light or dark. */
-  --app-focus: var(--color-primary-focus);
-  background: var(--canvas);
-  color: var(--ink);
-  color-scheme: light;
+  --app-focus: var(--page-focus);
+  background: var(--page-canvas);
+  color: var(--page-ink);
+}
+
+/* Themed light surfaces (add-theme-switch D2): inside them the base tokens follow the page tokens, which equal the
+   base tokens in the light theme and switch in the dark theme. The dark story tiles are NOT listed: they are dark in
+   both themes and keep the fixed tokens (their illustrations use e.g. a parchment paper sheet on a dark tile). Also
+   used by the legal layout (the whole .legal-page body) and /architecture's sub-nav and footer. */
+.tile-light,
+.tile-parchment,
+.landing .sub-nav,
+.arch-page .sub-nav,
+.site-footer,
+.legal-page {
+  --canvas: var(--page-canvas);
+  --canvas-parchment: var(--page-parchment);
+  --surface-pearl: var(--page-pearl);
+  --ink: var(--page-ink);
+  --ink-muted-80: var(--page-muted-80);
+  --ink-muted-48: var(--page-muted-48);
+  --hairline: var(--page-hairline);
+  --hairline-soft: var(--page-hairline-soft);
+  --divider-soft: var(--page-divider-soft);
+  --input-border: var(--page-input-border);
+  --color-primary: var(--page-link);
+  --color-primary-focus: var(--page-focus);
+  --frost-light: var(--page-frost);
+  --app-focus: var(--page-focus);
 }
 .landing main:focus {
   outline: none;

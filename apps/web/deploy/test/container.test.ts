@@ -29,6 +29,9 @@ const ENV = {
   // Landing analytics on (add-privacy-preserving-analytics 4.4): per-route CSP and Permissions-Policy.
   VITE_CF_BEACON_TOKEN: 'ab'.repeat(16),
 };
+// add-theme-switch D1: every page loads exactly one same-origin classic theme script; the static pages load nothing else.
+const scriptTags = (html: string) => [...html.matchAll(/<script\b[^>]*>/gi)].map((m) => m[0]);
+const THEME_TAG = expect.stringMatching(/^<script src="\/assets\/theme-[0-9a-f]{8}\.js">$/);
 const sh = (cmd: string, args: string[], opts: object = {}) => execFileSync(cmd, args, { cwd: web, encoding: 'utf8', stdio: 'pipe', ...opts });
 
 function files(dir: string, base = dir): string[] {
@@ -179,7 +182,11 @@ describe('served by the container', () => {
     expect(r.status).toBe(200);
     expect(r.body).toContain('Written for an open-source project; not legal advice.');
     expect(r.body).not.toMatch(/Draft, pending legal review|@cryoshield\.app/);
-    expect(r.body).not.toMatch(/<script/i);
+    expect(scriptTags(r.body)).toEqual([THEME_TAG]); // add-theme-switch: only the theme script
+    const theme = await get(r.body.match(/src="(\/assets\/theme-[0-9a-f]{8}\.js)"/)![1]!);
+    expect(theme.status).toBe(200);
+    expect(String(theme.headers['content-type'])).toMatch(/javascript/);
+    expect(theme.headers['cache-control']).toBe('public, max-age=31536000, immutable');
     expect(r.headers['content-security-policy']).toBe(`${metaCsp(r.body)}; frame-ancestors 'none'`);
     expect(r.headers['content-security-policy']).toBe(app.headers['content-security-policy']);
     for (const [k, v] of Object.entries(SECURITY_HEADERS)) expect(r.headers[k.toLowerCase()], k).toBe(v);
@@ -255,7 +262,8 @@ describe('served by the container', () => {
     const r = await get('/architecture');
     expect(r.status).toBe(200);
     expect(r.body).toContain('CryoShield system map');
-    expect(r.body).not.toMatch(/<script|__CS_/);
+    expect(r.body).not.toMatch(/__CS_/);
+    expect(scriptTags(r.body)).toEqual([THEME_TAG]); // add-theme-switch: only the theme script
     expect(r.headers['content-security-policy']).toBe(`${metaCsp(r.body)}; frame-ancestors 'none'`);
     expect(r.headers['content-security-policy']).toBe(app.headers['content-security-policy']);
     for (const k of ['X-Frame-Options', 'Strict-Transport-Security', 'X-Content-Type-Options', 'Referrer-Policy', 'Permissions-Policy']) expect(r.headers[k.toLowerCase()], k).toBe(SECURITY_HEADERS[k]);
@@ -269,7 +277,8 @@ describe('served by the container', () => {
     const r = await get('/devices');
     expect(r.status).toBe(200);
     expect(r.body).toContain('<h1 id="supported-devices">Supported devices</h1>');
-    expect(r.body).not.toMatch(/<script|cloudflareinsights|cf-beacon/);
+    expect(r.body).not.toMatch(/cloudflareinsights|cf-beacon/);
+    expect(scriptTags(r.body)).toEqual([THEME_TAG]); // add-theme-switch: only the theme script
     expect(r.headers['content-security-policy']).toBe(`${metaCsp(r.body)}; frame-ancestors 'none'`);
     expect(r.headers['content-security-policy']).toBe(app.headers['content-security-policy']);
     expect(r.headers['content-security-policy']).not.toContain('cloudflareinsights');

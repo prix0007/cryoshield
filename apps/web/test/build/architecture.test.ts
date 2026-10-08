@@ -49,7 +49,9 @@ describe('/architecture page', () => {
 
   it('is CSP-clean: no style attributes or elements, no script, no var() in attributes; the app CSP', () => {
     const h = html('architecture/index.html');
-    expect(h).not.toMatch(/\sstyle=|<style[\s>]|<script|="var\(/i);
+    expect(h).not.toMatch(/\sstyle=|<style[\s>]|="var\(/i);
+    // add-theme-switch D1: the one same-origin classic theme script, nothing else.
+    expect([...h.matchAll(/<script\b[^>]*>/gi)].map((m) => m[0])).toEqual([expect.stringMatching(/^<script src="\/assets\/theme-[0-9a-f]{8}\.js">$/)]);
     const csp = (p: string) => html(p).match(/<meta http-equiv="Content-Security-Policy" content="([^"]+)">/)?.[1];
     expect(csp('architecture/index.html')).toBe(csp('app/index.html'));
     for (const m of h.matchAll(/<(?:link(?! rel="canonical")|img|source|iframe)[^>]+(?:href|src)="([^"]+)"/g)) expect(m[1]).toMatch(/^(\/|data:)/);
