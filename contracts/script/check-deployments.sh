@@ -13,7 +13,8 @@
 # record at all fails, every record must hold exactly the contracts EXPECTED for its preset (below), and unknown keys
 # (top level, under contracts, or inside an entry) fail.
 #
-# For every contract in a record (VaultRegistry v1 top-level, contracts.vaultRegistryV2, contracts.wallets.<rpId>):
+# For every contract in a record (VaultRegistry v1 top-level, contracts.vaultRegistryV2, contracts.wallets.<rpId>;
+# contracts.vaultRegistries.v<N> is shape-checked and, online, refused until this script can verify that build):
 #   1. deploy tx: receipt status 1, block == deployBlock, sent to the canonical CREATE2 deployer, and the CREATE2
 #      address derived from the tx input (salt || initCode) equals the recorded address;
 #   2. the tx's init code is exactly this build's init code (v1: `v1` Foundry profile; wallets: + abi.encode(rpIdHash));
@@ -57,7 +58,7 @@ lint_record() {
   read -r v1want wallets < <(expected "$preset") || { bad "$file: no expected contents for preset $preset (add it to expected() first)"; return; }
   extra="$(jq -r '(keys - ["chainId","address","deployBlock","txHash","abiHash","contracts"])[]' "$file")"
   [[ -z "$extra" ]] && ok "$preset: no unknown top-level keys" || bad "$preset: unknown top-level key(s): $(tr '\n' ' ' <<<"$extra")"
-  extra="$(jq -r '(.contracts // {} | keys) - ["vaultRegistryV2","wallets"] | .[]' "$file")"
+  extra="$(jq -r '(.contracts // {} | keys) - ["vaultRegistryV2","vaultRegistries","wallets"] | .[]' "$file")"
   [[ -z "$extra" ]] && ok "$preset: no unknown keys under contracts" || bad "$preset: unknown key(s) under contracts: $(tr '\n' ' ' <<<"$extra")"
   if [[ "$v1want" == required ]]; then
     jq -e '(.address|type=="string") and (.deployBlock|type=="number") and (.txHash|type=="string") and (.abiHash|type=="string")' "$file" >/dev/null &&
@@ -68,10 +69,39 @@ lint_record() {
   fi
   jq -e '.contracts.vaultRegistryV2 | (keys == ["abiHash","address","deployBlock","txHash"]) and (.deployBlock|type=="number")' "$file" >/dev/null 2>&1 &&
     ok "$preset: vaultRegistryV2 entry complete" || bad "$preset: contracts.vaultRegistryV2 missing, incomplete or with unknown keys"
+  lint_later_registries "$file" "$preset"
   have="$(jq -r '.contracts.wallets // {} | keys | join(",")' "$file")"
   [[ "$have" == "$wallets" ]] && ok "$preset: wallet RP IDs == {$wallets}" || bad "$preset: wallet RP IDs {$have} != expected {$wallets}"
   jq -e '.contracts.wallets // {} | to_entries | all(.value | (keys == ["abiHash","deployBlock","factory","factoryAbiHash","implementation","rpIdHash","txHash"]) and (.deployBlock|type=="number"))' "$file" >/dev/null &&
     ok "$preset: every wallet entry has exactly the expected fields" || bad "$preset: a wallet entry is missing fields or has unknown keys"
+}
+
+# Registry v3 and later (deployments/README.md; recover-registry-versions D5, task 7.1): optional, under
+# contracts.vaultRegistries.v<N> (N 3..999, no leading zero) with exactly {abiHash, address, deployBlock, txHash}.
+# Its abiHash must be one of the committed registry ABIs (the web app and the recovery tool refuse anything else),
+# and no two registry versions may share an address. Absent today on every chain.
+lint_later_registries() {
+  local file="$1" preset="$2" bad_keys known1 known2
+  jq -e '.contracts.vaultRegistries // {} | type == "object"' "$file" >/dev/null 2>&1 ||
+    { bad "$preset: contracts.vaultRegistries must be an object keyed v3, v4, …"; return; }
+  [[ "$(jq -r '.contracts.vaultRegistries // {} | length' "$file")" == 0 ]] && return
+  bad_keys="$(jq -r '.contracts.vaultRegistries | keys[] | select(test("^v([3-9]|[1-9][0-9]{1,2})$") | not)' "$file")" || bad_keys="(unreadable)"
+  [[ -z "$bad_keys" ]] && ok "$preset: contracts.vaultRegistries keys are v3 and later" ||
+    bad "$preset: invalid key(s) under contracts.vaultRegistries (expected v3, v4, …; v1 and v2 keep their own keys): $(tr '\n' ' ' <<<"$bad_keys")"
+  jq -e '.contracts.vaultRegistries | to_entries | all(.value | type == "object" and (keys == ["abiHash","address","deployBlock","txHash"]) and (.deployBlock|type=="number" and . >= 0 and . == floor) and (.address|type=="string" and test("^0x[0-9a-fA-F]{40}$")) and (.txHash|type=="string" and test("^0x[0-9a-fA-F]{64}$")) and (.abiHash|type=="string"))' "$file" >/dev/null 2>&1 &&
+    ok "$preset: every contracts.vaultRegistries entry has exactly the expected fields" ||
+    bad "$preset: a contracts.vaultRegistries entry is missing fields, has unknown keys or an invalid value"
+  known1="$(lc "$(abi_hash abi/VaultRegistry.json)")"
+  known2="$(lc "$(abi_hash abi/VaultRegistryV2.json)")"
+  bad_keys="$(jq -r --arg a "$known1" --arg b "$known2" \
+    '.contracts.vaultRegistries | to_entries[] | select((.value | if type == "object" then .abiHash else null end | if type == "string" then ascii_downcase else "" end) as $h | $h != $a and $h != $b) | .key' "$file" 2>/dev/null)" || bad_keys="(unreadable) "
+  [[ -z "$bad_keys" ]] && ok "$preset: every later registry's abiHash is a committed registry ABI" ||
+    bad "$preset: registry $(tr '\n' ' ' <<<"$bad_keys")has an abiHash matching neither abi/VaultRegistry.json nor abi/VaultRegistryV2.json"
+  jq -e '[.address, .contracts.vaultRegistryV2.address, (.contracts.vaultRegistries | .[] | .address?)] | map(select(type == "string") | ascii_downcase) | length == (unique | length)' "$file" >/dev/null 2>&1 &&
+    ok "$preset: registry addresses are distinct" || bad "$preset: two registry versions have the same address"
+  # The newest registry takes every write, so it needs the v2 (write) ABI, as the web build requires.
+  jq -e --arg b "$known2" '.contracts.vaultRegistries | to_entries | max_by(.key | ltrimstr("v") | tonumber) | .value.abiHash | ascii_downcase == $b' "$file" >/dev/null 2>&1 &&
+    ok "$preset: the newest registry has the v2 (write) ABI" || bad "$preset: the newest registry's abiHash is not abi/VaultRegistryV2.json (it takes every write)"
 }
 
 default_rpc() {
@@ -192,6 +222,12 @@ check_record() {
       "$(jq -r .contracts.vaultRegistryV2.txHash "$file")" "$INIT_V2"
     [[ "$(jq -r .contracts.vaultRegistryV2.abiHash "$file")" == "$(abi_hash abi/VaultRegistryV2.json)" ]] && ok "v2: abiHash" || bad "v2: abiHash != abi/VaultRegistryV2.json"
   fi
+
+  # Fail-closed: this checker has no build to compare a v3+ registry with. Before recording one, add its init code
+  # (from contracts/src) and a check_deploy call here.
+  while IFS= read -r v; do
+    [[ -n "$v" ]] && bad "registry $v (contracts.vaultRegistries.$v): no build to verify it against; extend check-deployments.sh first"
+  done < <(jq -r '.contracts.vaultRegistries // {} | keys[]' "$file")
 
   while IFS= read -r rpId; do
     [[ -n "$rpId" ]] || continue

@@ -7,6 +7,8 @@
 #   VaultRegistryV2    every preset            -> contracts.vaultRegistryV2
 #   wallet pair/RP ID  CryoShieldSmartWalletFactory (+ the implementation its constructor creates), one per RP ID
 #                                              -> contracts.wallets.<rpId>
+#   VaultRegistry v3+  not deployed by this script yet. Its record key is contracts.vaultRegistries.v<N>
+#                      (deployments/README.md); existing entries there are kept when the record is merged.
 #
 # Usage:
 #   script/deploy.sh anvil              # local node (default RPC http://127.0.0.1:8545), unlocked sender, no keys
