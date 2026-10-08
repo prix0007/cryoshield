@@ -1,25 +1,30 @@
 # Data-flow inventory
 
-> Source: `openspec/changes/add-privacy-and-compliance` design D1 (2026-10-02/03). Not legal advice. Items marked
-> UNVERIFIED or **[lawyer]** are open. Machine-readable origin mapping: [`origins.json`](origins.json), checked by
-> `apps/web/scripts/verify-build.mjs` (every production `connect-src` / `script-src` origin must be listed).
+> `add-privacy-and-compliance` design D1, completed 2026-10-08. CryoShield is an open-source project maintained by its
+> contributors; there is no company (founder decision 2026-10-08). This is a factual record of what data goes where,
+> not a legal analysis. UNVERIFIED marks a vendor fact we could not confirm from the vendor's public documents.
+> Machine-readable origin mapping: [`origins.json`](origins.json), checked by `apps/web/scripts/verify-build.mjs`
+> (every production `connect-src` / `script-src` origin must be listed).
 
-"PD" = personal data under GDPR Art. 4(1) / DPDP s.2(t). Role = CryoShield's role for that flow.
+"PD?" says whether the data identifies, or can be linked to, a person (an IP address, or a stable pseudonymous
+identifier such as an account address). "Who controls it" is factual: who chose the party and who can delete what it
+holds. How the design keeps this list short is in [`legal-analysis.md`](legal-analysis.md).
 
-| # | Where | Data | PD? | CryoShield role | Other party's role | Retention / control |
-|---|---|---|---|---|---|---|
-| 1 | Browser (user's device) | PRF outputs, data key, plaintext secrets (in memory only); WebAuthn credential lives on the YubiKey | Plaintext secrets may contain PD; never leaves the device | **Neither**: CryoShield code runs on the user's device but CryoShield never receives anything (household/own-device processing by the user) | User | Wiped after use; no cookies or storage (lint + `test/privacy.test.ts`) |
-| 2 | Fly.io edge proxy | Client IP, TLS metadata, Host, path, user agent, timestamps | **Yes** (IP) | **Controller** (we chose to run a website; GDPR Art. 4(7)); Data Fiduciary under DPDP | **Processor** for app traffic (Fly privacy policy, DPA at fly.io/documents) | Fly exposes no edge access logs to customers; internal retention **unpublished (UNVERIFIED)**; `fly logs` keeps app stdout ~7 days. Fly is US-based, DPF-certified; 34 sub-processors |
-| 3 | Caddy container (our config) | Would see `Fly-Client-IP`, path, UA | Yes, if logged | Controller | n/a | **No `log` directive → Caddy writes no access log** (Caddy default). Spec "Minimal hosting logs" makes this a tested guarantee |
-| 4 | Pimlico bundler/paymaster (Austerlitz Labs Ltd, UK) | Client IP, Origin, user agent, smart-account address (sender), userOp calldata (ciphertext blob, locators, vaultId), signatures, sponsorship policy ID | **Yes** (IP; account address linked to IP) | **Controller** (we choose Pimlico and embed it in our app) | **Processor** (Pimlico self-describes as sub-processor for customers); **no DPA/SCCs published, retention unstated (UNVERIFIED)** | Ask Pimlico for a DPA and retention; UK adequacy for EU→UK transfers |
-| 5 | Public chain (OP Sepolia → OP Mainnet) | Smart-account address, vaultId, locators (≤8), blob: RP ID, key count N, credential IDs, PRF salts, wrapped keys, ciphertext; timestamps; `VaultCreated.owner` | **Likely yes for GDPR** (pseudonymous identifiers that a node operator, bundler or the user can link; credential IDs are stable device-bound IDs). Ciphertext is PD for anyone with a key, arguably not for others (SRB relative test) | **Controller** for the decision to publish (we designed the protocol, the app builds and signs the transaction), jointly with the user who submits it; EDPB 02/2025 treats a dApp provider that determines on-chain processing as a controller | Validators/sequencer/nodes: neither our processors nor controllers we instruct (no contract) | **Permanent, public, cannot be erased** |
-| 6 | Arweave via ArDrive Turbo (Permanent Data Solutions Inc., US) + Turbo's fast-finality index `turbo-gateway.com` (app only, fix-arweave-mirror-status) + arweave.net gateway (ar.io, NL; operator UNVERIFIED) | Upload: client IP, signed data item = blob + tags `App-Name`, `CryoShield-Vault-Id`, `CryoShield-Version`, `CryoShield-Locator`×N, ephemeral uploader public key; reads: IP, GraphQL query (vaultId, locators) | Yes (IP; same pseudonymous IDs as #5). Uploader key is ephemeral per session, so it does not link sessions | Controller (upload decision) | Turbo/gateway: independent controllers of their logs (their own ToS/privacy, no DPA offered to us; UNVERIFIED) | Data permanent; gateway may blocklist but the network keeps it |
-| 7 | Public RPCs (`sepolia.optimism.io`/OP Labs; publicnode; drpc) | IP, `eth_call`/`eth_getLogs` params (locators, vaultIds) | Yes (IP linked to locator lookups = "this IP owns this vault") | Controller (we chose the endpoints) | Independent controllers in practice (no contract); OP Labs logging policy **unpublished (UNVERIFIED)**; PublicNode ≤24h; dRPC weekly purge | Plan: rotate/let user choose RPC; disclose |
-| 8 | Cloudflare Web Analytics (landing `/` only, beacon only, `add-privacy-preserving-analytics`) | IP + UA in transit; page path (query and fragment stripped first), referrer, Performance API timings; country derived from IP | Yes in transit (IP). Cloudflare says IPs are not stored and no cookies or localStorage are used (cloudflare.com/web-analytics, H for the claim) | Controller | Processor (Cloudflare DPA, cloudflare.com/cloudflare-customer-dpa; sub-processors cloudflare.com/gdpr/subprocessors) | Metadata processed in US + EU data centres; EU-only needs the Enterprise Data Localization Suite (M). Retention UNVERIFIED |
-| 9 | GitHub (public repo, issues, private vulnerability reports, Actions) | Reporter/contributor GitHub accounts, emails in commits, report contents | Yes | Controller for report handling; GitHub is an independent controller of its users' accounts | GitHub: controller of accounts; processor for our repo content (GitHub DPA for org customers; UNVERIFIED for free plan) | Delete reports/issue content on request where we control it |
-| 10 | GitHub correspondence (privacy-request issues, private security advisories; adopt-oss-project-defaults) | Reporter GitHub account, request contents, possibly an account address | Yes | Controller (the project maintainers, for this correspondence only) | GitHub: controller of accounts; hosts the content | Delete or redact personal data in issues on request; private advisories closed once handled, kept at most 3 years after closure. No email: CryoShield has no mailbox |
-| 11 | Domain/DNS (GoDaddy), CAA iodef mail | WHOIS (company, not users) | No user PD | n/a | n/a | n/a |
-| 12 | Desktop recovery tool | Runs locally; contacts preset RPCs and Arweave gateway like #6–7 | IP to RPCs | Neither for local processing; controller only for the default RPC choice | Same as #7 | No telemetry (by design) |
+| # | Where | Data | PD? | Who chose it / who controls it | Retention / control |
+|---|---|---|---|---|---|
+| 1 | Browser (user's device) | PRF outputs, wrap and data keys, plaintext secrets, labels and vault name (in memory only); the WebAuthn credential lives on the security key | Plaintext may contain PD; never leaves the device | The user. CryoShield's code runs there but sends none of it anywhere | PRF buffers wiped after use; open vault cleared on Lock, after 5 min idle and on page hide (spec `vault-web-app` "Secrets in memory only with auto-lock"); no cookies or storage (lint + `test/privacy.test.ts` + E2E sweep) |
+| 2 | Fly.io edge proxy (`cryoshield.app`, `cryoshield-web-dev.fly.dev`) | Client IP, TLS metadata, Host, path, user agent, timestamps | Yes (IP) | The maintainers chose Fly. Fly holds its edge logs; we cannot see or delete them | Fly exposes no edge access logs to customers; internal retention **unpublished (UNVERIFIED)**. `fly logs` keeps container stdout ~7 days (it contains no request data, row 3). Fly Inc. is US-based; machines in Singapore (`sin`). Fly's public privacy policy and DPA terms apply |
+| 3 | Caddy container (our config) | Would see `Fly-Client-IP`, path, user agent | Only if logged | The maintainers (config in this repo) | **No `log` directive, so Caddy writes no access log.** Tested: `apps/web/deploy/test/container.test.ts` sends 100 requests with distinct IPs, user agents and query strings and finds none in the output |
+| 4 | Pimlico bundler/paymaster (Austerlitz Labs Ltd, UK) | Client IP, Origin, user agent, smart-account address (sender), user-operation calldata (ciphertext blob, locators, vaultId), WebAuthn signatures, sponsorship policy ID | Yes (IP linked to the account address) | The maintainers chose Pimlico and hold the API key. Pimlico holds its logs | Pimlico's public terms and privacy policy apply; retention **unstated (UNVERIFIED)**. No separate agreement is sought (OSS, founder 2026-10-08) |
+| 5 | Public chain (OP Sepolia today; OP Mainnet after `launch-op-mainnet`) | VaultRegistry v2 (writes) and v1 (legacy, read-only): `vaultId`, `owner` (smart-account address), version, blob (RP ID, key count N, credential IDs, `wrapSalt`, wrapped keys, ciphertext), `blobHash` per version, `LocatorAdded` (≤8 locators per vault); every earlier blob version; block timestamps. CryoShield smart account: each enrolled key's P-256 public key | Pseudonymous identifiers (account address, locators, credential IDs, P-256 keys) that a bundler, an RPC or the user can link to a person. The ciphertext needs a key and its PIN to read | The protocol design is ours; the user signs every write. Nobody controls the chain | **Permanent, public, cannot be erased** |
+| 6 | Arweave via ArDrive Turbo upload (Permanent Data Solutions Inc., US); Turbo's fast-finality index `turbo-gateway.com` (app only, `fix-arweave-mirror-status`); arweave.net gateway (ar.io; operator UNVERIFIED) | Upload: client IP, signed data item = blob + tags `App-Name`, `CryoShield-Vault-Id`, `CryoShield-Version`, `CryoShield-Locator`×N, and the uploader's ephemeral secp256k1 address. Reads: IP, GraphQL query (vaultId, locators) | Yes (IP; same pseudonymous IDs as row 5). The uploader key is random per browser session, so it does not link sessions | The maintainers chose these services; each holds its own logs | Data permanent; a gateway may hide an item but the network keeps it. Vendor log retention per their public terms |
+| 7 | Public RPCs: web app `sepolia.optimism.io` / `mainnet.optimism.io` (OP Labs); recovery tool and metrics presets also PublicNode and dRPC | IP, `eth_call` / `eth_getLogs` parameters (locators, vaultIds) | Yes (an IP looking up a locator suggests "this IP owns this vault") | The maintainers chose the defaults; the recovery tool lets the user choose | OP Labs logging policy **unpublished (UNVERIFIED)**; PublicNode ≤ 24 h; dRPC weekly purge (their privacy pages) |
+| 8 | Cloudflare Web Analytics (landing `/` only, beacon only, `add-privacy-preserving-analytics`) | IP + user agent in transit; page path (query and fragment stripped first), referrer, Performance API timings; country derived from IP | Yes in transit (IP). Cloudflare states that IPs are not stored and no cookies or local storage are used | The maintainers chose it and hold the account | Off under GPC or DNT; never on `/app/` or the legal pages (CSP). Cloudflare's public DPA and privacy policy apply; retention UNVERIFIED |
+| 9 | GitHub (public repo, issues, pull requests, Actions) | Contributor and reporter GitHub accounts, emails in commits, issue and PR content | Yes | GitHub hosts it; maintainers can delete or redact issue content they control | Until deleted by the maintainers or the author |
+| 10 | GitHub correspondence (privacy-request issues, private security advisories; `adopt-oss-project-defaults`) | Reporter GitHub account, request contents, possibly an account address | Yes | The maintainers, for this correspondence only | Issue content deleted or redacted on request; private advisories closed once handled, kept at most 3 years after closure. There is no email address |
+| 11 | Domain and DNS (GoDaddy), CAA | WHOIS data of the registrant, not of users | No user PD | The maintainer | n/a |
+| 12 | Desktop recovery tool (`tools/recover`) | Runs locally; contacts the preset or user-chosen RPCs and Arweave gateways (rows 6–7) through one module, `net.py` | IP to those RPCs and gateways | The user chooses the network and endpoints | No telemetry: the only network calls are the RPC and gateway requests in `rpc.py` and `arweave.py` |
+| 13 | Product metrics job (`tools/metrics`, `.github/workflows/metrics.yml`) | Reads public chain and Arweave data only; writes weekly aggregates | No: no visitor data; the report is refused if it contains any 20- or 32-byte identifier other than the registry addresses, and cells under 3 are suppressed (`docs/reviews/product-metrics.md`) | The maintainers | GitHub Actions artifact, 90 days |
 
 ## Inside the ciphertext only (payload v2, `vault-list-labels-archive`)
 
@@ -37,16 +42,24 @@ publish the ciphertext; no new plaintext field, tag, event or log carries them):
 generic and month-only, "CryoShield vault · Oct 2026 (key 1)" (`apps/web/src/webauthn/index.ts`); they never carry
 the vault name or any secret. They sit on the user's key (row 1), never with CryoShield.
 
+## What the public data reveals (on-chain confidentiality review, F3 and F6)
+
+Beyond the identifiers in rows 5 and 6, a reader of the chain can learn: the number of keys, how many times and when a
+vault was edited, a size range of the payload (padding hides the exact length, not the class: a 12-word and a 24-word
+seed phrase usually differ), and, through a locator, every vault the same credential ever opened. None of it reveals
+a secret. `/privacy` "Public and permanent data" lists all of it.
+
 ## Browser-side device storage
 
 None. CryoShield's code sets no cookie and uses no localStorage, sessionStorage, IndexedDB, Cache Storage or service
-worker on any route (`apps/web/legal/storage-inventory.json`, enforced by a build scan and an E2E sweep). The
-Cloudflare beacon (row 8) states it uses no client-side state.
+worker on any route (`apps/web/legal/storage-inventory.json`, enforced by a build scan of every shipped script and an
+E2E sweep). The Cloudflare beacon (row 8) states it uses no client-side state.
 
 ## Sources
 
-Inventory sources: Fly privacy policy https://fly.io/legal/privacy-policy/, sub-processors https://fly.io/legal/sub-processors/,
-logging https://docs.fly.io/monitoring/logging-overview (H); Pimlico https://www.pimlico.io/privacy and /tos (H);
-ArDrive https://ardrive.io/tos-and-privacy/ (H); ar.io https://ar.io/legal/terms-of-service-and-privacy-policy/ (H);
-PublicNode https://www.publicnode.com/privacy, dRPC https://drpc.org/privacy-policy (M); Optimism
-https://www.optimism.io/data-privacy-policy (does not cover RPC traffic).
+Fly privacy policy https://fly.io/legal/privacy-policy/, sub-processors https://fly.io/legal/sub-processors/, logging
+https://docs.fly.io/monitoring/logging-overview; Pimlico https://www.pimlico.io/privacy and /tos; ArDrive
+https://ardrive.io/tos-and-privacy/; ar.io https://ar.io/legal/terms-of-service-and-privacy-policy/; PublicNode
+https://www.publicnode.com/privacy, dRPC https://drpc.org/privacy-policy; Optimism
+https://www.optimism.io/data-privacy-policy (does not cover RPC traffic); Cloudflare https://www.cloudflare.com/web-analytics/.
+On-chain fields: `docs/spec/vault-format-v1.md` §5, `docs/reviews/on-chain-confidentiality-2026-10.md` §1.
