@@ -1,5 +1,6 @@
 /** App chrome in the visual-language grammar (redesign-landing-and-app-ui D7). Presentational only. */
 import { useEffect, type ReactNode } from 'react';
+import { S } from './strings';
 
 const REPO = 'https://github.com/prix0007/cryoshield';
 const LINKS: [string, string][] = [
@@ -79,12 +80,13 @@ export function GlobalNav() {
   );
 }
 
-export function SubNav({ name, action }: { name: string; action?: ReactNode }) {
+/** `chip`: the network status (launch-op-mainnet D6): "Testnet" on a test network, "Unaudited" on a main network. */
+export function SubNav({ name, chip = S.network.chipTestnet, action }: { name: string; chip?: string; action?: ReactNode }) {
   return (
     <div className="sub-nav">
       <div className="sub-nav-inner">
         <p className="sub-nav-name">{name}</p>
-        <p className="chip">Testnet</p>
+        <p className="chip">{chip}</p>
         {action}
       </div>
     </div>

@@ -83,6 +83,20 @@ export const S = {
   testnet: (network: string) =>
     `Testnet preview: your vault is encrypted on your device and stored on ${network}, a test network, with an extra copy on Arweave when that upload succeeds. Test networks can be reset, and CryoShield has not been independently audited yet.`,
 
+  /** launch-op-mainnet D6 / 4.5 / 4.6: the network status notice and chip, and the launch notices. */
+  network: {
+    chipTestnet: 'Testnet',
+    chipMainnet: 'Unaudited',
+    mainnet: (network: string) =>
+      `CryoShield runs on ${network} and has not been independently audited. Your vault is encrypted on your device and stored permanently, and only your keys can open it: if you lose every key, nobody, including CryoShield, can open it. Please keep your existing backups too.`,
+    moving:
+      'CryoShield is moving to OP Mainnet. Vaults created during the testnet preview will not move; you can still read them with the recovery tool. Create a new vault after the switch.',
+    testnetVaults:
+      'Vaults created during the testnet preview are not on OP Mainnet. They are still there, and you can read yours with the open-source recovery tool and its --testnet option. To use CryoShield on OP Mainnet, create a new vault.',
+    recoveryTool: 'How to use the recovery tool',
+    recoveryToolUrl: 'https://github.com/prix0007/cryoshield/tree/main/tools/recover#readme',
+  },
+
   editor: {
     label: 'Name',
     labelHint: 'For example “Bitcoin seed” or “GitHub recovery codes”',
