@@ -47,10 +47,10 @@ Neither pipeline runs on pull requests, and `workflow-policy.mjs` enforces that 
 ## Releasing to production [owner]
 
 Only the repository owner can ship to production. Three independent layers enforce it:
-1. **The tag ruleset `release-tags`** (`.github/rulesets/release-tags.json`): only admins may create, move or delete `v*` tags.
+1. **The tag ruleset `release-tags`** (`.github/rulesets/release-tags.json`): only admins may create, move or delete **any** tag (`~ALL`, change `harden-release-path`), so every `v*` tag too. Protecting every tag, rather than a `v*` pattern, means the environments' `v*` policy can only ever match a tag an admin created, whatever the glob details.
 2. **The workflow:** the production run starts only when you trigger it (`github.triggering_actor == github.repository_owner`). This also covers a release published on an existing tag, a dispatch, or a re-run by anyone else.
    - **Caveat:** `repository_owner` is the account that owns the repository, today your user `prix0007`. If the repository is ever transferred to an **organization**, it becomes the organization's login, which no person's login equals. Production deploys then fail closed: `detect` is always skipped. Replace that gate (for example with an admin-team membership check) as part of the transfer.
-3. **The environments:** `production` and `production-build` accept **only `v*` tags**, with no branch policy at all, not even `main`. No workflow on any branch can obtain the production token or build config. Because only admins can create `v*` tags, **the only path to production secrets is a tag you created.**
+3. **The environments:** `production` and `production-build` accept **only `v*` tags**, with no branch policy at all, not even `main`. No workflow on any branch can obtain the production token or build config. Because only admins can create tags, **the only path to production secrets is a tag you created.**
 
 The agents' machine account (Write role) therefore cannot ship to production. Agents never create tags or releases.
 
@@ -112,12 +112,14 @@ If you ever need to recreate the app: `fly apps create cryoshield-web-dev --org 
 - `production` and `production-build`, deployable **only from `v*` tags** (no branch);
 - `development` and `development-build`, deployable from `main` only.
 
-The same command also syncs the `release-tags` ruleset (only admins may create, move or delete `v*` tags). It is idempotent, and without `--apply` it only prints the diff.
+The same command also syncs the `release-tags` ruleset (only admins may create, move or delete any tag, `~ALL`). It is idempotent, and without `--apply` it only prints the diff.
 
 ```sh
 .github/rulesets/apply.sh --with-ecc-review --environments           # dry run
 .github/rulesets/apply.sh --with-ecc-review --environments --apply
 ```
+
+After `harden-release-path` merges, run the two commands again: the dry run shows `release-tags` drifting from `refs/tags/v*` to `~ALL`, and `--apply` widens it. Then check it: the dry run must report `ruleset 'release-tags': in sync`, and a tag push by any non-admin account (the machine user, once it exists) must be refused, for example `refs/tags/probe-1` and `refs/tags/V0.0.1-probe` (`docs/agent-account.md` → verification). A refused push creates nothing.
 
 **2. Fly deploy tokens**, each an **app-scoped deploy token** (it can deploy only its own app, never the other one or the org), valid for one year:
 

@@ -19,7 +19,7 @@
     "auto-merge/Enable auto-merge, or switch it off while the PR is on hold or ecc-review is not required": "0d3926835e1e7131714fd576b5b568bdaa2f8b932523e4b6879a46a4ec05675c"
   },
   "deploy.yml": {
-    "release/Verify the context against its release manifest": "e1d4b618a1f45d7556750da20a76ca940c5e0fa9978394484c3e57238bad8b6d",
+    "release/Verify the context against the build job's hashes and its release manifest": "9d93d773155dfb221e8e66879e5c8a827c6396c479d55ae61593556d2d9fd9ea",
     "release/Install flyctl (pinned, checksum-verified)": "46ee8cd831c944f4d768ef059945846649c130395a0a08167327c5941bf680cc",
     "release/Refuse a release whose tag moved or left main": "88d3eae5559fc6ac18005fc6a5edaf5ce0429eff481728eae3b6f537a4e03970",
     "release/Deploy the built context (flyctl only)": "80f8b6cd2e034b069d009994c90707977864e772fdbe8ed9132af0be31c47caf",
@@ -45,7 +45,7 @@
     "diagnose/Guard and post the diagnosis (update in place), apply allow-listed labels": "02ed331fdf2d2e89472c64c44d77453f888c9b1985c36b28e2d662a94f0e0351"
   },
   "deploy-dev.yml": {
-    "release/Verify the context against its release manifest": "e1d4b618a1f45d7556750da20a76ca940c5e0fa9978394484c3e57238bad8b6d",
+    "release/Verify the context against the build job's hashes and its release manifest": "9d93d773155dfb221e8e66879e5c8a827c6396c479d55ae61593556d2d9fd9ea",
     "release/Install flyctl (pinned, checksum-verified)": "46ee8cd831c944f4d768ef059945846649c130395a0a08167327c5941bf680cc",
     "release/Skip a release that is no longer main's HEAD": "a7905a0f09cc0e80d8c458d5ec6753abd0e433f0d6829b0f67945999f4e2423e",
     "release/Deploy the built context (flyctl only)": "80f8b6cd2e034b069d009994c90707977864e772fdbe8ed9132af0be31c47caf",

@@ -34,7 +34,12 @@ const GOOD_HEADERS = {
   'referrer-policy': 'no-referrer',
   'cross-origin-opener-policy': 'same-origin',
   'cross-origin-resource-policy': 'same-origin',
+  // Every path but the landing document gets the app policy (gen-context.mjs); '/' gets LANDING_PP below.
+  'permissions-policy': 'camera=(), publickey-credentials-get=(self), publickey-credentials-create=(self), usb=()',
 };
+// harden-release-path D5 (review L5): the landing document never gets WebAuthn.
+const LANDING_PP = 'camera=(), publickey-credentials-get=(), publickey-credentials-create=(), usb=()';
+const TREE = 'sha256:' + 'c'.repeat(64); // the treeHash releaseBody() reports
 
 // Mutable site state per test.
 let site;
@@ -42,6 +47,7 @@ const healthySite = () => ({
   release: { status: 200, body: releaseBody() },
   status: {},
   headers: { ...GOOD_HEADERS },
+  pathHeaders: { '/': { 'permissions-policy': LANDING_PP } }, // per-path overrides of headers
   architecture: `<td class="mono">${V2}</td><td class="mono">${ADDRESS} (read-only)</td><td class="mono">${FACTORY}</td>`,
   support: `<code id="donation-address">${DONATION}</code>`,
   robots: null, // body of /robots.txt (404 when null)
@@ -73,7 +79,7 @@ before(async () => {
       res.writeHead(404);
       return res.end();
     }
-    res.writeHead(site.status[path] ?? 200, { 'content-type': 'text/html', ...site.headers });
+    res.writeHead(site.status[path] ?? 200, { 'content-type': 'text/html', ...site.headers, ...(site.pathHeaders?.[path] ?? {}) });
     res.end(path === '/architecture' ? site.architecture : path === '/support' ? site.support : path === '/healthz' ? 'ok' : '<html></html>');
   });
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
@@ -382,6 +388,56 @@ test('smoke: a malformed REGISTRIES is a usage error (exit 2)', async () => {
   site = healthySite();
   for (const bad of ['v2', `v2=${V2},v1=${ADDRESS}`, `v02=${V2}`, `v2=0x12`, ` v2=${V2}`, `v2=${V2}\nv1=${ADDRESS}`]) {
     assert.equal((await run('smoke.sh', smokeEnv({ REGISTRIES: bad }))).status, 2, bad);
+  }
+});
+
+// harden-release-path D5 (review L5): the Permissions-Policy split. '/' must not allow WebAuthn; '/app/' must allow it
+// for itself. Other pages carry the app policy by design and are not checked for ().
+test('smoke: Permissions-Policy: / without WebAuthn and /app/ with WebAuthn (self) passes', async () => {
+  site = healthySite();
+  const r = await run('smoke.sh', smokeEnv());
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+});
+
+test('smoke: Permissions-Policy: every regression of the split fails and is named', async () => {
+  const appPP = GOOD_HEADERS['permissions-policy'];
+  const cases = [
+    // landing document gains WebAuthn (the app policy shipped to /)
+    [{ '/': { 'permissions-policy': appPP } }, /\/: permissions-policy.*publickey-credentials-get=\(\)/],
+    // landing keeps get=() but loses create=()
+    [{ '/': { 'permissions-policy': 'publickey-credentials-get=()' } }, /\/: permissions-policy.*publickey-credentials-create=\(\)/],
+    // landing sends no Permissions-Policy at all
+    [{ '/': { 'permissions-policy': '' } }, /\/: permissions-policy/],
+    // the app loses WebAuthn (the landing policy shipped to /app/)
+    [{ '/': { 'permissions-policy': LANDING_PP }, '/app/': { 'permissions-policy': LANDING_PP } }, /\/app\/: permissions-policy.*publickey-credentials-get=\(self\)/],
+    [{ '/': { 'permissions-policy': LANDING_PP }, '/app/': { 'permissions-policy': 'publickey-credentials-get=(self)' } }, /\/app\/: permissions-policy.*publickey-credentials-create=\(self\)/],
+  ];
+  for (const [pathHeaders, why] of cases) {
+    site = { ...healthySite(), pathHeaders };
+    const r = await run('smoke.sh', smokeEnv());
+    assert.notEqual(r.status, 0, JSON.stringify(pathHeaders));
+    assert.match(r.stdout + r.stderr, why, JSON.stringify(pathHeaders));
+  }
+});
+
+// harden-release-path D3 (review L4): the live treeHash equals the build job's output when EXPECT_TREE_HASH is given.
+test('smoke: EXPECT_TREE_HASH equal to the live treeHash passes; a different one fails and is named', async () => {
+  site = healthySite();
+  const ok = await run('smoke.sh', smokeEnv({ EXPECT_TREE_HASH: TREE }));
+  assert.equal(ok.status, 0, ok.stdout + ok.stderr);
+  const bad = await run('smoke.sh', smokeEnv({ EXPECT_TREE_HASH: 'sha256:' + 'd'.repeat(64) }));
+  assert.notEqual(bad.status, 0);
+  assert.match(bad.stdout + bad.stderr, /treeHash.*expected sha256:d{64}/);
+  site = { ...healthySite(), release: { status: 200, body: JSON.stringify({ commit: SHA, config: JSON.parse(releaseBody()).config }) } };
+  const missing = await run('smoke.sh', smokeEnv({ EXPECT_TREE_HASH: TREE }));
+  assert.notEqual(missing.status, 0);
+  assert.match(missing.stdout + missing.stderr, /treeHash/);
+});
+
+test('smoke: a malformed EXPECT_TREE_HASH is a usage error (exit 2)', async () => {
+  site = healthySite();
+  for (const bad of ['c'.repeat(64), 'sha256:' + 'c'.repeat(63), 'sha256:' + 'C'.repeat(64), 'sha1:' + 'c'.repeat(40)]) {
+    assert.equal((await run('smoke.sh', smokeEnv({ EXPECT_TREE_HASH: bad }))).status, 2, bad);
   }
 });
 

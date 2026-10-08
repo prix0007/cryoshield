@@ -132,6 +132,51 @@ for (const [file, t] of Object.entries(TARGETS)) {
     expectError(file, replaceOnce(text, '        id: rollback\n', '        id: rollback\n        shell: bash -e {0}\n'), /shell/);
   });
 
+  // harden-release-path D3/D4 (pre-production review L4): the build job publishes the context hashes as job outputs;
+  // the release job verifies the downloaded artifact against them (not only against the manifest inside it), and the
+  // smoke test compares the live treeHash with the build job's.
+  test(`${file}: build publishes the context hashes; release and smoke verify against the build job's outputs`, () => {
+    const TREE_OUT = '${{ needs.build.outputs.tree_hash }}';
+    const CADDY_OUT = '${{ needs.build.outputs.caddyfile_hash }}';
+    assert.deepEqual(wf.jobs.build.outputs, {
+      tree_hash: '${{ steps.context-hash.outputs.tree_hash }}',
+      caddyfile_hash: '${{ steps.context-hash.outputs.caddyfile_hash }}',
+    });
+    const bsteps = wf.jobs.build.steps;
+    const hash = bsteps.find((s) => s.id === 'context-hash');
+    assert.equal(String(hash.run).trim(), '.github/scripts/deploy/verify-context.sh');
+    assert.equal(hash.env.ROLE, 'build');
+    assert.ok(bsteps.indexOf(hash) > bsteps.findIndex((s) => s.id === 'build'), 'context-hash runs after the build');
+    const rsteps = wf.jobs.release.steps;
+    const verify = rsteps.find((s) => s.id === 'verify-context');
+    assert.equal(String(verify.run).trim(), '.github/scripts/deploy/verify-context.sh');
+    assert.equal(verify.env.ROLE, 'release');
+    assert.equal(verify.env.EXPECT_TREE_HASH, TREE_OUT);
+    assert.equal(verify.env.EXPECT_CADDYFILE_HASH, CADDY_OUT);
+    const recheck = file === 'deploy.yml' ? 'tag-check' : 'head-check';
+    assert.ok(rsteps.indexOf(verify) < rsteps.findIndex((s) => s.id === recheck), 'verify-context runs before the re-check and deploy');
+    assert.equal(rsteps.find((s) => s.id === 'smoke').env.EXPECT_TREE_HASH, TREE_OUT);
+    // no expression in any run: block of the new steps (template injection)
+    for (const s of [hash, verify]) assert.doesNotMatch(String(s.run), /\$\{\{/);
+
+    // every removal or weakening fails the policy
+    const mutations = [
+      [replaceOnce(text, "      tree_hash: ${{ steps.context-hash.outputs.tree_hash }}\n", ''), /job 'build'.*outputs/],
+      [replaceOnce(text, "      caddyfile_hash: ${{ steps.context-hash.outputs.caddyfile_hash }}\n", ''), /job 'build'.*outputs/],
+      [replaceOnce(text, '        id: context-hash\n', ''), /context-hash/],
+      [replaceOnce(text, '          ROLE: build\n', '          ROLE: release\n'), /context-hash/],
+      [replaceOnce(text, '        id: verify-context\n', ''), /verify-context/],
+      [replaceOnce(text, `          EXPECT_TREE_HASH: ${TREE_OUT}\n          EXPECT_CADDYFILE_HASH:`, '          EXPECT_CADDYFILE_HASH:'), /verify-context/],
+      [replaceOnce(text, `          EXPECT_CADDYFILE_HASH: ${CADDY_OUT}\n`, '          EXPECT_CADDYFILE_HASH: sha256:0000\n'), /verify-context/],
+      [replaceOnce(text, '          ROLE: release\n', '          ROLE: build\n'), /verify-context/],
+      [replaceOnce(text, `          EXPECT_TREE_HASH: ${TREE_OUT} # the live /release.json treeHash (harden-release-path D3)\n`, ''), /smoke.*EXPECT_TREE_HASH/],
+    ];
+    for (const [mutated, why] of mutations) {
+      assert.notEqual(mutated, text);
+      expectError(file, mutated, why);
+    }
+  });
+
   test(`${file}: environment names may not be expressions`, () => {
     expectError(file, replaceOnce(text, `      name: ${t.release}\n`, `      name: \${{ '${t.release}' }}\n`), /expression/);
   });

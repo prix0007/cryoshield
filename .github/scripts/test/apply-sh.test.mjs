@@ -209,7 +209,7 @@ test('release-tags: a missing tag ruleset is drift in the dry run (exit 3), with
   const r = run({ ...MAIN_IN_SYNC, tags: null });
   assert.equal(r.status, 3, r.stderr + r.stdout);
   assert.match(r.stdout, /ruleset 'release-tags' does not exist/);
-  assert.match(r.stdout, /\+.*"refs\/tags\/v\*"/);
+  assert.match(r.stdout, /\+.*"~ALL"/);
   assert.match(r.stdout, /ruleset 'main': in sync/);
   assert.deepEqual(r.writes, []);
 });
@@ -226,6 +226,8 @@ test('release-tags: a drifted tag ruleset (extra bypass actor, missing rule) is 
     (t) => t.bypass_actors.push({ actor_id: 2, actor_type: 'RepositoryRole', bypass_mode: 'always' }),
     (t) => { t.rules = t.rules.filter((x) => x.type !== 'update'); },
     (t) => { t.conditions.ref_name.include = ['refs/tags/release-*']; },
+    // harden-release-path D1: the old v*-only ruleset is drift, so --apply widens it to every tag
+    (t) => { t.conditions.ref_name.include = ['refs/tags/v*']; },
   ]) {
     const live = liveTags();
     mutate(live);

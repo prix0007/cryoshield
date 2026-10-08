@@ -54,12 +54,14 @@ test('repo merge settings allow squash only, titled from the PR, with auto-merge
 });
 
 // ---- split-dev-and-release-deploys: owner-only release tags, and the four deploy environments ----
-test('release-tags: tag ruleset on refs/tags/v*, blocks create/update/delete, admin role is the only bypass', () => {
+// harden-release-path D1 (pre-production review M3): EVERY tag (~ALL), not just v*, so the production environments'
+// v* tag policy can only ever match a tag an admin created, whatever the glob semantics.
+test('release-tags: tag ruleset on every tag (~ALL), blocks create/update/delete, admin role is the only bypass', () => {
   const t = load('release-tags.json');
   assert.equal(t.name, 'release-tags');
   assert.equal(t.target, 'tag');
   assert.equal(t.enforcement, 'active');
-  assert.deepEqual(t.conditions.ref_name, { include: ['refs/tags/v*'], exclude: [] });
+  assert.deepEqual(t.conditions.ref_name, { include: ['~ALL'], exclude: [] });
   assert.deepEqual(t.rules.map((r) => r.type).sort(), ['creation', 'deletion', 'update']);
   // RepositoryRole 5 = admin. No Write/Maintain role, no team, no app, no deploy key.
   assert.deepEqual(t.bypass_actors, [{ actor_id: 5, actor_type: 'RepositoryRole', bypass_mode: 'always' }]);

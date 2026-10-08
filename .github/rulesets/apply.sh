@@ -20,8 +20,8 @@
 #                                             # also Dependabot security updates and "require actions pinned to a
 #                                             # full-length commit SHA" (actions-hardening.json). Off unless passed.
 #
-# Covers: rulesets main.json (branch) and release-tags.json (tag: only admins may create, move or delete v* tags,
-# so only the owner can cut a production release; split-dev-and-release-deploys), each by name and target, repo merge settings (repo-settings.json, incl. auto-merge), Actions
+# Covers: rulesets main.json (branch) and release-tags.json (tag: only admins may create, move or delete ANY tag (~ALL),
+# so only the owner can cut a production release; split-dev-and-release-deploys, harden-release-path), each by name and target, repo merge settings (repo-settings.json, incl. auto-merge), Actions
 # workflow permissions (actions-permissions.json: read-only token, Actions may not approve PRs), the fork PR workflow
 # approval policy (fork-pr-approval.json: every external contributor's fork PR waits for a maintainer's "Approve and
 # run"; gate-external-pr-automation), and the managed labels (labels.json); with the flags above, the environments and
