@@ -26,6 +26,8 @@
   These answers also serve as the manual checks for the dashboard-only `gas-sponsorship` scenarios (key from another website, policy bypass bounded by the balance, global cap reached).
 
   Verify: each design R1 UNVERIFIED item is marked confirmed or "not available".
+
+  Note 2026-10-10 (mainnet answers, `launch-op-mainnet` task 1.2; not ticked): all five answers are recorded with sources in `apps/web/docs/paymaster-policy.md` §4. (a) A key cannot name a policy, but with "verifying paymaster" off only policy-scoped requests are sponsored (dashboard); (b) moot for the mainnet key, the balance with no card stays the bound; (c) testnet operations are free, so only the counts bind (pricing page); (d) methods, origin (leftmost `*`), IP/CIDR, user agent, custom headers through support, no per-chain key restriction; (e) not documented for counts, Pimlico pre-charges the maximum cost and refunds after about 15 minutes, and a failed or abandoned operation is assumed to use up one of the user's 10. Left unticked because (a) still awaits the founder's testnet check that policy-scoped sponsorship works with "verifying paymaster" off, and (b) is answered as moot rather than confirmed; the mainnet balance amount and no-card status are also still pending.
 - [ ] 1.2 [ow] Apply the testnet settings from design D2/D3:
   - a chain allowlist of 11155420;
   - 50 operations per sender lifetime;
@@ -34,6 +36,8 @@
   - a dedicated key restricted to the production origin, with bundler + paymaster only and "policy required" if 1.1(a) exists.
 
   Verify: screenshots or exported settings are referenced in the runbook (no secrets), and `VITE_SPONSORSHIP_POLICY_ID` matches the policy.
+
+  Note 2026-10-10 (not ticked): only the mainnet side is recorded (policy `sp_mixed_hellion`, key `cryoshield-mainnet`; `apps/web/docs/paymaster-policy.md` §3). The testnet settings this task covers are still `_pending_` in the Live testnet column. Found on 2026-10-10: `production-build` holds the policy `sp_cheerful_bastion` and a separate testnet-production key, while the live dev and `cryoshield.app` bundles both still embed the dev key (ending `ct5x`, policy `sp_light_hobgoblin`); the dev-key follow-up is in the runbook.
 
 ## 2. Sponsorship runbook and refusal regression [fe]
 

@@ -156,30 +156,35 @@ Because nothing is released on OP Sepolia before the switch, the dated "moving t
 
 The plan recommended C. **Founder decision (2026-10-09): A.** Launch unaudited; no contract audit is planned ("No audit on contracts"). The copy says "has not been independently audited" on every chain and never implies that an audit is coming (no "yet" on mainnet). An NLnet application stays possible, but it is not a planned next step and nothing promises it. The decision and its date still go into the launch record (task 1.3, G6).
 
-### D8. Mainnet Pimlico policy (founder decisions 2026-10-09)
+### D8. Mainnet Pimlico policy (founder decisions 2026-10-09; live values recorded 2026-10-10)
 
-The founder created the mainnet policy in the Pimlico dashboard, then, after the pre-launch review, decided to add resets. The values replace the plan's first ones (per sender 50 operations and $1 monthly; global $20 and 2,000 operations per day; $0.10 per operation). **Planned values; the exact live values are recorded at task 1.2:**
+The founder created the mainnet policy in the Pimlico dashboard, then, after the pre-launch review, decided to add resets. The values replace the plan's first ones (per sender 50 operations and $1 monthly; global $20 and 2,000 operations per day; $0.10 per operation). **Live values, recorded 2026-10-10 at task 1.2** (the full record, with the API key, is in `apps/web/docs/paymaster-policy.md`):
 
-| Setting | Founder's planned value |
+| Setting | Live value (2026-10-10) |
 |---|---|
-| Policy id (public: it ships in the bundle as `VITE_SPONSORSHIP_POLICY_ID`) | `sp_many_longshot` |
-| Chain | Optimism (10) |
-| State | **disabled**; the founder enables it right after the first chain-10 deploy is green (runbook step 8) |
+| Policy id (public: it ships in the bundle as `VITE_SPONSORSHIP_POLICY_ID`) | `sp_mixed_hellion` ("CryoShield App (Prod)") |
+| Chain | Optimism (10) only |
+| State | **Disabled**; the founder enables it on launch day right after the smoke test (runbook step 8) |
 | Per user | $1 and 10 operations, **reset monthly** |
-| Global | $30 and about 500 operations, **reset daily** |
+| Global | $30 and 500 operations, **reset daily** |
 | Per operation | **$0.50** |
-| Date range | 2026-10-09 to 2027-10-02 |
+| Native (wei) limits, spending authorizations, webhook | none; no webhook URL is set (a webhook secret exists, unused) |
+| Date range | 2026-10-10 to 2027-10-02 |
 
-In short: **per-user limits reset monthly, global limits reset daily (values recorded at task 1.2).** The per-operation cap of $0.50 (plan: $0.10) is a founder decision recorded as a MODIFIED `gas-sponsorship` "Sponsorship limits" requirement in this change; the other `harden-gas-sponsorship` numbers stay the spec's starting values. That MODIFIED delta targets a capability created by the unarchived `harden-gas-sponsorship`; `openspec validate --strict` accepts it, and it archives cleanly only after that change, which the proposal's archive order already requires.
+**History.** The policy first recorded here, `sp_many_longshot` (2026-10-09), was deleted on 2026-10-10 because it had been created with reset "never", which would have made every limit a lifetime limit. `sp_mixed_hellion` replaces it with the resets above.
+
+**`production-build` on launch day.** `VITE_SPONSORSHIP_POLICY_ID` in `production-build` becomes `sp_mixed_hellion` at runbook step 6 (Sequencing B). It is **not** set now; until then `production-build` keeps its testnet values.
+
+In short: **per-user limits reset monthly, global limits reset daily (recorded 2026-10-10).** The per-operation cap of $0.50 (plan: $0.10) is a founder decision recorded as a MODIFIED `gas-sponsorship` "Sponsorship limits" requirement in this change; the other `harden-gas-sponsorship` numbers stay the spec's starting values. That MODIFIED delta targets a capability created by the unarchived `harden-gas-sponsorship`; `openspec validate --strict` accepts it, and it archives cleanly only after that change, which the proposal's archive order already requires.
 
 **Consequences, stated plainly:**
 
 - **A user can be refused for the rest of the month** after 10 sponsored operations (create, edits, add-key). The app then says the fee could not be paid, nothing was saved, and limits reset over time (D6, refusal copy). A typical first month (1 create, 3 edits, 1 add-key) uses 5. Reading and recovery are unaffected. There is no "saves left" hint on mainnet (`src/account/budget.ts` is testnet-only); adding one is a separate change.
-- **Abuse can stop saving for everyone for the rest of a day** by reaching the global $30 or about 500 operations; the limit resets the next day. Sustained abuse costs up to about $30 a day.
+- **Abuse can stop saving for everyone for the rest of a day** by reaching the global $30 or 500 operations; the limit resets the next day. Sustained abuse costs up to about $30 a day. Pimlico pre-charges each operation at its maximum cost and refunds the rest after about 15 minutes, so the $30 daily and $1 per-user caps can fill faster than real spend until the refunds land; a failed or abandoned sponsored operation is assumed to use up one of the user's 10.
 - **One operation can cost up to $0.50** during a gas spike (five times the plan's cap), bounded by the global daily cap.
 - **The policy ends on 2027-10-02.** After that, sponsorship stops for everyone unless the founder extends it (R17).
 - **The policy is disabled until the first chain-10 deploy is green.** Saves in that window are refused.
-- The prepaid balance (about $140, no card) stays the hard bound on spend that bypasses the policy (AA-M3).
+- The prepaid balance (about $140, no card) stays the hard bound on spend that bypasses the policy (AA-M3). The mainnet key `cryoshield-mainnet` has "verifying paymaster" off, so it refuses sponsorship without a policy (`harden-gas-sponsorship` task 1.1 (a), 2026-10-10); the balance amount and the no-card status are still to be confirmed by the founder.
 
 ## Go/no-go criteria
 
@@ -218,9 +223,9 @@ Roles: **owner** = the founder (repository owner, deployer keystore holder, Piml
 | 3 | owner | `ETHERSCAN_API_KEY=… contracts/script/verify-etherscan.sh 10` (key typed into the environment, never argv) | Three contracts "Pass - Verified" on Optimistic Etherscan | Retry later; not a launch blocker if Blockscout and Sourcify pass |
 | 4 | agent | PR: `10.json`, regenerated recovery `op-mainnet` preset, default network `op-mainnet`, devices row stays untested | CI green incl. preset parity; ECC review; merged; dev deploy still OP Sepolia and green | Fix forward |
 | 5 | owner | Release the recovery tool (with the mainnet preset) and publish its hashes | `uvx cryoshield-recover --version`; `--network op-mainnet` shows registry v2 | Hold the switch until it is out |
-| 6 | owner | Save the four current `production-build` values offline: the three variables from `gh variable list --env production-build`, and the testnet `VITE_BUNDLER_URL` copied from the **Pimlico dashboard** (GitHub cannot return a secret, review L8). Then set `VITE_CHAIN_ID=10`, `VITE_RPC_URL`, `VITE_SPONSORSHIP_POLICY_ID=sp_many_longshot` as variables and the mainnet `VITE_BUNDLER_URL` as the secret (Sequencing B, D3) | `gh variable list --env production-build` shows the mainnet values; `gh secret list --env production-build` shows `VITE_BUNDLER_URL` only; the offline record has all four testnet values | Restore the saved values |
+| 6 | owner | Save the four current `production-build` values offline: the three variables from `gh variable list --env production-build`, and the testnet `VITE_BUNDLER_URL` copied from the **Pimlico dashboard** (GitHub cannot return a secret, review L8). Then set `VITE_CHAIN_ID=10`, `VITE_RPC_URL`, `VITE_SPONSORSHIP_POLICY_ID=sp_mixed_hellion` as variables and the mainnet `VITE_BUNDLER_URL` as the secret (Sequencing B, D3) | `gh variable list --env production-build` shows the mainnet values; `gh secret list --env production-build` shows `VITE_BUNDLER_URL` only; the offline record has all four testnet values | Restore the saved values |
 | 7 (= S) | owner | `gh release create vA --target main --generate-notes`: the first `v*` release since 2026-10-05, deployed straight to chain 10 | Full CI, build for chain 10, smoke green; `/release.json` shows chain 10, registry v2 `0xA622…cB7`, `registry: null`; landing shows "OP Mainnet" and "not been independently audited"; no testnet banner | Build failure: nothing deployed. Deploy or smoke failure: automatic rollback to the 2026-10-05 OP Sepolia image; fix forward or restore the values (step 6) before any redeploy |
-| 8 | owner | Enable the Pimlico policy `sp_many_longshot` (D8) | The dashboard shows it enabled with the recorded values | Disable it again |
+| 8 | owner | Enable the Pimlico policy `sp_mixed_hellion` (D8) | The dashboard shows it enabled with the recorded values | Disable it again |
 | 9 | owner | Founder smoke with two YubiKeys on https://cryoshield.app: create, unlock, edit, add-key; check the Arweave mirror | Each operation included; explorer links point to `explorer.optimism.io`; the vault location panel names OP Mainnet | Before announcement: restore values and redeploy `vA` (D4) |
 | 10 | owner | Recovery tool against the new vault: default network, public RPCs only; then the Arweave path | Vault unlocks; secrets match | As step 9 |
 | 11 | owner | Pimlico dashboard: the four operations are under the mainnet policy; spend per operation recorded | No policy-less sponsorship; per-op cost well under $0.50 (D8) | Pause the policy if anything is unexpected |
@@ -273,8 +278,8 @@ The funded 0.005 ETH (≈ $12.86) covers this about 800 times, so even a 100× g
 | Edit (1 KB) | ≈ 0.33M | 5.3e10 wei (≈ 2 KB) | ≈ 3.8e11 wei ≈ **$0.0010** | $0.50 |
 | Add key | ≈ 0.51M | 5.3e10 wei | ≈ 5.6e11 wei ≈ **$0.0015** | $0.50 |
 
-- Pimlico's own surcharge on sponsored gas and its pre-charge at maximum cost (refunded after about 15 minutes) are **not** included; task 1.1 of `harden-gas-sponsorship` and the launch-day step 11 record the real per-op charge. Measured numbers replace these estimates in `costs.md`.
-- **Budget arithmetic (founder's planned policy, D8):** the global cap allows up to $30 or about 500 operations a day; at ~$0.004 per operation the 500-operation count binds first (about $2 a day), unless gas rises about 15×. A typical user (1 create, 3 edits, 1 add-key) costs about $0.008; the 10-operation monthly per-user cap binds long before the $1 one. The ~$140 balance is more than four days at the $30 daily spend cap; it remains the bound for policy-less spend.
+- Pimlico's own fees and its pre-charge at maximum cost (refunded after about 15 minutes) are **not** in the table. On mainnet Pimlico bills the actual gas plus a 10% surcharge, and its pricing page lists pay-as-you-go at about $0.0075 per user operation (about $0.0105 sponsored), so the per-operation fee, not gas, dominates. The recomputed budget is in `apps/web/docs/costs.md` (2026-10-10); launch-day step 11 records the real per-op charge.
+- **Budget arithmetic (live policy, D8; corrected 2026-10-10):** the global cap allows up to $30 or 500 operations a day; at about $0.011–0.014 per sponsored operation (fee included) the 500-operation count still binds first (about $6–7 a day). A typical user (1 create, 3 edits, 1 add-key) costs about $0.06; 10 operations cost about $0.11, so the 10-operation monthly per-user cap binds long before the $1 one. The ~$140 balance is roughly 10–13k sponsored operations (not hundreds of thousands), and more than four days at the $30 daily spend cap; it remains the bound for policy-less spend.
 
 ## Communications and copy plan
 
