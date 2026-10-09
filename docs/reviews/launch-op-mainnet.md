@@ -25,7 +25,7 @@ is done.
 |---|---|---|---|
 | G1 | Human production gate; CI-H1; owner 2FA | Release gate in place (`release-tags` now `~ALL`, applied 2026-10-09; `apply.sh` in sync). 2FA on GitHub and Cloudflare: on (founder, 2026-10-09; hardware-key method to confirm). CI-H1: closed 2026-10-09 (machine account `cryoshield`, Write; probes in the mainnet-gate entry) | |
 | G2 | Dev not under `cryoshield.app` | `dev.cryoshield.app` NXDOMAIN (checked 2026-10-09) | |
-| G3 | `harden-gas-sponsorship` review and testnet proof | Review 7.1 APPROVE. Founder's YubiKey run on dev passed (2026-10-10): 6.4 done; 6.3 checklist passed, with the v1 items waived for mainnet; gas record, 6.2 receipts and UV=0 refusal, and 8.1 **open** | |
+| G3 | `harden-gas-sponsorship` review and testnet proof | Review 7.1 APPROVE. Founder's YubiKey run on dev (2026-10-10): create, unlock, edit and recovery passed; v1 items waived for mainnet; **add-key not evidenced on chain, re-run needed**; 6.2 and 8.1 **open** | |
 | G4 | Pimlico mainnet settings | **Done 2026-10-10: recorded; $120 prepaid, no card.** Policy `sp_mixed_hellion` per D8 (Disabled until runbook step 8); dedicated key `cryoshield-mainnet`: origin `cryoshield.app` only, bundler on, "verifying paymaster" off (policy-scoped sponsorship only), account APIs and boost off; `harden-gas-sponsorship` task 1.1 answered. Pending: the prepaid amount and no card on the account (founder), and the testnet check that policy-scoped sponsorship works with "verifying paymaster" off | `apps/web/docs/paymaster-policy.md` §3–4 (2026-10-10) |
 | G5 | Recovery tool on mainnet | Open until `10.json` and the regenerated preset (task 7.3/7.4) | |
 | G6 | Audit decision | **Done**: see Q1 above | this file |
