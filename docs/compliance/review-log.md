@@ -3,8 +3,9 @@
 > `add-privacy-and-compliance`, spec `privacy-compliance` "Compliance records reviewed on a schedule". CryoShield is an
 > open-source project maintained by its contributors; there is no company. Not legal advice.
 
-The data-flow inventory, sub-processor list, retention statement, risk register and the three legal pages are
-reviewed **at least every six months** and **before any mainnet deployment**. Each review adds one entry, newest
+The data-flow inventory, sub-processor list, retention statement, risk register, the three legal pages and the
+expected DNS and registrar state (`apps/web/deploy/README.md` §4–5: CAA Let's Encrypt only, DNSSEC on, registrar
+lock on, Cloudflare Universal SSL off, records DNS-only) are reviewed **at least every six months** and **before any mainnet deployment**. Each review adds one entry, newest
 first, with this exact heading (CI parses it, `.github/scripts/mainnet-gate.mjs`):
 
 ```
@@ -142,8 +143,10 @@ and design D3, D7 and D8; this review records them and does not make them):
      no tag. A release published by this account cannot deploy: `deploy.yml` runs only when
      `triggering_actor == repository_owner`.
 
-   Still open: add `cryoshield` to `.github/trusted-authors.json` (an owner PR), then run task 1.4
-   (`apply.sh --with-ecc-review --environments`, no diff).
+   `cryoshield` was added to `.github/trusted-authors.json` by the owner (PR #81, 2026-10-10). Task 1.4 was run on
+   2026-10-10 as a dry run as the owner: `apply.sh --with-ecc-review --environments --founder-hardening` exits 0, with
+   both rulesets, the merge settings, the workflow permissions, fork approval and all four environments **in sync**.
+   Still open: the founder confirms that the 2FA method is a hardware key.
 4. **G7.** The founder confirms the calendar reminders: daily checks for the first 14 days, weekly after that, and
    monthly. Also a reminder 30 days before the policy end date (2027-10-02), and before the domain and
    `security.txt` dates (September 2027).
@@ -163,18 +166,22 @@ and design D3, D7 and D8; this review records them and does not make them):
    `10.json` PR.
 10. **Fixed padding O3** ([`on-chain-minimisation-options.md`](on-chain-minimisation-options.md)). Decide it before
     the first mainnet vault, as that document says. Rejecting it is a valid decision, but write it down.
-11. **Tabletop gaps G2–G6** ([`tabletop-2026-10-08.md`](tabletop-2026-10-08.md) says G2–G5 must be "closed or
-    explicitly accepted at the `mainnet-gate` review"). Close each one or accept it in writing:
-    - **G2:** users cannot check which bundle they loaded;
-    - **G3:** no notice is shown while production is scaled to 0;
-    - **G4:** `paymaster-policy.md` has no written pause and resume procedure. The incident runbook names the step,
-      but resume is not written down;
-    - **G5:** the expected DNS and registrar state is now written down in `apps/web/deploy/README.md` §4–5, and the live
-      CAA now matches it (2026-10-10); no six-monthly check of that state is scheduled yet;
-    - **G6:** the bus factor, "name a backup maintainer before mainnet".
-12. **Pre-production L1–L3, may be accepted.** Repository `sha_pinning_required`, Dependabot security updates and
-    secret-scanning validity checks were open on 2026-10-09 (`apply.sh --founder-hardening --apply`). Close them or
-    accept them in writing.
+11. **Tabletop gaps G2–G6** ([`tabletop-2026-10-08.md`](tabletop-2026-10-08.md)). Founder decisions, 2026-10-10:
+    - **G2, accepted for launch:** users cannot check which bundle they loaded. Each release's tree hash is already
+      in `/release.json`. Follow-up after launch: publish it in the GitHub Release notes.
+    - **G3, accepted:** no notice is shown while production is scaled to 0. The GitHub advisory and the README carry
+      the incident notice.
+    - **G4, closed:** the pause and resume procedure is written in `apps/web/docs/paymaster-policy.md` (docs PR
+      after #83).
+    - **G5, closed 2026-10-10:** the expected DNS and registrar state is in `apps/web/deploy/README.md` §4–5, the live
+      CAA matches it, and it is now part of every six-monthly review (header of this log).
+    - **G6, accepted in writing:** one maintainer (bus factor). Mitigation: users never depend on the maintainer.
+      Vaults stay readable from public RPCs or Arweave, and the open-source recovery tool works without CryoShield.
+      An "if the maintainer is unavailable" note is in `docs/deploy.md`, in the same docs PR as G4.
+12. **Pre-production L1–L3.** **L1 closed:** SHA pinning is required, and it was in sync on 2026-10-10; all
+    `uses:` refs on `main` are full commit SHAs or local paths. **L2 closed:** Dependabot security updates are on
+    (2026-10-10). **L3 accepted:** GitHub reports secret-scanning validity checks as unavailable on this plan;
+    gitleaks runs on every PR.
 13. **Sanctions stance for mainnet.** The founder confirms that `legal-analysis.md` §6 applies to OP Mainnet, and
     updates "a few cents per operation" to the D8 bound (up to $0.50 an operation and $1 a user each month).
 
