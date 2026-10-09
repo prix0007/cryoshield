@@ -33,6 +33,63 @@ sent, and there is **never an unsponsored fallback**. The user sees:
 
 Unlocking still works: reads need only a public RPC. Recovery needs neither CryoShield nor Pimlico.
 
+## 2a. Pausing and resuming sponsorship
+
+Closes tabletop gap G4 ([`tabletop-2026-10-08.md`](../../../docs/compliance/tabletop-2026-10-08.md); founder decision
+2026-10-10). The incident runbook (§3, step 1) points here. The founder does every step in the Pimlico dashboard;
+nothing here needs a code change.
+
+| | Production (OP Mainnet) | Dev (OP Sepolia) |
+|---|---|---|
+| Policy | `sp_mixed_hellion` (Disabled until launch day) | `sp_light_hobgoblin` |
+| API key | `cryoshield-mainnet`: "verifying paymaster" off, so it refuses sponsorship without a policy | the key ending `ct5x`: "verifying paymaster" still on until its follow-up (section 3, API keys) |
+
+### Pause (fastest first)
+
+1. **Disable the policy.** On the policy's page in the Pimlico dashboard (Edit / Enable / Delete), switch it to
+   **Disabled**, the state `sp_mixed_hellion` is in until launch day. Do not delete it: a new policy has a new id,
+   which means a new `VITE_SPONSORSHIP_POLICY_ID` and a rebuild. Sponsorship stops within about a minute.
+   Because the mainnet key refuses sponsorship without a policy, this stops all sponsored saves on production. The
+   app turns the refusal into its existing message (section 2; `apps/web/src/ui/strings.ts`):
+   - on OP Mainnet: "CryoShield could not pay the network fee for this save. Nothing was saved and your vault is
+     unchanged. Sponsorship limits reset over time; if you’re adding a new secret, keep it somewhere safe until it
+     saves."
+   - elsewhere: "Saving is paused right now. Your existing vault is safe; please try again later." (edit, add a key)
+     or "Nothing was saved. Please try again later." (first create).
+
+   The refusal comes before the signing tap (section 1), so a save attempt confirms the pause without signing
+   anything. On dev, disabling `sp_light_hobgoblin` does **not** stop policy-less requests on the `ct5x` key while
+   its "verifying paymaster" is on; that costs nothing on testnet, but step 2 is the dev stop if the key is abused.
+2. **If the key itself is abused** (spend not attributed to the policy, or a leaked key), also **delete or rotate the
+   key** in the dashboard. The key page has the method toggles and the origin, IP and user-agent allowlists; tighten
+   them if that is enough, otherwise delete the key. Deleting it stops the bundler too, so no write goes through at
+   all until a new key is live. The key is baked into the public bundle (`VITE_BUNDLER_URL`), so **rotating means a
+   new release**: create a new key with the settings in section 3, put its bundler URL into the `VITE_BUNDLER_URL`
+   secret of `production-build` ([`docs/deploy.md`](../../../docs/deploy.md) → First-time setup, step 3), and the
+   owner publishes a release (or redeploys the current tag, `gh workflow run deploy.yml --ref <current vX.Y.Z>`, which
+   rebuilds with the new secret). For dev, the secret is in `development-build` and the next `deploy-dev.yml` run
+   picks it up.
+3. **What users can still do** with no sponsorship: open the site, unlock and read their vault (reads need only a
+   public RPC), and recover with the desktop recovery tool (`tools/recover`), which needs neither CryoShield nor
+   Pimlico. Only saving (create, edit, add a key) stops. Users are never asked to pay gas instead.
+4. **Record the pause:** UTC time, policy or key, reason, and who did it. During an incident, in the incident log (the
+   private security advisory, [`incident-runbook.md`](../../../docs/compliance/incident-runbook.md) §3). Always also
+   as a row in the [mainnet review log](#mainnet-review-log), and as a dated note in section 3 if a key was deleted or
+   rotated.
+
+### Resume checklist
+
+- [ ] The cause is understood and fixed. After a SEV1, the security reviewer agrees it is closed (incident runbook §3,
+      step 7).
+- [ ] Usage reviewed in the dashboard: no spend outside the policy, and the spend during the pause explained.
+- [ ] Balance (mainnet) at or above the threshold: if it is under $50, top up to about $120 or more first (section 3,
+      Balance; section 7a).
+- [ ] Policy limits unchanged from the Live column in section 3, or every change recorded there with its date.
+- [ ] Re-enable the policy (**Enable** on its page). Then do one sponsored save to confirm: on production, or
+      on dev first (re-enable `sp_light_hobgoblin` and save once on `cryoshield-web-dev.fly.dev`) when the cause was
+      in shared code or settings.
+- [ ] Record the resume: UTC time, the confirming save, and anything changed, in the same places as the pause.
+
 ## 3. Settings per environment
 
 Starting values from design D2/D3. The founder may tune them; the **Live** columns are the record.

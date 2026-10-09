@@ -283,3 +283,29 @@ What this order risks, and why it is acceptable:
 | A contract defect after the announcement | Post-launch | Pause saving (stop the Pimlico policy), then a new versioned registry or wallet in its own OpenSpec change | Saving paused; reading and recovery keep working |
 | Sponsorship abuse or budget exhausted | Post-launch | Pimlico shows "Saving is paused". Review usage before raising any cap ([paymaster runbook](../apps/web/docs/paymaster-policy.md)) | Saving paused |
 | Site down | Any time | Nothing is at risk: vaults are on-chain and the recovery tool works without the site | Use the recovery tool |
+
+## If the maintainer is unavailable
+
+Closes tabletop gap G6 ([`tabletop-2026-10-08.md`](compliance/tabletop-2026-10-08.md)). CryoShield has **one
+maintainer**. The founder accepted this bus factor in writing on 2026-10-10. Nothing below promises continuity; it
+says what happens if nobody acts.
+
+**Keeps working with nobody acting:**
+
+- The site keeps serving the last release, for as long as the Fly app, the domain and DNS stay paid and in place.
+- Vaults stay readable and recoverable from public RPCs or Arweave with the open-source recovery tool
+  ([`tools/recover`](../tools/recover/README.md)) and the user's hardware key, with no CryoShield involvement.
+
+**Stops:**
+
+- Gas sponsorship, once the prepaid Pimlico balance runs out or the policy's end date, **2027-10-02**, passes
+  ([`apps/web/docs/paymaster-policy.md`](../apps/web/docs/paymaster-policy.md), section 3). Saving (create, edit, add
+  a key) then pauses for everyone. Reading and recovery still work.
+- No releases or fixes ship: production changes only when the owner publishes a release.
+
+**What a successor would need** (account access that only the owner can grant today; no secrets are kept in this
+repository): GitHub owner access to the repository, Fly, Cloudflare, the domain registrar and Pimlico.
+
+**The long-term guarantee** is not this site but the published format and the tool that reads it: the
+[vault format spec](spec/vault-format-v1.md) and the [recovery tool docs](../tools/recover/README.md). With them and
+an enrolled hardware key, a user can unlock their vault without CryoShield.

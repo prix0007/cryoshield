@@ -38,7 +38,7 @@ create it first).
    - stop new deploys: `gh workflow disable deploy.yml` and `gh workflow disable deploy-dev.yml`;
    - if the write path is involved, stop gas sponsorship: disable the sponsorship policy in the Pimlico dashboard, or
      revoke the API key. The app then shows "Saving is paused"; vaults stay readable
-     (`apps/web/docs/paymaster-policy.md`).
+     ([pause and resume procedure](../../apps/web/docs/paymaster-policy.md#2a-pausing-and-resuming-sponsorship)).
 2. **Preserve evidence** (before changing anything else):
    - `curl -s https://cryoshield.app/release.json` (if still up) and `fly releases --app cryoshield-web --image --json`.
      `release.json` is served by the site itself, so a malicious image can fake it: line up every release in
