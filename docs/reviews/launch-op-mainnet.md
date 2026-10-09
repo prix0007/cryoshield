@@ -31,7 +31,7 @@ is done.
 | G6 | Audit decision | **Done**: see Q1 above | this file |
 | G7 | Monitoring ready | Runbook thresholds in `apps/web/docs/paymaster-policy.md` (task 5.3); founder calendar reminders **to confirm** | |
 | G8 | Rollback ready | Open: save the four current `production-build` values offline and the testnet bundler URL from the Pimlico dashboard; `vA`'s commit green on dev | |
-| G9 | Compliance `mainnet-gate` entry | **Open**: a `mainnet-gate` entry in `docs/compliance/review-log.md` (within 30 days), risk register re-scored and signed | |
+| G9 | Compliance `mainnet-gate` entry | **Drafted, awaiting signature** (2026-10-09). The `mainnet-gate` entry in `docs/compliance/review-log.md` is dated 2026-10-09; its CI window ends 2026-11-08. The risk register is re-scored. Neither is signed, and the entry lists conditions that are still open. CI reads only the entry's heading, so merge the entry only once it is signed | [review-log 2026-10-09 entry](../compliance/review-log.md#2026-10-09-mainnet-gate-reviewer-prix0007), [risk register](../compliance/risk-register.md) |
 | G10 | Copy and build | Chain-10 and chain-11155420 builds pass `verify-build` and the section-4 copy tests (6.1 evidence below); confirmed again by CI on `vA` | |
 | G11 | Chain facts on the day; deployer ≥ 0.001 ETH | Re-run on launch day | |
 
