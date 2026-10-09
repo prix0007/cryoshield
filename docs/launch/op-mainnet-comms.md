@@ -10,9 +10,9 @@ including CryoShield, can open it.
 
 ## Before the switch
 
-There is no separate testnet release (founder, 2026-10-09), so the site shows this notice only if `vA` carries the
-dates in `apps/web/src/config/launch.ts` and is deployed on OP Sepolia inside that window (design D3, Sequencing). The
-same text can go in the README status line and a GitHub discussion before launch day.
+The first `v*` release deploys straight to OP Mainnet (founder, 2026-10-09; design D3, Sequencing B), so the live
+site never shows this notice: production stays on the 2026-10-05 build until the switch. Publish it instead in the
+README status line and a GitHub discussion a few days before launch day.
 
 > CryoShield is moving to OP Mainnet. Vaults created during the testnet preview will not move; you can still read them with the recovery tool. Create a new vault after the switch.
 
@@ -24,9 +24,7 @@ What the site says on OP Mainnet (built from the chain; tested in `apps/web/test
 - Landing page: "Runs on OP Mainnet. Your vault is encrypted on your device and stored on OP Mainnet, with an extra
   copy on Arweave when that upload succeeds. CryoShield has not been independently audited, so please keep your
   existing backups too."
-- App: "CryoShield runs on OP Mainnet and has not been independently audited. Your vault is encrypted on your device
-  and stored permanently, and only your keys can open it: if you lose every key, nobody, including CryoShield, can open
-  it. Please keep your existing backups too."
+- App: "CryoShield runs on OP Mainnet and has not been independently audited. Your vault is encrypted on your device and published permanently as ciphertext on a public blockchain, and only your keys can open it: if you lose every key, nobody, including CryoShield, can open it. Please keep your existing backups too."
 - App, when a key has no vault on OP Mainnet (for 90 days after the switch):
 
 > Vaults created during the testnet preview are not on OP Mainnet. They are still there, and you can read yours with the open-source recovery tool and its --testnet option. To use CryoShield on OP Mainnet, create a new vault.
@@ -34,14 +32,15 @@ What the site says on OP Mainnet (built from the chain; tested in `apps/web/test
 ## Release notes template for vA
 
 Fill in the bracketed values from `contracts/deployments/10.json` and the recovery-tool release, then paste as the body
-of the GitHub release `vA` (published by the owner at runbook step 6; the release notes are edited to this text after
-the switch, step 14).
+of the GitHub release `vA` (published by the owner at runbook step 7, after the OP Mainnet values are set; the notes are
+edited to this text before the announcement, step 14).
 
 ```markdown
 ## CryoShield now runs on OP Mainnet
 
 Vaults are stored on OP Mainnet (chain 10), with an extra copy on Arweave. Saving is free for you: CryoShield
-sponsors the network fees, up to limits. "Saving is paused" means a limit was reached, not that a vault is at risk.
+sponsors the network fees, up to limits that reset over time. If a save is refused, nothing was saved and your vault
+is unchanged.
 
 **Audit status:** CryoShield has not been independently audited. The code, the vault format and the test vectors are
 open source, and our internal security reviews are public in docs/reviews.
@@ -84,14 +83,16 @@ Published at runbook step 14, after the 7-day soft launch with no threshold cros
 > open-source recovery tool opens your vault from public data with one of your keys.
 >
 > CryoShield has not been independently audited. The code, the vault format and the test vectors are open source;
-> please keep your existing backups too. Saving is free for you: CryoShield pays the network fees up to limits, and
-> "Saving is paused" means a limit was reached, not that your vault is at risk. Report security issues privately
-> through GitHub (SECURITY.md).
+> please keep your existing backups too. Saving is free for you: CryoShield pays the network fees up to limits that
+> reset over time. If a save is refused, nothing was saved and your vault is unchanged. Report security issues
+> privately through GitHub (SECURITY.md).
 
 ## Incident wording
 
-- **Sponsorship limit reached:** "Saving is paused right now. Your existing vault is safe; please try again later."
-  (the app's own message).
+- **Sponsorship limit reached (OP Mainnet):** the app's own message, under the title "Saving is paused":
+
+> CryoShield could not pay the network fee for this save. Nothing was saved and your vault is unchanged. Sponsorship limits reset over time; if you’re adding a new secret, keep it somewhere safe until it saves.
+
 - **Contract problem:** "We found a problem in [component]. Your vault is safe and readable with the recovery tool. We
   have paused saving while we fix it."
 - **Anything involving user data:** follow the incident runbook of `add-privacy-and-compliance`.
