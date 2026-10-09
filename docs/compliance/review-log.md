@@ -109,12 +109,20 @@ and design D3, D7 and D8; this review records them and does not make them):
    balance with no card in `paymaster-policy.md` §3, dated. Also answer task 1.1 (a)–(e) in §4, which is still
    pending for testnet and mainnet alike.
 2. **G3 (founder's YubiKey run).** The founder ran it on dev (OP Sepolia, hosted bundler) and reported on 2026-10-10:
-   - **6.3 hardware checklist:** passed with two real YubiKeys. That covers create, unlock, edit, add-key and unlock
-     with the added key, plus a recovery-tool unlock of a v2 vault. The v1 items (an old v1 vault still unlocking, and
+   - **6.3 hardware checklist:** create with two real YubiKeys, unlock, edit, and a recovery-tool unlock of a v2 vault
+     were reported passed. **Add-key is not evidenced** (checked 2026-10-10, read-only, OP Sepolia):
+     - registry v2 has one vault ever (the founder's, created 2026-10-07), with 7 updates that all keep the same two
+       keys, and the wallet's `nextOwnerIndex()` is 2;
+     - registry v1 has never emitted an add-key trace;
+     - the app shows "Key added" only after it re-reads a confirmed `addOwnerPublicKey` + `addLocators` +
+       `updateVault` batch.
+
+     Add-key with a third key, then an unlock with only that key, must be re-run. The v1 items (an old v1 vault still unlocking, and
      a recovery-tool read of v1) are **waived for the mainnet launch by founder decision (2026-10-10)**: v1 exists only on
      OP Sepolia, chain 10 has registry v2 only, and testnet vaults do not carry over (R22). The automated tests still
      cover the tool's v1 reads.
-   - **6.4 founder's vault on v2:** re-created and tested on 2026-10-10.
+   - **6.4 founder's vault on v2:** reported by the founder. On chain, the only v2 vault was created on 2026-10-07 and last
+     written on 2026-10-09 18:51 UTC; unlocking writes nothing.
 
    Still open:
    - **6.3:** gas and cost per operation, from the receipts of that run, recorded in `contracts/GAS.md` and
