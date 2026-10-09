@@ -42,10 +42,21 @@ const slug = (s: string) =>
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '');
 
+/**
+ * add-mobile-e2e D5.3: a table scrolls inside its wrapper on a phone. With no focusable content the keyboard could not
+ * scroll it (WCAG 2.1.1, axe scrollable-region-focusable), so the wrapper is a focusable region named by its section
+ * heading (or by `label`), like the /architecture figures.
+ */
+const tableWrap = (name: { heading: string } | { label: string }) =>
+  'heading' in name
+    ? `<div class="table-wrap" tabindex="0" role="region" aria-labelledby="${esc(name.heading)}">`
+    : `<div class="table-wrap" tabindex="0" role="region" aria-label="${esc(name.label)}">`;
+
 export function renderMarkdown(md: string): string {
   const lines = md.replace(/\r\n/g, '\n').split('\n');
   const out: string[] = [];
   let i = 0;
+  let section = ''; // id of the latest heading: names the tables under it
   const para: string[] = [];
   const flush = () => {
     if (para.length) out.push(`<p>${inline(para.join(' '))}</p>`);
@@ -58,6 +69,7 @@ export function renderMarkdown(md: string): string {
       flush();
       const level = h[1]!.length;
       const text = inline(h[2]!.trim());
+      section = slug(text);
       out.push(`<h${level} id="${slug(text)}">${text}</h${level}>`);
       i++;
       continue;
@@ -87,7 +99,7 @@ export function renderMarkdown(md: string): string {
       const [head, sep, ...body] = rows;
       if (!head || !sep || !sep.every((c) => /^:?-{3,}:?$/.test(c))) throw new Error('legal: malformed table');
       out.push(
-        `<div class="table-wrap"><table><thead><tr>${head.map((c) => `<th scope="col">${inline(c)}</th>`).join('')}</tr></thead><tbody>${body
+        `${tableWrap(section ? { heading: section } : { label: 'Table' })}<table><thead><tr>${head.map((c) => `<th scope="col">${inline(c)}</th>`).join('')}</tr></thead><tbody>${body
           .map((r) => `<tr>${r.map((c) => `<td>${inline(c)}</td>`).join('')}</tr>`)
           .join('')}</tbody></table></div>`,
       );
@@ -150,7 +162,7 @@ export function preferencesTable(inv: StorageInventory): string {
         `<tr><th scope="row"><code>${esc(p.key)}</code></th><td>${esc(p.storage)}</td><td>${p.values.map((v) => `<code>${esc(v)}</code>`).join(' or ')}</td><td>${esc(p.where)}. ${esc(p.purpose)}</td><td>${esc(p.saved)}</td><td>${esc(p.lifetime)}</td></tr>`,
     )
     .join('');
-  return `<div class="table-wrap"><table class="inventory" data-testid="storage-preferences"><thead><tr><th scope="col">Name</th><th scope="col">Where</th><th scope="col">Value</th><th scope="col">What it is for</th><th scope="col">When it is saved</th><th scope="col">How long it stays</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  return `${tableWrap({ label: 'What is saved only if you choose it' })}<table class="inventory" data-testid="storage-preferences"><thead><tr><th scope="col">Name</th><th scope="col">Where</th><th scope="col">Value</th><th scope="col">What it is for</th><th scope="col">When it is saved</th><th scope="col">How long it stays</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
 /** The device-storage inventory table on /cookies, generated from legal/storage-inventory.json (single source). */
@@ -165,7 +177,7 @@ export function inventoryTable(inv: StorageInventory): string {
   const tp = inv.thirdParty
     .map((t) => `<tr><th scope="row">${esc(t.who)} (<code>${esc(t.route)}</code>)</th><td colspan="6">${t.entries.length ? cell(t.entries) : 'None'}. ${esc(t.note)}</td></tr>`)
     .join('');
-  return `<div class="table-wrap"><table class="inventory" data-testid="storage-inventory"><thead><tr><th scope="col">Route</th><th scope="col">Cookies</th><th scope="col">localStorage</th><th scope="col">sessionStorage</th><th scope="col">IndexedDB</th><th scope="col">Cache Storage</th><th scope="col">Service workers</th></tr></thead><tbody>${rows}${tp}</tbody></table></div>`;
+  return `${tableWrap({ label: 'What each page stores on your device' })}<table class="inventory" data-testid="storage-inventory"><thead><tr><th scope="col">Route</th><th scope="col">Cookies</th><th scope="col">localStorage</th><th scope="col">sessionStorage</th><th scope="col">IndexedDB</th><th scope="col">Cache Storage</th><th scope="col">Service workers</th></tr></thead><tbody>${rows}${tp}</tbody></table></div>`;
 }
 
 /** `network` resolves the launch-op-mainnet network blocks for the build's chain (vite-plugins/network-copy.ts). */

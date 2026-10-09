@@ -916,6 +916,7 @@
   display: inline-flex;
   align-items: center;
   min-height: var(--target);
+  min-width: var(--target); /* add-mobile-e2e D5.2: short labels ("FAQ") were a 31 px wide tap target */
   color: var(--ink-muted-80);
   text-decoration: none;
 }

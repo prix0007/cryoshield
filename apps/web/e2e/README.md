@@ -11,6 +11,21 @@ pnpm --filter @cryoshield/web stack         # keep the local chain stack running
 Prerequisites: Foundry (`anvil`, `forge`) on PATH, `contracts/` built (`forge build`, plus `FOUNDRY_PROFILE=v1 forge build` for VaultRegistry v1 in `contracts/out-v1`), Playwright Chromium
 (`pnpm exec playwright install chromium`). Everything runs offline.
 
+## Projects (`playwright.config.ts`)
+
+| Project | Device | Specs |
+| --- | --- | --- |
+| `chromium` | Desktop Chrome | all except `09-analytics` and `21-mobile` |
+| `analytics` | Desktop Chrome, a build with the beacon on :4174 | `09-analytics` |
+| `mobile` | Pixel 7 on Chromium (412 px, touch, coarse pointer) | the phone-relevant feature specs and `21-mobile` |
+| `mobile-small` | Pixel 7 at 360 px | `21-mobile` |
+
+The phone projects are Chromium only: the PRF virtual authenticator is CDP-only, so WebKit iPhone presets cannot run
+the vault flows. `21-mobile` walks every page and vault screen by tap and checks no sideways page scroll, tappable
+uncovered controls, targets of at least 24×24 px (under 44 px is reported as an advisory annotation), no clipped text,
+and keyboard-reachable scroll containers. Which specs run on `mobile`, and why the others don't, is in
+`openspec/changes/add-mobile-e2e/design.md` (D2). Run one project with `--project=mobile`.
+
 ## Local chain stack (`e2e/stack/stack.ts`)
 
 - **anvil** (chain 31337) on :8545.
