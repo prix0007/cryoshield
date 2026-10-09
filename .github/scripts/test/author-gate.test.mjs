@@ -46,7 +46,7 @@ test('the committed workflows and trusted-authors.json pass the policy', () => {
   assert.deepEqual(errs('ecc-review.yml', ecc), []);
   assert.deepEqual(errs('auto-merge.yml', am), []);
   assert.deepEqual(checkTrustedAuthors(trustedText), []);
-  assert.deepEqual(JSON.parse(trustedText), ['prix0007']);
+  assert.deepEqual(JSON.parse(trustedText), ['prix0007', 'cryoshield']); // the owner and the Write-only machine account (docs/agent-account.md)
   assert.deepEqual(checkGithubDir(fileURLToPath(new URL('../../', import.meta.url))), []);
 });
 
