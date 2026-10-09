@@ -166,6 +166,15 @@ describe('edit and add key (6.7, 6.8, 8.3)', () => {
     expect(screen.getByLabelText('Secret')).toHaveValue('new value');
   });
 
+  it('on OP Mainnet a refusal says the fee was not paid, nothing was saved, and limits reset (founder 2026-10-09)', async () => {
+    const u = userEvent.setup();
+    vi.spyOn(ops, 'saveEdit').mockRejectedValue(new WriteError('SPONSORSHIP_REFUSED'));
+    await openVaultReal(u, session(), { chainId: 10 });
+    await u.click(screen.getByRole('button', { name: 'Edit secrets' }));
+    await u.click(screen.getByRole('button', { name: 'Save' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('CryoShield could not pay the network fee for this save. Nothing was saved and your vault is unchanged.');
+  });
+
   it('a reverted save says nothing was saved', async () => {
     const u = userEvent.setup();
     vi.spyOn(ops, 'saveEdit').mockRejectedValue(new WriteError('REVERTED'));
@@ -190,12 +199,12 @@ describe('edit and add key (6.7, 6.8, 8.3)', () => {
   });
 });
 
-async function openVaultReal(u: ReturnType<typeof userEvent.setup>, s: ReturnType<typeof session> = session()) {
+async function openVaultReal(u: ReturnType<typeof userEvent.setup>, s: ReturnType<typeof session> = session(), over: Parameters<typeof renderApp>[0] = {}) {
   const { encodeVault } = await import('@cryoshield/vault-crypto');
   void encodeVault;
   vi.spyOn(unlockMod, 'unlock').mockResolvedValue({ credId: id(1), locator: new Uint8Array(32), matches: [{ ...s, entryIndex: 0 }] });
   vi.spyOn(await import('@cryoshield/vault-crypto'), 'decodeVault').mockReturnValue({ entries: s.credIds.map((c) => ({ credId: c })) } as never);
-  renderApp();
+  renderApp(over);
   await u.click(screen.getByRole('button', { name: 'Unlock my vault' }));
   await u.click(screen.getByRole('button', { name: 'Unlock with my key' }));
   await screen.findByRole('button', { name: 'Edit secrets' });

@@ -3,7 +3,8 @@ import { detectPrfSupport, rpIdAllowed } from '../webauthn';
 import { CreateFlow } from './CreateFlow';
 import { ChunkFailed, Notice, useLazyModule } from './components';
 import type { MirrorItem, MirrorResult, VaultSession } from './operations';
-import { isArweaveId } from '../config/networks';
+import { isArweaveId, networkFor } from '../config/networks';
+import { moveNoticeNow } from '../config/launch';
 import { ServicesProvider, testnetName, useServices, type Services } from './services';
 import { S } from './strings';
 import { ActionBar, AppFooter, GlobalNav, SubNav, useFocusClearOfActionBar } from './chrome';
@@ -35,6 +36,24 @@ export function App({ services }: { services?: Services }) {
         <Shell />
       </ServicesProvider>
     </MotionRoot>
+  );
+}
+
+/**
+ * launch-op-mainnet D6 / 4.5 / 4.6: a status notice on every network (unknown chains count as testnets), and the dated
+ * "moving to OP Mainnet" notice on the production testnet build.
+ */
+function NetworkStatus({ chainId, rpId }: { chainId: number; rpId: string }) {
+  const net = networkFor(chainId);
+  // Evaluated once when the app opens (the window is days long), so rendering stays pure.
+  const [moving] = useState(() => moveNoticeNow(chainId, rpId));
+  return (
+    <>
+      <p className="testnet-banner" role="note">
+        {net.status === 'mainnet' ? S.network.mainnet(net.shortName) : S.testnet(testnetName(chainId)!)}
+      </p>
+      {moving && <Notice kind="info">{S.network.moving}</Notice>}
+    </>
   );
 }
 
@@ -155,15 +174,12 @@ function Shell() {
         {/* vault-view-action-layout D4 (review M3): Lock is always reachable while a vault is open. */}
         <SubNav
           name={S.vault.surface}
+          chip={networkFor(svc.chainId).status === 'mainnet' ? S.network.chipMainnet : S.network.chipTestnet}
           action={screen.name === 'vault' && session && <Btn className="secondary sub-nav-action" onClick={lock}>{S.vault.lock}</Btn>}
         />
       </header>
       <main id="main" className="app-main" tabIndex={-1}>
-        {testnetName(svc.chainId) && (
-          <p className="testnet-banner" role="note">
-            {S.testnet(testnetName(svc.chainId)!)}
-          </p>
-        )}
+        <NetworkStatus chainId={svc.chainId} rpId={svc.rpId} />
         {!allowed && <Notice kind="error">{S.misconfigured}</Notice>}
         {allowed && prf === 'unsupported' && screen.name !== 'vault' && (
           <Notice kind="error" title="Browser not supported">

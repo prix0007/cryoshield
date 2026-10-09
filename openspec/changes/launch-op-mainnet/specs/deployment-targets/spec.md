@@ -37,7 +37,7 @@ Etherscan-family verification MAY be added as a separate step through the Ethers
 ## ADDED Requirements
 
 ### Requirement: OP Mainnet deployment
-The OP Mainnet (chain 10) deployment SHALL contain only VaultRegistry v2 and the wallet implementation and factory for the RP ID `cryoshield.app`. VaultRegistry v1 and any other RP ID's wallet pair SHALL NOT be deployed or recorded on chain 10. Because the CREATE2 addresses depend only on the canonical CREATE2 deployer, the constant salts and the init code, the deploy tooling SHALL refuse to simulate or broadcast to `op_mainnet` unless the predicted VaultRegistry v2, `cryoshield.app` factory and implementation addresses equal those recorded in `contracts/deployments/11155420.json`. Broadcasting SHALL remain refused without `CRYOSHIELD_MAINNET_GATE=approved`. A contract already present at a predicted address but missing from the record SHALL stop the tooling; it MAY be recorded by hand only after its runtime bytecode is shown to equal the build's.
+The OP Mainnet (chain 10) deployment SHALL contain only VaultRegistry v2 and the wallet implementation and factory for the RP ID `cryoshield.app`. VaultRegistry v1 and any other RP ID's wallet pair SHALL NOT be deployed or recorded on chain 10. Because the CREATE2 addresses depend only on the canonical CREATE2 deployer, the constant salts and the init code, the deploy tooling SHALL refuse to simulate or broadcast to `op_mainnet` unless the predicted VaultRegistry v2, `cryoshield.app` factory and implementation addresses equal those recorded in `contracts/deployments/11155420.json`. Broadcasting SHALL remain refused without `CRYOSHIELD_MAINNET_GATE=approved:10`. A contract already present at a predicted address but missing from the record SHALL stop the tooling; it MAY be recorded by hand only after its runtime bytecode is shown to equal the build's.
 
 #### Scenario: Address parity with OP Sepolia
 - **WHEN** `deploy.sh op_mainnet` is planned from a build whose predicted addresses equal `11155420.json`
@@ -56,11 +56,15 @@ The OP Mainnet (chain 10) deployment SHALL contain only VaultRegistry v2 and the
 - **THEN** it has `chainId` 10, `contracts.vaultRegistryV2` and `contracts.wallets["cryoshield.app"]` only, with no top-level v1 `address`
 
 ### Requirement: Production chain switch through a release
-The production site's chain SHALL change only through the `production-build` environment values (`VITE_CHAIN_ID`, `VITE_RPC_URL`, `VITE_SPONSORSHIP_POLICY_ID` and the `VITE_BUNDLER_URL` secret) followed by a deploy of an owner-published `v*` release. The release used for the switch SHALL first be deployed on the previous chain, so that it is a proven rollback target on both chains. After the switch, only releases whose tree contains the new chain's deployment record SHALL be used as rollback targets.
+The production site's chain SHALL change only through the `production-build` environment values (`VITE_CHAIN_ID`, `VITE_RPC_URL`, `VITE_SPONSORSHIP_POLICY_ID` and the `VITE_BUNDLER_URL` secret) followed by a deploy of an owner-published `v*` release. The owner MAY set the new chain's values before publishing that release, so that the release's first production deploy is already on the new chain (founder decision 2026-10-09). In that case the release's commit SHALL have been deployed on the previous chain by the development site (which deploys every `main` commit), and the previous values SHALL be saved offline before they are changed, including the `VITE_BUNDLER_URL` secret, which GitHub cannot return and which is taken from the bundler provider's dashboard. After the switch, only releases whose tree contains the new chain's deployment record SHALL be used as rollback targets; a chain rollback restores the saved values and redeploys a release that contains the previous chain's record.
 
-#### Scenario: Same tag on both chains
-- **WHEN** release `vA`, which contains `contracts/deployments/10.json`, is deployed with `VITE_CHAIN_ID=11155420` and then redeployed at the same tag with `VITE_CHAIN_ID=10`
-- **THEN** both deploys pass the build, the smoke test and the copy checks, and `/release.json` names the configured chain each time
+#### Scenario: First release deploys straight to the new chain
+- **WHEN** the owner sets `VITE_CHAIN_ID=10` and the other mainnet values in `production-build` and then publishes release `vA`, which contains `contracts/deployments/10.json` and whose commit the development site has deployed on OP Sepolia
+- **THEN** the deploy passes the build, the smoke test and the copy checks, and `/release.json` names chain 10
+
+#### Scenario: Failed first mainnet deploy
+- **WHEN** the deploy of `vA` with the chain-10 values fails after `fly deploy` started
+- **THEN** the release job rolls back to the previous image (the self-contained OP Sepolia build), and no redeploy succeeds until the values are either fixed or restored
 
 #### Scenario: Pre-mainnet tag cannot be a mainnet rollback target
 - **WHEN** a release whose tree has no `contracts/deployments/10.json` is deployed with `VITE_CHAIN_ID=10`

@@ -1,6 +1,6 @@
 # Privacy policy
 
-**Effective date:** 2026-10-08 (revision 3)
+**Effective date:** 2026-10-09
 
 <!--legal-note-->
 
@@ -53,8 +53,8 @@ user agent, as any website or server you connect to does.
 |---|---|---|---|---|---|
 | Website hosting | Fly.io, Inc. (US); server in Singapore | IP address, the page requested, user agent, time | Delivering this website | Singapore, US | [Fly.io privacy](https://fly.io/legal/privacy-policy/) |
 | Network-fee sponsor and transaction relay | Pimlico (Austerlitz Labs Ltd, UK) | IP address; your vault's account address; the transaction carrying your encrypted vault, its locators and signatures | Paying the network fee and sending your vault to the blockchain | UK | [Pimlico privacy](https://www.pimlico.io/privacy) |
-| Public blockchain | OP Sepolia test network (later OP Mainnet), run by independent node operators | Everything listed under "Public and permanent data" | Storing your encrypted vault | Worldwide | Public network |
-| Blockchain access (RPC) | OP Labs public endpoint (`sepolia.optimism.io`) | IP address; which vault locators you look up | Reading and checking your vault | Unpublished | [Optimism privacy](https://www.optimism.io/data-privacy-policy) |
+| Public blockchain | <!--net:testnet-->__CS_NET_NAME__ test network (later OP Mainnet)<!--/net--><!--net:mainnet-->__CS_NET_NAME__<!--/net-->, run by independent node operators | Everything listed under "Public and permanent data" | Storing your encrypted vault | Worldwide | Public network |
+| Blockchain access (RPC) | __CS_RPC_VENDOR__, `__CS_RPC_HOST__` | IP address; which vault locators you look up | Reading and checking your vault | Unpublished | __CS_RPC_POLICY__ |
 | Archive upload | ArDrive Turbo (Permanent Data Solutions Inc., US) | IP address; the encrypted vault and its tags | Copying your encrypted vault to Arweave | US | [ArDrive terms and privacy](https://ardrive.io/tos-and-privacy/) |
 | Archive reads | arweave.net gateway (ar.io), and Turbo's index `turbo-gateway.com` (ArDrive), which lists the copy before it settles on Arweave | IP address; which vault you look up | Checking and restoring the Arweave copy | Netherlands, US and worldwide | [ar.io privacy](https://ar.io/legal/terms-of-service-and-privacy-policy/), [ArDrive terms and privacy](https://ardrive.io/tos-and-privacy/) |
 | Landing-page analytics | Cloudflare, Inc. (US) | See "Analytics" below | Counting visits to the home page | US and EU | [Cloudflare privacy](https://www.cloudflare.com/privacypolicy/) |
@@ -187,8 +187,9 @@ child is correspondence; we would explain how to make a vault unreadable by rese
 
 ## Security
 
-Your vault is encrypted on your device with AES-256-GCM, using keys derived from your security keys. CryoShield is a
-**testnet preview** and has **not been independently audited**. Our internal security reviews are public in the
+Your vault is encrypted on your device with AES-256-GCM, using keys derived from your security keys. If you lose every
+security key enrolled for a vault, nobody, including us, can open it. <!--net:testnet-->CryoShield is a **testnet preview** and has **not been independently audited**.<!--/net--><!--net:mainnet-->CryoShield runs on **__CS_NET_NAME__** and has **not been independently audited**.<!--/net-->
+Our internal security reviews are public in the
 [repository](https://github.com/prix0007/cryoshield/tree/main/docs/reviews). Please report vulnerabilities as described in our
 [security policy](https://github.com/prix0007/cryoshield/blob/main/SECURITY.md).
 
@@ -197,6 +198,8 @@ Your vault is encrypted on your device with AES-256-GCM, using keys derived from
 We will update the effective date at the top whenever this policy changes, and record each change below. The full
 history is public in our [source repository](https://github.com/prix0007/cryoshield/commits/main/apps/web/legal/privacy.md).
 
+- 2026-10-09: the blockchain and blockchain-access rows name the network and the public endpoint this site actually
+  uses; "Security" says that nobody can open a vault after all its keys are lost.
 - 2026-10-08 (revision 3): new "On your device" section. The site now has a Theme menu (System, Light, Dark); if you
   pick Light or Dark, your browser remembers that one choice (`cryoshield-theme`). It is never sent anywhere.
 - 2026-10-08: "Public and permanent data" now lists every public item (earlier versions, each key's public signing

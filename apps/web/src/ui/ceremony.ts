@@ -9,7 +9,7 @@ const TITLES: [string, readonly (string | undefined)[]][] = [
   ['PIN needed', [S.keyErrors.USER_NOT_VERIFIED]],
   ['Key not supported', [S.keyErrors.CRED_PROTECT_UNSUPPORTED, S.keyErrors.PRF_UNSUPPORTED_KEY, S.keyErrors.WRONG_ALGORITHM, S.keyErrors.PRF_UNSUPPORTED_BROWSER, S.browserUnsupported]],
   ['Request cancelled', [S.keyErrors.CANCELLED, S.enrollCancelled]],
-  ['Saving is paused', [S.save.paused, S.save.pausedCreate]],
+  ['Saving is paused', [S.save.paused, S.save.pausedCreate, S.save.pausedMainnet]],
   ['Can’t reach the network', [S.unlock.networkError]],
   ['Couldn’t confirm the latest version', [S.unlock.unconfirmed]],
   ['Wrong network', [S.wrongNetwork]],

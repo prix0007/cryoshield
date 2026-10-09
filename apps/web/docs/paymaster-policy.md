@@ -29,6 +29,7 @@ sent, and there is **never an unsponsored fallback**. The user sees:
 |---|---|
 | Edit, add a key | "Saving is paused right now. Your existing vault is safe; please try again later." |
 | First create | "Nothing was saved. Please try again later." (with a Details reference) |
+| Any save on OP Mainnet (limits reset) | "CryoShield could not pay the network fee for this save. Nothing was saved and your vault is unchanged. Sponsorship limits reset over time; if you’re adding a new secret, keep it somewhere safe until it saves." |
 
 Unlocking still works: reads need only a public RPC. Recovery needs neither CryoShield nor Pimlico.
 
@@ -46,20 +47,33 @@ Starting values from design D2/D3. The founder may tune them; the **Live** colum
 
 ### Sponsorship policy
 
-| Pimlico field | Testnet (OP Sepolia) | Mainnet (OP Mainnet, at the gate) | Live testnet (date) | Live mainnet (date) |
+| Pimlico field | Testnet (OP Sepolia) | Mainnet (OP Mainnet, founder's values) | Live testnet (date) | Live mainnet (date) |
 |---|---|---|---|---|
-| `chain_ids.allowlist` | 11155420 only | 10 only | _pending (task 1.2); recommended: `[11155420]` only_ | _not before task 8.1_ |
-| `user.maximum_user_operation_count` | 50, `never` (lifetime) | 50, `monthly` | _pending; recommended: 50, reset `never`_ | |
-| `user.user_operation_spending` | not set | $1.00, `monthly` | _pending; recommended: not set_ | |
-| `user_operation.user_operation_spending` | $0.50 | $0.10 | _pending; recommended: $0.50_ | |
-| `global.user_operation_spending` (`daily`) | USD equal to about 0.05 ETH (record the rate used) | $20 | _pending; recommended: USD of about 0.05 ETH, `daily`; record the ETH/USD rate used_ | |
-| `global.maximum_user_operation_count` (`daily`) | 500 | 2,000 | _pending; recommended: 500, `daily`_ | |
-| Webhook | **off** | **off** | _pending; recommended: off_ | |
-| Start / end time | unset | unset | _pending; recommended: both unset (a policy that expires pauses all saving)_ | |
+| Policy id | the id in `production-build` | `sp_many_longshot` | _pending_ | `sp_many_longshot`, created **disabled**; enable after the first chain-10 deploy (runbook step 8) (2026-10-09) |
+| `chain_ids.allowlist` | 11155420 only | 10 only | _pending (task 1.2); recommended: `[11155420]` only_ | Optimism (10) (2026-10-09) |
+| `user.maximum_user_operation_count` | 50, `never` (lifetime) | 10, `monthly` | _pending; recommended: 50, reset `never`_ | _planned 10, monthly; exact value at task 1.2_ |
+| `user.user_operation_spending` | not set | $1.00, `monthly` | _pending; recommended: not set_ | _planned $1.00, monthly; exact value at task 1.2_ |
+| `user_operation.user_operation_spending` | $0.50 | $0.50 | _pending; recommended: $0.50_ | $0.50 (2026-10-09) |
+| `global.user_operation_spending` | USD equal to about 0.05 ETH, `daily` (record the rate used) | $30, `daily` | _pending; recommended: USD of about 0.05 ETH, `daily`; record the ETH/USD rate used_ | _planned $30, daily; exact value at task 1.2_ |
+| `global.maximum_user_operation_count` | 500, `daily` | about 500, `daily` | _pending; recommended: 500, `daily`_ | _planned about 500, daily; exact value at task 1.2_ |
+| Webhook | **off** | **off** | _pending; recommended: off_ | _confirm off_ |
+| Start / end time | unset | 2026-10-09 to 2027-10-02 | _pending; recommended: both unset (a policy that expires pauses all saving)_ | 2026-10-09 to 2027-10-02 (2026-10-09) |
 
-Why these numbers: a measured create is about 1.5M gas on anvil (`docs/costs.md`), about $0.004 on OP Mainnet. $0.10
-per operation is about 25 times that, to allow for gas spikes and Pimlico pre-charging at maximum cost. A real user
-needs one create, a few edits and one or two add-key operations, far below 50.
+Why these numbers: a measured create is about 1.5M gas on anvil (`docs/costs.md`), about $0.004 on OP Mainnet. A
+real user needs one create, a few edits and one or two add-key operations.
+
+**Mainnet values (founder decisions, 2026-10-09; `launch-op-mainnet` design D8).** Per-user limits reset monthly,
+global limits reset daily; the exact values are recorded here at task 1.2. They replace the plan's values (per sender
+50 operations and $1 monthly; global $20 and 2,000 operations a day; $0.10 per operation). What they mean:
+
+- **A user can be refused for the rest of the month** after 10 sponsored operations. The app says: "CryoShield could
+  not pay the network fee for this save. Nothing was saved and your vault is unchanged. Sponsorship limits reset over
+  time; if you’re adding a new secret, keep it somewhere safe until it saves." Reading and recovery still work. The
+  app shows no "saves left" hint on mainnet.
+- **Abuse can stop saving for everyone until the next day** by reaching the global $30 or about 500 operations.
+- **One operation may cost up to $0.50** (a founder decision; the plan had $0.10).
+- **The policy ends on 2027-10-02.** After that, saving pauses for everyone unless the founder extends it.
+- **The policy is disabled until the first chain-10 deploy is green.** Enable it right after the smoke test.
 
 ### API keys
 
@@ -69,14 +83,14 @@ One key per environment; never reuse the dev key in production.
 |---|---|---|---|---|
 | Dev (`cryoshield-web-dev.fly.dev`) | `https://cryoshield-web-dev.fly.dev` | bundler + paymaster on; account APIs off | on, if the dashboard offers it | _pending; recommended: as in this row, on a key used only by `development-build`_ |
 | Testnet production (`cryoshield.app`) | `https://cryoshield.app` | bundler + paymaster on; account APIs off | on, if offered | _pending; recommended: a key **distinct from the dev key**, origin exactly `https://cryoshield.app`, bundler + paymaster on, account APIs off, restricted to the production policy id if the dashboard allows_ |
-| Mainnet (`cryoshield.app`) | `https://cryoshield.app` | bundler + paymaster on; account APIs off | on, if offered | _not before task 8.1_ |
+| Mainnet (`cryoshield.app`) | `https://cryoshield.app` | bundler + paymaster on; account APIs off | on, if offered | _pending (launch-op-mainnet task 1.2)_ |
 
 The origin restriction binds browsers only: a script can send any `Origin`. It stops other websites from using our
 key, not scripts.
 
 ### Balance
 
-- **Mainnet:** prepaid only, about **7 days of the global cap ($140)**, and **no card** (a card unlocks a $10
+- **Mainnet:** prepaid only, about **$140** (more than four days at the $30 daily cap), and **no card** (a card unlocks a $10
   overdraft). The balance is then the hard bound on spending that bypasses the policy.
 - **Testnet:** Pimlico documents testnet operations as free to sponsor (unconfirmed for our account: question (c)
   below). Recommended before the first release: no card on file for mainnet.
@@ -114,11 +128,12 @@ bound to its vaultId.
 Vault cloning is sponsorable but harmless: a copy of a victim's public blob under another vaultId never decrypts
 (the vaultId is in the AAD), so it is never offered (`test-int/writes.int.test.ts`, "vault cloning is neutralised").
 
-## 6. Testnet per-sender lockout
+## 6. Per-sender limit (testnet lifetime, mainnet monthly)
 
-On testnet the per-sender limit is lifetime (50 operations). A tester who reaches it sees "Saving is paused" on every
-edit. **Remedy:** the founder raises the per-sender cap in the dashboard. The user is never asked to pay gas. (Mainnet
-resets monthly, so nobody is locked out for good.)
+On testnet the per-sender limit is lifetime (50 operations): a tester who reaches it sees "Saving is paused" on every
+edit, for good. On mainnet it is **10 operations a month** (founder decision 2026-10-09): a user who reaches it is
+refused until the monthly reset, with the message above. **Remedy on either network:** the founder raises the
+per-sender cap in the dashboard and records the date and reason here. The user is never asked to pay gas.
 
 ## 7. Weekly review (founder, about 10 minutes)
 
@@ -126,11 +141,35 @@ There is no server to send alerts, and Pimlico has no low-balance alerting, so t
 
 - [ ] Usage page: on how many of the last 7 days was the global cap (spend or count) reached?
 - [ ] Usage page: is there any sponsored spend that did **not** use our policy ID?
-- [ ] Balance (mainnet): still about 7 days of the global cap, and no card on the account?
+- [ ] Balance (mainnet): still about $140, and no card on the account? Days at the global cap?
 - [ ] Spend rate: in line with D2, or draining faster?
 - [ ] Policy and key settings still match section 3 (webhook off, origins, methods)?
 - [ ] Any user reports of "Saving is paused" that the numbers don't explain?
 - [ ] Record the date and anything changed in this file.
+
+## 7a. Mainnet monitoring (launch-op-mainnet, design → Post-launch monitoring)
+
+There is no CryoShield server, so monitoring is manual and read-only. **Cadence:** daily for the first 14 days after
+the switch (the 7-day soft launch included), then weekly (section 7). Each review leaves a dated entry in the review
+log below, naming the balance and any threshold crossed with the action taken.
+
+| What | How | Launch cadence (first 14 days) | Steady cadence | Threshold → action |
+|---|---|---|---|---|
+| Pimlico spend and balance | Dashboard: usage by policy, balance, daily spend against the global cap | Daily | Weekly | Balance < $50 → review usage, then top up to ~$140; any day at the global cap → check for abuse (section 8) before raising it |
+| Policy-less sponsorship | Dashboard: spend not attributed to `sp_many_longshot` | Daily | Weekly | Any → rotate the mainnet key, review AA-M3, evaluate section 8 |
+| Per-operation cost | Dashboard; compare with `docs/costs.md` | Daily | Monthly | Median > $0.03 → investigate gas; > $0.50 → operations are being refused |
+| Refusals | Dashboard rejected requests; user reports | Daily | Weekly | Real users at the 10-operation monthly cap, or sustained refusals → raise the cap with a recorded reason |
+| Registry activity | `cast logs --address 0xA622c92d3D5b54aeA081Cf410224a8A2eCb08cB7 --from-block <deployBlock> --rpc-url https://mainnet.optimism.io` | Daily | Weekly | Spikes without matching Pimlico spend → investigate (self-funded writes are allowed, but unexpected) |
+| Site and release | `curl -s https://cryoshield.app/release.json` (chain 10, commit) | Daily | On each release | Mismatch → redeploy the expected tag |
+| Recovery path | Recovery tool against the founder's mainnet vault | Day 1 and day 7 | Monthly | Failure → SEV1 per the incident runbook |
+| Policy end date | Policy date range (ends 2027-10-02) | n/a | Monthly | 30 days before the end → extend it or record why not |
+| Deployer balance | `cast balance 0x33144f681d83527c0a8f364751a5d2f4505d26bf --rpc-url https://mainnet.optimism.io` | Once | Before any deploy | n/a |
+
+### Mainnet review log
+
+| Date | Balance | Policy spend that day | Threshold crossed | Action |
+|---|---|---|---|---|
+| _first entry on the switch day_ | | | | |
 
 ## 8. Re-evaluation trigger for an own paymaster (design D6)
 

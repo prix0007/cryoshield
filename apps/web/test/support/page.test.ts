@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 /** add-donation: the built /support page, the footer link on every page, the landing pill, and the legal sections. */
+import { AUDIT_PROMISES } from '../landing/banned';
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -59,7 +60,10 @@ describe('/support (built)', () => {
     expect(t).toContain('Send only ETH on Ethereum mainnet. Tokens or other networks sent here may be lost.');
     expect(t).toMatch(/also published in our GitHub README\. Check it matches/);
     expect([...d.querySelectorAll('a')].map((a) => a.getAttribute('href'))).toContain('https://github.com/prix0007/cryoshield#support-the-project');
-    for (const w of ['Voluntary', 'No perks', 'Non-refundable', 'no tax receipts', 'audit', 'maintainer']) expect(t).toContain(w);
+    for (const w of ['Voluntary', 'No perks', 'Non-refundable', 'no tax receipts', 'gas sponsorship', 'hosting', 'maintainer']) expect(t).toContain(w);
+    // launch-op-mainnet review H2: donations fund gas sponsorship and hosting only; no audit is promised.
+    for (const r of AUDIT_PROMISES) expect(t, String(r)).not.toMatch(r);
+    expect(d.querySelector('main')?.textContent ?? '').not.toMatch(/audit/i);
   });
 
   it('carries the app CSP, loads only its own same-origin module, and has no analytics', () => {

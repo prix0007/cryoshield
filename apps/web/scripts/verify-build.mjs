@@ -19,7 +19,7 @@ import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { gzipSync } from 'node:zlib';
-import { checkOrigins } from './origins-check.mjs';
+import { checkOrigins, checkRpcDisclosed } from './origins-check.mjs';
 import { checkNoPlaceholders, storageApiOutsideAllowedFiles, unlistedStorageApis } from './legal-check.mjs';
 import { checkSecurityTxt } from './securitytxt-check.mjs';
 import { analyticsLeaks, landingCspDiff, policyDrift } from './analytics-check.mjs';
@@ -38,7 +38,9 @@ const expectHost = hostIdx > 0 ? process.argv[hostIdx + 1] : undefined;
 
 const PROD_ENV = {
   VITE_CHAIN_ID: process.env.VERIFY_CHAIN_ID ?? '31337', // any chain with a contracts/deployments/<id>.json
-  VITE_RPC_URL: 'https://rpc.verify.invalid',
+  // launch-op-mainnet 4.4: VERIFY_RPC_URL (e.g. https://mainnet.optimism.io with VERIFY_CHAIN_ID=10) checks the real
+  // privacy disclosure of that RPC; the default .invalid fixture is exempt.
+  VITE_RPC_URL: process.env.VERIFY_RPC_URL ?? 'https://rpc.verify.invalid',
   VITE_BUNDLER_URL: 'https://bundler.verify.invalid/rpc?apikey=pim_public',
   VITE_SPONSORSHIP_POLICY_ID: 'sp_verify',
   VITE_TURBO_UPLOAD_URL: 'https://upload.ardrive.io',
@@ -159,6 +161,12 @@ if (analyticsOn) {
 }
 console.log(`ok   [${label}] analytics confined to the landing document${analyticsOn ? ' (beacon pinned to the lock; disclosed on /privacy and /cookies)' : ' (no beacon in this build)'}`);
 const html = pages.map((f) => readFileSync(f, 'utf8')).join('\n');
+// launch-op-mainnet 4.4: the privacy sub-processor table names the configured RPC host.
+if (label === 'production' && !realEnv) {
+  const undisclosed = checkRpcDisclosed(readFileSync(join(dist, 'privacy', 'index.html'), 'utf8'), PROD_ENV.VITE_RPC_URL);
+  if (undisclosed.length) fail(`[${label}] /privacy does not name the RPC host ${undisclosed.join(', ')} in its sub-processor table`);
+  console.log(`ok   [${label}] /privacy names the RPC host of ${PROD_ENV.VITE_RPC_URL}`);
+}
 // add-privacy-and-compliance 3.2: the legal pages exist.
 for (const p of ['privacy', 'terms', 'cookies', 'architecture', 'devices', 'support']) {
   if (!all.includes(join(dist, p, 'index.html'))) fail(`[${label}] missing legal page ${p}/index.html`);
@@ -305,7 +313,12 @@ const gz = (f) => gzipSync(readFileSync(join(dist, f)), { level: 9 }).length;
 // (e2e / production) -> 205,576 B / 205,592 B (+873 B / +874 B): the theme script every page loads before first paint
 // (assets/theme-*.js, minified, about 600 B, including the theme-color sync) plus the app's Theme menu markup. It must
 // be initial: it applies the saved theme before the first paint. Headroom before: 211 B; after: about 360 B.
-const APP_BASELINE = 194_689 - 12 * 1024 + 1024 + 1024 + 1024;
+// launch-op-mainnet 4.5/4.6 (2026-10-09): +1 KB, deliberately. Measured gzip: main a59a179 /app UI with this change's
+// network table 205,595 B / 205,605 B (e2e / production) -> 206,461 B / 206,473 B (+866 B / +868 B), all initial on purpose: the status notice
+// must show on every network before anything loads (the Unaudited notice and chip on OP Mainnet, the testnet banner
+// elsewhere), the no-vault help for testnet-preview vaults sits in the unlock screen, and the launch-date helpers decide
+// both. Headroom before: 358 B; after: about 516 B.
+const APP_BASELINE = 194_689 - 12 * 1024 + 1024 + 1024 + 1024 + 1024;
 const APP_ALLOWANCE = 20 * KB;
 const WRITE_STACK_MARKERS = ['eth_sendUserOperation', 'pimlico_getUserOperationGasPrice', 'WalletConfigError'];
 // vault-list-labels-archive 3.1 (design D5): the vault list, the Edit vault sheet, Archive and clear and the dates

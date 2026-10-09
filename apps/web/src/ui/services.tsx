@@ -2,6 +2,7 @@
 import { createContext, useContext, useMemo, type ReactNode } from 'react';
 import type { Hex, PublicClient } from 'viem';
 import { config } from '../config';
+import { networkFor } from '../config/networks';
 import { createRegistryReader, makePublicClient, type RegistryReader } from '../chain/registry';
 import { lazySponsor } from '../account/lazy';
 import type { Sponsor } from '../account/writes';
@@ -31,9 +32,14 @@ export interface Services {
   arweaveGatewayUrl: string;
 }
 
-/** Test networks get the testnet + unaudited warning (add-privacy-and-compliance 4.3) and the save-budget hint (D10). */
-const TESTNETS: Record<number, string> = { 11155420: 'OP Sepolia', 421614: 'Arbitrum Sepolia', 11155111: 'Sepolia', 31337: 'a local test chain' };
-export const testnetName = (chainId: number): string | undefined => TESTNETS[chainId];
+/**
+ * Test networks get the testnet + unaudited warning (add-privacy-and-compliance 4.3) and the save-budget hint (D10).
+ * launch-op-mainnet D6: the status comes from the network table; an unknown chain counts as a testnet (fail safe).
+ */
+export const testnetName = (chainId: number): string | undefined => {
+  const n = networkFor(chainId);
+  return n.status === 'testnet' ? n.shortName : undefined;
+};
 
 const Ctx = createContext<Services | null>(null);
 

@@ -10,6 +10,7 @@ import { KeyPrompt, Notice, StepHeading } from './components';
 import { messageFor, type VaultSession } from './operations';
 import { useServices, type Services } from './services';
 import { S } from './strings';
+import { testnetVaultsNoticeNow } from '../config/launch';
 import { ActionBar } from './chrome';
 import { Btn, CeremonyPresence, OpenProgress, PHASE_STEP, StepTransition, useDirection } from './motionkit';
 
@@ -63,6 +64,8 @@ export function UnlockFlow(props: { onUnlocked: (u: Unlocked) => void; onCreate:
   const [at, setAt] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notFound, setNotFound] = useState(false);
+  // launch-op-mainnet 4.5: evaluated once per unlock screen (the window is 90 days), so rendering stays pure.
+  const [testnetHelp] = useState(() => testnetVaultsNoticeNow(svc.chainId));
   const phase: Phase = notFound ? 'notFound' : 'ready';
   const dir = useDirection(PHASE_ORDER, phase);
 
@@ -102,6 +105,17 @@ export function UnlockFlow(props: { onUnlocked: (u: Unlocked) => void; onCreate:
         {notFound ? (
           <div>
             <Notice kind="info">{S.unlock.notFound}</Notice>
+            {/* launch-op-mainnet 4.5 (Q4): for 90 days after the switch, where testnet-preview vaults went. */}
+            {testnetHelp && (
+              <Notice kind="info">
+                <p className="notice-text">{S.network.testnetVaults}</p>
+                <p className="notice-link">
+                  <a href={S.network.recoveryToolUrl} rel="noopener noreferrer">
+                    {S.network.recoveryTool}
+                  </a>
+                </p>
+              </Notice>
+            )}
             <ActionBar>
               <Btn onClick={props.onCreate}>{S.unlock.createInstead}</Btn>
               <Btn className="secondary" onClick={go}>

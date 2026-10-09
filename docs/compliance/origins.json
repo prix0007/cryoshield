@@ -1,15 +1,17 @@
 {
-  "$comment": "Every origin the production build may contact (CSP connect-src / script-src), mapped to its row in data-inventory.md. verify-build fails on any production origin missing here. Loopback and *.invalid origins (dev/E2E/verification fixtures) are exempt.",
+  "$comment": "Every origin the production build may contact (CSP connect-src / script-src), mapped to its row in data-inventory.md. An RPC origin may carry \"privacy\" {name, url}, which the privacy policy's RPC row links (launch-op-mainnet review L7). verify-build fails on any production origin missing here. Loopback and *.invalid origins (dev/E2E/verification fixtures) are exempt.",
   "origins": {
     "https://sepolia.optimism.io": {
       "row": 7,
       "vendor": "OP Labs public RPC (OP Sepolia)",
-      "role": "independent controller (RPC logs); reads vault data"
+      "role": "independent controller (RPC logs); reads vault data",
+      "privacy": { "name": "Optimism privacy", "url": "https://www.optimism.io/data-privacy-policy" }
     },
     "https://mainnet.optimism.io": {
       "row": 7,
       "vendor": "OP Labs public RPC (OP Mainnet)",
-      "role": "independent controller (RPC logs); reads vault data"
+      "role": "independent controller (RPC logs); reads vault data",
+      "privacy": { "name": "Optimism privacy", "url": "https://www.optimism.io/data-privacy-policy" }
     },
     "https://api.pimlico.io": {
       "row": 4,

@@ -26,9 +26,16 @@ describe('legal renderer markers', () => {
   it('the real legal and repo documents still render (they use only the known markers)', async () => {
     const { readFileSync } = await import('node:fs');
     const { join } = await import('node:path');
+    const { resolveNetworkCopy } = await import('../../vite-plugins/network-copy');
     const web = join(__dirname, '..', '..');
-    for (const f of ['legal/privacy.md', 'legal/terms.md', 'legal/cookies.md', '../../docs/supported-devices.md']) {
-      expect(() => renderMarkdown(readFileSync(join(web, f), 'utf8')), f).not.toThrow();
+    // launch-op-mainnet D6: the legal text's network blocks are resolved for the build's chain before rendering, so the
+    // renderer never sees them; an unresolved one is refused like any other comment line.
+    for (const chainId of [11155420, 10]) {
+      const network = (md: string) => resolveNetworkCopy(md, { chainId, rpId: 'cryoshield.app', now: 0, rpc: { host: 'rpc.example', vendor: 'Example', policy: 'Not published' } });
+      for (const f of ['legal/privacy.md', 'legal/terms.md', 'legal/cookies.md', '../../docs/supported-devices.md']) {
+        expect(() => renderMarkdown(network(readFileSync(join(web, f), 'utf8'))), `${f} (chain ${chainId})`).not.toThrow();
+      }
     }
+    expect(() => renderMarkdown(readFileSync(join(web, 'legal', 'terms.md'), 'utf8'))).toThrow(/marker/);
   });
 });

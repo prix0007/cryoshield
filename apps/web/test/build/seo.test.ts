@@ -9,7 +9,8 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { OG_IMAGE, PUBLIC_PAGES, SITE, extractFaq, llmsTxt, publicPageMetas, sitemapXml, transformSeo } from '../../vite-plugins/seo';
-import { BANNED } from '../landing/banned';
+import { BANNED, bannedFor } from '../landing/banned';
+import { llmsStatus, type CopyContext } from '../../vite-plugins/network-copy';
 import { stripJsonLd } from '../../scripts/csp-check.mjs';
 
 const web = join(__dirname, '..', '..');
@@ -143,9 +144,11 @@ describe('crawl files', () => {
   });
 });
 
+const ctx = (chainId: number): CopyContext => ({ chainId, rpId: 'cryoshield.app', now: Date.parse('2026-10-09T00:00:00Z'), rpc: { host: 'rpc.example', vendor: 'Example', policy: 'Not published' } });
+
 describe('llms.txt (add-llms-txt)', () => {
-  const metas = publicPageMetas(web);
-  const out = llmsTxt(metas);
+  const metas = publicPageMetas(web, ctx(11155420));
+  const out = llmsTxt(metas, llmsStatus(ctx(11155420)));
 
   it('reads every public page title and description from its source HTML, in sitemap order', () => {
     expect(metas.map((m) => m.path)).toEqual(PUBLIC_PAGES.map((p) => p.path));
@@ -190,12 +193,31 @@ describe('llms.txt (add-llms-txt)', () => {
   });
 
   it('carries a changed title or description without another edit', () => {
-    const changed = llmsTxt(metas.map((m) => (m.path === '/devices' ? { ...m, title: 'New devices title' } : m)));
+    const changed = llmsTxt(metas.map((m) => (m.path === '/devices' ? { ...m, title: 'New devices title' } : m)), llmsStatus(ctx(11155420)));
     expect(changed).toContain(`- [New devices title](${SITE}/devices): `);
   });
 });
 
+describe('llms.txt on an OP Mainnet build (launch-op-mainnet 4.2)', () => {
+  const metas = publicPageMetas(web, ctx(10));
+  const out = llmsTxt(metas, llmsStatus(ctx(10)));
+
+  it('restates the mainnet status: OP Mainnet, unaudited, all keys lost; no testnet wording anywhere', () => {
+    expect(out).toMatch(/OP Mainnet/);
+    expect(out).toMatch(/not been independently audited/);
+    expect(out).toMatch(/lose every key/);
+    expect(out).not.toMatch(/testnet|OP Sepolia|test network/i);
+    expect(metas[0]!.description).toMatch(/unaudited\.$/);
+    for (const b of bannedFor(10)) expect(out, String(b)).not.toMatch(b);
+  });
+});
+
 describe('share image', () => {
+  it('has neutral alt text that matches the card on every chain', () => {
+    expect(OG_IMAGE.alt).toBe('CryoShield: seed phrase backups that outlive the drive. Free and open source, not independently audited.');
+    expect(OG_IMAGE.alt).not.toMatch(/testnet|mainnet|sepolia|preview/i);
+  });
+
   it('is a 1200×630 PNG matching the recorded hash, built from the committed SVG', () => {
     const png = readFileSync(join(web, 'public', 'og-image.png'));
     expect(png.subarray(1, 4).toString('latin1')).toBe('PNG');
@@ -205,11 +227,16 @@ describe('share image', () => {
     expect(png.length).toBeLessThan(300 * 1024);
   });
 
-  it('the source SVG is 1200×630, self-contained, in brand colours, and says "Testnet preview"', () => {
+  // launch-op-mainnet 4.2: one neutral card for every chain. It makes no network claim (the same PNG ships on OP Sepolia
+  // and OP Mainnet), keeps "Not independently audited", and its alt text describes exactly that.
+  it('the source SVG is 1200×630, self-contained, in brand colours, neutral about the network, and says it is unaudited', () => {
     const svg = readFileSync(join(web, 'brand', 'og-image.svg'), 'utf8');
     expect(svg).toMatch(/viewBox="0 0 1200 630" width="1200" height="630"/);
     expect(svg).not.toMatch(/href=|url\(|<image|<script|<(linear|radial)Gradient|<filter/i);
-    expect(svg).toContain('Testnet preview');
+    const visible = [...svg.matchAll(/<(?:text|tspan)[^>]*>([^<]*)/g)].map((m) => m[1]).join(' ');
+    expect(visible).not.toMatch(/testnet|mainnet|sepolia|preview|yet/i);
+    expect(visible).toContain('Not independently audited');
+    for (const b of [...BANNED, ...bannedFor(10)]) expect(visible, String(b)).not.toMatch(b);
     const colours = new Set((svg.match(/#[0-9a-f]{6}/gi) ?? []).map((c) => c.toLowerCase()));
     for (const c of colours) expect(['#ffffff', '#f5f5f7', '#0066cc', '#1d1d1f', '#333333', '#7a7a7a', '#e0e0e0']).toContain(c);
   });

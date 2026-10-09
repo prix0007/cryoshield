@@ -168,8 +168,9 @@ export function inventoryTable(inv: StorageInventory): string {
   return `<div class="table-wrap"><table class="inventory" data-testid="storage-inventory"><thead><tr><th scope="col">Route</th><th scope="col">Cookies</th><th scope="col">localStorage</th><th scope="col">sessionStorage</th><th scope="col">IndexedDB</th><th scope="col">Cache Storage</th><th scope="col">Service workers</th></tr></thead><tbody>${rows}${tp}</tbody></table></div>`;
 }
 
-export function renderLegalPage(root: string, name: string): string {
-  const md = readFileSync(join(root, 'legal', `${name}.md`), 'utf8');
+/** `network` resolves the launch-op-mainnet network blocks for the build's chain (vite-plugins/network-copy.ts). */
+export function renderLegalPage(root: string, name: string, network: (md: string) => string): string {
+  const md = network(readFileSync(join(root, 'legal', `${name}.md`), 'utf8'));
   let html = renderMarkdown(md).replace('<!--legal-note-->', LEGAL_NOTE);
   if (html.includes('<!--storage-inventory-->') || html.includes('<!--storage-preferences-->')) {
     const inv = JSON.parse(readFileSync(join(root, 'legal', 'storage-inventory.json'), 'utf8')) as StorageInventory;

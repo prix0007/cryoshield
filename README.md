@@ -198,7 +198,7 @@ CryoShield is free, open-source software. If it helps you, you can send a volunt
 
 - **Check the address.** It is also shown on [cryoshield.app/support](https://cryoshield.app/support). Before you send, check that the address there matches this README character for character, so a tampered page can't redirect your donation.
 - **Use the right network and asset.** Send only ETH on Ethereum mainnet. Tokens, or ETH on other networks, sent to this address may be lost.
-- **What donations fund:** gas sponsorship, hosting and a future independent audit.
+- **What donations fund:** gas sponsorship and hosting.
 - **Terms:** donations are non-refundable and come with no perks, goods or services. This is an open-source project with no company behind it, so there are no tax receipts.
 
 ## Security

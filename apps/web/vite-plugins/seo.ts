@@ -10,10 +10,13 @@
  *  - /app/ must stay noindex (D10).
  *  - add-llms-txt: llms.txt (llmstxt.org) is generated from the public pages' source titles and descriptions (D1), so
  *    it follows the pages; its only hand-written prose is the status line, which restates the preview banner (D2).
+ *  - launch-op-mainnet D6: the page sources carry network blocks, resolved for the build's chain before their metadata
+ *    is read; the status line follows the chain too (network-copy.ts). The share image is neutral about the network.
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Plugin } from 'vite';
+import { llmsStatus, resolveNetworkCopy, type CopyContext } from './network-copy.ts';
 
 export const SITE = 'https://cryoshield.app';
 const REPO = 'https://github.com/prix0007/cryoshield';
@@ -35,7 +38,8 @@ export const OG_IMAGE = {
   path: '/og-image.png',
   width: 1200,
   height: 630,
-  alt: 'CryoShield: seed phrase backups that outlive the drive. Testnet preview.',
+  // launch-op-mainnet 4.2: describes the neutral card (brand/og-image.svg), identical on every chain.
+  alt: 'CryoShield: seed phrase backups that outlive the drive. Free and open source, not independently audited.',
 } as const;
 
 export const LIMITS = { title: 60, descriptionMin: 150, descriptionMax: 160 } as const;
@@ -183,17 +187,13 @@ export function sitemapXml(): string {
 
 export type PageMeta = { path: string; title: string; description: string };
 
-/** Each public page's title and description, read from its source HTML under `root`, in sitemap order. */
-export function publicPageMetas(root: string): PageMeta[] {
-  return PUBLIC_PAGES.map((p) => ({ path: p.path, ...pageMeta(readFileSync(join(root, p.html), 'utf8'), p.html) }));
+/** Each public page's title and description, read from its source HTML under `root` as built for `ctx`'s chain, in sitemap order. */
+export function publicPageMetas(root: string, ctx: CopyContext): PageMeta[] {
+  return PUBLIC_PAGES.map((p) => ({ path: p.path, ...pageMeta(resolveNetworkCopy(readFileSync(join(root, p.html), 'utf8'), ctx), p.html) }));
 }
 
-/** What the preview banner says; changes with it at the mainnet launch. */
-const LLMS_STATUS =
-  'CryoShield is a free, open-source project with no company behind it. It is a testnet preview: vaults are stored on OP Sepolia, a test network, with an extra copy on Arweave when that upload succeeds. Test networks can be reset, and CryoShield has not been independently audited yet.';
-
 /** llms.txt (https://llmstxt.org): H1, summary, status, then link sections. The landing page (`/`) gives the summary. */
-export function llmsTxt(pages: readonly PageMeta[]): string {
+export function llmsTxt(pages: readonly PageMeta[], status: string): string {
   const landing = pages.find((p) => p.path === '/');
   if (!landing) throw new Error('[seo] llms.txt: no landing page meta');
   const link = (title: string, url: string, note: string) => `- [${title}](${url}): ${note}`;
@@ -202,7 +202,7 @@ export function llmsTxt(pages: readonly PageMeta[]): string {
     '',
     `> ${landing.description}`,
     '',
-    LLMS_STATUS,
+    status,
     '',
     '## Pages',
     '',
@@ -223,7 +223,7 @@ export function llmsTxt(pages: readonly PageMeta[]): string {
   ].join('\n');
 }
 
-export function seoPlugin(root: string): Plugin {
+export function seoPlugin(root: string, ctx: CopyContext): Plugin {
   return {
     name: 'cryoshield-seo',
     transformIndexHtml: {
@@ -237,7 +237,7 @@ export function seoPlugin(root: string): Plugin {
     },
     generateBundle() {
       this.emitFile({ type: 'asset', fileName: 'sitemap.xml', source: sitemapXml() });
-      this.emitFile({ type: 'asset', fileName: 'llms.txt', source: llmsTxt(publicPageMetas(root)) });
+      this.emitFile({ type: 'asset', fileName: 'llms.txt', source: llmsTxt(publicPageMetas(root, ctx), llmsStatus(ctx)) });
     },
   };
 }

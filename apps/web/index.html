@@ -10,7 +10,7 @@
     <link rel="manifest" href="/site.webmanifest" />
     <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)" />
-    <meta name="description" content="Back up seed phrases and 2FA backup codes on-chain, sealed in your browser and opened only by your YubiKey or other security key. Free, open source, testnet." />
+    <meta name="description" content="Back up seed phrases and 2FA backup codes on-chain, sealed in your browser and opened only by your YubiKey or other security key. Free, open source, <!--net:testnet-->testnet<!--/net--><!--net:mainnet-->unaudited<!--/net-->." />
     <title>Permanent Backup for Seed Phrases &amp; 2FA Codes · CryoShield</title>
     <script type="module" src="/src/landing/main.ts"></script>
   </head>
@@ -55,7 +55,7 @@
       <div class="sub-nav">
         <div class="sub-nav-inner">
           <p class="sub-nav-name">CryoShield</p>
-          <p class="chip">Testnet preview</p>
+          <p class="chip"><!--net:testnet-->Testnet preview<!--/net--><!--net:mainnet-->Unaudited<!--/net--></p>
           <a class="pill pill-primary pill-small" href="/app/">Open the app</a>
         </div>
       </div>
@@ -90,9 +90,12 @@
           <a class="pill pill-primary pill-large magnetic" href="/app/">Open the app</a>
           <a class="pill pill-secondary pill-large magnetic" href="#how">How it works</a>
         </p>
+        <!-- launch-op-mainnet D6: network statements follow the build's chain (vite-plugins/network-copy.ts). -->
         <p class="status-strip">
-          <strong>Testnet preview.</strong> Your vault is encrypted on your device and stored on OP Sepolia, a test network, with an extra copy on Arweave when that upload succeeds. Test networks can be reset, and CryoShield has not been independently audited yet.
+          <!--net:testnet--><strong>Testnet preview.</strong> Your vault is encrypted on your device and stored on __CS_NET_NAME__, a test network, with an extra copy on Arweave when that upload succeeds. Test networks can be reset, and CryoShield has not been independently audited.<!--/net-->
+          <!--net:mainnet--><strong>Runs on __CS_NET_NAME__.</strong> Your vault is encrypted on your device and stored on __CS_NET_NAME__, with an extra copy on Arweave when that upload succeeds. CryoShield has not been independently audited, so please keep your existing backups too.<!--/net-->
         </p>
+        <!--net:moving--><p class="status-strip"><strong>CryoShield is moving to OP Mainnet.</strong> Vaults created during the testnet preview will not move; you can still read them with the recovery tool. Create a new vault after the switch.</p><!--/net-->
       </section>
 
       <!-- NUMBERS -->
@@ -181,7 +184,7 @@
             <a class="pill pill-primary pill-large" href="/app/">Seal it with your security key</a>
             <a class="pill pill-secondary pill-large" href="https://github.com/prix0007/cryoshield" rel="noopener noreferrer">Read the code</a>
           </div>
-          <p class="fine fine-light">Testnet preview on OP Sepolia, not independently audited. Please keep your existing backups too.</p>
+          <p class="fine fine-light"><!--net:testnet-->Testnet preview on __CS_NET_NAME__<!--/net--><!--net:mainnet-->Runs on __CS_NET_NAME__<!--/net-->, not independently audited. Please keep your existing backups too.</p>
         </div>
       </section>
 
@@ -233,7 +236,7 @@
             <div class="scene-copy">
               <p class="eyebrow">03 · Where it lives</p>
               <h2 id="stored-title" class="scene-title">Stored on-chain. Copied to Arweave.</h2>
-              <p class="scene-lead">The sealed vault, about 1 KB, is written to a public blockchain (OP Sepolia during this test phase), and a copy goes to Arweave’s permanent archive. Anyone can see the locked data. Only your keys can open it.</p>
+              <p class="scene-lead">The sealed vault, about 1 KB, is written to a public blockchain (<!--net:testnet-->__CS_NET_NAME__ during this test phase<!--/net--><!--net:mainnet-->__CS_NET_NAME__<!--/net-->), and a copy goes to Arweave’s permanent archive. Anyone can see the locked data. Only your keys can open it.</p>
             </div>
             <div class="scene-visual">
               <svg class="graphic g-chain" viewBox="0 0 600 360" aria-hidden="true" focusable="false">
@@ -428,7 +431,7 @@
           <a class="pill pill-primary pill-large magnetic" href="/app/">Open the app</a>
           <a class="pill pill-secondary pill-large magnetic" href="#faq">Read the FAQ</a>
         </p>
-        <p class="fine">Testnet preview on OP Sepolia, not independently audited. Please keep your existing backups too.</p>
+        <p class="fine"><!--net:testnet-->Testnet preview on __CS_NET_NAME__<!--/net--><!--net:mainnet-->Runs on __CS_NET_NAME__<!--/net-->, not independently audited. Please keep your existing backups too.</p>
       </section>
 
       <!-- FAQ -->
@@ -437,11 +440,11 @@
         <div class="faq-list">
           <details>
             <summary>How do I back up my seed phrase forever?</summary>
-            <p>No backup lasts forever, but you can make yours outlive any one drive or sheet of paper. CryoShield seals your seed phrase in your browser, stores it on a public blockchain, and copies it to Arweave’s permanent archive. It stays readable as long as the blockchain or the Arweave copy exists and at least one of your keys still works. CryoShield is a testnet preview, so keep your existing backup too.</p>
+            <p>No backup lasts forever, but you can make yours outlive any one drive or sheet of paper. CryoShield seals your seed phrase in your browser, stores it on a public blockchain, and copies it to Arweave’s permanent archive. It stays readable as long as the blockchain or the Arweave copy exists and at least one of your keys still works. <!--net:testnet-->CryoShield is a testnet preview<!--/net--><!--net:mainnet-->CryoShield runs on __CS_NET_NAME__ and has not been independently audited<!--/net-->, so keep your existing backup too.</p>
           </details>
           <details>
             <summary>Where should I store 2FA backup codes?</summary>
-            <p>Somewhere that survives a lost phone or a dead laptop, and that only you can open. A CryoShield vault holds about 1 KB of text, enough for the 2FA backup codes of many accounts, and only your security keys can open it. While CryoShield is a testnet preview, keep a printed copy somewhere safe as well.</p>
+            <p>Somewhere that survives a lost phone or a dead laptop, and that only you can open. A CryoShield vault holds about 1 KB of text, enough for the 2FA backup codes of many accounts, and only your security keys can open it. <!--net:testnet-->While CryoShield is a testnet preview<!--/net--><!--net:mainnet-->Because CryoShield has not been independently audited<!--/net-->, keep a printed copy somewhere safe as well.</p>
           </details>
           <details>
             <summary>What do I need?</summary>
@@ -465,7 +468,7 @@
           </details>
           <details>
             <summary>Is it safe to use today?</summary>
-            <p>CryoShield is a testnet preview on OP Sepolia and has not been independently audited. The code and the vault format are open source, and the encryption uses well-known open-source cryptography libraries (@noble) with published test vectors. Please keep your existing backups too.</p>
+            <p><!--net:testnet-->CryoShield is a testnet preview on __CS_NET_NAME__ and has not been independently audited.<!--/net--><!--net:mainnet-->CryoShield runs on __CS_NET_NAME__ and has not been independently audited.<!--/net--> The code and the vault format are open source, and the encryption uses well-known open-source cryptography libraries (@noble) with published test vectors. Please keep your existing backups too.</p>
           </details>
           <details>
             <summary>How much can I store?</summary>
@@ -478,7 +481,7 @@
     <footer class="site-footer">
       <div class="footer-inner">
         <div class="footer-support">
-          <p>CryoShield is free and open source. If it helps you, you can support its gas sponsorship, hosting and an independent audit.</p>
+          <p>CryoShield is free and open source. If it helps you, you can support its gas sponsorship and hosting.</p>
           <a class="pill pill-secondary coffee" href="/support" data-coffee>
             <span class="coffee-cup" aria-hidden="true"><span class="coffee-steam"><i></i><i></i><i></i></span><svg viewBox="0 0 24 24" focusable="false"><path d="M4 9h12v5a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5V9Z"/><path d="M16 11h1.5a2.5 2.5 0 0 1 0 5H16"/><path d="M5 21h10"/></svg></span>
             <span>Buy me a coffee</span>
@@ -517,7 +520,7 @@
             </ul>
           </div>
         </div>
-        <p class="legal">CryoShield contributors. MIT licensed. Testnet preview on OP Sepolia, not independently audited. YubiKey is a trademark of Yubico.</p>
+        <p class="legal">CryoShield contributors. MIT licensed. <!--net:testnet-->Testnet preview on __CS_NET_NAME__<!--/net--><!--net:mainnet-->Runs on __CS_NET_NAME__<!--/net-->, not independently audited. YubiKey is a trademark of Yubico.</p>
       </div>
     </footer>
   </body>
