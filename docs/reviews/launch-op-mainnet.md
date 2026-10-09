@@ -23,7 +23,7 @@ is done.
 
 | # | Criterion | Status | Evidence |
 |---|---|---|---|
-| G1 | Human production gate; CI-H1; owner 2FA | Release gate in place (`release-tags` now `~ALL`, applied 2026-10-09; `apply.sh` in sync). 2FA on GitHub and Cloudflare: on (founder, 2026-10-09; hardware-key method to confirm). CI-H1: closed 2026-10-09 (machine account `cryoshield`, Write; probes in the mainnet-gate entry) | |
+| G1 | Human production gate; CI-H1; owner 2FA | Release gate in place (`release-tags` now `~ALL`, applied 2026-10-09; `apply.sh` in sync). 2FA on GitHub and Cloudflare: hardware security keys (founder, 2026-10-09/10). CI-H1: closed 2026-10-09 (machine account `cryoshield`, Write; probes in the mainnet-gate entry) | |
 | G2 | Dev not under `cryoshield.app` | `dev.cryoshield.app` NXDOMAIN (checked 2026-10-09) | |
 | G3 | `harden-gas-sponsorship` review and testnet proof | Review 7.1 APPROVE. Founder's YubiKey run on dev (2026-10-10): create, unlock, edit and recovery passed; v1 items waived for mainnet; **add-key not evidenced on chain, re-run needed**; 6.2 and 8.1 **open** | |
 | G4 | Pimlico mainnet settings | **Open**: founder adds the D8 resets and records the values; dedicated mainnet key restricted to `https://cryoshield.app`, bundler + paymaster only; prepaid, no card | |

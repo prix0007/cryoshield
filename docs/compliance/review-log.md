@@ -134,7 +134,7 @@ and design D3, D7 and D8; this review records them and does not make them):
    - **8.1:** the founder's approval.
 
 3. **G1.** 2FA is on for the GitHub owner account and for Cloudflare (founder's statement, 2026-10-09). The founder
-   confirms that the method is a hardware key, not SMS or TOTP alone. **CI-H1 closed 2026-10-09:** agents now push and
+   confirmed on 2026-10-10 that the method is hardware security keys on both accounts. **CI-H1 closed 2026-10-09:** agents now push and
    open PRs as the machine account `cryoshield` (Write role, classic token with `repo` scope only, expiring
    2027-01-07, held in the founder's macOS keychain). Its no-op probes were run on 2026-10-09:
    - **blocked:** workflow-permission and repository-setting writes (403/404), the ruleset view (404), a push to
@@ -146,7 +146,7 @@ and design D3, D7 and D8; this review records them and does not make them):
    `cryoshield` was added to `.github/trusted-authors.json` by the owner (PR #81, 2026-10-10). Task 1.4 was run on
    2026-10-10 as a dry run as the owner: `apply.sh --with-ecc-review --environments --founder-hardening` exits 0, with
    both rulesets, the merge settings, the workflow permissions, fork approval and all four environments **in sync**.
-   Still open: the founder confirms that the 2FA method is a hardware key.
+   **G1 closed 2026-10-10.**
 4. **G7.** The founder confirms the calendar reminders: daily checks for the first 14 days, weekly after that, and
    monthly. Also a reminder 30 days before the policy end date (2027-10-02), and before the domain and
    `security.txt` dates (September 2027).
