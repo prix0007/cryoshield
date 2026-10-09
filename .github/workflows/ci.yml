@@ -493,12 +493,22 @@ jobs:
       - name: Reproducible build and bundle checks
         run: pnpm --filter @cryoshield/web verify-build
 
+  # Desktop and phone Playwright projects run side by side (OpenSpec change parallel-e2e-shards). ci-ok sees
+  # needs.web-e2e.result == failure if either entry fails; fail-fast is off so both always report.
   web-e2e:
-    name: web-e2e
+    name: web-e2e (${{ matrix.shard }})
     needs: changes
     if: always() && (inputs.full || github.event_name == 'push' || needs.changes.outputs.web == 'true')
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - shard: desktop
+            projects: chromium analytics
+          - shard: mobile
+            projects: mobile mobile-small
     permissions:
       contents: read # checkout only
     steps:
@@ -533,7 +543,13 @@ jobs:
       - name: Install Playwright Chromium
         run: pnpm --filter @cryoshield/web exec playwright install --with-deps chromium
       - name: Playwright E2E (Chromium, anvil stack, virtual authenticators)
-        run: pnpm --filter @cryoshield/web test:e2e
+        env:
+          PW_PROJECTS: ${{ matrix.projects }}
+        run: |
+          read -ra names <<< "$PW_PROJECTS"
+          args=()
+          for n in "${names[@]}"; do args+=("--project=$n"); done
+          pnpm --filter @cryoshield/web test:e2e "${args[@]}"
 
   # Product metrics CLI (OpenSpec change add-privacy-preserving-analytics): unit tests on fixtures plus the anvil fixture.
   metrics:

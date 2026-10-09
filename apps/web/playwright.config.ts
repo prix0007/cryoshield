@@ -8,6 +8,12 @@ import { defineConfig, devices } from '@playwright/test';
 /** add-mobile-e2e D2: the specs re-run on the phone project. */
 const MOBILE_SPECS = /\/(05-landing|08-legal|10-flows|11-architecture|14-devices|15-support|16-seo|17-vaults|18-vault-layout|19-theme|21-mobile|30-a11y|40-errors)\.spec\.ts$/;
 
+/** parallel-e2e-shards D2: the projects picked with --project (both `--project=x` and `--project x`); empty = all. */
+const selected = process.argv.flatMap((arg, i, argv) =>
+  arg.startsWith('--project=') ? [arg.slice('--project='.length)] : arg === '--project' && argv[i + 1] ? [argv[i + 1]] : [],
+);
+const wantsAnalytics = selected.length === 0 || selected.includes('analytics');
+
 export default defineConfig({
   testDir: 'e2e/specs',
   timeout: 120_000,
@@ -36,11 +42,12 @@ export default defineConfig({
       reuseExistingServer: false,
       timeout: 120_000,
     },
-    {
+    // Only when the analytics project can run, so the phone shard skips this build (parallel-e2e-shards D2).
+    ...(wantsAnalytics ? [{
       command: 'pnpm exec vite build --mode e2e-analytics --outDir dist-analytics --emptyOutDir && pnpm exec vite preview --mode e2e-analytics --outDir dist-analytics --port 4174',
       url: 'http://localhost:4174',
       reuseExistingServer: false,
       timeout: 120_000,
-    },
+    }] : []),
   ],
 });
