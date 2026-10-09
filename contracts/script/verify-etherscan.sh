@@ -19,8 +19,8 @@
 #
 # Key handling (deployment-targets "Keyless explorer verification"; security review in launch-op-mainnet task 6.1):
 #   - the key is read ONLY from ETHERSCAN_API_KEY, then removed from the environment, so no child process inherits it;
-#   - it reaches curl only through `curl --config -`, written by the shell builtin printf into a pipe: never argv
-#     (process list, shell history), never a file, never a log line;
+#   - it reaches curl only through `curl -q ... --config -` (-q first: ~/.curlrc is not read), written by the shell
+#     builtin printf into a pipe: never argv (process list, shell history), never a file, never a log line;
 #   - arguments that look like a key are refused without being echoed;
 #   - any server response is redacted before it is printed.
 #
@@ -94,11 +94,12 @@ trap 'rm -rf "$TMP"' EXIT
 redact() { local s="$1"; printf '%s' "${s//"$KEY"/<redacted>}"; }
 
 # etherscan <curl args...>: one request; prints the (redacted) response, or the (redacted) curl error. The key goes in
-# through stdin only: printf is a shell builtin, so it never appears in any process's arguments.
+# through stdin only: printf is a shell builtin, so it never appears in any process's arguments. `-q` must stay curl's
+# FIRST argument: it stops curl reading ~/.curlrc, where a trace or verbose option would write the key to a file.
 etherscan() {
   local resp rc=0
   resp="$(printf 'data-urlencode = "apikey=%s"\n' "$KEY" |
-    curl -sS --proto '=https' --max-time 120 --config - "$@" "$API" 2>&1)" || rc=$?
+    curl -q -sS --proto '=https' --max-time 120 --config - "$@" "$API" 2>&1)" || rc=$?
   redact "$resp"
   return "$rc"
 }

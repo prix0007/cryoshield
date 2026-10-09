@@ -39,6 +39,7 @@ cat >"$BIN/curl" <<'STUB'
 #!/usr/bin/env bash
 # Stub curl: logs argv / env / stdin config, answers per $STUB_SCENARIO.
 { printf 'curl'; printf ' %q' "$@"; echo; } >>"$STUB_LOG/argv"
+printf '%s\n' "${1:-}" >>"$STUB_LOG/argv1"
 env >>"$STUB_LOG/env"
 cfg=""
 prev=""
@@ -93,7 +94,7 @@ run() {
   LOG="$WORK/log.$RUN_N"
   TMPD="$WORK/tmp.$RUN_N"
   mkdir -p "$LOG" "$TMPD"
-  : >"$LOG/argv"; : >"$LOG/env"; : >"$LOG/stdin"
+  : >"$LOG/argv"; : >"$LOG/argv1"; : >"$LOG/env"; : >"$LOG/stdin"
   out="$(env -i PATH="$BIN:$PATH" HOME="$HOME" TMPDIR="$TMPD" STUB_LOG="$LOG" STUB_SCENARIO="$scenario" \
     VERIFY_POLL_SECONDS=0 VERIFY_POLL_MAX=4 "${envs[@]+"${envs[@]}"}" "$TREE/script/verify-etherscan.sh" "$@" 2>&1)"
   rc=$?
@@ -109,6 +110,9 @@ check "ok: exits 0" test "$rc" -eq 0
 check "ok: three submissions (registry, factory, implementation)" test "$(grep -c 'action=verifysourcecode' <<<"$argv")" -eq 3
 check "ok: every curl call uses the V2 URL for chain 10" \
   test "$(grep '^curl ' <<<"$argv" | grep -cF 'https://api.etherscan.io/v2/api\?chainid=10')" -eq "$(curl_calls)"
+# -q must be curl's FIRST argument, or curl reads ~/.curlrc (a trace/verbose option there would write the key to a file).
+first_args_all_q() { [[ -s "$1" ]] && [[ "$(sort -u "$1")" == "-q" ]] && [[ $(wc -l <"$1") -eq $2 ]]; }
+check "ok: argv[1] of every curl call is -q (no ~/.curlrc)" first_args_all_q "$LOG/argv1" "$(curl_calls)"
 check "ok: every curl call reads its config from stdin" test "$(grep '^curl ' <<<"$argv" | grep -cF -- '--config -')" -eq "$(curl_calls)"
 check "ok: the key reaches curl through stdin" contains "apikey=$STUB_KEY" "$(cat "$LOG/stdin")"
 check "ok: no subprocess argv contains the key" lacks "$STUB_KEY" "$argv"
@@ -163,12 +167,14 @@ for args in "10 --api-key $STUB_KEY" "10 --etherscan-api-key=$STUB_KEY" "--api-k
   read -r -a argarr <<<"$args"
   run ok ETHERSCAN_API_KEY="$STUB_KEY" -- "${argarr[@]}"
   check "key-like argument refused: ${args//$STUB_KEY/<key>}" test "$rc" -eq 1
+  check "key-like argument: refused as a key, not as bad usage" contains "looks like an API key" "$out"
   check "key-like argument: refusal does not echo it" lacks "$STUB_KEY" "$out"
   check "key-like argument: no request" test "$(curl_calls)" -eq 0
 done
 # A different key-shaped value (not the environment's) is refused too.
 run ok ETHERSCAN_API_KEY="$STUB_KEY" -- 10 ABCDEFGHIJKLMNOPQRSTUVWXYZ012345AB
 check "unrelated key-shaped argument refused" test "$rc" -eq 1
+check "unrelated key-shaped argument: refused as a key" contains "looks like an API key" "$out"
 for bad_key in 'abc" -o /tmp/x' $'ABCDEFGHIJKLMNOP\nurl = "https://evil.example"' 'short'; do
   run ok ETHERSCAN_API_KEY="$bad_key" -- 10
   check "malformed key refused (curl config injection)" test "$rc" -eq 1
