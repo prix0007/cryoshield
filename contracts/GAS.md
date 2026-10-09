@@ -54,6 +54,77 @@ Sources: `test/Gas.t.sol` (VaultRegistry v1), `test/GasV2.t.sol` (VaultRegistryV
   roughly 200k. The extra checks (length, rpIdHash comparison, UV bit) cost well under 1k gas; the remaining gap to
   Coinbase's deployed v1.1 comes from the two builds' different compiler settings.
 
+## On-chain: OP Sepolia through Pimlico (harden-gas-sponsorship 6.2/6.3)
+
+These figures come from public OP Sepolia **receipts**, not from the snapshots above. They are the founder's YubiKey
+run on the dev site (RP ID `cryoshield-web-dev.fly.dev`), read on 2026-10-09 from `https://sepolia.optimism.io`.
+
+- Every row is one ERC-4337 user operation through **EntryPoint v0.6** `0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789`.
+- Each was sponsored by Pimlico's `SingletonPaymasterV6` `0x6666666666667849c56f2850848cE1C4da65c68b`
+  (Blockscout-verified source) and sent by Pimlico bundler EOAs `0x4337…`.
+- The sender is the `CryoShieldSmartWallet` `0x53863f9ead980895cba88e6f6a6408a57904db5e`, from the dev factory
+  `0x59454AD6Af26BEfF43851356B9Dc95a875C673d3`.
+- The vault is `0x94a68b0b…505e87` in VaultRegistryV2 `0xA622c92d3D5b54aeA081Cf410224a8A2eCb08cB7`.
+- `UserOperationEvent.success` is true for all of them.
+- Blob sizes are decoded from the calldata. The vault is 442 bytes, with 2 keys and a 144-byte ciphertext.
+
+| UTC | Operation | Tx | Op `actualGasUsed` | Tx `gasUsed` |
+|---|---|---|---:|---:|
+| 2026-10-07 12:40 | create (deploy account + `createVault`, 2 locators) | [0x026e0b69…](https://optimism-sepolia.blockscout.com/tx/0x026e0b698b90f5eeb2e30b08f8211a9aedde207953730ecda8e1c354bf6bb00c) | 987,350 | 967,571 |
+| 2026-10-07 12:40 | edit (`updateVault`) | [0x17e2117e…](https://optimism-sepolia.blockscout.com/tx/0x17e2117e5eedf3ae761af2d5cea018798a48ac40b45f49011babdfd1976ccfb3) | 236,716 | 215,723 |
+| 2026-10-07 15:32 | edit | [0xf67a44f8…](https://optimism-sepolia.blockscout.com/tx/0xf67a44f8a7440e9c8af69534e0127f894d0bf410cf18f479a22c7275e29cd492) | 236,703 | 215,699 |
+| 2026-10-07 17:40 | edit | [0x9072d329…](https://optimism-sepolia.blockscout.com/tx/0x9072d32905065ed03d0c2b2f8b20114caea65556ce3c778aeec69f2cf2c3cb41) | 236,716 | 215,723 |
+| 2026-10-08 05:47 | edit | [0xb321d1fa…](https://optimism-sepolia.blockscout.com/tx/0xb321d1fa507915167fe1c0d9f12820f37ce9f8b50dcc5604c93cbbe651d51357) | 236,637 | 215,651 |
+| 2026-10-08 15:02 | edit | [0x61c817da…](https://optimism-sepolia.blockscout.com/tx/0x61c817da9e30821f0feea911968a9057d2b562ef3222ab0f6b82cc5aa5b99f5d) | 219,537 | 198,539 |
+| 2026-10-08 19:18 | edit | [0x2681589c…](https://optimism-sepolia.blockscout.com/tx/0x2681589cfd10be8dd357254d05360a012a6859954bb5705bb350767efa4a3874) | 219,550 | 198,551 |
+| 2026-10-09 18:51 | edit | [0x537d2e68…](https://optimism-sepolia.blockscout.com/tx/0x537d2e682bb8a2e931aec5868d969dc762f1ae7823fcb14b4f9e6dee205f6c9d) | 219,510 | 198,527 |
+
+- **Add-key: not measured.** None of these operations adds a key. All 7 edits are `execute(updateVault)`, and every
+  blob keeps N = 2 with the same two credential IDs. The account's `nextOwnerIndex()` is 2. Registry v2 has logged no
+  `LocatorAdded` outside the create.
+- **Why edits are 236.7k or 219.5k.** The first four edits (up to 05:47) each opened a fresh EntryPoint nonce key: a
+  timestamp key, then key 0's first use. That is a zero-to-nonzero nonce write, about 20,000 gas, against about 2,900
+  for a reused key. The difference is 236,716 − 219,537 = 17,179 gas.
+- **Op vs tx gas.** `actualGasUsed` is what the paymaster is charged. It includes the bundler-set
+  `preVerificationGas` (82–88k here), which also covers the L1 data fee. Tx `gasUsed` is the bundle transaction.
+- Signature checks use the RIP-7212 P-256 precompile, so these figures are well below the software-P-256 figures
+  above and in `apps/web/docs/costs.md`.
+- Mainnet cost estimates from these figures are in [`apps/web/docs/costs.md`](../apps/web/docs/costs.md#op-mainnet-estimate-from-the-measured-op-sepolia-gas).
+
+### UV=0 refusal against the deployed contracts (fork simulation, task 6.2)
+
+`test/UvRefusal.fork.t.sol` tests the deployed OP Sepolia bytecode on an anvil fork. It uses EntryPoint v0.6, the dev
+RP ID factory and implementation from `deployments/11155420.json`, and VaultRegistryV2, with no etching and no new
+deployment.
+
+The test builds a counterfactual account with two fresh test P-256 owners. A create user operation is signed once with
+authenticatorData flags `0x01` (UP only, UV clear) and once with `0x05` (UP + UV, the control). The test is skipped
+unless `CRYOSHIELD_FORK_URL` is set, so the default `forge test` stays hermetic.
+
+```sh
+anvil --fork-url https://sepolia.optimism.io --port 8546 --silent &
+CRYOSHIELD_FORK_URL=http://127.0.0.1:8546 forge test --mc UvRefusalForkTest -vv
+```
+
+The run on 2026-10-09 (fork block 49,885,006, forge 1.1.0) gave:
+
+```
+[PASS] test_fork_handleOps_uv0_AA24_uv1_included()
+  counterfactual account 0x957885717D41524588d25C4eb0Be120CBB7d9891
+  UV=0 handleOps: reverted FailedOp(0, "AA24 signature error"); no account, no vault
+  UV=1 handleOps: included; account deployed, vaultId:
+  0x915d70ddb6b52af157a1e04971db6ae220f8880eb57a91800980b65181cb44a4
+[PASS] test_fork_simulateValidation_uv0_sigFailed_uv1_ok()
+  UV=0 (flags 0x01) simulateValidation sigFailed: true preOpGas: 464624
+  UV=1 (flags 0x05) simulateValidation sigFailed: false preOpGas: 738013
+Suite result: ok. 2 passed; 0 failed; 0 skipped
+```
+
+A bundler runs `simulateValidation` before it accepts an operation and drops any with `sigFailed`. `handleOps`
+reverts with AA24. So a UV=0 operation is refused before inclusion. The fork pays its own prefund because Pimlico's
+paymaster signature cannot be produced offline. The fork EVM uses the software P-256 path, so these `preOpGas`
+figures are not on-chain costs.
+
 ## Estimated cost (VaultRegistry v1 direct calls)
 
 > **Assumptions, not measurements:** derived from the v1 "full tx" figures above. ETH = $3,000. Arbitrum One L2 gas

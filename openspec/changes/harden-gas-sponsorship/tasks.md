@@ -136,7 +136,33 @@
   - [x] 2026-10-07: deployed and Blockscout-verified (registry v2 `0xA622…cB7`; wallet pairs for both RP IDs). Dev deploy succeeded; the `/architecture` page now names registry v2, the account implementation and the v2 vault limits.
   - [x] [fe] Web part (2026-10-07): both builds pass against the real `contracts/deployments/11155420.json` (2ad376c), production mode with stub env values: `VITE_RP_ID=cryoshield.app` (`verify-build`, `VERIFY_CHAIN_ID=11155420`) and `VITE_RP_ID=cryoshield-web-dev.fly.dev` (`vite build --mode production`). Each bundle and `/architecture` carry registry v2 `0xA622…cB7` and only their own RP ID's factory (`0x775d…DfED` / `0x5945…73d3`).
 - [ ] 6.2 [sol] Through the hosted Pimlico OP Sepolia endpoint with the testnet policy, run: a sponsored create via our factory, an edit and an add-key, plus a UV=0 operation that must be refused in simulation. Verify: three included operations with receipts, and the refusal recorded.
+
+  2026-10-09, partial (not ticked: no add-key on chain). Details and links are in `contracts/GAS.md` → On-chain.
+  - **Done, create and edits.** The founder's run on the dev site went through Pimlico's hosted endpoint via the app,
+    with no direct endpoint calls. It produced one sponsored create through the dev factory `0x5945…73d3` and 7 edits:
+    EntryPoint v0.6, Pimlico `SingletonPaymasterV6`, all `success = true`.
+  - **Missing, add-key.** Decoding every operation's calldata finds no add-key:
+    - all 7 edits are `execute(updateVault)`, with N = 2 and the same 2 credential IDs in every blob;
+    - the account's `nextOwnerIndex()` is 2;
+    - registry v2 has logged no `LocatorAdded` outside the create;
+    - registry v1 has had no events since 2026-10-06.
+  - **Done, UV=0 refusal, as a deviation.** It was shown by fork simulation of the deployed contracts
+    (`contracts/test/UvRefusal.fork.t.sol` on an anvil fork of OP Sepolia), not through the hosted endpoint, because
+    there is no Pimlico key here. `simulateValidation` returns `sigFailed = true` and `handleOps` reverts with AA24 for
+    UV=0. The UV=1 control validates and is included.
+
 - [ ] 6.3 [fe] Run the hardware checklist (`apps/web/docs/hardware-test.md`) with two real YubiKeys: create, unlock, edit, add-key, the old v1 vault still unlocking, and recovery-tool reads of v1 and v2. Record the measured gas and cost per operation in `contracts/GAS.md` and `apps/web/docs/costs.md`, and re-check the D2 per-operation caps against them. Verify: the checklist is recorded.
+
+  2026-10-10, partial (not ticked: add-key is not evidenced on chain).
+  - **Checklist.** The founder reports passing the hardware checklist. The v1 items are waived for mainnet by founder
+    decision, because v1 is OP Sepolia only.
+  - **Gas recorded.** Measured gas per operation (create 987,350; edit 219,510–236,716) is in `contracts/GAS.md` and
+    `apps/web/docs/costs.md`, with the OP Mainnet estimate (method, 2026-10-09 inputs, ×10 spike).
+  - **Caps re-checked.** The D2 per-operation caps are re-checked: every write fits $0.10 mainnet and $0.50 testnet,
+    even at ×10.
+  - **Still open.** The add-key step has no on-chain operation, so its gas is an estimate. Tick this task once an
+    add-key operation is measured.
+
 - [ ] 6.4 [ow] Re-create the founder's test vault on v2 under a new account. Verify: it unlocks in the app and in the recovery tool.
 
 ## 7. Security review [sec]
