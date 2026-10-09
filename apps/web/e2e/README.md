@@ -26,6 +26,11 @@ uncovered controls, targets of at least 24×24 px (under 44 px is reported as an
 and keyboard-reachable scroll containers. Which specs run on `mobile`, and why the others don't, is in
 `openspec/changes/add-mobile-e2e/design.md` (D2). Run one project with `--project=mobile`.
 
+CI runs two shards in parallel (OpenSpec change `parallel-e2e-shards`): `web-e2e (desktop)` runs
+`--project=chromium --project=analytics`, and `web-e2e (mobile)` runs `--project=mobile --project=mobile-small`.
+The analytics preview server (port 4174) starts only when the `analytics` project is selected, or when no
+`--project` is given.
+
 ## Local chain stack (`e2e/stack/stack.ts`)
 
 - **anvil** (chain 31337) on :8545.
