@@ -184,7 +184,7 @@
   - **Still open.** The add-key step has no on-chain operation, so its gas is an estimate. Tick this task once an
     add-key operation is measured.
 
-- [ ] 6.4 [ow] Re-create the founder's test vault on v2 under a new account. Verify: it unlocks in the app and in the recovery tool.
+- [x] 6.4 [ow] Re-create the founder's test vault on v2 under a new account. Verify: it unlocks in the app and in the recovery tool. Done by the founder, 2026-10-10.
 
 ## 7. Security review [sec]
 

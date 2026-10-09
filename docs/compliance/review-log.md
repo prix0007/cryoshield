@@ -108,9 +108,21 @@ and design D3, D7 and D8; this review records them and does not make them):
    key (origin `https://cryoshield.app`, bundler and paymaster only, policy-required if offered) and the prepaid
    balance with no card in `paymaster-policy.md` §3, dated. Also answer task 1.1 (a)–(e) in §4, which is still
    pending for testnet and mainnet alike.
-2. **G3 (founder's YubiKey run).** `harden-gas-sponsorship` tasks 6.2, 6.3 and 6.4 pass on OP Sepolia through the
-   hosted bundler (sponsored create, edit, add-key; UV=0 refused; the hardware checklist with two YubiKeys; the
-   founder's vault on v2), and task 8.1 approval is recorded. All four tasks are unticked.
+2. **G3 (founder's YubiKey run).** The founder ran it on dev (OP Sepolia, hosted bundler) and reported on 2026-10-10:
+   - **6.3 hardware checklist:** passed with two real YubiKeys. That covers create, unlock, edit, add-key and unlock
+     with the added key, plus a recovery-tool unlock of a v2 vault. The v1 items (an old v1 vault still unlocking, and
+     a recovery-tool read of v1) are **waived for the mainnet launch by founder decision (2026-10-10)**: v1 exists only on
+     OP Sepolia, chain 10 has registry v2 only, and testnet vaults do not carry over (R22). The automated tests still
+     cover the tool's v1 reads.
+   - **6.4 founder's vault on v2:** re-created and tested on 2026-10-10.
+
+   Still open:
+   - **6.3:** gas and cost per operation, from the receipts of that run, recorded in `contracts/GAS.md` and
+     `apps/web/docs/costs.md` and checked against the D8 per-operation cap;
+   - **6.2:** included-operation receipts for the sponsored create, edit and add-key, plus the UV=0 refusal in
+     simulation;
+   - **8.1:** the founder's approval.
+
 3. **G1.** 2FA is on for the GitHub owner account and for Cloudflare (founder's statement, 2026-10-09). The founder
    confirms that the method is a hardware key, not SMS or TOTP alone. **CI-H1 closed 2026-10-09:** agents now push and
    open PRs as the machine account `cryoshield` (Write role, classic token with `repo` scope only, expiring
