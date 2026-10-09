@@ -111,15 +111,16 @@ and design D3, D7 and D8; this review records them and does not make them):
 2. **G3 (founder's YubiKey run).** `harden-gas-sponsorship` tasks 6.2, 6.3 and 6.4 pass on OP Sepolia through the
    hosted bundler (sponsored create, edit, add-key; UV=0 refused; the hardware checklist with two YubiKeys; the
    founder's vault on v2), and task 8.1 approval is recorded. All four tasks are unticked.
-3. **G1.** The owner confirms hardware-key 2FA on the GitHub owner account, and CI-H1 is closed (agents use only the
+3. **G1.** 2FA is on for the GitHub owner account and for Cloudflare (founder's statement, 2026-10-09). The founder
+   confirms that the method is a hardware key, not SMS or TOTP alone. CI-H1 must still be closed (agents use only the
    machine account). Note: this drafting session's `gh` CLI authenticated as `prix0007`, the owner, so CI-H1 cannot
    be shown closed from this session. Then run task 1.4 (`apply.sh --with-ecc-review --environments`, no diff).
 4. **G7.** The founder confirms the calendar reminders: daily checks for the first 14 days, weekly after that, and
    monthly. Also a reminder 30 days before the policy end date (2027-10-02), and before the domain and
    `security.txt` dates (September 2027).
 5. **CAA (pre-production M1).** Replace the live set with exactly `0 issue "letsencrypt.org"` and `0 issuewild ";"`,
-   then confirm with `dig +short CAA cryoshield.app`. Also confirm hardware-key 2FA on Cloudflare (not shown in the
-   repo).
+   then confirm with `dig +short CAA cryoshield.app`. (Cloudflare 2FA: on, per the founder's statement, 2026-10-09;
+   see G1.)
 6. **G8 (rollback).** Save the four current `production-build` values offline, with the testnet `VITE_BUNDLER_URL`
    taken from the Pimlico dashboard, and confirm `vA`'s commit is green on the dev site.
 7. **G5 and `launch-op-mainnet` section 3 (recovery tool).** Tasks 3.1–3.4 are unticked (the
