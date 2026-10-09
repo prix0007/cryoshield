@@ -40,7 +40,7 @@ is done.
 - **Date:** 2026-10-09 (round 2, after fixes)
 - **Reviewer:** security-reviewer (agent), read-only; no transaction, push or edit.
 - **Scope:** `launch-op-mainnet` sections 2–5 on `feat/mainnet-contract-tooling` @ `95eabb9`, `feat/mainnet-recovery-default` @ `40b5cc1`, `feat/mainnet-honest-copy` @ `b99b490`, each diffed against `main` @ `a59a179`; design D1–D8, go/no-go G1–G11. Round 1 reviewed `7527e99`, `6330ed3`, `320701d`.
-- **Verdict:** **APPROVE. No open CRITICAL or HIGH.** Remaining before go (not findings): the founder records the live mainnet policy values at task 1.2 (G4; the policy is now `sp_mixed_hellion`, see D8 above); G3 is still open.
+- **Verdict:** **APPROVE. No open CRITICAL or HIGH.** Remaining before go (not findings): the founder records the live `sp_many_longshot` values at task 1.2 (G4); G3 is still open. *(2026-10-10: that policy was replaced by `sp_mixed_hellion`; see D8.)*
 
 ### Evidence
 
