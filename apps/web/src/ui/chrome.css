@@ -91,6 +91,10 @@ dd a {
   z-index: 50;
 }
 .global-nav {
+  /* add-mobile-e2e D5.1: above the frosted sub-nav (backdrop-filter makes it a later stacking context), so the open
+     narrow-screen menu is not painted under it and its items take the tap. */
+  position: relative;
+  z-index: 1;
   background: var(--surface-black);
   color: var(--body-on-dark);
   height: var(--nav-h);
