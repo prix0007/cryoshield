@@ -55,7 +55,7 @@
 
 ## 6. Pre-launch security review [sec]
 
-- [ ] 6.1 [sec] Review sections 2–5: the D1 guard; `verify-etherscan.sh` (no key in argv, logs, files or error output; stdin config only); copy honesty on both chains against the shipped code; recovery preset parity and default; the rollback plan; that no CryoShield server, admin key or runtime dependency was added. Record it in `docs/reviews/launch-op-mainnet.md`. Verify: no open CRITICAL or HIGH findings; G3 (the `harden-gas-sponsorship` review) is also recorded clean.
+- [x] 6.1 [sec] Review sections 2–5: the D1 guard; `verify-etherscan.sh` (no key in argv, logs, files or error output; stdin config only); copy honesty on both chains against the shipped code; recovery preset parity and default; the rollback plan; that no CryoShield server, admin key or runtime dependency was added. Record it in `docs/reviews/launch-op-mainnet.md`. Verify: no open CRITICAL or HIGH findings; G3 (the `harden-gas-sponsorship` review) is also recorded clean.
 
 ## 7. Go/no-go and launch [owner] (design → Launch-day runbook)
 
