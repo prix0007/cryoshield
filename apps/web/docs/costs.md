@@ -110,6 +110,10 @@ At today's gas the fee, not gas, dominates. Per sponsored operation, with the ga
 - **Global, the 500-operation count binds before the $30:** 500 × $0.0113–0.0135 ≈ **$5.65–6.75 a day**. Reaching $30
   with 500 operations needs about $0.06 each, about 4–5× today's total. At most 500 operations a day, the balance
   lasts at least 140 ÷ 6.75 ≈ 20 days at the cap, and more than four days even if $30 were spent every day.
+- **Live balance (founder, 2026-10-10): $120 prepaid**, not the planned ~$140. That is about 8,900 creates
+  ($120 ÷ $0.0135), 10,600 edits ($120 ÷ $0.0113), or 11,400 operations even with free gas ($120 ÷ $0.0105). It lasts
+  about 17 days at 500 operations a day ($120 ÷ $6.75), or **4 days** if $30 were spent every day. The runbook's
+  top-up threshold (balance < $50) still applies.
 
 **Pre-charge effect on the caps.** Until the refunds land (about 15 minutes), the $30 daily and $1 per-user caps can
 fill faster than real spend, because each operation counts at its maximum cost. Whether Pimlico counts its
