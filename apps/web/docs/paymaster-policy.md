@@ -42,7 +42,7 @@ nothing here needs a code change.
 | | Production (OP Mainnet) | Dev (OP Sepolia) |
 |---|---|---|
 | Policy | `sp_mixed_hellion` (Disabled until launch day) | `sp_light_hobgoblin` |
-| API key | `cryoshield-mainnet`: "verifying paymaster" off, so it refuses sponsorship without a policy | the key ending `ct5x`: "verifying paymaster" still on until its follow-up (section 3, API keys) |
+| API key | `cryoshield-mainnet`: "verifying paymaster" off, so it refuses sponsorship without a policy | the key ending `ct5x`: "verifying paymaster" turned off by the founder on 2026-10-10 (confirming save pending; section 3) |
 
 ### Pause (fastest first)
 
@@ -58,8 +58,8 @@ nothing here needs a code change.
      or "Nothing was saved. Please try again later." (first create).
 
    The refusal comes before the signing tap (section 1), so a save attempt confirms the pause without signing
-   anything. On dev, disabling `sp_light_hobgoblin` does **not** stop policy-less requests on the `ct5x` key while
-   its "verifying paymaster" is on; that costs nothing on testnet, but step 2 is the dev stop if the key is abused.
+   anything. On dev, the `ct5x` key's "verifying paymaster" is off too (2026-10-10), so disabling `sp_light_hobgoblin`
+   stops dev sponsorship the same way. If that toggle is ever turned back on, step 2 becomes the dev stop.
 2. **If the key itself is abused** (spend not attributed to the policy, or a leaked key), also **delete or rotate the
    key** in the dashboard. The key page has the method toggles and the origin, IP and user-agent allowlists; tighten
    them if that is enough, otherwise delete the key. Deleting it stops the bundler too, so no write goes through at
@@ -171,11 +171,12 @@ key, not scripts.
 - `production-build` holds the policy `sp_cheerful_bastion` and a second, testnet-production key. Neither is in a live
   bundle yet.
 
-**Dev-key follow-up (after launch, founder):** on the `ct5x` key, set "verifying paymaster" **off**, account APIs
-**off**, and the origin allowlist to `cryoshield-web-dev.fly.dev` only. Record the date here.
+**Dev-key follow-up (after launch, founder):** "verifying paymaster" on the `ct5x` key is already **off**
+(2026-10-10). Still to do: account APIs **off**, and the origin allowlist set to `cryoshield-web-dev.fly.dev` only,
+once the testnet cryoshield.app no longer uses this key. Record the date here.
 
-**Pending verification (founder, 2026-10-10 evening, before mainnet):** turn the `ct5x` key's "verifying paymaster"
-off on testnet and run one sponsored save on the dev site. This proves that policy-scoped sponsorship (the app always
+**Pending verification (founder, 2026-10-10 evening, before mainnet):** the `ct5x` key's "verifying paymaster" was
+turned off on 2026-10-10; run one sponsored save on the dev site (the add-key with the third YubiKey). This proves that policy-scoped sponsorship (the app always
 sends `sponsorshipPolicyId`) still works with that toggle off, which the mainnet key relies on. Result: _pending:
 founder to record_.
 
