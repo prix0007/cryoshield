@@ -70,14 +70,16 @@ stays unreadable only as long as AES-256-GCM holds.
 
 ## 6. Sanctions: current behaviour (task 7.4)
 
-This is what CryoShield does today. No further decision is pending for the testnet.
+This is what CryoShield does today, on the testnet and on OP Mainnet. Founder decision, 2026-10-10 (`mainnet-gate`
+review): the same stance applies to OP Mainnet, and no further decision is pending.
 
 - **Terms only.** `/terms` "Eligibility": users must not be a person subject to comprehensive sanctions or ordinarily
   resident in a comprehensively sanctioned country or region.
 - **No screening.** The app does not check addresses against any sanctions list or oracle, and runs no KYC.
 - **No geoblocking.** The site does not look up visitors' locations and serves the same pages to everyone.
-- **Bounded value.** The only thing provided is free, capped gas sponsorship worth a few cents per operation, with no
-  value transferred to the user (§5).
+- **Bounded value.** The only thing provided is free, capped gas sponsorship, with no value transferred to the user
+  (§5). On OP Mainnet the policy caps it at $0.50 per operation and $1 (10 operations) per user per month; a typical
+  operation costs about $0.01 including Pimlico's fee (`apps/web/docs/costs.md`).
 - **Vendors' own terms** apply on top: Pimlico places end-user responsibility on its customer (Pimlico ToS §3.3);
   ArDrive's terms forbid use in breach of US embargoes.
 

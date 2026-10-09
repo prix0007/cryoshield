@@ -182,8 +182,9 @@ and design D3, D7 and D8; this review records them and does not make them):
     `uses:` refs on `main` are full commit SHAs or local paths. **L2 closed:** Dependabot security updates are on
     (2026-10-10). **L3 accepted:** GitHub reports secret-scanning validity checks as unavailable on this plan;
     gitleaks runs on every PR.
-13. **Sanctions stance for mainnet.** The founder confirms that `legal-analysis.md` §6 applies to OP Mainnet, and
-    updates "a few cents per operation" to the D8 bound (up to $0.50 an operation and $1 a user each month).
+13. **Sanctions stance for mainnet: closed 2026-10-10.** The founder confirmed that `legal-analysis.md` §6 applies
+    unchanged to OP Mainnet: eligibility through the terms only, no screening and no geoblocking. §6 now states the
+    D8 bound ($0.50 per operation, $1 per user per month).
 
 Not checked here, and left to the owner: anything that needs a dashboard or a credential (Pimlico, Cloudflare,
 GoDaddy, Fly, GitHub settings), running the incident runbook's commands, and the live chain facts.
