@@ -44,36 +44,53 @@ Starting values from design D2/D3. The founder may tune them; the **Live** colum
 > PR (no key, no secret). Tasks `harden-gas-sponsorship` 1.1 and 1.2 are ticked only then. The dev policy (the id in
 > `development-build`) is a **different** policy and may use smaller caps. See
 > [`docs/reviews/2026-10-09-pre-production.md`](../../../docs/reviews/2026-10-09-pre-production.md).
+>
+> **Status 2026-10-10 (mainnet):** the Live mainnet column, the mainnet API key and the section 4 answers are recorded
+> from the founder's Pimlico dashboard (`launch-op-mainnet` task 1.2, G4). Still pending: the prepaid balance amount
+> and the no-card status (Balance below), and the testnet check that policy-scoped sponsorship works with "verifying
+> paymaster" off (section 4, (a)).
 
 ### Sponsorship policy
 
 | Pimlico field | Testnet (OP Sepolia) | Mainnet (OP Mainnet, founder's values) | Live testnet (date) | Live mainnet (date) |
 |---|---|---|---|---|
-| Policy id | the id in `production-build` | `sp_many_longshot` | _pending_ | `sp_many_longshot`, created **disabled**; enable after the first chain-10 deploy (runbook step 8) (2026-10-09) |
-| `chain_ids.allowlist` | 11155420 only | 10 only | _pending (task 1.2); recommended: `[11155420]` only_ | Optimism (10) (2026-10-09) |
-| `user.maximum_user_operation_count` | 50, `never` (lifetime) | 10, `monthly` | _pending; recommended: 50, reset `never`_ | _planned 10, monthly; exact value at task 1.2_ |
-| `user.user_operation_spending` | not set | $1.00, `monthly` | _pending; recommended: not set_ | _planned $1.00, monthly; exact value at task 1.2_ |
-| `user_operation.user_operation_spending` | $0.50 | $0.50 | _pending; recommended: $0.50_ | $0.50 (2026-10-09) |
-| `global.user_operation_spending` | USD equal to about 0.05 ETH, `daily` (record the rate used) | $30, `daily` | _pending; recommended: USD of about 0.05 ETH, `daily`; record the ETH/USD rate used_ | _planned $30, daily; exact value at task 1.2_ |
-| `global.maximum_user_operation_count` | 500, `daily` | about 500, `daily` | _pending; recommended: 500, `daily`_ | _planned about 500, daily; exact value at task 1.2_ |
-| Webhook | **off** | **off** | _pending; recommended: off_ | _confirm off_ |
-| Start / end time | unset | 2026-10-09 to 2027-10-02 | _pending; recommended: both unset (a policy that expires pauses all saving)_ | 2026-10-09 to 2027-10-02 (2026-10-09) |
+| Policy id | the id in `production-build` | `sp_mixed_hellion` ("CryoShield App (Prod)") | _pending_ | `sp_mixed_hellion` ("CryoShield App (Prod)"), status **Disabled**; enable on launch day after the smoke test (runbook step 8) (2026-10-10) |
+| `chain_ids.allowlist` | 11155420 only | 10 only | _pending (task 1.2); recommended: `[11155420]` only_ | Optimism (10) only (2026-10-10) |
+| `user.maximum_user_operation_count` | 50, `never` (lifetime) | 10, `monthly` | _pending; recommended: 50, reset `never`_ | 10, reset Monthly (2026-10-10) |
+| `user.user_operation_spending` | not set | $1.00, `monthly` | _pending; recommended: not set_ | $1.00, reset Monthly (2026-10-10) |
+| `user_operation.user_operation_spending` | $0.50 | $0.50 | _pending; recommended: $0.50_ | $0.50 (2026-10-10) |
+| `global.user_operation_spending` | USD equal to about 0.05 ETH, `daily` (record the rate used) | $30, `daily` | _pending; recommended: USD of about 0.05 ETH, `daily`; record the ETH/USD rate used_ | $30, reset Daily (2026-10-10) |
+| `global.maximum_user_operation_count` | 500, `daily` | 500, `daily` | _pending; recommended: 500, `daily`_ | 500, reset Daily (2026-10-10) |
+| Maximum native (wei) limits | not set | not set | _pending; recommended: not set_ | none set (2026-10-10) |
+| Spending authorizations | none | none | _pending; recommended: none_ | none (2026-10-10) |
+| Webhook | **off** | **off** | _pending; recommended: off_ | off: no webhook URL is set, so Pimlico makes no webhook calls; a webhook secret exists in the dashboard but is unused (2026-10-10) |
+| Start / end time | unset | 2026-10-10 to 2027-10-02 | _pending; recommended: both unset (a policy that expires pauses all saving)_ | 2026-10-10 to 2027-10-02 (2026-10-10) |
+
+**Policy id history (mainnet).** The first mainnet policy, `sp_many_longshot` (created 2026-10-09), was **deleted on
+2026-10-10**: it had been created with reset "never", which would have made every limit a lifetime limit. It is
+replaced by `sp_mixed_hellion` with the resets above. `sp_many_longshot` is not used anywhere and must not be set as
+`VITE_SPONSORSHIP_POLICY_ID`.
 
 Why these numbers: a measured create is about 1.5M gas on anvil (`docs/costs.md`), about $0.004 on OP Mainnet. A
 real user needs one create, a few edits and one or two add-key operations.
 
-**Mainnet values (founder decisions, 2026-10-09; `launch-op-mainnet` design D8).** Per-user limits reset monthly,
-global limits reset daily; the exact values are recorded here at task 1.2. They replace the plan's values (per sender
+**Mainnet values (founder decisions, 2026-10-09; `launch-op-mainnet` design D8; live values recorded 2026-10-10).**
+Per-user limits reset monthly, global limits reset daily. They replace the plan's values (per sender
 50 operations and $1 monthly; global $20 and 2,000 operations a day; $0.10 per operation). What they mean:
 
 - **A user can be refused for the rest of the month** after 10 sponsored operations. The app says: "CryoShield could
   not pay the network fee for this save. Nothing was saved and your vault is unchanged. Sponsorship limits reset over
   time; if you’re adding a new secret, keep it somewhere safe until it saves." Reading and recovery still work. The
-  app shows no "saves left" hint on mainnet.
-- **Abuse can stop saving for everyone until the next day** by reaching the global $30 or about 500 operations.
+  app shows no "saves left" hint on mainnet. Assume that a failed or abandoned sponsored operation also uses up one of
+  the 10 (section 4, (e)).
+- **Abuse can stop saving for everyone until the next day** by reaching the global $30 or 500 operations. Because
+  Pimlico pre-charges each operation at its maximum cost and refunds the rest only after about 15 minutes (section 4,
+  (e)), the $30 daily and $1 per-user spend caps can fill faster than real spend until the refunds land.
 - **One operation may cost up to $0.50** (a founder decision; the plan had $0.10).
 - **The policy ends on 2027-10-02.** After that, saving pauses for everyone unless the founder extends it.
 - **The policy is disabled until the first chain-10 deploy is green.** Enable it right after the smoke test.
+- **`VITE_SPONSORSHIP_POLICY_ID` in `production-build` becomes `sp_mixed_hellion` on launch day** (runbook step 6). It
+  is **not** set now: `production-build` still holds the testnet policy until then.
 
 ### API keys
 
@@ -83,17 +100,37 @@ One key per environment; never reuse the dev key in production.
 |---|---|---|---|---|
 | Dev (`cryoshield-web-dev.fly.dev`) | `https://cryoshield-web-dev.fly.dev` | bundler + paymaster on; account APIs off | on, if the dashboard offers it | _pending; recommended: as in this row, on a key used only by `development-build`_ |
 | Testnet production (`cryoshield.app`) | `https://cryoshield.app` | bundler + paymaster on; account APIs off | on, if offered | _pending; recommended: a key **distinct from the dev key**, origin exactly `https://cryoshield.app`, bundler + paymaster on, account APIs off, restricted to the production policy id if the dashboard allows_ |
-| Mainnet (`cryoshield.app`) | `https://cryoshield.app` | bundler + paymaster on; account APIs off | on, if offered | _pending (launch-op-mainnet task 1.2)_ |
+| Mainnet (`cryoshield.app`) | `https://cryoshield.app` | bundler on; "verifying paymaster" off (policy-scoped sponsorship only, section 4 (a)); account APIs off | not offered; "verifying paymaster" off is the equivalent | Key **`cryoshield-mainnet`**, new and used nowhere else (2026-10-10): bundler methods **on**; "verifying paymaster" (which allows `pm_sponsorUserOperation` **without** a sponsorship policy) **off**; account APIs **off**; boost **off**; origin allowlist `cryoshield.app` only; no IP allowlist; no user-agent allowlist; custom header validation not enabled (a support-only feature). Not in any environment yet: it goes into the `production-build` `VITE_BUNDLER_URL` secret on launch day (runbook step 6). |
 
 The origin restriction binds browsers only: a script can send any `Origin`. It stops other websites from using our
 key, not scripts.
 
+**Testnet keys as found on 2026-10-10:**
+
+- The **dev key** (ending `ct5x`, policy `sp_light_hobgoblin`) is embedded in the live dev bundle **and** in the live
+  https://cryoshield.app bundle: production runs commit `f06ccb9`, which predates the `production-build` values. So
+  the dev key is in use on both origins today, against the "never reuse the dev key in production" rule above. The
+  launch release (`vA`) replaces it on `cryoshield.app`.
+- `production-build` holds the policy `sp_cheerful_bastion` and a second, testnet-production key. Neither is in a live
+  bundle yet.
+
+**Dev-key follow-up (after launch, founder):** on the `ct5x` key, set "verifying paymaster" **off**, account APIs
+**off**, and the origin allowlist to `cryoshield-web-dev.fly.dev` only. Record the date here.
+
+**Pending verification (founder, 2026-10-10 evening, before mainnet):** turn the `ct5x` key's "verifying paymaster"
+off on testnet and run one sponsored save on the dev site. This proves that policy-scoped sponsorship (the app always
+sends `sponsorshipPolicyId`) still works with that toggle off, which the mainnet key relies on. Result: _pending:
+founder to record_.
+
 ### Balance
 
-- **Mainnet:** prepaid only, about **$140** (more than four days at the $30 daily cap), and **no card** (a card unlocks a $10
-  overdraft). The balance is then the hard bound on spending that bypasses the policy.
-- **Testnet:** Pimlico documents testnet operations as free to sponsor (unconfirmed for our account: question (c)
-  below). Recommended before the first release: no card on file for mainnet.
+- **Mainnet (plan):** prepaid only, about **$140** (more than four days at the $30 daily cap), and **no card**. Pimlico's
+  docs confirm that a card on file gives individuals a $10 overdraft. The balance is then the hard bound on spending
+  that bypasses the policy; with "verifying paymaster" off on the mainnet key, policy-less sponsorship is refused
+  anyway (section 4, (a) and (b)).
+- **Mainnet (live, 2026-10-10):** prepaid balance **$120** (founder, 2026-10-10; below the ~$140 plan, so 4 days at the $30 daily cap, and about 17 days at 500 operations a day; see `costs.md`). **No card** on the
+  account (founder, 2026-10-10), so there is no overdraft: the $120 balance is the hard bound.
+- **Testnet:** testnet operations are free to sponsor, with no surcharge (section 4, (c)).
 
 ## 4. Dashboard facts (task 1.1)
 
@@ -101,11 +138,11 @@ Pimlico's public docs leave these open. The founder confirms each in the dashboa
 
 | Question | Answer | Date |
 |---|---|---|
-| (a) Can a key require a sponsorship policy, or be limited to specific policy IDs? | _pending_ (if yes: turn it on for the production key; if no: record "no", and the balance stays the bound) | |
-| (b) Is a policy-less request refused when the balance is empty and there is no card? | _pending_ | |
-| (c) How do USD limits count testnet operations? (If $0, the count limits are the testnet bound.) | _pending_ | |
-| (d) Which origin and method restrictions are available on a key? | _pending_ | |
-| (e) Do failed or reverted operations count toward the per-sender operation count? | _pending_ | |
+| (a) Can a key require a sponsorship policy, or be limited to specific policy IDs? | A key cannot name a policy. But turning the key's "verifying paymaster" method **off** means only policy-scoped requests are sponsored: `pm_sponsorUserOperation` without a sponsorship policy is refused. The mainnet key has it off. Source: Pimlico dashboard. Pending: the testnet check that policy-scoped sponsorship works with the toggle off (section 3, API keys). | 2026-10-10 |
+| (b) Is a policy-less request refused when the balance is empty and there is no card? | Moot for the mainnet key, which refuses policy-less sponsorship (a). The prepaid balance with no card is still the hard bound on spend. | 2026-10-10 |
+| (c) How do USD limits count testnet operations? (If $0, the count limits are the testnet bound.) | Testnet operations are free, with no surcharge, so the USD limits do not bind on testnet; only the operation counts do. Source: https://www.pimlico.io/pricing | 2026-10-10 |
+| (d) Which origin and method restrictions are available on a key? | Methods (bundler, verifying paymaster, account APIs); origin (with a leftmost `*` wildcard); IP/CIDR; user agent; custom headers only through Pimlico support. There is no per-chain restriction on the key: the policy restricts the chain. Source: Pimlico dashboard. | 2026-10-10 |
+| (e) Do failed or reverted operations count toward the per-sender operation count? | Not documented for operation counts. For money, Pimlico pre-charges the maximum cost (gas limits × max gas price) when it signs, then refunds the unspent part after about 15 minutes. Source: https://docs.pimlico.io/references/paymaster/verifying-paymaster/faqs. **Assumption:** a failed or abandoned sponsored operation uses up one of the user's 10 monthly operations. The founder chose not to ask support. | 2026-10-10 |
 
 These answers are also the manual checks for the dashboard-only spec scenarios: a key used from another website, a
 policy bypass bounded by the balance, and the global cap reached.
@@ -115,7 +152,7 @@ policy bypass bounded by the balance, and the global cap reached.
 | Attacker | Can do | Bounded by | Cannot do |
 |---|---|---|---|
 | A script making fresh accounts with software passkeys, through our policy | Sponsored writes until the day's global cap is spent. Per-sender limits don't help: every account is a new sender. | The **global daily cap** (spend and count); the per-operation cap bounds each operation | Read, change or delete any vault; get any plaintext; block a registration (v2 has no locator cap); squat a vaultId (v2 derives it from the sender) |
-| A script using our key **without** the policy (if Pimlico allows it) | Sponsored operations with no policy limits | The **prepaid balance**, with no overdraft. Testnet costs nothing. | The same as above |
+| A script using our key **without** the policy (if Pimlico allows it) | On the mainnet key: nothing, because "verifying paymaster" is off (section 4, (a)). On a testnet key with it still on (the `ct5x` dev key until its follow-up): sponsored operations with no policy limits | The mainnet key's method setting; behind it, the **prepaid balance** with no overdraft. Testnet costs nothing. | The same as above |
 | A website embedding our key | Nothing | The origin restriction | n/a |
 | A stolen key **without** its PIN | Nothing: the account refuses signatures without user verification, and the key itself refuses without its PIN (credProtect 3) | n/a | n/a |
 | A stolen key **with** its PIN | Everything that key can do. The user removes that key by re-keying. | Out of scope | n/a |
@@ -156,7 +193,7 @@ log below, naming the balance and any threshold crossed with the action taken.
 | What | How | Launch cadence (first 14 days) | Steady cadence | Threshold → action |
 |---|---|---|---|---|
 | Pimlico spend and balance | Dashboard: usage by policy, balance, daily spend against the global cap | Daily | Weekly | Balance < $50 → review usage, then top up to ~$140; any day at the global cap → check for abuse (section 8) before raising it |
-| Policy-less sponsorship | Dashboard: spend not attributed to `sp_many_longshot` | Daily | Weekly | Any → rotate the mainnet key, review AA-M3, evaluate section 8 |
+| Policy-less sponsorship | Dashboard: spend not attributed to `sp_mixed_hellion` | Daily | Weekly | Any → rotate the mainnet key, review AA-M3, evaluate section 8 |
 | Per-operation cost | Dashboard; compare with `docs/costs.md` | Daily | Monthly | Median > $0.03 → investigate gas; > $0.50 → operations are being refused |
 | Refusals | Dashboard rejected requests; user reports | Daily | Weekly | Real users at the 10-operation monthly cap, or sustained refusals → raise the cap with a recorded reason |
 | Registry activity | `cast logs --address 0xA622c92d3D5b54aeA081Cf410224a8A2eCb08cB7 --from-block <deployBlock> --rpc-url https://mainnet.optimism.io` | Daily | Weekly | Spikes without matching Pimlico spend → investigate (self-funded writes are allowed, but unexpected) |

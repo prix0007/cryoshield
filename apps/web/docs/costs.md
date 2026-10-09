@@ -64,8 +64,10 @@ The add-key gas is an estimate. It is the measured OP Sepolia edit (236,716) plu
 from the anvil table above (755,714 − 574,290 = 181,424). Its L1 bound is the create-sized one. Replace it once an
 add-key operation is measured.
 
-**Pre-charge at the maximum cost.** If Pimlico checks the per-operation limit against the operation's maximum cost
-rather than its actual cost (open item, task 1.1), the gas limits the app sent apply instead:
+**Pre-charge at the maximum cost.** Pimlico pre-charges the maximum cost (gas limits × max gas price) when it signs,
+then refunds the unspent part after about 15 minutes
+([verifying paymaster FAQ](https://docs.pimlico.io/references/paymaster/verifying-paymaster/faqs), read 2026-10-10;
+task 1.1 (e)). So the gas limits the app sent are what counts against the limits until the refund:
 
 - **Create:** 1,600,448 gas (verification + call + pre-verification), at 1.1× the gas price, plus the L1 bound, is
   ≈ $0.0046. At ×10 it is ≈ $0.046, still under $0.10.
@@ -75,6 +77,53 @@ rather than its actual cost (open item, task 1.1), the gas limits the app sent a
 is a create pre-charged at its maximum cost during a ×10 spike, at about half of the $0.10 mainnet cap.
 
 This replaces the earlier OP Mainnet create estimate of ≈ $0.004, which was 1.3M gas on anvil plus an L1 bound of
-6.8e10 wei (2026-10-02). The estimate also fits the per-sender $1.00 per month: 1 create and 50 edits is about $0.04.
+6.8e10 wei (2026-10-02). The estimate also fits the per-sender $1.00 per month: 1 create and 50 edits is about $0.04
+in gas alone (Pimlico's fees are below).
+
+## Pimlico fees on OP Mainnet and the budget (recomputed 2026-10-10)
+
+The figures above are gas only. On mainnet Pimlico also charges for each sponsored operation (sources read
+2026-10-10, `launch-op-mainnet` task 1.2):
+
+- **Gas surcharge:** sponsorship bills the actual gas plus **10%**
+  ([pricing](https://www.pimlico.io/pricing)).
+- **Per-operation fee:** the pricing page lists pay-as-you-go at about **$0.0075 per user operation**, about
+  **$0.0105 for a sponsored one** ([pricing](https://www.pimlico.io/pricing)).
+- **Testnet:** operations are free, with no surcharge, so none of this applies on OP Sepolia.
+
+At today's gas the fee, not gas, dominates. Per sponsored operation, with the gas from the estimate table:
+
+| Write | Gas | Gas + 10% | + $0.0105 fee | Total per operation |
+|---|---:|---:|---:|---:|
+| Create | $0.0027 | $0.0030 | $0.0105 | **≈ $0.0135** |
+| Edit | $0.00074 | $0.0008 | $0.0105 | **≈ $0.0113** |
+| Add key (estimate) | $0.0012 | $0.0013 | $0.0105 | **≈ $0.0118** |
+
+**Budget, corrected.** Counting gas alone, the ~$140 prepaid balance looks like hundreds of thousands of operations
+($140 ÷ $0.00074 ≈ 190k edits). That is wrong once the fee is included:
+
+- **$140 buys roughly 10–13k sponsored operations:** $140 ÷ $0.0135 ≈ 10,370 if every one were a create, $140 ÷
+  $0.0113 ≈ 12,390 if every one were an edit, and $140 ÷ $0.0105 ≈ 13,330 is the ceiling even with free gas.
+- **Per user, $1 still covers the 10-operation monthly cap:** 10 edits ≈ 10 × $0.0113 = $0.113; 1 create and 9 edits
+  ≈ $0.0135 + 9 × $0.0113 = $0.115. So about **$0.11**, and the count (10) binds long before the $1. A typical first
+  month (1 create, 3 edits, 1 add-key) is ≈ $0.0135 + 3 × $0.0113 + $0.0118 = **$0.059**.
+- **Global, the 500-operation count binds before the $30:** 500 × $0.0113–0.0135 ≈ **$5.65–6.75 a day**. Reaching $30
+  with 500 operations needs about $0.06 each, about 4–5× today's total. At most 500 operations a day, the balance
+  lasts at least 140 ÷ 6.75 ≈ 20 days at the cap, and more than four days even if $30 were spent every day.
+- **Live balance (founder, 2026-10-10): $120 prepaid**, not the planned ~$140. That is about 8,900 creates
+  ($120 ÷ $0.0135), 10,600 edits ($120 ÷ $0.0113), or 11,400 operations even with free gas ($120 ÷ $0.0105). It lasts
+  about 17 days at 500 operations a day ($120 ÷ $6.75), or **4 days** if $30 were spent every day. The runbook's
+  top-up threshold (balance < $50) still applies.
+
+**Pre-charge effect on the caps.** Until the refunds land (about 15 minutes), the $30 daily and $1 per-user caps can
+fill faster than real spend, because each operation counts at its maximum cost. Whether Pimlico counts its
+per-operation fee against the policy's USD limits is not documented; the worst cases below include it:
+
+- **Normal gas:** a create pre-charges ≈ $0.0046 × 1.1 ≈ $0.0051 of gas (an edit ≈ $0.0033), against ≈ $0.0030 of
+  real gas. Per user: 10 creates ≈ 10 × ($0.0051 + $0.0105) ≈ $0.16, far under $1. Global: 500 creates ≈ $7.80,
+  under $30.
+- **×10 gas spike:** a create pre-charges ≈ $0.046 × 1.1 ≈ $0.051. Per user: 10 creates ≈ 10 × ($0.051 + $0.0105)
+  ≈ $0.61, still under $1. Global: 500 creates ≈ 500 × $0.0615 ≈ **$30.75**, so a burst of creates during a spike can
+  hit the $30 daily cap on pre-charges alone, refusing saves for everyone until refunds land or the day resets.
 
 Arbitrum One (42161) has no new measurement. The earlier estimate was ≈ $0.03–0.05 per create.
