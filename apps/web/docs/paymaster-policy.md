@@ -128,8 +128,8 @@ founder to record_.
   docs confirm that a card on file gives individuals a $10 overdraft. The balance is then the hard bound on spending
   that bypasses the policy; with "verifying paymaster" off on the mainnet key, policy-less sponsorship is refused
   anyway (section 4, (a) and (b)).
-- **Mainnet (live, 2026-10-10):** prepaid balance **$120** (founder, 2026-10-10; below the ~$140 plan, so 4 days at the $30 daily cap, and about 17 days at 500 operations a day; see `costs.md`). No card on the
-  account: _pending: founder to confirm_.
+- **Mainnet (live, 2026-10-10):** prepaid balance **$120** (founder, 2026-10-10; below the ~$140 plan, so 4 days at the $30 daily cap, and about 17 days at 500 operations a day; see `costs.md`). **No card** on the
+  account (founder, 2026-10-10), so there is no overdraft: the $120 balance is the hard bound.
 - **Testnet:** testnet operations are free to sponsor, with no surcharge (section 4, (c)).
 
 ## 4. Dashboard facts (task 1.1)
