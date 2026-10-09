@@ -11,6 +11,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as unlockMod from '../../src/chain/unlock';
 import { LAUNCH } from '../../src/config/launch';
 import { renderApp } from './helpers';
+import { messageFor } from '../../src/ui/operations';
+import { WriteError } from '../../src/account/errors';
+import { noticeTitle } from '../../src/ui/ceremony';
+import { S } from '../../src/ui/strings';
+import { bannedFor } from '../landing/banned';
 
 const saved = { ...LAUNCH };
 beforeEach(() => vi.restoreAllMocks());
@@ -27,7 +32,8 @@ describe('network status notice (4.5)', () => {
   it('OP Mainnet: an unaudited notice with the all-keys-lost rule, the "Unaudited" chip, and no testnet wording', () => {
     renderApp({ chainId: 10, network: { name: 'OP Mainnet', explorerUrl: 'https://explorer.optimism.io' } });
     expect(note()).toHaveTextContent(
-      'CryoShield runs on OP Mainnet and has not been independently audited. Your vault is encrypted on your device and stored permanently, and only your keys can open it: if you lose every key, nobody, including CryoShield, can open it. Please keep your existing backups too.',
+      // Review L4: "published permanently as ciphertext", matching the terms ("What you save is published permanently").
+      'CryoShield runs on OP Mainnet and has not been independently audited. Your vault is encrypted on your device and published permanently as ciphertext on a public blockchain, and only your keys can open it: if you lose every key, nobody, including CryoShield, can open it. Please keep your existing backups too.',
     );
     expect(chip()).toHaveTextContent(/^Unaudited$/);
     expect(screen.queryByText('Testnet')).toBeNull();
@@ -121,5 +127,26 @@ describe('"moving to OP Mainnet" notice (4.6)', () => {
     a.unmount();
     renderApp({ chainId: 10, ...PROD });
     expect(screen.queryByText(MOVING)).toBeNull();
+  });
+});
+
+/**
+ * Founder decision 2026-10-09 (after review): the mainnet policy resets (per user monthly, global daily), so a refusal
+ * is temporary. The OP Mainnet message says what happened and what to do, without promising when.
+ */
+describe('sponsorship refusal copy on OP Mainnet', () => {
+  const REFUSED =
+    'CryoShield could not pay the network fee for this save. Nothing was saved and your vault is unchanged. Sponsorship limits reset over time; if you’re adding a new secret, keep it somewhere safe until it saves.';
+
+  it('is the same honest message for a first create and an edit on chain 10', () => {
+    for (const ctx of ['create', 'edit'] as const) expect(messageFor(new WriteError('SPONSORSHIP_REFUSED'), ctx, 10)).toBe(REFUSED);
+    expect(noticeTitle(REFUSED)).toBe('Saving is paused');
+    for (const b of bannedFor(10)) expect(REFUSED, String(b)).not.toMatch(b);
+  });
+
+  it('keeps the testnet messages elsewhere (the testnet per-sender cap does not reset)', () => {
+    expect(messageFor(new WriteError('SPONSORSHIP_REFUSED'), 'edit', 11155420)).toBe(S.save.paused);
+    expect(messageFor(new WriteError('SPONSORSHIP_REFUSED'), 'create', 11155420)).toBe(S.save.pausedCreate);
+    expect(messageFor(new WriteError('SPONSORSHIP_REFUSED'))).toBe(S.save.paused);
   });
 });

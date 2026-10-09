@@ -41,6 +41,9 @@ describe('docs/launch/op-mainnet-comms.md', () => {
   it('reuses the app and landing wording verbatim', () => {
     expect(flat).toContain(S.network.moving);
     expect(flat).toContain(S.network.testnetVaults.replace(/\s+/g, ' '));
+    expect(flat).toContain(S.network.mainnet('OP Mainnet'));
+    // Founder decision 2026-10-09: the mainnet refusal message, mirrored exactly.
+    expect(flat).toContain(S.save.pausedMainnet);
     expect(flat).toContain('Saving is paused');
   });
 

@@ -127,7 +127,7 @@ export function CreateFlow(props: {
       });
     } catch (e) {
       setPrompt(null);
-      setError(messageFor(e, 'create'));
+      setError(messageFor(e, 'create', svc.chainId));
       setErrorRef(errorReference(e));
       setSaveFailed(true);
       setStep('secrets');

@@ -11,7 +11,7 @@ import { resolveNetworkCopy } from '../../vite-plugins/network-copy';
 /** launch-op-mainnet 4.2: the page as the build ships it for a chain (network blocks resolved; scripts never run). */
 const raw = readFileSync(join(__dirname, '..', '..', 'index.html'), 'utf8');
 function landing(chainId: number) {
-  const src = resolveNetworkCopy(raw, { chainId, rpId: 'cryoshield.app', now: Date.parse('2026-10-09T00:00:00Z'), rpc: { host: 'rpc.example', vendor: 'Example' } });
+  const src = resolveNetworkCopy(raw, { chainId, rpId: 'cryoshield.app', now: Date.parse('2026-10-09T00:00:00Z'), rpc: { host: 'rpc.example', vendor: 'Example', policy: 'Not published' } });
   const doc = new DOMParser().parseFromString(src, 'text/html');
   return { src, doc, text: (doc.body.textContent ?? '').replace(/\s+/g, ' ') };
 }
@@ -206,7 +206,7 @@ describe('honest copy follows the build chain (launch-op-mainnet 4.2)', () => {
   it('OP Sepolia: the testnet wording is unchanged', () => {
     expect(norm(testnet.doc.querySelector('.sub-nav .chip'))).toBe('Testnet preview');
     expect(norm(testnet.doc.querySelector('#hero .status-strip'))).toBe(
-      'Testnet preview. Your vault is encrypted on your device and stored on OP Sepolia, a test network, with an extra copy on Arweave when that upload succeeds. Test networks can be reset, and CryoShield has not been independently audited yet.',
+      'Testnet preview. Your vault is encrypted on your device and stored on OP Sepolia, a test network, with an extra copy on Arweave when that upload succeeds. Test networks can be reset, and CryoShield has not been independently audited.',
     );
     for (const sel of ['#breaches .breach-cta .fine', '#start .fine']) {
       expect(norm(testnet.doc.querySelector(sel)), sel).toBe('Testnet preview on OP Sepolia, not independently audited. Please keep your existing backups too.');
@@ -245,12 +245,31 @@ describe('honest copy follows the build chain (launch-op-mainnet 4.2)', () => {
     for (const t of ['Now on mainnet.', 'Mainnet-ready', 'OP Mainnet-ready', 'production ready', 'Battle-tested', 'It is audited.']) expect(hit(t), t).toBe(true);
     expect(bannedFor(11155420).some((r) => r.test('Runs on OP Mainnet.'))).toBe(true);
     expect(bannedFor(999).some((r) => r.test('Runs on OP Mainnet.'))).toBe(true); // unknown chain = testnet
+    // Review L6: the exception is keyed on chain 10, not on "a mainnet status".
+    expect(bannedFor(42161).some((r) => r.test('Runs on OP Mainnet.'))).toBe(true);
+  });
+
+  it('review H2/L5: audit promises and "audited yet" are banned on every chain', () => {
+    for (const chainId of [11155420, 10]) {
+      const hit = (t: string) => bannedFor(chainId).some((r) => r.test(t));
+      for (const t of [
+        'you can support its gas sponsorship, hosting and an independent audit.',
+        'a donation goes toward a future independent audit',
+        'donations fund an audit',
+        'for a security audit',
+        'An audit is planned.',
+        'audit coming soon',
+        'It will be audited.',
+        'has not been independently audited yet',
+      ]) expect(hit(t), `${chainId}: ${t}`).toBe(true);
+      for (const t of ['CryoShield has not been independently audited.', 'Our internal security reviews are public.', 'support its gas sponsorship and hosting.']) expect(hit(t), t).toBe(false);
+    }
   });
 
   it('4.6: the production testnet build carries the dated "moving" strip only in its window, never on dev', () => {
     const at = (rpId: string, now: string) =>
       new DOMParser().parseFromString(
-        resolveNetworkCopy(raw, { chainId: 11155420, rpId, now: Date.parse(now), rpc: { host: 'h', vendor: 'v' }, dates: { moveNoticeFrom: '2026-10-12', switchDate: '2026-10-19' } }),
+        resolveNetworkCopy(raw, { chainId: 11155420, rpId, now: Date.parse(now), rpc: { host: 'h', vendor: 'v', policy: 'Not published' }, dates: { moveNoticeFrom: '2026-10-12', switchDate: '2026-10-19' } }),
         'text/html',
       );
     const strips = (d: Document) => [...d.querySelectorAll('#hero .status-strip')].map((p) => norm(p));

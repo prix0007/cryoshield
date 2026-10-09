@@ -63,6 +63,10 @@ describe('/privacy names the network and the configured RPC host', () => {
     expect(chainRow(mainnet)).toMatch(/OP Mainnet, run by independent node operators/);
     expect(rpcRow(mainnet)).toMatch(/OP Labs public RPC \(OP Mainnet\).*mainnet\.optimism\.io/);
     expect(rpcRow(mainnet)).not.toMatch(/sepolia/i);
+    // Review L7: the policy link is the one recorded for that origin in docs/compliance/origins.json.
+    const link = [...mainnet.doc('privacy/index.html').querySelectorAll('main tr')].find((tr) => tr.querySelector('td')?.textContent?.trim() === 'Blockchain access (RPC)')?.querySelector('a');
+    expect(link?.getAttribute('href')).toBe('https://www.optimism.io/data-privacy-policy');
+    expect(link?.textContent).toBe('Optimism privacy');
     const sec = section(mainnet.doc('privacy/index.html'), 'Security');
     expect(sec).toMatch(/runs on OP Mainnet and has not been independently audited/);
     expect(mainnet.html('privacy/index.html')).not.toMatch(/OP Sepolia|testnet|test network/i);

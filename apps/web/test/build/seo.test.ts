@@ -144,7 +144,7 @@ describe('crawl files', () => {
   });
 });
 
-const ctx = (chainId: number): CopyContext => ({ chainId, rpId: 'cryoshield.app', now: Date.parse('2026-10-09T00:00:00Z'), rpc: { host: 'rpc.example', vendor: 'Example' } });
+const ctx = (chainId: number): CopyContext => ({ chainId, rpId: 'cryoshield.app', now: Date.parse('2026-10-09T00:00:00Z'), rpc: { host: 'rpc.example', vendor: 'Example', policy: 'Not published' } });
 
 describe('llms.txt (add-llms-txt)', () => {
   const metas = publicPageMetas(web, ctx(11155420));

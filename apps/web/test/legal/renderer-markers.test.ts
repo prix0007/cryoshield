@@ -31,7 +31,7 @@ describe('legal renderer markers', () => {
     // launch-op-mainnet D6: the legal text's network blocks are resolved for the build's chain before rendering, so the
     // renderer never sees them; an unresolved one is refused like any other comment line.
     for (const chainId of [11155420, 10]) {
-      const network = (md: string) => resolveNetworkCopy(md, { chainId, rpId: 'cryoshield.app', now: 0, rpc: { host: 'rpc.example', vendor: 'Example' } });
+      const network = (md: string) => resolveNetworkCopy(md, { chainId, rpId: 'cryoshield.app', now: 0, rpc: { host: 'rpc.example', vendor: 'Example', policy: 'Not published' } });
       for (const f of ['legal/privacy.md', 'legal/terms.md', 'legal/cookies.md', '../../docs/supported-devices.md']) {
         expect(() => renderMarkdown(network(readFileSync(join(web, f), 'utf8'))), `${f} (chain ${chainId})`).not.toThrow();
       }

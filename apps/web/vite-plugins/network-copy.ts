@@ -23,13 +23,14 @@ export interface CopyContext {
   rpId: string;
   /** Build time (ms), for the dated "moving" block. */
   now: number;
-  rpc: { host: string; vendor: string };
+  /** `policy`: a Markdown link to the RPC provider's privacy policy (from origins.json), or plain text. */
+  rpc: { host: string; vendor: string; policy: string };
   /** Test override of the committed launch dates (src/config/launch.ts). */
   dates?: LaunchDates;
 }
 
 interface OriginsInventory {
-  origins: Record<string, { vendor: string }>;
+  origins: Record<string, { vendor: string; privacy?: { name: string; url: string } }>;
 }
 
 const BLOCK = /<!--net:([a-z-]*)-->([\s\S]*?)<!--\/net-->/g;
@@ -56,7 +57,8 @@ export function resolveNetworkCopy(text: string, ctx: CopyContext): string {
     })
     .replaceAll('__CS_NET_NAME__', networkFor(ctx.chainId).shortName)
     .replaceAll('__CS_RPC_HOST__', ctx.rpc.host)
-    .replaceAll('__CS_RPC_VENDOR__', ctx.rpc.vendor);
+    .replaceAll('__CS_RPC_VENDOR__', ctx.rpc.vendor)
+    .replaceAll('__CS_RPC_POLICY__', ctx.rpc.policy);
   if (/<!--\/?net[:-]/.test(out)) throw new Error('[network-copy] unclosed or stray network block marker');
   const token = out.match(/__CS_(NET|RPC)_[A-Z_]*__/);
   if (token) throw new Error(`[network-copy] unknown token ${token[0]}`);
@@ -64,17 +66,23 @@ export function resolveNetworkCopy(text: string, ctx: CopyContext): string {
 }
 
 /** 4.4: the RPC row of the privacy policy. The origin must be in the data-flow inventory, or the build fails. */
-export function rpcDisclosure(rpcUrl: string, inventory: OriginsInventory): { host: string; vendor: string } {
+export function rpcDisclosure(rpcUrl: string, inventory: OriginsInventory): CopyContext['rpc'] {
   const url = new URL(rpcUrl);
   const host = url.hostname;
   if (host === 'localhost' || host === '127.0.0.1' || host === '[::1]' || host.endsWith('.invalid')) {
-    return { host, vendor: 'Local test endpoint, never used in production' };
+    return { host, vendor: 'Local test endpoint, never used in production', policy: 'Not applicable' };
   }
   const row = inventory.origins[url.origin];
   if (!row) {
     throw new Error(`[network-copy] VITE_RPC_URL host ${host} is not in docs/compliance/origins.json, so the privacy policy can't disclose it; add its row first`);
   }
-  return { host, vendor: row.vendor };
+  // Review L7: the policy link is the inventory's, never a hard-coded vendor. A plain name and an https URL only.
+  const p = row.privacy;
+  if (!p) return { host, vendor: row.vendor, policy: 'Not published' };
+  if (!/^https:\/\/[^\s()<>]+$/.test(p.url) || /[[\]()<>*`|]/.test(p.name)) {
+    throw new Error(`[network-copy] origins.json privacy entry for ${url.origin} must be a plain name and an https URL`);
+  }
+  return { host, vendor: row.vendor, policy: `[${p.name}](${p.url})` };
 }
 
 /** Validates the build variables first (the same ConfigError as the config plugin), then derives the copy context. */
@@ -95,7 +103,7 @@ export function llmsStatus(ctx: CopyContext): string {
   const net = networkFor(ctx.chainId);
   const intro = 'CryoShield is a free, open-source project with no company behind it.';
   if (net.status === 'testnet') {
-    return `${intro} It is a testnet preview: vaults are stored on ${net.shortName}, a test network, with an extra copy on Arweave when that upload succeeds. Test networks can be reset, and CryoShield has not been independently audited yet.`;
+    return `${intro} It is a testnet preview: vaults are stored on ${net.shortName}, a test network, with an extra copy on Arweave when that upload succeeds. Test networks can be reset, and CryoShield has not been independently audited.`;
   }
   return `${intro} Vaults are stored on ${net.shortName}, with an extra copy on Arweave when that upload succeeds. CryoShield has not been independently audited. Only the security keys enrolled for a vault can open it: if you lose every key, nobody can open it.`;
 }

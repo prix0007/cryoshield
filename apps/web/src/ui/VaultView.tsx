@@ -207,7 +207,7 @@ export function VaultView(props: {
   /** A failed save never moves the pin (ECC reviews M1 and 88255e2): the next save is STALE and offers Reload. */
   function failed(e: unknown) {
     setSaveFailed(mode);
-    setError(messageFor(e));
+    setError(messageFor(e, 'edit', svc.chainId));
     setErrorRef(errorReference(e));
     setStale(e instanceof WriteError && e.code === 'STALE');
   }

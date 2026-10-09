@@ -81,14 +81,14 @@ export const S = {
   },
 
   testnet: (network: string) =>
-    `Testnet preview: your vault is encrypted on your device and stored on ${network}, a test network, with an extra copy on Arweave when that upload succeeds. Test networks can be reset, and CryoShield has not been independently audited yet.`,
+    `Testnet preview: your vault is encrypted on your device and stored on ${network}, a test network, with an extra copy on Arweave when that upload succeeds. Test networks can be reset, and CryoShield has not been independently audited.`,
 
   /** launch-op-mainnet D6 / 4.5 / 4.6: the network status notice and chip, and the launch notices. */
   network: {
     chipTestnet: 'Testnet',
     chipMainnet: 'Unaudited',
     mainnet: (network: string) =>
-      `CryoShield runs on ${network} and has not been independently audited. Your vault is encrypted on your device and stored permanently, and only your keys can open it: if you lose every key, nobody, including CryoShield, can open it. Please keep your existing backups too.`,
+      `CryoShield runs on ${network} and has not been independently audited. Your vault is encrypted on your device and published permanently as ciphertext on a public blockchain, and only your keys can open it: if you lose every key, nobody, including CryoShield, can open it. Please keep your existing backups too.`,
     moving:
       'CryoShield is moving to OP Mainnet. Vaults created during the testnet preview will not move; you can still read them with the recovery tool. Create a new vault after the switch.',
     testnetVaults:
@@ -207,6 +207,9 @@ export const S = {
     nothingSaved: 'Nothing was saved. Your changes are still here, so you can try again.',
     paused: 'Saving is paused right now. Your existing vault is safe; please try again later.',
     pausedCreate: 'Nothing was saved. Please try again later.',
+    /** OP Mainnet (founder 2026-10-09): the policy's limits reset (per user monthly, global daily), so a refusal is temporary. */
+    pausedMainnet:
+      'CryoShield could not pay the network fee for this save. Nothing was saved and your vault is unchanged. Sponsorship limits reset over time; if you’re adding a new secret, keep it somewhere safe until it saves.',
     details: 'Details',
     tooMany: 'This vault can’t hold more keys.',
     tooLarge: 'This is too much to store. Please shorten your secrets.',

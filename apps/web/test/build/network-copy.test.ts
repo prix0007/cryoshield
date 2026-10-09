@@ -15,7 +15,7 @@ const ctx = (chainId: number, over: Partial<CopyContext> = {}): CopyContext => (
   chainId,
   rpId: 'cryoshield.app',
   now: Date.parse('2026-10-09T00:00:00Z'),
-  rpc: { host: 'rpc.example', vendor: 'Example RPC' },
+  rpc: { host: 'rpc.example', vendor: 'Example RPC', policy: 'Not published' },
   ...over,
 });
 const SRC = 'a <!--net:testnet-->T on __CS_NET_NAME__<!--/net--><!--net:mainnet-->M on __CS_NET_NAME__<!--/net--> b';
@@ -35,8 +35,8 @@ describe('resolveNetworkCopy', () => {
   });
 
   it('spans lines, and substitutes the RPC host and vendor', () => {
-    const md = '| RPC | <!--net:testnet-->\nOld<!--/net-->__CS_RPC_VENDOR__ (`__CS_RPC_HOST__`) |';
-    expect(resolveNetworkCopy(md, ctx(10, { rpc: { host: 'mainnet.optimism.io', vendor: 'OP Labs' } }))).toBe('| RPC | OP Labs (`mainnet.optimism.io`) |');
+    const md = '| RPC | <!--net:testnet-->\nOld<!--/net-->__CS_RPC_VENDOR__ (`__CS_RPC_HOST__`) | __CS_RPC_POLICY__ |';
+    expect(resolveNetworkCopy(md, ctx(10, { rpc: { host: 'mainnet.optimism.io', vendor: 'OP Labs', policy: '[P](https://p.example)' } }))).toBe('| RPC | OP Labs (`mainnet.optimism.io`) | [P](https://p.example) |');
   });
 
   it('keeps the "moving" block only while the production testnet build is in the notice window', () => {
@@ -59,8 +59,17 @@ describe('resolveNetworkCopy', () => {
 
 describe('rpcDisclosure (4.4: the privacy sub-processor row names the configured RPC host)', () => {
   it('names the host and the vendor recorded in docs/compliance/origins.json', () => {
-    expect(rpcDisclosure('https://mainnet.optimism.io', inventory)).toEqual({ host: 'mainnet.optimism.io', vendor: 'OP Labs public RPC (OP Mainnet)' });
-    expect(rpcDisclosure('https://sepolia.optimism.io/', inventory)).toEqual({ host: 'sepolia.optimism.io', vendor: 'OP Labs public RPC (OP Sepolia)' });
+    const OPT = '[Optimism privacy](https://www.optimism.io/data-privacy-policy)';
+    expect(rpcDisclosure('https://mainnet.optimism.io', inventory)).toEqual({ host: 'mainnet.optimism.io', vendor: 'OP Labs public RPC (OP Mainnet)', policy: OPT });
+    expect(rpcDisclosure('https://sepolia.optimism.io/', inventory)).toEqual({ host: 'sepolia.optimism.io', vendor: 'OP Labs public RPC (OP Sepolia)', policy: OPT });
+  });
+
+  it('review L7: the policy link comes from the inventory row, never a hard-coded vendor', () => {
+    const inv = { origins: { 'https://rpc.other.example': { vendor: 'Other RPC', privacy: { name: 'Other privacy', url: 'https://other.example/privacy' } }, 'https://rpc.nopolicy.example': { vendor: 'No policy RPC' } } };
+    expect(rpcDisclosure('https://rpc.other.example', inv).policy).toBe('[Other privacy](https://other.example/privacy)');
+    expect(rpcDisclosure('https://rpc.nopolicy.example', inv).policy).toBe('Not published');
+    const bad = { origins: { 'https://rpc.bad.example': { vendor: 'Bad', privacy: { name: 'x', url: 'javascript:alert(1)' } } } };
+    expect(() => rpcDisclosure('https://rpc.bad.example', bad)).toThrow(/https/);
   });
 
   it('fails the build, naming the host, when the RPC is not in the inventory', () => {
@@ -68,7 +77,7 @@ describe('rpcDisclosure (4.4: the privacy sub-processor row names the configured
   });
 
   it('labels loopback and .invalid fixture endpoints as test endpoints', () => {
-    expect(rpcDisclosure('http://127.0.0.1:8545', inventory)).toEqual({ host: '127.0.0.1', vendor: 'Local test endpoint, never used in production' });
+    expect(rpcDisclosure('http://127.0.0.1:8545', inventory)).toEqual({ host: '127.0.0.1', vendor: 'Local test endpoint, never used in production', policy: 'Not applicable' });
     expect(rpcDisclosure('https://rpc.verify.invalid', inventory).vendor).toMatch(/test endpoint/i);
   });
 });
@@ -86,7 +95,7 @@ describe('copyContext', () => {
       VITE_RP_NAME: 'CryoShield',
     };
     const c = copyContext(env, inventory, 1234);
-    expect(c).toEqual({ chainId: 10, rpId: 'cryoshield.app', now: 1234, rpc: { host: 'mainnet.optimism.io', vendor: 'OP Labs public RPC (OP Mainnet)' } });
+    expect(c).toEqual({ chainId: 10, rpId: 'cryoshield.app', now: 1234, rpc: { host: 'mainnet.optimism.io', vendor: 'OP Labs public RPC (OP Mainnet)', policy: '[Optimism privacy](https://www.optimism.io/data-privacy-policy)' } });
     expect(() => copyContext({ ...env, VITE_RPC_URL: '' }, inventory, 1)).toThrow(/Missing required build variable/);
   });
 });

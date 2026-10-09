@@ -235,8 +235,11 @@ export async function saveAddKey(
   }
 }
 
-/** Plain-language message for any failure. Never includes secret material. `create`: no vault exists yet. */
-export function messageFor(e: unknown, context: 'create' | 'edit' = 'edit'): string {
+/**
+ * Plain-language message for any failure. Never includes secret material. `create`: no vault exists yet. `chainId`:
+ * the build's chain; on OP Mainnet a sponsorship refusal says the limits reset (launch-op-mainnet D8).
+ */
+export function messageFor(e: unknown, context: 'create' | 'edit' = 'edit', chainId?: number): string {
   if (e instanceof ChainMismatchError) return S.wrongNetwork;
   if (e instanceof KeyError) {
     if (e.code === 'WRONG_KEY' && e.message === 'not in vault') return S.edit.notInVault;
@@ -246,6 +249,7 @@ export function messageFor(e: unknown, context: 'create' | 'edit' = 'edit'): str
   if (e instanceof WriteError) {
     switch (e.code) {
       case 'SPONSORSHIP_REFUSED':
+        if (chainId === 10) return S.save.pausedMainnet;
         return context === 'create' ? S.save.pausedCreate : S.save.paused;
       case 'READ_ONLY':
         return S.vault.legacyReadOnly;
