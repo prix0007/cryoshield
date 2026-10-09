@@ -23,15 +23,15 @@ is done.
 
 | # | Criterion | Status | Evidence |
 |---|---|---|---|
-| G1 | Human production gate; CI-H1; owner 2FA | Release gate in place (`release-tags` now `~ALL`, applied 2026-10-09; `apply.sh` in sync). CI-H1 and owner 2FA: **owner to confirm** | |
+| G1 | Human production gate; CI-H1; owner 2FA | Release gate in place (`release-tags` now `~ALL`, applied 2026-10-09; `apply.sh` in sync). 2FA on GitHub and Cloudflare: on (founder, 2026-10-09; hardware-key method to confirm). CI-H1: closed 2026-10-09 (machine account `cryoshield`, Write; probes in the mainnet-gate entry) | |
 | G2 | Dev not under `cryoshield.app` | `dev.cryoshield.app` NXDOMAIN (checked 2026-10-09) | |
-| G3 | `harden-gas-sponsorship` review and testnet proof | Review 7.1 APPROVE; tasks 6.2–6.4 and 8.1 **open** (founder's YubiKey run on dev) | |
+| G3 | `harden-gas-sponsorship` review and testnet proof | Review 7.1 APPROVE. Founder's YubiKey run on dev (2026-10-10): create, unlock, edit and recovery passed; v1 items waived for mainnet; **add-key not evidenced on chain, re-run needed**; 6.2 and 8.1 **open** | |
 | G4 | Pimlico mainnet settings | **Open**: founder adds the D8 resets and records the values; dedicated mainnet key restricted to `https://cryoshield.app`, bundler + paymaster only; prepaid, no card | |
 | G5 | Recovery tool on mainnet | Open until `10.json` and the regenerated preset (task 7.3/7.4) | |
 | G6 | Audit decision | **Done**: see Q1 above | this file |
 | G7 | Monitoring ready | Runbook thresholds in `apps/web/docs/paymaster-policy.md` (task 5.3); founder calendar reminders **to confirm** | |
 | G8 | Rollback ready | Open: save the four current `production-build` values offline and the testnet bundler URL from the Pimlico dashboard; `vA`'s commit green on dev | |
-| G9 | Compliance `mainnet-gate` entry | **Open**: a `mainnet-gate` entry in `docs/compliance/review-log.md` (within 30 days), risk register re-scored and signed | |
+| G9 | Compliance `mainnet-gate` entry | **Drafted, awaiting signature** (2026-10-09). The `mainnet-gate` entry in `docs/compliance/review-log.md` is dated 2026-10-09; its CI window ends 2026-11-08. The risk register is re-scored. Neither is signed, and the entry lists conditions that are still open. CI reads only the entry's heading, so merge the entry only once it is signed | [review-log 2026-10-09 entry](../compliance/review-log.md#2026-10-09-mainnet-gate-reviewer-prix0007), [risk register](../compliance/risk-register.md) |
 | G10 | Copy and build | Chain-10 and chain-11155420 builds pass `verify-build` and the section-4 copy tests (6.1 evidence below); confirmed again by CI on `vA` | |
 | G11 | Chain facts on the day; deployer ≥ 0.001 ETH | Re-run on launch day | |
 

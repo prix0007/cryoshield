@@ -137,7 +137,7 @@
   - [x] [fe] Web part (2026-10-07): both builds pass against the real `contracts/deployments/11155420.json` (2ad376c), production mode with stub env values: `VITE_RP_ID=cryoshield.app` (`verify-build`, `VERIFY_CHAIN_ID=11155420`) and `VITE_RP_ID=cryoshield-web-dev.fly.dev` (`vite build --mode production`). Each bundle and `/architecture` carry registry v2 `0xA622…cB7` and only their own RP ID's factory (`0x775d…DfED` / `0x5945…73d3`).
 - [ ] 6.2 [sol] Through the hosted Pimlico OP Sepolia endpoint with the testnet policy, run: a sponsored create via our factory, an edit and an add-key, plus a UV=0 operation that must be refused in simulation. Verify: three included operations with receipts, and the refusal recorded.
 - [ ] 6.3 [fe] Run the hardware checklist (`apps/web/docs/hardware-test.md`) with two real YubiKeys: create, unlock, edit, add-key, the old v1 vault still unlocking, and recovery-tool reads of v1 and v2. Record the measured gas and cost per operation in `contracts/GAS.md` and `apps/web/docs/costs.md`, and re-check the D2 per-operation caps against them. Verify: the checklist is recorded.
-- [ ] 6.4 [ow] Re-create the founder's test vault on v2 under a new account. Verify: it unlocks in the app and in the recovery tool.
+- [x] 6.4 [ow] Re-create the founder's test vault on v2 under a new account. Verify: it unlocks in the app and in the recovery tool. Done by the founder, 2026-10-10.
 
 ## 7. Security review [sec]
 
