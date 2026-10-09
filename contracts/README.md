@@ -24,6 +24,14 @@ script/export-abi.sh                          # regenerate abi/VaultRegistry.jso
 script/anvil-e2e.sh                           # throwaway anvil: CREATE2 deploy, record check, locator-only recovery via cast
 ```
 
+UV=0 refusal against the deployed OP Sepolia contracts (opt-in, needs network; skipped by the default `forge test`;
+results in [`GAS.md`](GAS.md)):
+
+```sh
+anvil --fork-url https://sepolia.optimism.io --port 8546 --silent &
+CRYOSHIELD_FORK_URL=http://127.0.0.1:8546 forge test --mc UvRefusalForkTest -vv
+```
+
 ## Deploying
 
 The deploy goes through the canonical CREATE2 deployer (`0x4e59b44847b379578588920cA78FbF26c0B4956C`)
