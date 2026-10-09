@@ -59,7 +59,7 @@ was sent. No dashboard, secret, `.env` file or keystore was opened. No code, wor
 | Launch record exists (the CI gate's other condition) | Yes. It records the founder decisions, G1–G11, and the 6.1 review (round 2: APPROVE, no open CRITICAL or HIGH) | [`launch-op-mainnet.md`](../reviews/launch-op-mainnet.md) |
 | `dev.cryoshield.app` (G2) | A, AAAA and CNAME all came back empty on 2026-10-09 (`dig +short`) | public DNS |
 | DNSSEC on `cryoshield.app` (pre-production M1) | **In effect** on 2026-10-09. A DS record is published (key tag 2371, alg 13), and the validating resolvers 1.1.1.1 and dns.google return the `ad` flag | public DNS; [`apps/web/deploy/README.md`](../../apps/web/deploy/README.md) §4–5 |
-| CAA on `cryoshield.app` (pre-production M1) | **Not as required.** The live set still lists five CAs (`comodoca.com`, `digicert.com`, `letsencrypt.org`, `pki.goog`, `ssl.com`) for both `issue` and `issuewild`, alongside `issuewild ";"`. The runbook requires exactly two records: `0 issue "letsencrypt.org"` and `0 issuewild ";"` | `dig +short CAA cryoshield.app`; [`apps/web/deploy/README.md`](../../apps/web/deploy/README.md) §4 |
+| CAA on `cryoshield.app` (pre-production M1) | **As required (2026-10-10).** The founder disabled Cloudflare Universal SSL, which removed its unused Universal and Backup edge certificates and the CA records Cloudflare added with them. Cloudflare's authoritative server and the 1.1.1.1, 8.8.8.8 and 9.9.9.9 resolvers now return exactly `0 issue "letsencrypt.org"` and `0 issuewild ";"`. The site still serves Fly's Let's Encrypt certificate (HTTP 200) | `dig +short CAA cryoshield.app`; [`apps/web/deploy/README.md`](../../apps/web/deploy/README.md) §4 |
 | Production today | `/release.json` shows commit `f06ccb9`, chain 11155420, RP ID `cryoshield.app` (the 2026-10-05 build). Nothing is on OP Mainnet yet | `curl -s https://cryoshield.app/release.json` |
 | Pimlico mainnet policy | The record has the policy id, chain 10, $0.50 per operation and the date range (2026-10-09 to 2027-10-02). The monthly per-user values, the daily global values, the mainnet key's restrictions and the task 1.1 answers (a)–(e) are all **pending** | [`paymaster-policy.md`](../../apps/web/docs/paymaster-policy.md) §3–4 |
 | CI gate behaviour | Before this entry, `node .github/scripts/mainnet-gate.mjs` on an added-file list naming `contracts/deployments/10.json` exited 1 ("no mainnet-gate entry"). With this entry it exits 0 | `.github/scripts/mainnet-gate.mjs`; `npm test --prefix .github/scripts` |
@@ -88,7 +88,7 @@ and design D3, D7 and D8; this review records them and does not make them):
 - **Irreversible deploys (R20).** A wrong deploy cannot be undone. The guard is D1's address parity plus three
   explorer verifications.
 - **Bundle and supply chain (R1).** A malicious or compromised bundle on the RP ID reads secrets at the next unlock.
-  Mainnet makes that worth more to an attacker. The CAA set is still too broad.
+  Mainnet makes that worth more to an attacker. CAA is now Let's Encrypt only (2026-10-10).
 - **Sponsorship availability (R9, R17, R18).** Abuse or real growth can pause saving for everyone for the rest of a
   day ($30 global cap), or for one user for the rest of a month (10 operations or $1).
 - **The bundler key in the browser (R18).** The Pimlico key ships to every browser. Whether it can be bound to the
@@ -126,9 +126,9 @@ and design D3, D7 and D8; this review records them and does not make them):
 4. **G7.** The founder confirms the calendar reminders: daily checks for the first 14 days, weekly after that, and
    monthly. Also a reminder 30 days before the policy end date (2027-10-02), and before the domain and
    `security.txt` dates (September 2027).
-5. **CAA (pre-production M1).** Replace the live set with exactly `0 issue "letsencrypt.org"` and `0 issuewild ";"`,
-   then confirm with `dig +short CAA cryoshield.app`. (Cloudflare 2FA: on, per the founder's statement, 2026-10-09;
-   see G1.)
+5. **CAA (pre-production M1). Closed 2026-10-10:** `dig +short CAA cryoshield.app` returns exactly
+   `0 issue "letsencrypt.org"` and `0 issuewild ";"`, after Universal SSL was disabled. Keep Universal SSL **off**:
+   re-enabling it brings Cloudflare's CAs back. (Cloudflare 2FA: on, per the founder's statement, 2026-10-09; see G1.)
 6. **G8 (rollback).** Save the four current `production-build` values offline, with the testnet `VITE_BUNDLER_URL`
    taken from the Pimlico dashboard, and confirm `vA`'s commit is green on the dev site.
 7. **G5 and `launch-op-mainnet` section 3 (recovery tool).** Tasks 3.1–3.4 are unticked (the
@@ -148,8 +148,8 @@ and design D3, D7 and D8; this review records them and does not make them):
     - **G3:** no notice is shown while production is scaled to 0;
     - **G4:** `paymaster-policy.md` has no written pause and resume procedure. The incident runbook names the step,
       but resume is not written down;
-    - **G5:** the expected DNS and registrar state is now written down in `apps/web/deploy/README.md` §4–5, but the
-      live CAA does not match it, and no six-monthly check of that state is scheduled;
+    - **G5:** the expected DNS and registrar state is now written down in `apps/web/deploy/README.md` §4–5, and the live
+      CAA now matches it (2026-10-10); no six-monthly check of that state is scheduled yet;
     - **G6:** the bus factor, "name a backup maintainer before mainnet".
 12. **Pre-production L1–L3, may be accepted.** Repository `sha_pinning_required`, Dependabot security updates and
     secret-scanning validity checks were open on 2026-10-09 (`apply.sh --founder-hardening --apply`). Close them or
