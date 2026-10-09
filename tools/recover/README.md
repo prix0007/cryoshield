@@ -20,13 +20,15 @@ You need Python 3.10 or newer, or a single-file binary from the releases page.
 ```sh
 # with uv (recommended): run without installing
 uvx cryoshield-recover --version
-# from the source repository instead of PyPI
-uvx --from "git+https://github.com/prix0007/cryoshield#subdirectory=tools/recover" cryoshield-recover --version
+# from the source repository instead of PyPI, at a release tag (see below)
+uvx --from "git+https://github.com/prix0007/cryoshield@<release-tag>#subdirectory=tools/recover" cryoshield-recover --version
 # with pipx
 pipx install cryoshield-recover
 # NFC readers (PC/SC) need the optional extra
 pipx install "cryoshield-recover[nfc]"
 ```
+
+**Installing from source.** Replace `<release-tag>` with a published release tag of this tool from the releases page. Without a tag, `git+` installs whatever is on the `main` branch at that moment, which may be newer than any release and not yet ready for your vault.
 
 **Dependency pinning.** `pipx` and `uvx` resolve dependencies themselves. They do **not** use this project's `uv.lock`, so they install the newest `fido2` and `cryptography` releases allowed by `pyproject.toml`.
 
@@ -112,9 +114,9 @@ The tool prints the vault ID after every unlock. Keep it together with any `--sa
 | `arbitrum-sepolia` | 421614 | sepolia-rollup.arbitrum.io, arbitrum-sepolia-rpc.publicnode.com, arbitrum-sepolia.drpc.org |
 | `anvil` | 31337 | 127.0.0.1:8545 (local development) |
 
-CryoShield runs on OP Mainnet, so with no network flag the tool looks there. It always prints the network it uses (`Network: op-mainnet (chain 10)`).
+From the OP Mainnet launch, the tool reads OP Mainnet by default; vaults created during the testnet preview need `--testnet`. It always prints the network it uses (`Network: op-mainnet (chain 10)`). Until a release carries the OP Mainnet deployment, blockchain lookup on `op-mainnet` is off and the tool says so (see "Built-in registries" below).
 
-**Vaults from the testnet preview.** Vaults created on cryoshield.app before the OP Mainnet launch live on OP Sepolia (a test network). They did not move to OP Mainnet and stay readable forever: run the tool with `--testnet`. When the network was not chosen explicitly, the tool reminds you of this.
+**Vaults from the testnet preview.** Vaults created on cryoshield.app during the testnet preview live on OP Sepolia (a test network). They do not move to OP Mainnet and stay readable forever: run the tool with `--testnet`. When the network was not chosen explicitly, the tool reminds you of this.
 
 **How the network is chosen,** first match wins:
 1. `--network <preset>`;

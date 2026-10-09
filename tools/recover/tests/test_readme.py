@@ -60,3 +60,18 @@ def test_readme_documents_the_mainnet_default() -> None:
     assert "testnet preview" in text
     assert "OP Mainnet has only VaultRegistry v2" in text
     assert "OP Sepolia by default" not in text and "not decided yet" not in text
+    # 6.1 review M1: the README ships from main before the launch, so it never says mainnet is live now.
+    assert "runs on OP Mainnet" not in text
+    assert "From the OP Mainnet launch" in text
+
+
+def test_readme_git_installs_are_pinned_to_a_release_tag() -> None:
+    """6.1 review M1: an unpinned git install would run whatever is on main; pin to a release tag."""
+    text = README.read_text()
+    urls = re.findall(r"git\+https://[^\s\"']+", text)
+    assert urls, "the README documents a source install"
+    for url in urls:
+        assert re.fullmatch(
+            r"git\+https://github\.com/prix0007/cryoshield@<release-tag>#subdirectory=tools/recover", url
+        ), url
+    assert "replace `<release-tag>`" in text.lower()
