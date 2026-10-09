@@ -298,6 +298,10 @@ jobs:
         run: script/check-storage-layout.sh
       - name: Deploy script presets, gates and arguments
         run: script/test-deploy-args.sh
+      # launch-op-mainnet task 2.4: stub curl and forge; no network and no real key. The key must reach curl only
+      # through stdin (never argv, environment of children, files or output).
+      - name: Etherscan V2 verification script (stubbed, key never in argv)
+        run: script/test-verify-etherscan.sh
       - name: Anvil end-to-end deploy and recovery
         run: script/anvil-e2e.sh
       # The anvil deploy is deterministic: it must reproduce the committed 31337 record and ABIs byte for byte.

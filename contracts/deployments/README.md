@@ -87,6 +87,44 @@ build to compare it with.
 
 `contracts.vaultRegistries` exists on no chain yet.
 
+## OP Mainnet (chain 10): writing `10.json`
+
+OpenSpec `launch-op-mainnet` (design D1, D2 and the launch-day runbook). Only the founder broadcasts, and only after
+the go/no-go is recorded. `script/deploy.sh op_mainnet` checks, **before any RPC call**:
+
+- **RP IDs:** only `cryoshield.app` (the default). Any other `RP_IDS`, including the dev RP ID
+  `cryoshield-web-dev.fly.dev`, is refused.
+- **No v1:** a `10.json` with a top-level `address` is refused.
+- **D1 address parity:** the predicted VaultRegistryV2, `cryoshield.app` factory and implementation must equal
+  `11155420.json` (`0xA622c92d3D5b54aeA081Cf410224a8A2eCb08cB7`, `0x775dc816594262274E78Ae75D97C8EdB0df5DfED`,
+  `0x8aA76FaA6629cA1EA8ccC3F9Edf0E8D98816Acd7`). CREATE2 addresses depend only on the canonical CREATE2 deployer, the
+  constant salts and the init code, so a mismatch means `contracts/src`, the solc settings, the metadata or the
+  remappings drifted from the reviewed OP Sepolia build. The script names the contract and stops. Deploy from a clean
+  tree of the release commit; never edit `11155420.json` to make it pass.
+
+Then the run:
+
+1. **Simulate:** `DEPLOYER_ACCOUNT=cryoshield-deployer OP_MAINNET_RPC_URL=https://mainnet.optimism.io script/deploy.sh op_mainnet`.
+   It prints `parity=ok …`, `v1: not deployed on op_mainnet (by design)`, the three addresses and
+   "simulation complete; nothing sent, no record written".
+2. **Broadcast:** the same command plus `BROADCAST=1 CRYOSHIELD_MAINNET_GATE=approved:10` (the gate value is bound to
+   the chain ID; plain `approved` is refused). It writes `10.json` with `chainId` 10, `contracts.vaultRegistryV2` and
+   `contracts.wallets["cryoshield.app"]` only.
+3. **Verify (keyless, automatic, after the record is written):** every new contract on Blockscout
+   (`https://explorer.optimism.io/api/`) and on Sourcify. Exit 2 means "deployed and recorded, verification failed":
+   run the printed retry lines; the contracts are immutable, so nothing needs rolling back.
+4. **Etherscan (optional, never required):** put the key in the environment, never on the command line
+   (`read -rs ETHERSCAN_API_KEY && export ETHERSCAN_API_KEY`), then `script/verify-etherscan.sh 10`. It verifies the
+   contracts in `10.json` through the Etherscan V2 API (`https://api.etherscan.io/v2/api?chainid=10`), passes the key to
+   curl only through stdin, treats "Already Verified" as success, and exits 2 with a key-free retry command on failure.
+5. Commit `10.json` in its own PR (CI's mainnet gate and `script/check-deployments.sh 10` check it against the chain).
+
+**Someone deployed first.** Anyone can send our init code to the CREATE2 deployer. The result is our exact contracts at
+our addresses, with no owner and no admin, so it is harmless. `deploy.sh` then stops with "already deployed … but
+deployments/10.json has no matching …", because it never adopts a deployment silently. Write `10.json` by hand with
+the actual deploy transaction hash and block, run `script/check-deployments.sh 10` (deploy tx went to the CREATE2
+deployer, init code is this build's, runtime code including immutables matches), and review it in the record PR.
+
 ## ABIs (`contracts/abi/`)
 
 | File | Contract |

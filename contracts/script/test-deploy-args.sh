@@ -4,7 +4,7 @@
 # call) plus one throwaway anvil node for the chain-ID-mismatch check.
 set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-cd "$ROOT"
+cd "$ROOT" || exit 1
 PRESETS_JSON="$ROOT/../config/chain-presets.json"
 DEPLOY="$ROOT/script/deploy.sh"
 EXPECTED_ADDRESS=0xB43f58cF17e64B603aE5588a1DD17E96a0849e44 # VaultRegistry CREATE2 address; must never drift
@@ -125,6 +125,92 @@ pred="$(run "$DEPLOY" --predict-v2 "cryoshield.app,cryoshield-web-dev.fly.dev" 2
 check "predict-v2 lists registry + 2 wallet pairs" test "$(grep -c . <<<"$pred")" -eq 3
 check "wallet pairs differ per RP ID" test "$(awk '$1 == "wallet" {print $3}' <<<"$pred" | sort -u | wc -l | tr -d ' ')" -eq 2
 
+# --- launch-op-mainnet 2.1: D1 address parity guard (op_mainnet == deployments/11155420.json) --------
+# The reference record can be swapped only for plans and simulations (DEPLOY_RECORDS_DIR); a broadcast refuses it.
+REAL_SEPOLIA="$ROOT/deployments/11155420.json"
+RECS="$(mktemp -d)"
+trap 'rm -rf "$RECS"' EXIT
+mainnet_plan() { plan DEPLOYER_ADDRESS=0x000000000000000000000000000000000000dEaD OP_MAINNET_RPC_URL=http://rpc.invalid "$@" "$DEPLOY" op_mainnet; }
+out="$(mainnet_plan 2>&1)"; rc=$?
+check "op_mainnet plan passes with the committed 11155420 record" test "$rc" -eq 0
+check "op_mainnet plan reports address parity ok" grep -q "^parity=ok " <<<"$out"
+for addr in 0xA622c92d3D5b54aeA081Cf410224a8A2eCb08cB7 0x775dc816594262274E78Ae75D97C8EdB0df5DfED 0x8aA76FaA6629cA1EA8ccC3F9Edf0E8D98816Acd7; do
+  check "op_mainnet plan prints D1 address $addr" grep -q "$addr" <<<"$out"
+done
+for spec in "VaultRegistryV2|.contracts.vaultRegistryV2.address" \
+  "cryoshield.app factory|.contracts.wallets[\"cryoshield.app\"].factory" \
+  "cryoshield.app implementation|.contracts.wallets[\"cryoshield.app\"].implementation"; do
+  IFS='|' read -r name path <<<"$spec"
+  mkdir -p "$RECS/drift"
+  jq "$path = \"0x000000000000000000000000000000000000bEEF\"" "$REAL_SEPOLIA" >"$RECS/drift/11155420.json"
+  out="$(mainnet_plan DEPLOY_RECORDS_DIR="$RECS/drift" 2>&1)"; rc=$?
+  check "parity guard refuses drifted $name" test "$rc" -ne 0
+  check "parity refusal names $name" grep -q "address parity: $name " <<<"$out"
+  # Without DEPLOY_PLAN_ONLY it would reach the RPC next; the guard must stop it first (rpc.invalid never contacted).
+  out="$(run DEPLOYER_ADDRESS=0x000000000000000000000000000000000000dEaD OP_MAINNET_RPC_URL=http://rpc.invalid DEPLOY_RECORDS_DIR="$RECS/drift" "$DEPLOY" op_mainnet 2>&1)"; rc=$?
+  check "simulation refused on drifted $name before any RPC call" bash -c '[[ $1 -ne 0 ]] && grep -q "address parity: $2 " <<<"$3" && ! grep -q "cannot reach" <<<"$3"' _ "$rc" "$name" "$out"
+done
+mkdir -p "$RECS/missing"
+jq 'del(.contracts.wallets["cryoshield.app"])' "$REAL_SEPOLIA" >"$RECS/missing/11155420.json"
+out="$(mainnet_plan DEPLOY_RECORDS_DIR="$RECS/missing" 2>&1)"; rc=$?
+check "parity guard fails closed on a missing reference entry" test "$rc" -ne 0
+out="$(mainnet_plan DEPLOY_RECORDS_DIR="$RECS/none" 2>&1)"; rc=$?
+check "parity guard fails closed on a missing reference record" test "$rc" -ne 0
+mkdir -p "$RECS/ok" && cp "$REAL_SEPOLIA" "$RECS/ok/11155420.json"
+out="$(mainnet_plan DEPLOY_RECORDS_DIR="$RECS/ok" 2>&1)"; rc=$?
+check "parity guard passes with an unmodified copy of the record" test "$rc" -eq 0
+out="$(plan BROADCAST=1 DEPLOYER_ACCOUNT=a CRYOSHIELD_MAINNET_GATE=approved:10 OP_MAINNET_RPC_URL=x DEPLOY_RECORDS_DIR="$RECS/ok" "$DEPLOY" op_mainnet 2>&1)"; rc=$?
+check "a broadcast refuses a swapped records directory" test "$rc" -ne 0
+check "swapped records refusal names DEPLOY_RECORDS_DIR" grep -q "DEPLOY_RECORDS_DIR" <<<"$out"
+out="$(plan OP_SEPOLIA_RPC_URL=x DEPLOYER_ADDRESS=0x000000000000000000000000000000000000dEaD "$DEPLOY" op_sepolia 2>&1)"
+check "parity guard is op_mainnet only" bash -c '! grep -q "^parity=" <<<"$1"' _ "$out"
+
+# --- launch-op-mainnet 2.2: only cryoshield.app on op_mainnet; no v1 record on chain 10 ----------------
+for ids in "cryoshield.app,cryoshield-web-dev.fly.dev" "cryoshield-web-dev.fly.dev" "localhost" "cryoshield.app.evil.example" \
+  "cryoshield.app cryoshield.app"; do
+  out="$(mainnet_plan RP_IDS="$ids" 2>&1)"; rc=$?
+  check "op_mainnet refuses RP_IDS='$ids'" test "$rc" -ne 0
+  check "op_mainnet RP ID refusal explains cryoshield.app only" grep -q "op_mainnet deploys only the cryoshield.app wallet pair" <<<"$out"
+  out="$(plan BROADCAST=1 DEPLOYER_ACCOUNT=a CRYOSHIELD_MAINNET_GATE=approved:10 OP_MAINNET_RPC_URL=x RP_IDS="$ids" "$DEPLOY" op_mainnet 2>&1)"; rc=$?
+  check "op_mainnet gated broadcast still refuses RP_IDS='$ids'" test "$rc" -ne 0
+done
+out="$(mainnet_plan RP_IDS=cryoshield.app 2>&1)"; rc=$?
+check "op_mainnet accepts RP_IDS=cryoshield.app" test "$rc" -eq 0
+mkdir -p "$RECS/v1on10" && cp "$REAL_SEPOLIA" "$RECS/v1on10/11155420.json"
+jq '.chainId = 10' "$REAL_SEPOLIA" >"$RECS/v1on10/10.json" # has a top-level v1 "address"
+out="$(mainnet_plan DEPLOY_RECORDS_DIR="$RECS/v1on10" 2>&1)"; rc=$?
+check "op_mainnet refuses a 10.json with a v1 address" test "$rc" -ne 0
+check "v1-on-mainnet refusal names v1" grep -q "VaultRegistry v1 entry, but v1 must not exist on op_mainnet" <<<"$out"
+out="$(run DEPLOYER_ADDRESS=0x000000000000000000000000000000000000dEaD OP_MAINNET_RPC_URL=http://rpc.invalid DEPLOY_RECORDS_DIR="$RECS/v1on10" "$DEPLOY" op_mainnet 2>&1)"; rc=$?
+check "v1-on-mainnet refusal comes before any RPC call" bash -c '[[ $1 -ne 0 ]] && ! grep -q "cannot reach" <<<"$2"' _ "$rc" "$out"
+jq 'del(.address, .deployBlock, .txHash, .abiHash) | .chainId = 10 | del(.contracts.wallets["cryoshield-web-dev.fly.dev"])' \
+  "$REAL_SEPOLIA" >"$RECS/v1on10/10.json"
+out="$(mainnet_plan DEPLOY_RECORDS_DIR="$RECS/v1on10" 2>&1)"; rc=$?
+check "op_mainnet accepts a v2-only 10.json" test "$rc" -eq 0
+
+# --- launch-op-mainnet 2.3: Blockscout AND Sourcify per contract, keyless, after the record -------------
+out="$(plan BROADCAST=1 DEPLOYER_ACCOUNT=a CRYOSHIELD_MAINNET_GATE=approved:10 OP_MAINNET_RPC_URL=x "$DEPLOY" op_mainnet 2>&1)"; rc=$?
+check "op_mainnet gated broadcast plan succeeds" test "$rc" -eq 0
+check "verify-args-sourcify line" grep -q -- "^verify-args-sourcify: --verifier sourcify$" <<<"$out"
+check "verification runs after the record is written" grep -q "^verify-order: after deployments/10.json is written$" <<<"$out"
+for c in "VaultRegistryV2" "CryoShieldSmartWalletFactory\[cryoshield.app\]" "CryoShieldSmartWallet\[cryoshield.app\]"; do
+  check "op_mainnet verifies $c on blockscout" grep -q "^verify: $c via blockscout https://explorer.optimism.io/api/$" <<<"$out"
+  check "op_mainnet verifies $c on sourcify" grep -q "^verify: $c via sourcify$" <<<"$out"
+done
+check "op_mainnet verify plan is exactly 3 contracts x 2 verifiers" test "$(grep -c '^verify: ' <<<"$out")" -eq 6
+check "op_mainnet verify plan has no key or etherscan" bash -c '! grep -E "^verify" <<<"$1" | grep -v "^verify-env: " | grep -qiE "key|etherscan"' _ "$out"
+out="$(plan BROADCAST=1 DEPLOYER_ACCOUNT=a OP_SEPOLIA_RPC_URL=x "$DEPLOY" op_sepolia 2>&1)"
+for c in "VaultRegistryV2" "CryoShieldSmartWalletFactory\[cryoshield.app\]" "CryoShieldSmartWallet\[cryoshield-web-dev.fly.dev\]"; do
+  check "op_sepolia verifies $c on blockscout and sourcify" bash -c 'grep -q "^verify: $1 via blockscout https://testnet-explorer.optimism.io/api/$" <<<"$2" && grep -q "^verify: $1 via sourcify$" <<<"$2"' _ "$c" "$out"
+done
+check "op_sepolia verify plan is 5 contracts x 2 verifiers" test "$(grep -c '^verify: ' <<<"$out")" -eq 10
+check "op_sepolia v1 is never re-verified (kept, not redeployed)" bash -c '! grep -q "^verify: VaultRegistry via" <<<"$1"' _ "$out"
+out="$(mainnet_plan 2>&1)"
+check "simulation plans no verification" bash -c '! grep -q "^verify: " <<<"$1"' _ "$out"
+out="$(plan RPC_URL=x "$DEPLOY" anvil 2>&1)"
+check "anvil plans no verification (no explorer)" bash -c '! grep -q "^verify: " <<<"$1"' _ "$out"
+check "deploy.sh verify loop runs every queued contract through every verifier" grep -q 'for verifier in "${VERIFIERS\[@\]}"' "$DEPLOY"
+
 # --- refusals ------------------------------------------------------------------------------------
 for n in op_sepolia op_mainnet arbitrum_sepolia arbitrum_one; do
   out="$(plan DEPLOYER_PRIVATE_KEY=0x01 DEPLOYER_ACCOUNT=a OP_SEPOLIA_RPC_URL=x OP_MAINNET_RPC_URL=x ARBITRUM_SEPOLIA_RPC_URL=x ARBITRUM_ONE_RPC_URL=x "$DEPLOY" "$n" 2>&1)"; rc=$?
@@ -148,7 +234,7 @@ check "missing RPC message names OP_SEPOLIA_RPC_URL" grep -q OP_SEPOLIA_RPC_URL 
 PORT=8547
 anvil --port "$PORT" --silent &
 ANVIL_PID=$!
-trap 'kill $ANVIL_PID 2>/dev/null || true' EXIT
+trap 'kill $ANVIL_PID 2>/dev/null || true; rm -rf "$RECS"' EXIT
 for _ in $(seq 1 50); do cast chain-id --rpc-url "http://127.0.0.1:$PORT" >/dev/null 2>&1 && break; sleep 0.1; done
 out="$(run DEPLOYER_ADDRESS=0x000000000000000000000000000000000000dEaD OP_SEPOLIA_RPC_URL=http://127.0.0.1:$PORT "$DEPLOY" op_sepolia 2>&1)"; rc=$?
 check "wrong chain exits non-zero" test "$rc" -ne 0
@@ -168,7 +254,7 @@ parity() {
   [[ -n "$want" && "$want" == "$have" ]] || return 1
   local key
   for key in $(jq -r '.presets[].foundryKey' "$1"); do
-    grep -qE "^$key[[:space:]]*=" foundry.toml || return 1
+    grep -qE "^${key}[[:space:]]*=" foundry.toml || return 1
   done
 }
 check "deploy.sh presets match config/chain-presets.json" parity "$PRESETS_JSON"

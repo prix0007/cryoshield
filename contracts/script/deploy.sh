@@ -13,6 +13,7 @@
 # Usage:
 #   script/deploy.sh anvil              # local node (default RPC http://127.0.0.1:8545), unlocked sender, no keys
 #   script/deploy.sh op_sepolia         # testnet (chain 11155420); simulation only unless BROADCAST=1
+#   script/deploy.sh op_mainnet         # OP Mainnet (chain 10): guarded and gated, see "OP Mainnet" below
 #   script/deploy.sh <preset>           # any preset from --list-presets
 #   script/deploy.sh --list-presets     # print "<name> <chainId> <rpcEnvVar> <verifierUrl>" per preset
 #   script/deploy.sh --predict          # print the v1 CREATE2 address (no RPC)
@@ -30,12 +31,40 @@
 #   CRYOSHIELD_MAINNET_GATE=approved:<chainId>   required to BROADCAST to any mainnet preset (kind != local/testnet;
 #                        e.g. approved:10 for op_mainnet, approved:42161 for arbitrum_one). Task 8.1. Fail-closed.
 #                        An accident guard against broadcasting to a mainnet by mistake, NOT access control.
-#   DEPLOY_PLAN_ONLY=1   print the resolved preset, RP IDs and forge args, then exit before any RPC call (tests)
+#   DEPLOY_PLAN_ONLY=1   print the resolved preset, RP IDs, forge args and verification plan, then exit before any RPC
+#                        call (tests)
+#   DEPLOY_RECORDS_DIR   tests only: read records from this directory instead of deployments/. Plans and simulations
+#                        only; a broadcast refuses it.
 # Anvil overrides: RPC_URL, ANVIL_SENDER (default: anvil account #0, sent via --unlocked; no key involved).
 #
-# Order of checks: preset -> credentials -> RP IDs -> RPC chain ID (before any simulation or send) -> v1 -> v2/wallets.
+# Order of checks: preset -> credentials (incl. the mainnet gate) -> RP IDs -> no v1 in the record where v1 must not
+# exist -> op_mainnet guards -> RPC chain ID (before any simulation or send) -> v1 -> v2/wallets -> record -> verify.
 # Idempotency: a CREATE2 address commits to the full init code, so code already at a predicted address is this build.
 # An already-deployed contract must already be in deployments/<chainId>.json; otherwise the script fails loudly.
+#
+# Verification (keyless, after the record is written): every newly deployed contract on the preset's Blockscout AND on
+# Sourcify. A failure exits 2, keeps the record and prints the retry commands. Etherscan is optional and separate:
+# script/verify-etherscan.sh <chainId> (Etherscan V2; key only from ETHERSCAN_API_KEY, passed to curl through stdin).
+#
+# OP Mainnet (OpenSpec launch-op-mainnet; runbook in its design.md). Before any RPC call, `op_mainnet`:
+#   - accepts only RP_IDS=cryoshield.app (the default); the dev RP ID's pair and v1 are never deployed on chain 10;
+#   - refuses a deployments/10.json that has a top-level v1 `address`;
+#   - D1 address parity: refuses unless the predicted VaultRegistryV2, cryoshield.app factory and implementation equal
+#     deployments/11155420.json (same CREATE2 deployer, salts and init code => same addresses). A mismatch names the
+#     contract: contracts/src, solc settings, metadata or remappings drifted from the reviewed OP Sepolia build. Deploy
+#     from a clean tree of the release commit instead; never "fix" the record.
+# The run:
+#   1. simulate: DEPLOYER_ACCOUNT=cryoshield-deployer OP_MAINNET_RPC_URL=https://mainnet.optimism.io script/deploy.sh op_mainnet
+#   2. broadcast (after the recorded founder approval): same, plus BROADCAST=1 CRYOSHIELD_MAINNET_GATE=approved:10
+#      -> writes deployments/10.json (contracts.vaultRegistryV2 and contracts.wallets["cryoshield.app"] only), then
+#      verifies on Blockscout and Sourcify (exit 2 = deployed and recorded, verification failed: run the retry lines)
+#   3. optional: ETHERSCAN_API_KEY in the environment, then script/verify-etherscan.sh 10
+# Someone deployed first: anyone can send our init code to the CREATE2 deployer; the result is our exact contracts at our
+# addresses, with no owner or admin, so it is harmless. The script then stops with "already deployed ... but
+# deployments/10.json has no matching ..." (it never adopts a deployment silently). Response: write deployments/10.json
+# by hand with the actual deploy tx hash and block, then run script/check-deployments.sh 10, which proves the tx went to
+# the CREATE2 deployer, its init code is this build's and the runtime code (immutables included) matches; review it in
+# the record PR. A plain `cast code` vs `forge inspect … deployedBytecode` diff is not enough: it ignores immutables.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -129,6 +158,8 @@ read -r _ EXPECTED_CHAIN_ID RPC_ENV VERIFIER_URL KIND < <(awk -v n="$NETWORK" '$
 # (the anvil record is then reproducible byte for byte, and public deploys never race each other).
 args=(--slow)
 verify_args=()
+sourcify_args=()
+VERIFIERS=()
 if [[ "$NETWORK" == "anvil" ]]; then
   RPC_URL="${RPC_URL:-http://127.0.0.1:8545}"
   args+=(--unlocked --sender "${ANVIL_SENDER:-0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266}" --broadcast)
@@ -148,10 +179,14 @@ else
       die "$NETWORK (chain $EXPECTED_CHAIN_ID, kind ${KIND:-unset}) broadcast is gated (harden-gas-sponsorship task 8.1): set CRYOSHIELD_MAINNET_GATE=approved:$EXPECTED_CHAIN_ID only after the recorded founder approval"
     fi
     args+=(--account "$DEPLOYER_ACCOUNT" --broadcast)
-    # Keyless Blockscout verification. It runs as a separate step after the deployment record is written, so a
-    # verifier failure can never leave a live deployment without a record. Etherscan V2 needs a newer forge (post-MVP).
+    # Keyless verification on Blockscout and Sourcify (launch-op-mainnet D2). It runs as a separate step after the
+    # deployment record is written, so a verifier failure can never leave a live deployment without a record.
+    # Etherscan V2 is a separate, optional step with its own key handling: script/verify-etherscan.sh.
     if [[ "$VERIFIER_URL" != "-" ]]; then
       verify_args=(--verifier blockscout --verifier-url "$VERIFIER_URL")
+      sourcify_args=(--verifier sourcify)
+      # Entries: "<label>|<forge verifier args>" (no spaces inside an argument).
+      VERIFIERS=("blockscout $VERIFIER_URL|${verify_args[*]}" "sourcify|${sourcify_args[*]}")
     fi
   elif [[ -n "${DEPLOYER_ACCOUNT:-}" ]]; then
     args+=(--account "$DEPLOYER_ACCOUNT")
@@ -167,13 +202,76 @@ V1_POLICY="$(v1_policy "$NETWORK")"
 RP_IDS_CSV="$(rp_ids_csv "${RP_IDS:-$(default_rp_ids "$NETWORK")}")" ||
   die "set RP_IDS (WebAuthn RP IDs to deploy wallet pairs for) for $NETWORK"
 
+# Deployment records directory. DEPLOY_RECORDS_DIR swaps it for plans and simulations only (tests use a patched copy
+# of a record); a broadcast always reads and writes the committed deployments/.
+RECORDS_DIR=deployments
+if [[ -n "${DEPLOY_RECORDS_DIR:-}" ]]; then
+  [[ "$DO_BROADCAST" != "1" ]] ||
+    die "DEPLOY_RECORDS_DIR is for plans and simulations only; a broadcast always uses contracts/deployments/"
+  RECORDS_DIR="$DEPLOY_RECORDS_DIR"
+fi
+
+# v1 must not be recorded on a chain where it must not exist (checked again after the chain-ID check).
+if [[ "$V1_POLICY" == none && -f "$RECORDS_DIR/$EXPECTED_CHAIN_ID.json" ]]; then
+  V1_RECORDED="$(jq -r '.address // empty' "$RECORDS_DIR/$EXPECTED_CHAIN_ID.json")" ||
+    die "cannot parse $RECORDS_DIR/$EXPECTED_CHAIN_ID.json"
+  [[ -z "$V1_RECORDED" ]] ||
+    die "$RECORDS_DIR/$EXPECTED_CHAIN_ID.json has a VaultRegistry v1 entry, but v1 must not exist on $NETWORK"
+fi
+
+# ---------------------------------------------------------------------------------------------------------------
+# OP Mainnet guards (launch-op-mainnet D1, tasks 2.1 and 2.2). No RPC: they run before the chain-ID check.
+# ---------------------------------------------------------------------------------------------------------------
+PRED=""
+if [[ "$NETWORK" == op_mainnet ]]; then
+  [[ "$RP_IDS_CSV" == "cryoshield.app" ]] ||
+    die "op_mainnet deploys only the cryoshield.app wallet pair (launch-op-mainnet D1); refusing RP_IDS=$RP_IDS_CSV"
+  # Address parity: the CREATE2 addresses depend only on the CREATE2 deployer, the constant salts and the init code,
+  # so this build must predict exactly what OP Sepolia recorded. A difference means the bytecode, the compiler
+  # settings or the remappings drifted from the reviewed deployment.
+  PARITY_REF="$RECORDS_DIR/11155420.json"
+  [[ -f "$PARITY_REF" ]] || die "address parity: reference record $PARITY_REF is missing; refusing op_mainnet"
+  PRED="$(predict_v2 "$RP_IDS_CSV")"
+  read -r _ P_REG <<<"$(awk '$1 == "registry"' <<<"$PRED")"
+  read -r _ _ P_FACTORY P_IMPL _ <<<"$(awk '$1 == "wallet" && $2 == "cryoshield.app"' <<<"$PRED")"
+  [[ -n "${P_REG:-}" && -n "${P_FACTORY:-}" && -n "${P_IMPL:-}" ]] || die "address parity: could not predict the addresses"
+  PARITY_BAD=0
+  parity() { # <name> <predicted> <jq path in the reference record>
+    local want
+    want="$(jq -r "$3 // empty" "$PARITY_REF")" || die "cannot parse $PARITY_REF"
+    if [[ "$(tr '[:upper:]' '[:lower:]' <<<"$2")" != "$(tr '[:upper:]' '[:lower:]' <<<"$want")" ]]; then
+      echo "ERROR: address parity: $1 predicted $2 but $PARITY_REF records ${want:-nothing}" >&2
+      PARITY_BAD=1
+    fi
+  }
+  parity "VaultRegistryV2" "$P_REG" '.contracts.vaultRegistryV2.address'
+  parity "cryoshield.app factory" "$P_FACTORY" '.contracts.wallets["cryoshield.app"].factory'
+  parity "cryoshield.app implementation" "$P_IMPL" '.contracts.wallets["cryoshield.app"].implementation'
+  [[ "$PARITY_BAD" == 0 ]] ||
+    die "op_mainnet refused before any RPC call: this build's CREATE2 addresses differ from OP Sepolia (contracts/src, solc settings, metadata or remappings drifted; launch-op-mainnet D1). Nothing was simulated or sent."
+  echo "parity=ok VaultRegistryV2 $P_REG, cryoshield.app factory $P_FACTORY, implementation $P_IMPL equal $PARITY_REF"
+fi
+
 if [[ "${DEPLOY_PLAN_ONLY:-0}" == "1" ]]; then
   echo "network=$NETWORK chainId=$EXPECTED_CHAIN_ID rpcEnv=$RPC_ENV broadcast=$DO_BROADCAST kind=${KIND:-unset}"
   echo "v1=$V1_POLICY"
   echo "rpIds=$RP_IDS_CSV"
   echo "forge-args: ${args[*]}"
   echo "verify-args: ${verify_args[*]:-}"
+  echo "verify-args-sourcify: ${sourcify_args[*]:-}"
   echo "verify-env: ${VERIFY_ENV[*]}"
+  if ((${#VERIFIERS[@]})); then
+    # Every contract this run deploys, through every keyless verifier (v1 is never redeployed on a public network).
+    echo "verify-order: after $RECORDS_DIR/$EXPECTED_CHAIN_ID.json is written"
+    IFS=',' read -r -a PLAN_RPIDS <<<"$RP_IDS_CSV"
+    PLAN_CONTRACTS=(VaultRegistryV2)
+    for RPID in "${PLAN_RPIDS[@]}"; do
+      PLAN_CONTRACTS+=("CryoShieldSmartWalletFactory[$RPID]" "CryoShieldSmartWallet[$RPID]")
+    done
+    for c in "${PLAN_CONTRACTS[@]}"; do
+      for verifier in "${VERIFIERS[@]}"; do echo "verify: $c via ${verifier%%|*}"; done
+    done
+  fi
   exit 0
 fi
 
@@ -184,7 +282,7 @@ CHAIN_ID="$(cast chain-id --rpc-url "$RPC_URL")" || die "cannot reach $RPC_ENV"
 
 "$ROOT/script/export-abi.sh" >/dev/null
 
-RECORD="deployments/$CHAIN_ID.json"
+RECORD="$RECORDS_DIR/$CHAIN_ID.json"
 if [[ -f "$RECORD" ]]; then RECORD_JSON="$(cat "$RECORD")"; else RECORD_JSON='{}'; fi
 VERIFY_QUEUE=() # entries: "<address>|<src:Contract>|<constructor-args or ->"
 
@@ -237,7 +335,7 @@ esac
 # ---------------------------------------------------------------------------------------------------------------
 # VaultRegistryV2 + one wallet pair per RP ID
 # ---------------------------------------------------------------------------------------------------------------
-PRED="$(predict_v2 "$RP_IDS_CSV")"
+[[ -n "$PRED" ]] || PRED="$(predict_v2 "$RP_IDS_CSV")"
 REG="$(awk '$1 == "registry" {print $2}' <<<"$PRED")"
 [[ -n "$REG" ]] || die "could not predict VaultRegistryV2 address"
 echo "network=$NETWORK chainId=$CHAIN_ID rpIds=$RP_IDS_CSV"
@@ -292,19 +390,22 @@ for RPID in "${RPID_LIST[@]}"; do
     die "wallet pair for $RPID not recorded after broadcast"
 done
 
-mkdir -p deployments
+mkdir -p "$RECORDS_DIR"
 jq --sort-keys . <<<"$RECORD_JSON" >"$RECORD"
 echo "wrote $RECORD"
 cat "$RECORD"
 
-if ((${#verify_args[@]})) && ((${#VERIFY_QUEUE[@]})); then
+if ((${#VERIFIERS[@]})) && ((${#VERIFY_QUEUE[@]})); then
   FAILED=()
   for item in "${VERIFY_QUEUE[@]}"; do
     IFS='|' read -r ADDR TARGET CARGS <<<"$item"
-    VERIFY_CMD=("${VERIFY_ENV[@]}" forge verify-contract "$ADDR" "$TARGET" --chain "$CHAIN_ID" "${verify_args[@]}" --watch)
-    [[ "$CARGS" == "-" ]] || VERIFY_CMD+=(--constructor-args "$CARGS")
-    echo "verifying: ${VERIFY_CMD[*]}"
-    "${VERIFY_CMD[@]}" || FAILED+=("${VERIFY_CMD[*]}")
+    for verifier in "${VERIFIERS[@]}"; do
+      read -r -a VARGS <<<"${verifier#*|}"
+      VERIFY_CMD=("${VERIFY_ENV[@]}" forge verify-contract "$ADDR" "$TARGET" --chain "$CHAIN_ID" "${VARGS[@]}" --watch)
+      [[ "$CARGS" == "-" ]] || VERIFY_CMD+=(--constructor-args "$CARGS")
+      echo "verifying (${verifier%%|*}): ${VERIFY_CMD[*]}"
+      "${VERIFY_CMD[@]}" || FAILED+=("${VERIFY_CMD[*]}")
+    done
   done
   if ((${#FAILED[@]})); then
     echo "ERROR: deployed and recorded, but explorer verification FAILED. Retry:" >&2
