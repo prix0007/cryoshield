@@ -22,7 +22,7 @@ The live sponsorship policy for each chain SHALL set:
 - a per-sender operation-count limit (lifetime on testnet; resetting monthly on mainnet, so a long-lived user is never locked out for good);
 - a per-user-operation spend limit.
 
-The starting values SHALL be those in design D2 of `harden-gas-sponsorship`: testnet, 50 operations per sender lifetime, about 0.05 ETH (in USD) and 500 operations globally per day, and $0.50 per operation; mainnet, 50 operations and $1.00 per sender per month, $20 and 2,000 operations globally per day, and **$0.50 per operation** (founder decision 2026-10-09, `launch-op-mainnet` design D8; previously $0.10). The founder's planned OP Mainnet values (per user $1 and 10 operations, reset monthly; global $30 and about 500 operations, reset daily) and the live values SHALL be recorded in `apps/web/docs/paymaster-policy.md` at `launch-op-mainnet` task 1.2 and whenever they change.
+The starting values SHALL be those in design D2 of `harden-gas-sponsorship`: testnet, 50 operations per sender lifetime, about 0.05 ETH (in USD) and 500 operations globally per day, and $0.50 per operation; mainnet (founder decision 2026-10-09, `launch-op-mainnet` design D8; previously 50 operations a month, $20 and 2,000 operations a day, and $0.10 per operation), 10 operations and $1.00 per sender per month, $30 and about 500 operations globally per day, and **$0.50 per operation**. The live values SHALL be recorded in `apps/web/docs/paymaster-policy.md` at `launch-op-mainnet` task 1.2 and whenever they change.
 
 #### Scenario: Global cap reached
 - **WHEN** the day's sponsored spend or count reaches the global limit (manual runbook check against the dashboard, task 1.1; the app side is unit-tested under "Refusal is visible and safe")
