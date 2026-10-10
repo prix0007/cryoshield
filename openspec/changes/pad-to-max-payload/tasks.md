@@ -18,13 +18,13 @@
 
 ## 3. Web app [fe]
 
-- [ ] 3.1 Test first (`test/vault/adapter.test.ts`): `createVaultBlob` with a 12-word and a 24-word seed gives equal blob lengths; `editVaultBlob` and `addKeyToBlob` write the maximum for their key set; Archive and clear keeps the length. Then no `src` change is needed (padding lives in vault-crypto). Verify: `pnpm --filter @cryoshield/web test`, typecheck, lint, verify-build.
+- [x] 3.1 Test first (`test/vault/adapter.test.ts`): `createVaultBlob` with a 12-word and a 24-word seed gives equal blob lengths; `editVaultBlob` and `addKeyToBlob` write the maximum for their key set; Archive and clear keeps the length. Then no `src` change is needed (padding lives in vault-crypto). Verify: `pnpm --filter @cryoshield/web test`, typecheck, lint, verify-build.
 - [ ] 3.2 E2E covering create, edit and add-key (chromium; mobile if feasible). Verify: Playwright.
 
 ## 4. Gas and cost [cry]
 
-- [ ] 4.1 Measure: forge snapshots for 526- and 974-byte create and update (`test/GasV2.t.sol`, `script/gas-md.sh`, `GAS.md`); the anvil full-stack 12-word / 24-word create and edit before and after (`test-int/gas.int.test.ts`); OP Mainnet fee readings. Verify: `forge test`, `script/gas-md.sh --check`, `pnpm --filter @cryoshield/web test:int`.
-- [ ] 4.2 `apps/web/docs/costs.md`: before/after cost per create and edit, the per-operation, per-user and global caps re-checked. Verify: review.
+- [x] 4.1 Measure: forge snapshots for 526- and 974-byte create and update (`test/GasV2.t.sol`, `script/gas-md.sh`, `GAS.md`); the anvil full-stack 12-word / 24-word create and edit before and after (`test-int/gas.int.test.ts`); OP Mainnet fee readings. Verify: `forge test`, `script/gas-md.sh --check`, `pnpm --filter @cryoshield/web test:int`.
+- [x] 4.2 `apps/web/docs/costs.md`: before/after cost per create and edit, the per-operation, per-user and global caps re-checked. Verify: review.
 
 ## 5. Recovery tool [re]
 

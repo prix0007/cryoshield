@@ -121,21 +121,25 @@ The previous `v1.json` had SHA-256 `f9a9ee670d5c83663281c3184d237888255eee79ef59
 
 ### D7. Gas and cost
 
-Measured, not estimated, wherever possible:
+Measured, not estimated, wherever possible (the earlier draft's "+$0.0002 per edit" figure assumed registry storage
+only; the full-stack measurement below supersedes it):
 
 - **Registry, forge** (`snapshots/VaultRegistryV2.json`, full tx, isolated): `createVault` 526 B → 974 B: 616,314 →
   934,241 gas (+317,927); `updateVault` 526 B → 974 B: 127,700 → 206,228 gas (+78,528). The 1024-byte figures
   (957,198 / 212,084) are the ceiling. Almost all of the difference is storage: 14 more 32-byte slots.
-- **Full stack, anvil** (`apps/web/test-int/gas.int.test.ts`, EntryPoint v0.6, software P-256): see
-  `apps/web/docs/costs.md`; before/after for a 12-word and a 24-word seed.
+- **Full stack, anvil** (`apps/web/test-int/gas.int.test.ts`, EntryPoint v0.6, software P-256): create with a
+  12-word seed 1,259,328 → 1,618,847 gas (489 → 1,001 B), edit 455,258 → 548,707; 24-word create 1,306,516 →
+  1,615,457 (553 → 1,001 B), edit 465,571 → 551,609. About 702 gas per added byte for create and 183 for edit.
 - **OP Mainnet fees** (read 2026-10-09 21:04 UTC, block 157,990,537): L2 gas price 1,000,774 wei, L1 base fee
   0.104 gwei, blob base fee 0.0056 gwei, ETH $2,479.03 (Chainlink). `getL1FeeUpperBound` for the measured bundle sizes
   plus 576 bytes (a 442 → 1018-byte blob, the founder's real key shape): create 3.545e10 → 4.236e10 wei, edit
   2.809e10 → 3.503e10 wei (+6.9e9 wei ≈ $0.000017 each).
-- **Result:** an edit costs about $0.0002 more; a create about $0.0008–0.0010 more (one time per vault). Details,
-  caps and the budget in `apps/web/docs/costs.md`. The $0.50 per-operation cap, the $1 per-user and the registry's
-  1024-byte limit hold with large margins; the global daily $30 cap during a ×10 gas spike was already marginal and
-  becomes slightly more so (costs.md).
+- **Result** (founder's key shape, 442 → 1,018 B): create 987,350 → ~1,391,809 L2 gas, $0.00254 → $0.00356
+  (**+$0.0010**, once per vault); edit 236,716 → ~341,846, $0.00066 → $0.00093 (**+$0.00028**). The overwatcher's
+  "well under $0.001 per save" holds for edits; a create is about $0.001 more. With Pimlico's $0.0105 fee per
+  operation the totals are about $0.0144 per create and $0.0115 per edit. The $0.50 per-operation cap (9× headroom at
+  a ×10 spike), the $1 per-user cap and the registry's 1024-byte limit hold; the global $30 daily cap during a ×10
+  spike was already the tightest case and is reached about 70 creates earlier (costs.md).
 
 ## Threat model
 

@@ -96,5 +96,5 @@ minimisation"). O3 needs its own OpenSpec change if accepted.
 
 **O3 accepted (founder, 2026-10-10, mainnet-gate review):** OpenSpec change `pad-to-max-payload` pads every payload to
 `64 × floor((1024 − overhead) / 64)` bytes, keeping version 0x01. A 2-key vault with 64-byte credential IDs is now
-974 bytes whatever it holds (was 526 for a 12-word and 590 for a 24-word seed). Measured cost: about $0.0002 more per
+974 bytes whatever it holds (was 526 for a 12-word and 590 for a 24-word seed). Measured cost: about $0.0003 more per
 edit and $0.001 more per create (`apps/web/docs/costs.md`). F2 stays open and separate (that change's design D6).
