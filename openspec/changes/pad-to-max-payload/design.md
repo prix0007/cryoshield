@@ -162,6 +162,46 @@ keep their old lengths forever.
   only the padded length changes.
 - **Arweave mirror:** items grow to at most 1024 bytes, still far under Turbo's free-upload size.
 
-## Security review
+## Security review (task 6.1, 2026-10-10)
 
-See tasks.md section 6; the record is below once done.
+**Scope:** `packages/vault-crypto/src/{padding,format,vault}.ts`, `scripts/gen-vectors.py`, `test-vectors/v1.json`,
+`docs/spec/vault-format-v1.md`, `tools/recover` (decoder unchanged; test-only writer), the web call sites
+(`apps/web/src/vault/adapter.ts`, `ui/vault-meta.ts`; unchanged). Reviewer: applied-cryptography engineer (internal;
+CryoShield has no external audit).
+
+**Threat addressed (F3).** The payload length was a public side channel on the secret: 64-byte steps showed a size
+class (526 vs 590 bytes for a 12- vs 24-word seed with two 64-byte credential IDs). Now
+`len(blob) = overhead + 64 × floor((1024 − overhead) / 64)`, and `overhead` is a function of the RP ID, the
+credential-ID lengths, N and the mode only. Proven by the property test in `test/pad-to-max.test.ts` (random RP IDs,
+2..8 credential IDs of 1..128 bytes, both modes, two random secrets) and by `lengthHidingCases` in both languages.
+
+**What stays public** (unchanged, documented in the threat model above and in `docs/compliance`): N and the mode, the
+credential IDs and their lengths, the RP ID, the number of versions and the block time of each write, the key count at
+each version (add-key changes N and so the length), and the old lengths of every version written before this change
+(testnet only). A blob shorter than its maximum identifies a pre-change (or non-conforming) writer, not the secret.
+
+**Invariants checked.**
+
+| Invariant | Result |
+|---|---|
+| Wrap AAD and payload AAD | unchanged code paths (`wrapAad`, `payloadAad`); every existing tamper vector still fails as before |
+| Nonces and key schedule | unchanged; padding draws no randomness; the §11 draw order and every rng stream in the vectors are the same |
+| Same data key, fresh payload nonce on update/add-key | unchanged (`drawFreshPayloadNonce`) |
+| Zero-pad and length-prefix checks | TS `unpad` and Python `_unpad` both reject a prefix > len − 2 and OR every pad byte; exercised by the authenticated vectors `nonzero-pad-byte` and `length-prefix-overrun` in both suites |
+| No new oracle | `MALFORMED` from padding is reachable only after AES-GCM authenticated the payload under the data key; unauthenticated tampering still gives `AUTH_FAILED` / `NO_MATCHING_KEY` |
+| Size cap | the padded length is computed from the key set of the blob being written and the secret is checked against `maxPayloadBytes` first, so a blob never exceeds 1024 bytes; `pad()` also refuses a too-small or non-64-multiple target (`INVALID_ARGUMENT`, unreachable from the public API) |
+| Zeroization | the larger `padded` buffer is still wiped in `finally` in all three writers |
+| Constant-time | the pad check ORs every byte; its loop length is the public padded length |
+| Decoder compatibility | `legacyPaddingCases` are byte-identical to the previous `v1.json` blobs (SHA-256 pinned in the generator) and open in both decoders; no decoder code changed |
+
+**Findings.**
+
+| ID | Severity | Finding | Status |
+|---|---|---|---|
+| P1 | LOW | Every OP Sepolia vault version written before this change keeps its size class in public history forever. | Accepted; testnet only (no mainnet vault exists). Documented in `legal-analysis.md`. |
+| P2 | LOW (test-only) | The recovery tool's test-only writer checked add-key capacity as "old blob length + new entry ≤ 1024". With maximum padding that refuses every add-key. | Fixed: it now checks the secret against `maxPayloadBytes(N + 1)`, as the spec and the library do. The shipped tool never writes. |
+| P3 | INFO | Higher gas per write raises the pre-charge per create; during a ×10 spike the global $30 daily cap is reached ~70 creates earlier. | Availability only; recorded in costs.md. |
+| P4 | INFO | F2 (payload-nonce derivation) is unaffected and still open; the review's suggested version-keyed nonce would repeat across retried saves (D6). | Flagged for a separate decision. |
+
+**Verdict:** no CRITICAL, HIGH or MEDIUM findings. The change removes the only public signal about the secret's
+length without touching the key schedule, AAD or nonces.

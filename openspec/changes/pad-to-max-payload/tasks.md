@@ -19,7 +19,7 @@
 ## 3. Web app [fe]
 
 - [x] 3.1 Test first (`test/vault/adapter.test.ts`): `createVaultBlob` with a 12-word and a 24-word seed gives equal blob lengths; `editVaultBlob` and `addKeyToBlob` write the maximum for their key set; Archive and clear keeps the length. Then no `src` change is needed (padding lives in vault-crypto). Verify: `pnpm --filter @cryoshield/web test`, typecheck, lint, verify-build.
-- [ ] 3.2 E2E covering create, edit and add-key (chromium; mobile if feasible). Verify: Playwright.
+- [x] 3.2 E2E covering create, edit and add-key (chromium; mobile if feasible). Verify: Playwright.
 
 ## 4. Gas and cost [cry]
 
@@ -32,4 +32,4 @@
 
 ## 6. Security review [sec]
 
-- [ ] 6.1 Review against the threat model in design.md: what padding hides and what stays public; AAD and nonce invariants unchanged; zero-pad and length-prefix checks in both decoders; no new oracle; F2 status. Record in design.md → Security review. Verify: no open CRITICAL or HIGH.
+- [x] 6.1 Review against the threat model in design.md: what padding hides and what stays public; AAD and nonce invariants unchanged; zero-pad and length-prefix checks in both decoders; no new oracle; F2 status. Record in design.md → Security review. Verify: no open CRITICAL or HIGH.
