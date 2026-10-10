@@ -9,10 +9,10 @@
 
 ## 2. vault-crypto [cry]
 
-- [ ] 2.1 Tests first (`test/pad-to-max.test.ts`): blob length equals `overhead + 64 × floor((1024 − overhead) / 64)` for random RP IDs, 2..8 credential IDs of random lengths, both modes and two random secrets (property); create, update and add-key write the maximum for their key set; add-key re-pads to the N + 1 maximum and refuses `VAULT_TOO_LARGE` when the secret no longer fits; `pad` refuses a target that is too small or not a multiple of 64; `unit.test.ts` 5.1 expects 640 + 16. Verify: they fail.
-- [ ] 2.2 `pad(secret, target)` and `paddedLengthFor` (`padding.ts`, `format.ts`); `createVault`, `updatePayload`, `addKey` pad to the maximum (`vault.ts`). Verify: 2.1 passes.
-- [ ] 2.3 Vector tests first (`test/vectors.test.ts`): `lengthHidingCases`, `legacyPaddingCases`, `paddedLength`, `expectedBlobLength`, the new open cases. Verify: they fail on the old file.
-- [ ] 2.4 `scripts/gen-vectors.py`: maximum padding, the new vaults and sections, the legacy blobs generated with the old rule and SHA-256-pinned against the previous file. Regenerate `test-vectors/v1.json` and `docs/spec/payload-vectors.json`. Verify: `gen-vectors.py --check`, `gen-payload-vectors.py --check`, `pnpm --filter @cryoshield/vault-crypto test`.
+- [x] 2.1 Tests first (`test/pad-to-max.test.ts`): blob length equals `overhead + 64 × floor((1024 − overhead) / 64)` for random RP IDs, 2..8 credential IDs of random lengths, both modes and two random secrets (property); create, update and add-key write the maximum for their key set; add-key re-pads to the N + 1 maximum and refuses `VAULT_TOO_LARGE` when the secret no longer fits; `pad` refuses a target that is too small or not a multiple of 64; `unit.test.ts` 5.1 expects 640 + 16. Verify: they fail.
+- [x] 2.2 `pad(secret, target)` and `paddedLengthFor` (`padding.ts`, `format.ts`); `createVault`, `updatePayload`, `addKey` pad to the maximum (`vault.ts`). Verify: 2.1 passes.
+- [x] 2.3 Vector tests first (`test/vectors.test.ts`): `lengthHidingCases`, `legacyPaddingCases`, `paddedLength`, `expectedBlobLength`, the new open cases. Verify: they fail on the old file.
+- [x] 2.4 `scripts/gen-vectors.py`: maximum padding, the new vaults and sections, the legacy blobs generated with the old rule and SHA-256-pinned against the previous file. Regenerate `test-vectors/v1.json` and `docs/spec/payload-vectors.json`. Verify: `gen-vectors.py --check`, `gen-payload-vectors.py --check`, `pnpm --filter @cryoshield/vault-crypto test`.
 - [ ] 2.5 Spec `docs/spec/vault-format-v1.md` §6.1, §6.6, §6.7, §7, §11 and the amendment note; README. Verify: review against the vectors.
 - [ ] 2.6 Decoder compatibility: the unchanged TypeScript and Python decoders open the maximum-padded vectors and the legacy cases. Verify: vector tests in both suites.
 

@@ -147,7 +147,7 @@ describe('task 5.1: padding hides length; header AAD', () => {
     const a = decodeVault((await make(creds, rand(10))).blob);
     const b = decodeVault((await make(creds, rand(40))).blob);
     expect(a.payloadCt.length).toBe(b.payloadCt.length);
-    expect(a.payloadCt.length).toBe(64 + 16);
+    expect(a.payloadCt.length).toBe(640 + 16); // pad-to-max-payload: the 2-key maximum
   });
 
   it('every single-byte flip before the payload is detected', async () => {

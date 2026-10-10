@@ -137,9 +137,17 @@ export function maxPayloadBytes(rpId: string, credIds: readonly Uint8Array[], mo
   return maxPayloadForBytes(rpIdBytes(rpId), credIds, mode);
 }
 
-export function maxPayloadForBytes(rpId: Uint8Array, credIds: readonly Uint8Array[], mode: VaultMode): number {
+/**
+ * Padded plaintext length every encoder writes for this key set (spec §6.1, §7): 64 * floor((1024 - overhead) / 64),
+ * i.e. maxPayloadBytes + 2. Depends only on public data (RP ID, credential-ID lengths, N, mode). 0 if nothing fits.
+ */
+export function paddedLengthFor(rpId: Uint8Array, credIds: readonly Uint8Array[], mode: VaultMode): number {
   const avail = MAX_BLOB_BYTES - overheadBytes(rpId, credIds, mode);
-  return Math.max(0, Math.floor(avail / PAD_BLOCK) * PAD_BLOCK - 2);
+  return Math.max(0, Math.floor(avail / PAD_BLOCK) * PAD_BLOCK);
+}
+
+export function maxPayloadForBytes(rpId: Uint8Array, credIds: readonly Uint8Array[], mode: VaultMode): number {
+  return Math.max(0, paddedLengthFor(rpId, credIds, mode) - 2);
 }
 
 function validThreshold(mode: number, m: number, n: number): boolean {
