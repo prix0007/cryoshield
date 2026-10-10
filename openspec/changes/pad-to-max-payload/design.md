@@ -32,7 +32,7 @@ Keeping the 64-byte granularity and stopping short of 1024 is deliberate:
 - **It already hides everything.** `overhead` is public, so `target` is public; filling the remaining 0..63 bytes
   would hide nothing more.
 - **Exactly 1024 would break every deployed decoder.** Spec §5 / §5.1 step 9 require the payload ciphertext to be
-  `64k + 16` bytes. A blob filled to 1024 bytes has `(1024 − overhead − 28) mod 64 ≠ 0` for most key sets, so the
+  `64k + 16` bytes. A blob filled to 1024 bytes has `(1024 − overhead) mod 64 ≠ 0` (overhead already includes the 12-byte nonce and the 16-byte tag) for most key sets, so the
   TypeScript library, the shipped recovery tool and any third-party reader would reject it as `MALFORMED`. That
   would need a new version byte (D2) for no privacy gain.
 - **It costs less.** Up to 63 fewer calldata and storage bytes per write.
@@ -167,7 +167,12 @@ keep their old lengths forever.
 **Scope:** `packages/vault-crypto/src/{padding,format,vault}.ts`, `scripts/gen-vectors.py`, `test-vectors/v1.json`,
 `docs/spec/vault-format-v1.md`, `tools/recover` (decoder unchanged; test-only writer), the web call sites
 (`apps/web/src/vault/adapter.ts`, `ui/vault-meta.ts`; unchanged). Reviewer: applied-cryptography engineer (internal;
-CryoShield has no external audit).
+CryoShield has no external audit). **Independent review (2026-10-10):** the CryoShield security-reviewer agent
+re-ran every suite on head `622a05c` and disabled each decoder check in turn to confirm the vectors pin it.
+Verdict: **APPROVE**, with no CRITICAL, HIGH or MEDIUM findings. Two LOW findings were fixed: this D1 formula, and
+this note. Info, for a follow-up: the `nonzero-pad-byte` vector flips only the last byte, so a decoder that
+checked only that byte would still pass. Also inherent to the format, not new: N keys show the secret is at most
+`maxPayloadBytes(N)`.
 
 **Threat addressed (F3).** The payload length was a public side channel on the secret: 64-byte steps showed a size
 class (526 vs 590 bytes for a 12- vs 24-word seed with two 64-byte credential IDs). Now
