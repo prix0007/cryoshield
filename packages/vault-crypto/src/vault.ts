@@ -244,7 +244,7 @@ export async function createVault(params: CreateVaultParams, options: RngOptions
     }
     const body = concat(...parts);
     const payloadNonce = draw(rng, NONCE_BYTES);
-    padded = pad(secret);
+    padded = pad(secret, max + 2); // the maximum for this key set (spec §6.1)
     const blob = concat(body, payloadNonce, seal(dataKey, payloadNonce, payloadAad(body, vaultId), padded));
     const locators = credentials.map((c) => deriveLocator(c.prf));
     return { blob, locators };
@@ -344,7 +344,7 @@ export async function addKey(
       wrapped,
     );
     const payloadNonce = drawFreshPayloadNonce(rng, v.payloadNonce);
-    padded = pad(opened.secret);
+    padded = pad(opened.secret, max + 2); // re-pad to the N + 1 maximum (spec §6.6)
     const out = concat(body, payloadNonce, seal(opened.dataKey, payloadNonce, payloadAad(body, vaultId), padded));
     return { blob: out, locator: deriveLocator(newCredential.prf) };
   } finally {
@@ -375,7 +375,7 @@ export async function updatePayload(
     const rng = options.rng ?? webCryptoRng;
     const payloadNonce = drawFreshPayloadNonce(rng, v.payloadNonce);
     const body = blob.slice(0, v.payloadOffset);
-    padded = pad(newSecret);
+    padded = pad(newSecret, max + 2); // re-pad to the maximum (spec §6.7)
     return concat(body, payloadNonce, seal(opened.dataKey, payloadNonce, payloadAad(body, vaultId), padded));
   } finally {
     wipe(padded, opened?.dataKey, opened?.secret, ...prfsOf(list));

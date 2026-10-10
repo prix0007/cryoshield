@@ -80,6 +80,56 @@ This replaces the earlier OP Mainnet create estimate of ≈ $0.004, which was 1.
 6.8e10 wei (2026-10-02). The estimate also fits the per-sender $1.00 per month: 1 create and 50 edits is about $0.04
 in gas alone (Pimlico's fees are below).
 
+## Padding every payload to the maximum (pad-to-max-payload)
+
+Since `pad-to-max-payload`, every blob is padded to the maximum for its key set, so a 2-key vault is about 1 KB
+whatever it holds (974 bytes with 64-byte credential IDs; 1,018 bytes with the founder's YubiKey credential IDs, whose
+vault was 442 bytes before). The rows above were measured with the earlier, smaller blobs. Larger blobs cost more
+calldata and, mostly, more registry storage (one 32-byte slot per 32 bytes).
+
+**Measured, before → after.**
+
+| Measurement | Before | After | Δ gas |
+|---|---:|---:|---:|
+| Registry `createVault`, forge full tx (`contracts/GAS.md`) | 616,314 (526 B) | 934,241 (974 B) | +317,927 |
+| Registry `updateVault`, forge full tx | 127,700 (526 B) | 206,228 (974 B) | +78,528 |
+| Anvil full stack, create, 12-word seed (`test-int/gas.int.test.ts`) | 1,259,328 (489 B) | 1,618,847 (1,001 B) | +359,519 |
+| Anvil full stack, edit, 12-word seed | 455,258 (489 B) | 548,707 (1,001 B) | +93,449 |
+| Anvil full stack, create, 24-word seed | 1,306,516 (553 B) | 1,615,457 (1,001 B) | +308,941 |
+| Anvil full stack, edit, 24-word seed | 465,571 (553 B) | 551,609 (1,001 B) | +86,038 |
+
+The anvil figures use the fake authenticator's credential IDs and RP ID `localhost`. After the change the 12-word and
+24-word blobs are the same length, and so cost the same within a few thousand gas (signature encoding varies).
+
+**OP Mainnet estimate**, by the method above, read on **2026-10-09 21:04 UTC** (block 157,990,537): L2 gas price
+1,000,774 wei, ETH $2,479.03 (Chainlink), L1 base fee 0.104 gwei, blob base fee 0.0056 gwei. The founder's vault grows
+by 576 bytes (442 → 1,018), so the anvil per-byte deltas (702 gas per byte for create, 183 for edit) give +404,459 gas
+per create and +105,130 per edit on top of the measured OP Sepolia operations. The L1 bound is read for the bundle
+sizes plus 576 bytes.
+
+| Write | L2 gas before → after | L1 bound before → after | Total before → after | Δ per write | ×10 gas spike (after) |
+|---|---:|---:|---:|---:|---:|
+| Create | 987,350 → 1,391,809 | 3.55e10 → 4.24e10 wei | $0.00254 → **$0.00356** | **+$0.0010** | $0.036 |
+| Edit (worst measured) | 236,716 → 341,846 | 2.81e10 → 3.50e10 wei | $0.00066 → **$0.00093** | **+$0.00028** | $0.0093 |
+
+So an edit costs about $0.0003 more and a create about $0.001 more (once per vault; add-key is an edit plus
+`addOwnerPublicKey` and `addLocators`, so about +$0.0003 too). With Pimlico's 10% surcharge: +$0.0011 and +$0.0003.
+Against the $0.0105 per-operation fee, the totals per operation become about **$0.0144** for a create (was $0.0135)
+and **$0.0115** for an edit (was $0.0113).
+
+**Caps re-checked.**
+
+- **$0.50 per operation:** a create pre-charges about 2.0M gas (1,600,448 + 404,459) × 1.1 × gas price + the L1
+  bound ≈ $0.0056, or $0.056 at a ×10 spike: 9× headroom. An edit ≈ $0.0032 ($0.032 at ×10).
+- **$1 and 10 operations per user per month:** 10 creates at a ×10 spike pre-charge about 10 × ($0.056 × 1.1 +
+  $0.0105) ≈ $0.72, still under $1; the count binds first.
+- **$30 and 500 operations per day, global:** at normal gas, 500 creates pre-charge ≈ $8.3. During a ×10 spike, 500
+  creates ≈ $35.9 (was $30.75), so a burst of creates during a spike reaches the $30 daily cap on pre-charges about
+  70 operations earlier than before; 500 edits ≈ $23. This was already the tightest case (above) and stays an
+  availability risk only.
+- **Registry and wallet limits:** the registry accepts blobs of 1..1024 bytes and every padded blob is at most 1024;
+  the wallet has no calldata limit.
+
 ## Pimlico fees on OP Mainnet and the budget (recomputed 2026-10-10)
 
 The figures above are gas only. On mainnet Pimlico also charges for each sponsored operation (sources read

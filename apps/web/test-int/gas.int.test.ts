@@ -50,4 +50,45 @@ describe('gas (6.6)', () => {
     expect(out.create).toBeGreaterThan(0n);
     expect(fromHex).toBeDefined();
   });
+
+  // pad-to-max-payload 4.1: a 2-key create and an edit holding a 12-word and a 24-word seed phrase (the BIP39 test
+  // mnemonics). Before the change the two blobs differ in length; after it both are padded to the 2-key maximum.
+  it('measures create and edit with a 12-word and a 24-word seed phrase', async () => {
+    const f = new FakeAuthenticators();
+    const client = makePublicClient(rpc);
+    const reader = createRegistryReader(rpc);
+    const sponsor = createSponsor(client);
+    const { deriveLocator } = await import('@cryoshield/vault-crypto');
+    const seeds = { w12: [...Array(11).fill('abandon'), 'about'].join(' '), w24: [...Array(23).fill('abandon'), 'art'].join(' ') };
+    const out: Record<string, number> = {};
+    for (const [name, seed] of Object.entries(seeds)) {
+      const base = f.keys.length;
+      f.addKey(); f.addKey();
+      const ks = [];
+      for (const i of [base, base + 1]) {
+        f.use(i);
+        ks.push(await enrollKey({ rpId: 'localhost', rpName: 'x', label: `${name}-${i}`, exclude: [] }, f.credentials));
+      }
+      const [a, b] = ks as [typeof ks[0], typeof ks[0]];
+      const items = [{ label: 'Bitcoin seed', secret: seed }];
+      const keyPrfs = [{ credId: a.credId, prf: await f.prfFor(a.credId, locatorSalt()) }, { credId: b.credId, prf: await f.prfFor(b.credId, locatorSalt()) }];
+      f.use(base);
+      const acct = await newVaultAccount({ client, owners: [a, b], signerIndex: 0, expectedLocator: deriveLocator(keyPrfs[0]!.prf), credentials: f.credentials });
+      let blob = new Uint8Array();
+      let locators: Uint8Array[] = [];
+      const created = await createVaultOnChain(
+        { account: acct, build: async (vaultId) => ((({ blob, locators } = await createVaultBlob({ vaultId, rpId: 'localhost', keys: keyPrfs.map((k) => ({ ...k, prf: k.prf.slice() })), payload: { archived: false, items } }))), { blob, locators: locators.map(toHex) }) },
+        { client, sponsor, reader },
+      );
+      const edited = await editVaultBlob(blob, await f.prfFor(a.credId, locatorSalt()), created.vaultId, { archived: false, items });
+      const acct2 = await existingVaultAccount({ client, address: created.owner, entryIndex: 0, credId: a.credId, expectedLocator: locators[0]!, credentials: f.credentials });
+      const up = await updateVaultOnChain({ account: acct2, vaultId: created.vaultId, blob: edited, base: blob }, { client, sponsor, reader });
+      const gas = async (h?: Hex) => Number((await client.getTransactionReceipt({ hash: h! })).gasUsed);
+      out[`${name}BlobBytes`] = blob.length;
+      out[`${name}Create`] = await gas(created.txHash);
+      out[`${name}Edit`] = await gas(up.txHash);
+    }
+    console.info('GAS-SEEDS', JSON.stringify(out));
+    expect(out.w12Create).toBeGreaterThan(0);
+  });
 });

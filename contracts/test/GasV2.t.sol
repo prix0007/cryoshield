@@ -25,6 +25,41 @@ contract GasV2Test is RegistryV2TestBase {
         vm.snapshotGasLastCall("VaultRegistryV2", "updateVault_1024B");
     }
 
+    /// @dev pad-to-max-payload 4.1: the blob sizes before and after padding to the maximum. 526 bytes is a 2-key
+    ///      vault (64-byte credential IDs) holding a 12-word seed phrase with 64-byte-step padding; 974 bytes is every
+    ///      2-key vault with 64-byte credential IDs once the payload is padded to the maximum.
+    function test_gasV2_create_526B_2locators() public {
+        bytes memory blob = _blob(526, 0xA5);
+        bytes32[] memory locs = _locators(2, "gas");
+        vm.prank(alice);
+        registry.createVault(SALT_A, blob, locs);
+        vm.snapshotGasLastCall("VaultRegistryV2", "createVault_526B_2locators");
+    }
+
+    function test_gasV2_create_974B_2locators() public {
+        bytes memory blob = _blob(974, 0xA5);
+        bytes32[] memory locs = _locators(2, "gas");
+        vm.prank(alice);
+        registry.createVault(SALT_A, blob, locs);
+        vm.snapshotGasLastCall("VaultRegistryV2", "createVault_974B_2locators");
+    }
+
+    function test_gasV2_update_526B() public {
+        bytes32 vaultId = _create(alice, SALT_A, _blob(526, 0xA5), _locators(2, "gas"));
+        bytes memory next = _blob(526, 0x5A);
+        vm.prank(alice);
+        registry.updateVault(vaultId, next);
+        vm.snapshotGasLastCall("VaultRegistryV2", "updateVault_526B");
+    }
+
+    function test_gasV2_update_974B() public {
+        bytes32 vaultId = _create(alice, SALT_A, _blob(974, 0xA5), _locators(2, "gas"));
+        bytes memory next = _blob(974, 0x5A);
+        vm.prank(alice);
+        registry.updateVault(vaultId, next);
+        vm.snapshotGasLastCall("VaultRegistryV2", "updateVault_974B");
+    }
+
     function test_gasV2_addLocator_1() public {
         bytes32 vaultId = _create(alice, SALT_A, _blob(1024, 0xA5), _locators(2, "gas"));
         bytes32[] memory one = _one(keccak256("gas-extra"));

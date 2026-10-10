@@ -8,6 +8,7 @@ implementation is cross-checked byte for byte in both directions. The tool itsel
 
 from __future__ import annotations
 
+import hashlib
 from typing import Any
 
 import pytest
@@ -256,3 +257,38 @@ def test_every_vault_vector_is_bound_to_its_vault_id() -> None:
         with pytest.raises(VaultError) as ei:
             open_vault(h(v["blob"]), keys, other)
         assert ei.value.code == "NO_MATCHING_KEY"
+
+
+# ------------------------------------------------------------------ pad-to-max-payload
+@pytest.mark.parametrize("v", vectors.cases("vaults"), ids=vectors.ids("vaults"))
+def test_vault_padded_to_maximum(v: dict[str, Any]) -> None:
+    d = decode_blob(h(v["blob"]))
+    assert v["paddedLength"] == v["maxPayloadBytes"] + 2
+    assert len(d.payload_ct) == v["paddedLength"] + 16
+    assert writer.padded_length_for(d.rp_id, [e.cred_id for e in d.entries], d.mode) == v["paddedLength"]
+
+
+@pytest.mark.parametrize("g", vectors.cases("lengthHidingCases"), ids=vectors.ids("lengthHidingCases"))
+def test_length_hiding_group(g: dict[str, Any]) -> None:
+    by_name = {v["name"]: v for v in vectors.cases("vaults")}
+    assert g["paddedLength"] == 64 * ((1024 - g["overhead"]) // 64)
+    assert g["blobLength"] == g["overhead"] + g["paddedLength"]
+    assert any(n.endswith("12-word") for n in g["vaults"])
+    for name in g["vaults"]:
+        assert len(h(by_name[name]["blob"])) == g["blobLength"], name
+
+
+@pytest.mark.parametrize("case", vectors.cases("legacyPaddingCases"), ids=vectors.ids("legacyPaddingCases"))
+def test_legacy_padding_case(case: dict[str, Any]) -> None:
+    """Blobs padded in 64-byte steps (every OP Sepolia vault before pad-to-max-payload) still open."""
+    blob = h(case["blob"])
+    assert len(blob) == case["blobLength"]
+    assert hashlib.sha256(blob).hexdigest() == case["sha256"]
+    keys = keys_of(case["keys"])
+    assert bytes(open_vault(blob, keys, h(case["vaultId"]))) == h(case["expectedSecret"])
+
+
+def test_legacy_and_padding_sections_present() -> None:
+    assert len(vectors.cases("legacyPaddingCases")) >= 6
+    names = {c["name"] for c in vectors.cases("openCases")}
+    assert {"nonzero-pad-byte", "length-prefix-overrun"} <= names

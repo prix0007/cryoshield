@@ -39,8 +39,9 @@ Arweave only). So there is no CryoShield-side database, account, session, log or
   that lives in the security key. It is not a raw device identifier and cannot be computed without the key.
 - **Ephemeral Arweave uploader.** The upload key is random per browser session and never derived from vault material,
   so uploads from different sessions are not linked by it.
-- **Padding.** Payloads are padded to 64-byte steps, so the exact length of a secret is hidden (only a size range
-  shows; review F3).
+- **Padding.** Every payload is padded to the maximum its key set allows under the 1 KB cap, so the blob length
+  depends only on public data (key count, credential-ID lengths) and says nothing about the secret's length (review F3,
+  closed by `pad-to-max-payload`). Testnet vaults written before that change keep a size range until their next save.
 - **No identifiers of our own.** The app creates no client ID, sets no cookie and sends nothing beyond what the
   protocol needs (`privacy-compliance` "No CryoShield-side identifiers").
 - **Analytics only where it cannot see a vault.** The Cloudflare beacon runs on `/` only, is blocked from `/app/` and

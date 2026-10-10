@@ -11,7 +11,7 @@ WebAuthn PRF output ──HKDF-SHA256──► locator   (on-chain lookup key)
 - **One tap per key.** One PRF input for everything, and `userVerification: "required"` always.
 - **Any-of-N (default, N = 2..8).** Any single enrolled key unlocks. Adding a key needs only one existing key.
 - **Shamir M-of-N: EXPERIMENTAL.** It is supported in the format, the library, and the vectors, but it is not part of the MVP default flow and its API may change. Built on `shamir-secret-sharing` 0.0.4; see `docs/reviews/shamir-dependency.md`.
-- **Blobs are ≤ 1024 bytes**, padded so the exact secret length is hidden.
+- **Blobs are ≤ 1024 bytes**, and every payload is padded to the maximum for its key set, so the blob length depends only on public data (RP ID, credential-ID lengths, key count, mode), never on the secret's length.
 
 Normative spec: [`docs/spec/vault-format-v1.md`](../../docs/spec/vault-format-v1.md). Test vectors: [`test-vectors/v1.json`](test-vectors/v1.json).
 
@@ -147,7 +147,7 @@ console.log(secret.length);
 
 ## Size budget
 
-Blob cap: 1024 bytes. The overhead is the header (42 + RP ID length), plus 1 + credIdLen + 12 + 48 per key (+49 in Shamir mode), plus 28 for the payload nonce and tag. The secret is padded with a 2-byte length prefix to a multiple of 64.
+Blob cap: 1024 bytes. The overhead is the header (42 + RP ID length), plus 1 + credIdLen + 12 + 48 per key (+49 in Shamir mode), plus 28 for the payload nonce and tag. The secret gets a 2-byte length prefix and is zero-padded to `64 × floor((1024 − overhead) / 64)` bytes (`maxPayloadBytes + 2`), the maximum for the key set; `createVault`, `updatePayload` and `addKey` all pad that way. So every 2-key vault with 64-byte credential IDs is 974 bytes, whatever it holds. Decoders also accept blobs written with the earlier 64-byte-step padding.
 
 Figures for RP ID `cryoshield.app` (14 bytes):
 
@@ -227,8 +227,17 @@ All byte strings are **lowercase hex**. Integers are JSON numbers, and `null` me
           "wrapNonce", "wrapAad", "wrapPlaintext", "wrapped": hex }
       ],
       "paddedPlaintext", "payloadAad": hex,  // payloadAad = blob[0..P) || vaultId
-      "maxPayloadBytes": int, "blob": hex, "blobLength": int
+      "maxPayloadBytes": int,
+      "paddedLength": int,    // = maxPayloadBytes + 2: every encoder pads to the key set's maximum
+      "blob": hex, "blobLength": int
     }
+  ],
+  "lengthHidingCases": [      // vaults with one key set and different secrets share one blob length
+    { "name", "description", "vaults": [string], "overhead": int, "paddedLength": int, "blobLength": int }
+  ],
+  "legacyPaddingCases": [     // blobs padded in 64-byte steps (before pad-to-max-payload); MUST still open
+    { "name", "description", "vault", "vaultId": hex, "blob": hex, "blobLength": int, "sha256": hex,
+      "keys": [ … ], "expectedSecret": hex }
   ],
   "decodeCases": [            // decodeVault(blob)
     { "name", "description", "blob": hex,
@@ -249,11 +258,11 @@ All byte strings are **lowercase hex**. Integers are JSON numbers, and `null` me
     { "name", "description", "vault", "vaultId": hex, "blob": hex,
       "key": { "prf", "credId", "prfInput", "ctapSalt" },
       "newCredential": { "id", "prf", "locator" }, "rng": hex,
-      "expectedBlob"?: hex, "expectedBlobLength"?: int, "expectedError"?: CODE }
+      "expectedBlob"?: hex, "expectedBlobLength"?: int, "expectedPaddedLength"?: int, "expectedError"?: CODE }
   ],
   "updatePayloadCases": [     // updatePayload(blob, keys, vaultId, newSecret), rng = payloadNonce(12)
     { "name", "description", "vault", "vaultId": hex, "blob": hex, "keys": [ … ], "newSecret": hex, "rng": hex,
-      "expectedBlob"?: hex, "expectedError"?: CODE, "maxPayloadBytes"?: int }
+      "expectedBlob"?: hex, "expectedBlobLength"?: int, "expectedError"?: CODE, "maxPayloadBytes"?: int }
   ],
   "selectCases": [            // selectVault(candidates, prf)
     { "name", "description", "prf", "credId": null, "prfInput", "ctapSalt",

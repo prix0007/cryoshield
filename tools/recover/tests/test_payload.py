@@ -20,7 +20,7 @@ from cryoshield_recover.vault import UnlockKey, open_vault
 
 VECTORS_PATH = REPO_ROOT / "docs" / "spec" / "payload-vectors.json"
 # Pinned (PR #47). Update only after re-reading docs/spec/payload-v2.md and the vector diff.
-PINNED_SHA256 = "e2bfda8dbf1a6d08a4f0cebf1ae01af054f8b6e707f95e7926f7c61eb3fc54d7"
+PINNED_SHA256 = "9a932e5ef1e7ce04f555833180823a7250fcd197c79810657a240c3e70ec7aea"
 
 
 @lru_cache(maxsize=1)

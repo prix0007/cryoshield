@@ -141,3 +141,34 @@ describe('editVaultBlob takes the whole payload (2.1)', () => {
     expect(decodeVaultPayload(m[0]!.secret).pad).toBe(cleared.payload.pad);
   });
 });
+
+/** pad-to-max-payload 3.1: every web write path produces a blob padded to the maximum for its key set. */
+describe('vault adapter: blob length depends on the key set only', () => {
+  const W12 = [...Array(11).fill('abandon'), 'about'].join(' ');
+  const W24 = [...Array(23).fill('abandon'), 'art'].join(' ');
+  /** overhead + maxPayloadBytes + 2: public data only. */
+  const maxBlob = (rpId: string, ids: Uint8Array[]) => {
+    const overhead = 42 + rpId.length + ids.reduce((n, c) => n + 1 + c.length + 12 + 48, 0) + 28;
+    expect(maxPayloadBytes(rpId, ids) + 2).toBe(64 * Math.floor((1024 - overhead) / 64));
+    return overhead + maxPayloadBytes(rpId, ids) + 2;
+  };
+
+  it('create: a 12-word and a 24-word seed give the same blob length, the 2-key maximum', async () => {
+    const mk = (secret: string) =>
+      createVaultBlob({ vaultId: vid(1), rpId: 'cryoshield.app', keys: [{ credId: id(1), prf: rand() }, { credId: id(2), prf: rand() }], payload: { archived: false, items: [{ label: 'Bitcoin seed', secret }] } });
+    const [a, b] = [await mk(W12), await mk(W24)];
+    expect(a.blob.length).toBe(b.blob.length);
+    expect(a.blob.length).toBe(maxBlob('cryoshield.app', [id(1), id(2)]));
+  });
+
+  it('edit and add-key re-pad to the maximum for the key set they write', async () => {
+    const a = rand();
+    const { blob } = await createVaultBlob({ vaultId: vid(1), rpId: 'localhost', keys: [{ credId: id(1), prf: a.slice() }, { credId: id(2), prf: rand() }], payload: { archived: false, items: [{ label: 'Seed', secret: W24 }] } });
+    const edited = await editVaultBlob(blob, a.slice(), vid(1), { archived: false, items: [{ label: 'x', secret: 'y' }] });
+    expect(edited.length).toBe(blob.length);
+    expect(edited.length).toBe(maxBlob('localhost', [id(1), id(2)]));
+    const added = await addKeyToBlob(edited, a.slice(), vid(1), { credId: id(3), prf: rand() });
+    expect(added.blob.length).toBe(maxBlob('localhost', [id(1), id(2), id(3)]));
+    expect(decodeVault(added.blob).payloadCt.length).toBe(maxPayloadBytes('localhost', [id(1), id(2), id(3)]) + 2 + 16);
+  });
+});

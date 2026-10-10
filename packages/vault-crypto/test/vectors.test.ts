@@ -193,6 +193,80 @@ describe('update-payload cases', () => {
   }
 });
 
+// pad-to-max-payload (task 2.3): the sections and fields added with the maximum-padding rule.
+type LengthGroup = { name: string; vaults: string[]; overhead: number; paddedLength: number; blobLength: number };
+type LegacyCase = { name: string; vaultId: string; blob: string; blobLength: number; keys: KeyJson[]; expectedSecret: string };
+const V = vectors as unknown as {
+  vaults: { name: string; blob: string; blobLength: number; paddedLength: number; maxPayloadBytes: number; paddedPlaintext: string }[];
+  lengthHidingCases: LengthGroup[];
+  legacyPaddingCases: LegacyCase[];
+  addKeyCases: { name: string; expectedBlob?: string; expectedBlobLength?: number; expectedPaddedLength?: number }[];
+  updatePayloadCases: { name: string; expectedBlob?: string; expectedBlobLength?: number }[];
+  openCases: { name: string; expectedError?: string }[];
+};
+
+describe('pad-to-max-payload: maximum padding in the vectors', () => {
+  it('every vault is padded to maxPayloadBytes + 2', () => {
+    for (const v of V.vaults) {
+      expect(v.paddedLength, v.name).toBe(v.maxPayloadBytes + 2);
+      expect(v.paddedPlaintext.length / 2, v.name).toBe(v.paddedLength);
+      expect(decodeVault(hex(v.blob)).payloadCt.length, v.name).toBe(v.paddedLength + 16);
+    }
+  });
+
+  it('has the length-hiding groups (N = 2, N = 3, mode 0x02; 12 and 24 words)', () => {
+    expect(V.lengthHidingCases.map((g) => g.name)).toEqual(['any-of-2', 'any-of-3', 'shamir-2-of-3']);
+    for (const g of V.lengthHidingCases) {
+      expect(g.vaults.length, g.name).toBeGreaterThanOrEqual(3);
+      expect(g.vaults.some((n) => n.endsWith('12-word')), g.name).toBe(true);
+      expect(g.paddedLength).toBe(64 * Math.floor((1024 - g.overhead) / 64));
+      expect(g.blobLength).toBe(g.overhead + g.paddedLength);
+      for (const name of g.vaults) {
+        const v = V.vaults.find((x) => x.name === name)!;
+        expect(v, name).toBeDefined();
+        expect(hex(v.blob).length, name).toBe(g.blobLength);
+        expect(v.blobLength, name).toBe(g.blobLength);
+      }
+    }
+  });
+
+  it('add-key and update successes record their (maximum) lengths', () => {
+    for (const name of ['add-C-with-A', 'add-C-to-legacy']) {
+      const c = V.addKeyCases.find((x) => x.name === name)!;
+      expect(c, name).toBeDefined();
+      expect(hex(c.expectedBlob!).length).toBe(c.expectedBlobLength);
+      expect(decodeVault(hex(c.expectedBlob!)).payloadCt.length).toBe(c.expectedPaddedLength! + 16);
+    }
+    for (const name of ['update-with-B', 'update-legacy-to-max']) {
+      const c = V.updatePayloadCases.find((x) => x.name === name)!;
+      expect(c, name).toBeDefined();
+      expect(hex(c.expectedBlob!).length).toBe(c.expectedBlobLength);
+    }
+    const legacyIn = V.updatePayloadCases.find((x) => x.name === 'update-legacy-to-max') as unknown as { blob: string };
+    expect(hex(legacyIn.blob).length).toBeLessThan(V.updatePayloadCases.find((x) => x.name === 'update-legacy-to-max')!.expectedBlobLength!);
+  });
+
+  it('has the padding-check open cases', () => {
+    for (const name of ['nonzero-pad-byte', 'length-prefix-overrun']) {
+      expect(V.openCases.find((x) => x.name === name)?.expectedError, name).toBe('MALFORMED');
+    }
+  });
+});
+
+describe('legacy padding cases (64-byte steps, written before pad-to-max-payload)', () => {
+  it('section is present', () => {
+    expect(V.legacyPaddingCases.length).toBeGreaterThanOrEqual(6);
+  });
+  for (const c of V.legacyPaddingCases ?? []) {
+    it(`${c.name} decodes and opens`, async () => {
+      const blob = hex(c.blob);
+      expect(blob.length).toBe(c.blobLength);
+      decodeVault(blob);
+      expect(toHex(await openVault(blob, c.keys.map(keyOf), hex(c.vaultId)))).toBe(c.expectedSecret);
+    });
+  }
+});
+
 describe('select cases', () => {
   for (const c of vectors.selectCases) {
     it(`${c.name}`, async () => {

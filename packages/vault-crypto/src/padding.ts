@@ -1,20 +1,27 @@
 import { PAD_BLOCK } from './constants.js';
 import { VaultError } from './errors.js';
 
-/** Length of the padded plaintext for a secret of `len` bytes (spec §6.1). */
-export const paddedLength = (len: number): number => Math.ceil((2 + len) / PAD_BLOCK) * PAD_BLOCK;
-
-/** u16be(len) || secret || zeros, to a multiple of 64 bytes. */
-export function pad(secret: Uint8Array): Uint8Array {
+/**
+ * u16be(len) || secret || zeros, to exactly `target` bytes (spec §6.1). Encoders pass the maximum padded length for
+ * the key set of the blob they write (`paddedLengthFor`), so the ciphertext length depends on public data only.
+ * `target` must be a positive multiple of 64 with room for the prefix and the secret.
+ */
+export function pad(secret: Uint8Array, target: number): Uint8Array {
   if (secret.length > 0xffff) throw new VaultError('INVALID_ARGUMENT', { hint: 'secret too long' });
-  const out = new Uint8Array(paddedLength(secret.length));
+  if (!Number.isInteger(target) || target <= 0 || target % PAD_BLOCK !== 0 || target < 2 + secret.length) {
+    throw new VaultError('INVALID_ARGUMENT', { hint: 'invalid padded length' });
+  }
+  const out = new Uint8Array(target);
   out[0] = secret.length >>> 8;
   out[1] = secret.length & 0xff;
   out.set(secret, 2);
   return out;
 }
 
-/** Inverse of pad(); rejects non-canonical padding with MALFORMED. Returns a copy. */
+/**
+ * Inverse of pad(); accepts any padded length (maximum padding or the earlier 64-byte steps) and rejects a length
+ * prefix past the end or any nonzero pad byte with MALFORMED. Returns a copy.
+ */
 export function unpad(padded: Uint8Array): Uint8Array {
   if (padded.length < 2) throw new VaultError('MALFORMED');
   const len = (padded[0]! << 8) | padded[1]!;

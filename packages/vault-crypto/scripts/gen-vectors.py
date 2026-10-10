@@ -221,14 +221,36 @@ def overhead(rp_id: bytes, cred_ids: list[bytes], mode: int) -> int:
     return h + sum(1 + len(c) + 12 + wrapped_len(mode) for c in cred_ids) + 12 + 16
 
 
+def padded_length_for(rp_id: bytes, cred_ids: list[bytes], mode: int) -> int:
+    """Spec §6.1/§7 (pad-to-max-payload): 64 * floor((1024 - overhead) / 64), the length every encoder writes."""
+    return max(0, ((MAX_BLOB - overhead(rp_id, cred_ids, mode)) // 64) * 64)
+
+
 def max_payload_bytes(rp_id: bytes, cred_ids: list[bytes], mode: int) -> int:
-    avail = MAX_BLOB - overhead(rp_id, cred_ids, mode)
-    return max(0, (avail // 64) * 64 - 2)
+    return max(0, padded_length_for(rp_id, cred_ids, mode) - 2)
 
 
-def pad(secret: bytes) -> bytes:
-    total = 64 * -(-(2 + len(secret)) // 64)
-    return struct.pack(">H", len(secret)) + secret + b"\x00" * (total - 2 - len(secret))
+def pad(secret: bytes, target: int) -> bytes:
+    """u16be(len) || secret || zeros, to exactly `target` bytes (a multiple of 64)."""
+    assert target % 64 == 0 and target >= 2 + len(secret) > 2
+    return struct.pack(">H", len(secret)) + secret + b"\x00" * (target - 2 - len(secret))
+
+
+def legacy_padded_length(secret: bytes) -> int:
+    """The rule before pad-to-max-payload: the next multiple of 64. Used only for legacyPaddingCases."""
+    return 64 * -(-(2 + len(secret)) // 64)
+
+
+# SHA-256 of the blobs published in v1.json before pad-to-max-payload (file SHA-256 f9a9ee67...1bad). The legacy
+# generation must reproduce them exactly, which proves the legacyPaddingCases are the previously published bytes.
+LEGACY_BLOB_SHA256 = {
+    "vault/any-of-2": "b98c5edbb27f39a7b8a2b6c3b85a17e00d265caefa463d25adf217422040d5fb",  # 526 bytes
+    "vault/any-of-3": "bb5b9ff7e42ffed59fada14f8fa5c644f5afb710af8bdf52abe7c205f5f90f10",  # 507 bytes
+    "vault/any-of-2-max": "f2ac29d98c03349f4c295d6a1da506c1ea75855d33a2ec63dcb95cf6f62bb695",  # 974 bytes
+    "vault/shamir-2-of-3": "fb0f49454af3d1c61c1407eaacc8f558758766c9a1bfc40d7dfd8ccdccc64e8f",  # 510 bytes
+    "addKey/add-C-with-A": "3300dd37823af480dabfab659e5b85b40bd1f72f6037716ea7358036afe53131",  # 635 bytes
+    "update/update-with-B": "ebeffb4341272e6dac3bff901c5f1ec1941241ce20daf5f247b5e901680e9911",  # 398 bytes
+}
 
 
 def unpad(padded: bytes) -> bytes:
@@ -239,7 +261,7 @@ def unpad(padded: bytes) -> bytes:
 
 
 def create_vault(vault_id: bytes, rp_id: bytes, creds: list[dict], secret: bytes, mode: int, m: int,
-                 rng: bytes, shamir_rng: bytes | None) -> dict:
+                 rng: bytes, shamir_rng: bytes | None, legacy: bool = False) -> dict:
     """Mirrors createVault; `rng` is consumed in the spec §11 order."""
     n = len(creds)
     if n < MIN_KEYS:
@@ -304,7 +326,7 @@ def create_vault(vault_id: bytes, rp_id: bytes, creds: list[dict], secret: bytes
         })
     payload_nonce = take(12)
     assert pos == len(rng), "rng not fully consumed"
-    padded = pad(secret)
+    padded = pad(secret, legacy_padded_length(secret) if legacy else padded_length_for(rp_id, ids, mode))
     ct = gcm_enc(data_key, payload_nonce, body + vault_id, padded)
     blob = body + payload_nonce + ct
     assert len(blob) <= MAX_BLOB
@@ -424,7 +446,7 @@ def entry_bytes(e: dict) -> bytes:
     return bytes([len(e["credId"])]) + e["credId"] + e["nonce"] + e["wrapped"]
 
 
-def add_key(blob: bytes, key: dict, vault_id: bytes, new: dict, rng: bytes) -> bytes:
+def add_key(blob: bytes, key: dict, vault_id: bytes, new: dict, rng: bytes, legacy: bool = False) -> bytes:
     """Spec §6.6; `rng` = newWrapNonce(12) || payloadNonce(12)."""
     check_vault_id(vault_id)
     v = decode(blob)
@@ -446,10 +468,12 @@ def add_key(blob: bytes, key: dict, vault_id: bytes, new: dict, rng: bytes) -> b
     body = header + b"".join(entry_bytes(e) for e in v["entries"])
     body += bytes([len(new["id"])]) + new["id"] + rng[:12] + wrapped
     assert rng[12:] != v["payloadNonce"]
-    return body + rng[12:] + gcm_enc(data_key, rng[12:], body + vault_id, pad(secret))
+    target = legacy_padded_length(secret) if legacy else padded_length_for(v["rpId"], ids + [new["id"]], v["mode"])
+    return body + rng[12:] + gcm_enc(data_key, rng[12:], body + vault_id, pad(secret, target))
 
 
-def update_payload(blob: bytes, keys: list[dict], vault_id: bytes, new_secret: bytes, rng: bytes) -> bytes:
+def update_payload(blob: bytes, keys: list[dict], vault_id: bytes, new_secret: bytes, rng: bytes,
+                   legacy: bool = False) -> bytes:
     """Spec §6.7; `rng` = payloadNonce(12)."""
     _, data_key, v = open_full(blob, keys, vault_id)
     if len(new_secret) == 0:
@@ -459,7 +483,9 @@ def update_payload(blob: bytes, keys: list[dict], vault_id: bytes, new_secret: b
     assert len(rng) == 12
     body = v["payloadAad"]
     assert rng != v["payloadNonce"]
-    return body + rng + gcm_enc(data_key, rng, body + vault_id, pad(new_secret))
+    ids = [e["credId"] for e in v["entries"]]
+    target = legacy_padded_length(new_secret) if legacy else padded_length_for(v["rpId"], ids, v["mode"])
+    return body + rng + gcm_enc(data_key, rng, body + vault_id, pad(new_secret, target))
 
 
 def select_vault(candidates: list[tuple[bytes, bytes]], prf: bytes) -> tuple[int, bytes, bytes]:
@@ -489,6 +515,7 @@ CREDS = {
 UNENROLLED_D = {"id": det("cred/D/id", 64), "prf": det("cred/D/prf", 32)}
 
 SEED_24 = " ".join(["abandon"] * 23 + ["art"]).encode()
+SEED_12 = " ".join(["abandon"] * 11 + ["about"]).encode()  # BIP39 test mnemonic, as SEED_24
 
 
 def flip(b: bytes, i: int, mask: int = 0x01) -> bytes:
@@ -521,6 +548,15 @@ def build() -> dict:
          MODE_ANY, 1, ["A", "B"], det("vault/any-of-2-max/secret", 638)),
         ("shamir-2-of-3", "Mode 0x02 (experimental), 2-of-3 over keys A+B+C.", MODE_SHAMIR, 2,
          ["A", "B", "C"], b"correct horse battery staple"),
+        # pad-to-max-payload: same key sets, secrets of other lengths; each lengthHidingCases group shares one length.
+        ("any-of-2-12-word", "Mode 0x01, keys A+B, 12-word seed phrase: same blob length as any-of-2 (24 words).",
+         MODE_ANY, 1, ["A", "B"], SEED_12),
+        ("any-of-3-12-word", "Mode 0x01, keys A+B+C, 12-word seed phrase.", MODE_ANY, 1, ["A", "B", "C"], SEED_12),
+        ("any-of-3-24-word", "Mode 0x01, keys A+B+C, 24-word seed phrase.", MODE_ANY, 1, ["A", "B", "C"], SEED_24),
+        ("shamir-2-of-3-12-word", "Mode 0x02 (experimental), 2-of-3 over keys A+B+C, 12-word seed phrase.",
+         MODE_SHAMIR, 2, ["A", "B", "C"], SEED_12),
+        ("shamir-2-of-3-24-word", "Mode 0x02 (experimental), 2-of-3 over keys A+B+C, 24-word seed phrase.",
+         MODE_SHAMIR, 2, ["A", "B", "C"], SEED_24),
     ]
     VID = {name: det(f"vault/{name}/vaultId", 32) for name, *_ in vaults_spec}
     VID["inline"] = det("vault/eight/vaultId", 32)
@@ -528,9 +564,7 @@ def build() -> dict:
     vaults = []
     blobs: dict[str, bytes] = {}
     meta: dict[str, dict] = {}
-    for name, desc, mode, m, keys, secret in vaults_spec:
-        creds = [CREDS[k] for k in keys]
-        n = len(creds)
+    def vault_rngs(name: str, mode: int, m: int, n: int) -> tuple[bytes, bytes | None]:
         rng = det(f"vault/{name}/wrapSalt", 32) + det(f"vault/{name}/dataKey", 32)
         rng += b"".join(det(f"vault/{name}/wrapNonce/{i}", 12) for i in range(n))
         rng += det(f"vault/{name}/payloadNonce", 12)
@@ -538,7 +572,14 @@ def build() -> dict:
         if mode == MODE_SHAMIR:
             shamir_rng = det(f"vault/{name}/shamir/coords", 255) + nonzero(
                 det(f"vault/{name}/shamir/coefficients", 32 * (m - 1)))
+        return rng, shamir_rng
+
+    for name, desc, mode, m, keys, secret in vaults_spec:
+        creds = [CREDS[k] for k in keys]
+        n = len(creds)
+        rng, shamir_rng = vault_rngs(name, mode, m, n)
         r = create_vault(VID[name], RP_ID, creds, secret, mode, m, rng, shamir_rng)
+        assert len(r["padded"]) == r["maxPayloadBytes"] + 2, name
         blobs[name] = r["blob"]
         meta[name] = r
         # self-check: every single key (mode 1) / every M-subset (mode 2) opens
@@ -573,9 +614,38 @@ def build() -> dict:
             "paddedPlaintext": r["padded"].hex(),
             "payloadAad": r["payloadAad"].hex(),
             "maxPayloadBytes": r["maxPayloadBytes"],
+            "paddedLength": len(r["padded"]),
             "blob": r["blob"].hex(),
             "blobLength": len(r["blob"]),
         })
+
+    # ------------------------------------------- length hiding (pad-to-max-payload)
+    length_hiding_cases = []
+    for gname, desc, members in [
+        ("any-of-2", "Mode 0x01, keys A+B: a 12-word seed, a 24-word seed and a 638-byte secret.",
+         ["any-of-2-12-word", "any-of-2", "any-of-2-max"]),
+        ("any-of-3", "Mode 0x01, keys A+B+C: a 12-word seed, a 24-word seed and TOTP codes.",
+         ["any-of-3-12-word", "any-of-3-24-word", "any-of-3"]),
+        ("shamir-2-of-3", "Mode 0x02, 2-of-3 over A+B+C: a 12-word seed, a 24-word seed and a 28-byte phrase.",
+         ["shamir-2-of-3-12-word", "shamir-2-of-3-24-word", "shamir-2-of-3"]),
+    ]:
+        d0 = decode(blobs[members[0]])
+        ov = overhead(d0["rpId"], [e["credId"] for e in d0["entries"]], d0["mode"])
+        target = padded_length_for(d0["rpId"], [e["credId"] for e in d0["entries"]], d0["mode"])
+        assert all(len(blobs[x]) == ov + target for x in members), gname
+        length_hiding_cases.append({"name": gname, "description": desc, "vaults": members, "overhead": ov,
+                                    "paddedLength": target, "blobLength": ov + target})
+
+    # ------------------------------------- legacy padding (64-byte steps, before pad-to-max-payload)
+    legacy_blobs: dict[str, bytes] = {}
+    legacy_secret: dict[str, bytes] = {}
+    for name, _desc, mode, m, keys, secret in vaults_spec[:4]:
+        rng, shamir_rng = vault_rngs(name, mode, m, len(keys))
+        lb = create_vault(VID[name], RP_ID, [CREDS[k] for k in keys], secret, mode, m, rng, shamir_rng,
+                          legacy=True)["blob"]
+        assert hashlib.sha256(lb).hexdigest() == LEGACY_BLOB_SHA256[f"vault/{name}"], name
+        legacy_blobs[name] = lb
+        legacy_secret[name] = secret
 
     v1 = blobs["any-of-2"]
     v1_dec = decode(v1)
@@ -681,6 +751,21 @@ def build() -> dict:
              "shamir-2-of-3", sv, [(A, False), (B, False)], ATTACKER_VID)
     add_open("invalid-vault-id-zero", "All-zero vaultId.", "any-of-2", v1, [(A, False)], bytes(32))
     add_open("invalid-vault-id-short", "31-byte vaultId.", "any-of-2", v1, [(A, False)], VID["any-of-2"][:31])
+    # Authenticated payloads with bad padding (spec §6.1): only a holder of the data key can produce them.
+    dk = meta["any-of-2"]["dataKey"]
+    target = padded_length_for(RP_ID, [A["id"], B["id"]], MODE_ANY)
+    bad_pad = bytearray(pad(SEED_24, target))
+    bad_pad[-1] = 0x01
+    bad_len = bytearray(pad(SEED_24, target))
+    bad_len[0:2] = struct.pack(">H", target - 1)
+    for cname, cdesc, pt in [
+        ("nonzero-pad-byte", "Authenticated payload whose last pad byte is 0x01.", bytes(bad_pad)),
+        ("length-prefix-overrun", "Authenticated payload whose length prefix is the padded length minus 1.",
+         bytes(bad_len)),
+    ]:
+        nonce = det(f"open/{cname}/payloadNonce", 12)
+        add_open(cname, cdesc, "any-of-2", v1[:p] + nonce + gcm_enc(dk, nonce, v1[:p] + VID["any-of-2"], pt),
+                 [(A, False)])
 
     # ---------------------------------------------------------- create cases
     create_cases = []
@@ -736,6 +821,7 @@ def build() -> dict:
             out = o["ok"]
             case["expectedBlob"] = out.hex()
             case["expectedBlobLength"] = len(out)
+            case["expectedPaddedLength"] = len(out) - len(decode(out)["payloadAad"]) - 12 - 16
             # self-checks: every key opens; existing entries byte-identical
             secret = open_vault(blob, [k], vault_id)
             for c in [CREDS[x] for x in ("A", "B")] + [new]:
@@ -748,13 +834,18 @@ def build() -> dict:
         add_key_cases.append(case)
 
     add_rng = det("addkey/wrapNonce", 12) + det("addkey/payloadNonce", 12)
-    add_add("add-C-with-A", "Add key C to any-of-2 using only key A.", "any-of-2", v1, (A, True), C, add_rng)
+    add_add("add-C-with-A", "Add key C to any-of-2 using only key A; the payload is re-padded to the 3-key maximum.",
+            "any-of-2", v1, (A, True), C, add_rng)
+    add_add("add-C-to-legacy", "Add key C to the legacy-padded any-of-2 blob (526 bytes) using key A; the result is "
+            "padded to the 3-key maximum.", "any-of-2", legacy_blobs["any-of-2"], (A, False), C,
+            det("addkey-legacy/wrapNonce", 12) + det("addkey-legacy/payloadNonce", 12))
     add_add("add-C-with-wrong-key", "Add key C using unenrolled key D.", "any-of-2", v1, (UNENROLLED_D, False),
             C, add_rng)
     add_add("add-duplicate", "Add key B again using key A.", "any-of-2", v1, (A, False), B, add_rng)
     add_add("add-to-shamir", "Add key D to the 2-of-3 Shamir vault.", "shamir-2-of-3", blobs["shamir-2-of-3"],
             (A, False), UNENROLLED_D, add_rng)
-    add_add("add-oversize", "Add key C to the 1024-byte max vault.", "any-of-2-max", blobs["any-of-2-max"],
+    add_add("add-oversize", "Add key C to the any-of-2-max vault: its 638-byte secret exceeds the 3-key maximum (574).",
+            "any-of-2-max", blobs["any-of-2-max"],
             (A, False), C, add_rng)
     # 9th key: build an 8-key vault (short credIds) and try to add one more
     eight = [{"id": det(f"eight/{i}/id", 16), "prf": det(f"eight/{i}/prf", 32)} for i in range(8)]
@@ -782,6 +873,7 @@ def build() -> dict:
                 case["maxPayloadBytes"] = max_payload_bytes(d["rpId"], [e["credId"] for e in d["entries"]], d["mode"])
         else:
             case["expectedBlob"] = o["ok"].hex()
+            case["expectedBlobLength"] = len(o["ok"])
             assert open_vault(o["ok"], ks, vault_id) == new_secret
             if decode(blob)["mode"] == MODE_ANY:
                 for c in (A, B):
@@ -791,6 +883,9 @@ def build() -> dict:
     up_rng = det("update/payloadNonce", 12)
     add_update("update-with-B", "Key B replaces the any-of-2 secret.", "any-of-2", v1, [(B, False)],
                b"new seed phrase goes here", up_rng)
+    add_update("update-legacy-to-max", "Key B replaces the secret of the legacy-padded any-of-2 blob (526 bytes) with a "
+               "12-word seed; the result is padded to the 2-key maximum (974 bytes).", "any-of-2",
+               legacy_blobs["any-of-2"], [(B, False)], SEED_12, det("update-legacy/payloadNonce", 12))
     add_update("update-wrong-key", "Unenrolled key D tries to update.", "any-of-2", v1, [(UNENROLLED_D, False)],
                b"x", up_rng)
     add_update("update-oversize", "639-byte secret into any-of-2 (max 638).", "any-of-2", v1, [(A, False)],
@@ -802,6 +897,31 @@ def build() -> dict:
     add_update("update-shamir-wrong-vault-id",
                "Keys A and C update the 2-of-3 blob under another vaultId (a clone).", "shamir-2-of-3",
                blobs["shamir-2-of-3"], [(A, False), (C, False)], b"hijacked", up_rng, ATTACKER_VID)
+
+    # ------------------------------------------------------- legacy padding cases
+    # The blobs published before pad-to-max-payload, regenerated with the old rule and checked against their pinned
+    # SHA-256. Every decoder MUST still open them (existing OP Sepolia vaults use this padding).
+    legacy_add = add_key(legacy_blobs["any-of-2"], {"prf": A["prf"], "credId": A["id"]}, VID["any-of-2"], C, add_rng,
+                         legacy=True)
+    assert hashlib.sha256(legacy_add).hexdigest() == LEGACY_BLOB_SHA256["addKey/add-C-with-A"]
+    legacy_up = update_payload(legacy_blobs["any-of-2"], [{"prf": B["prf"]}], VID["any-of-2"],
+                               b"new seed phrase goes here", up_rng, legacy=True)
+    assert hashlib.sha256(legacy_up).hexdigest() == LEGACY_BLOB_SHA256["update/update-with-B"]
+    legacy_cases = []
+    for lname, ldesc, vname, lblob, lkeys, lsecret in [
+        *[(f"legacy-{n}", f"The previous {n} vault blob (64-byte padding steps).", n, legacy_blobs[n],
+           [(CREDS[k], False) for k in (["A", "B"] if n.startswith("shamir") else ["A"])], legacy_secret[n])
+          for n in ("any-of-2", "any-of-3", "any-of-2-max", "shamir-2-of-3")],
+        ("legacy-add-C-with-A", "The previous add-C-with-A result (3 keys, 64-byte padding steps), opened with C.",
+         "any-of-2", legacy_add, [(C, True)], SEED_24),
+        ("legacy-update-with-B", "The previous update-with-B result (64-byte padding steps), opened with A.",
+         "any-of-2", legacy_up, [(A, False)], b"new seed phrase goes here"),
+    ]:
+        ks = [{"prf": c["prf"], "credId": c["id"] if w else None} for c, w in lkeys]
+        assert open_vault(lblob, ks, VID[vname]) == lsecret, lname
+        legacy_cases.append({"name": lname, "description": ldesc, "vault": vname, "vaultId": VID[vname].hex(),
+                             "blob": lblob.hex(), "blobLength": len(lblob), "sha256": hashlib.sha256(lblob).hexdigest(),
+                             "keys": [key_json(c, w) for c, w in lkeys], "expectedSecret": lsecret.hex()})
 
     # ---------------------------------------------------------- select cases
     junk_garbage = det("select/garbage", 200)
@@ -914,6 +1034,8 @@ def build() -> dict:
             for k, c in [("A", A), ("B", B), ("C", C), ("D", UNENROLLED_D)]
         ],
         "vaults": vaults,
+        "lengthHidingCases": length_hiding_cases,
+        "legacyPaddingCases": legacy_cases,
         "decodeCases": decode_cases,
         "openCases": open_cases,
         "createCases": create_cases,

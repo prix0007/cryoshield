@@ -32,9 +32,13 @@ per-test totals (`forge snapshot --mc GasTest --check`).
 |---|---:|
 | `addLocators`, 1 new locator (full tx; the per-vault duplicate set adds one slot) | 96,922 |
 | `createVault`, 1024-byte blob, 2 new locators (full tx) | 957,198 |
+| `createVault`, 526-byte blob (2 keys, 12 words, 64-byte padding steps), 2 new locators (full tx) | 616,314 |
+| `createVault`, 974-byte blob (2 keys, padded to the maximum), 2 new locators (full tx) | 934,241 |
 | `getVaults`, 32 ids x 1 KB (eth_call, about 36 KB response) | 2,407,103 |
 | `resolveLocator`, 256-entry page (eth_call) | 656,597 |
 | `updateVault`, 1024-byte blob (full tx) | 212,084 |
+| `updateVault`, 526-byte blob replacing a 526-byte blob (full tx) | 127,700 |
+| `updateVault`, 974-byte blob replacing a 974-byte blob (full tx) | 206,228 |
 
 <!-- gas-snapshots:end -->
 
