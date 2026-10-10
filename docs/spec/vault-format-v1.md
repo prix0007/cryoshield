@@ -1,9 +1,11 @@
 # CryoShield Vault Format v1
 
 Status: draft. It is normative once the first mainnet vault exists, and from then on it is frozen forever.
-Changes: `add-vault-crypto-core` (archived), amended in place by `openspec/changes/bind-vault-id-to-ciphertext`.
+Changes: `add-vault-crypto-core` (archived), amended in place by `openspec/changes/bind-vault-id-to-ciphertext` and `openspec/changes/pad-to-max-payload`.
 
 > **Amendment note.** The vaultId binding (§4.1) was added to v1 before any v1 blob existed on any chain or on Arweave, so the version byte is still 0x01 and the vectors were regenerated. Once the first mainnet vault exists, a change like this requires a new version byte.
+>
+> **Amendment note (pad-to-max-payload, 2026-10-10).** Before the first mainnet vault, the padding rule (§6.1) changed from "the next multiple of 64" to "the maximum for the key set". This changes only what an encoder writes: the byte layout, the AAD and every decoder check are unchanged, both paddings are valid v1, and the version byte stays 0x01. OP Sepolia vaults written earlier keep their 64-byte-step padding until their next write; the `legacyPaddingCases` vectors pin that decoders still open them.
 Reference implementation: `packages/vault-crypto` (TypeScript).
 Normative test vectors: `packages/vault-crypto/test-vectors/v1.json`.
 
@@ -176,13 +178,23 @@ There is no negotiation and no fallback: unknown versions, suites, and modes are
 ### 6.1 Payload padding
 
 ```
-padded = u16be(len(secret)) || secret || zeros
-len(padded) = 64 * ceil((2 + len(secret)) / 64)
+padded      = u16be(len(secret)) || secret || zeros
+len(padded) = paddedLength(keys) = 64 * floor((1024 − overhead) / 64)      // = maxPayloadBytes + 2 (§7)
 ```
 
-- The secret is 1..65535 bytes; an empty secret is rejected with `INVALID_ARGUMENT`.
-- After decryption, a length prefix > len(padded) − 2 or any nonzero pad byte → `MALFORMED`.
-- Padding never pushes the blob past 1024 bytes: if the padded payload doesn't fit, creation fails with `VAULT_TOO_LARGE` (§7).
+`overhead` (§7) depends only on the RP ID, the credential-ID lengths, N and the mode, so the payload ciphertext and the whole blob have a length that is a function of that public data alone:
+
+```
+len(blob) = overhead + 64 * floor((1024 − overhead) / 64)        // 960 < len(blob) ≤ 1024 whenever a secret fits
+```
+
+A 12-word and a 24-word seed phrase stored under the same key set therefore give blobs of identical length (vectors `lengthHidingCases`).
+
+- **Encoders MUST** pad to `paddedLength` for the key set of the blob they write: the new credentials at creation (§6.2), the current entries on update (§6.7), and the N + 1 entries on add-key (§6.6). They MUST NOT choose any other length.
+- The secret is 1..65535 bytes; an empty secret is rejected with `INVALID_ARGUMENT`. A secret longer than `maxPayloadBytes` is refused with `VAULT_TOO_LARGE` (§7), so padding never pushes the blob past 1024 bytes.
+- **Decoders MUST** accept any padded length that §5.1 accepts (a payload ciphertext of 64k + 16 bytes), and MUST NOT require maximum padding: blobs written before this rule use `len(padded) = 64 * ceil((2 + len(secret)) / 64)` (vectors `legacyPaddingCases`).
+- After decryption, a length prefix > len(padded) − 2 or any nonzero pad byte → `MALFORMED` (vectors `nonzero-pad-byte`, `length-prefix-overrun`). This check runs only after the payload authenticated, so only a holder of the data key can reach it.
+- The target stays a multiple of 64 rather than exactly 1024 bytes: `overhead` is public, so the remaining 0..63 bytes would hide nothing more, and a payload ciphertext that is not 64k + 16 bytes is rejected by §5.1 step 9.
 
 ### 6.2 Envelope
 
@@ -257,35 +269,39 @@ Inputs: the blob, its `vaultId`, one enrolled key `(prf, optional credId)`, and 
    - mode 0x02 → `INVALID_ARGUMENT`;
    - N + 1 > 8 → `TOO_MANY_KEYS`;
    - `credId_new` invalid or already present, or `prf_new` not 32 bytes → `INVALID_ARGUMENT`.
-2. Open the vault with the enrolled key under the `vaultId` (§6.5). This yields `dataKey` and the secret, and errors propagate. If the resulting blob would exceed 1024 bytes → `VAULT_TOO_LARGE`.
+2. Open the vault with the enrolled key under the `vaultId` (§6.5). This yields `dataKey` and the secret, and errors propagate. If the secret is longer than `maxPayloadBytes` for the N + 1 entries (§7) → `VAULT_TOO_LARGE` (vector `add-oversize`).
 3. Build the new header: identical except N + 1. Copy the existing entries byte for byte, and append entry N:
    ```
    wrapped_N = AES-GCM-Enc(HKDF(prf_new, wrapSalt, INFO_WRAP), fresh wrapNonce, wrapAad_N, dataKey)   // wrapAad_N includes vaultId
    ```
-4. Re-encrypt the padded secret under the same `dataKey` with a fresh `payloadNonce` and the new payload AAD (the new `blob[0 .. P) || vaultId`). The new `payloadNonce` MUST differ from the blob's current one; an implementation that draws an equal nonce MUST abort.
+4. Re-pad the secret to `paddedLength` for the N + 1 entries (§6.1; smaller than before) and re-encrypt it under the same `dataKey` with a fresh `payloadNonce` and the new payload AAD (the new `blob[0 .. P) || vaultId`). The new `payloadNonce` MUST differ from the blob's current one; an implementation that draws an equal nonce MUST abort. Vectors: `add-C-with-A`, `add-C-to-legacy`.
 
 Only one existing key is needed. The new key's locator (§4) must then be registered on chain by the caller.
 
 ### 6.7 Updating the payload
 
-Open with any sufficient key set under the `vaultId` (§6.5). Then encrypt the new padded secret (§6.1) under the same `dataKey`, with a fresh `payloadNonce` (which MUST differ from the current one; abort otherwise) and with the unchanged header and entries, followed by the `vaultId`, as AAD. The size rules of §7 apply.
+Open with any sufficient key set under the `vaultId` (§6.5). Then pad the new secret to `paddedLength` for the blob's entries (§6.1) and encrypt it under the same `dataKey`, with a fresh `payloadNonce` (which MUST differ from the current one; abort otherwise) and with the unchanged header and entries, followed by the `vaultId`, as AAD. The size rules of §7 apply. Every update re-pads to the maximum, including a blob written with the earlier padding (vectors `update-with-B`, `update-legacy-to-max`).
 
 ## 7. Size cap and capacity
 
 ```
 overhead = H + Σ_i (1 + len(credId_i) + 12 + W) + 12 + 16      // W = 48 (0x01) or 49 (0x02)
-maxPayloadBytes = 64 * floor((1024 − overhead) / 64) − 2      // 0 if negative
+paddedLength    = 64 * floor((1024 − overhead) / 64)            // what every encoder writes (§6.1); 0 if negative
+maxPayloadBytes = paddedLength − 2                              // 0 if negative
+blobLength      = overhead + paddedLength
 ```
 
 Encoders MUST refuse any secret longer than `maxPayloadBytes` with `VAULT_TOO_LARGE`, and the error MUST state that maximum.
 
 Budget examples, for RP ID `cryoshield.app` (14 bytes) and 64-byte credential IDs:
 
-| Mode | N | overhead | maxPayloadBytes |
-|---|---|---|---|
-| 0x01 | 2 | 334 | 638 |
-| 0x01 | 3 | 459 | 510 |
-| 0x02 | 3 | 462 | 510 |
+| Mode | N | overhead | maxPayloadBytes | blob length (any secret) |
+|---|---|---|---|---|
+| 0x01 | 2 | 334 | 638 | 974 |
+| 0x01 | 3 | 459 | 510 | 971 |
+| 0x02 | 3 | 462 | 510 | 974 |
+
+With the vectors' keys A, B (64-byte IDs) and C (48-byte ID): 974 bytes for A+B, 1019 for A+B+C, 1022 for 2-of-3 over A+B+C (`lengthHidingCases`).
 
 ## 8. Candidate selection (squatting)
 
@@ -330,7 +346,9 @@ The client returns the first candidate that opens, with its index and `vaultId`,
 3. `wrapNonce` for entries 0..N−1 (12 each);
 4. `payloadNonce` (12).
 
-`addKey` draws the new entry's `wrapNonce` (12), then `payloadNonce` (12). `updatePayload` draws `payloadNonce` (12).
+`addKey` draws the new entry's `wrapNonce` (12), then `payloadNonce` (12). `updatePayload` draws `payloadNonce` (12). Padding (§6.1) draws nothing.
+
+Sections added by `pad-to-max-payload`: `lengthHidingCases` (vaults with one key set and different secrets that share one blob length), `legacyPaddingCases` (the blobs published before the maximum-padding rule, byte for byte, with their SHA-256; decoders MUST still open them), `paddedLength` on every vault, `expectedBlobLength` / `expectedPaddedLength` on the add-key and update successes, and the open cases `nonzero-pad-byte` and `length-prefix-overrun`.
 
 In mode 0x02, the Shamir library draws separately: 255 coordinate-shuffle bytes, then M−1 coefficient bytes per data-key byte (the `shamirRng` stream).
 
@@ -351,7 +369,7 @@ Each requirement in `openspec/changes/add-vault-crypto-core/specs/vault-crypto/s
 - [x] Per-vault wrap salt → §4, §5
 - [x] Wrapping-key derivation → §4
 - [x] Envelope encryption of the payload → §6.2
-- [x] Length-hiding padding → §6.1
+- [x] Length-hiding padding → §6.1, §7 (maximum padding: `pad-to-max-payload`)
 - [x] Any-of-N unlock mode → §6.3, §6.5
 - [x] Adding a key → §6.6
 - [x] Updating the payload → §6.7

@@ -15,7 +15,7 @@
 | P-256 public key per key | smart-account owners | verifying every WebAuthn signature on-chain |
 | Smart-account address, vaultId, version, `blobHash` | registry, events | ownership and update checks |
 | Every earlier blob version, block timestamps | chain history | inherent to a public chain |
-| Size class (64-byte padding steps) | blob length | inherent to variable-length ciphertext |
+| Size class (64-byte padding steps); removed by O3 (`pad-to-max-payload`, 2026-10-10) | blob length | nothing; the blob length now depends on public data only |
 
 The identifiers that link a vault to a credential are therefore **three**: the credential ID, the locator and the
 P-256 key. Removing one does not unlink anything while the other two remain.
@@ -93,3 +93,8 @@ P-256 key. Removing one does not unlink anything while the other two remain.
 
 **Decision record.** Proposed by the maintainers on 2026-10-08 and entered in the PRD decisions log ("On-chain
 minimisation"). O3 needs its own OpenSpec change if accepted.
+
+**O3 accepted (founder, 2026-10-10, mainnet-gate review):** OpenSpec change `pad-to-max-payload` pads every payload to
+`64 × floor((1024 − overhead) / 64)` bytes, keeping version 0x01. A 2-key vault with 64-byte credential IDs is now
+974 bytes whatever it holds (was 526 for a 12-word and 590 for a 24-word seed). Measured cost: about $0.0002 more per
+edit and $0.001 more per create (`apps/web/docs/costs.md`). F2 stays open and separate (that change's design D6).
