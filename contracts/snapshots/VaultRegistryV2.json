@@ -1,7 +1,11 @@
 {
   "addLocators_1": "96922",
   "createVault_1024B_2locators": "957198",
+  "createVault_526B_2locators": "616314",
+  "createVault_974B_2locators": "934241",
   "getVaults_32x1024B": "2407103",
   "resolveLocator_page256": "656597",
-  "updateVault_1024B": "212084"
+  "updateVault_1024B": "212084",
+  "updateVault_526B": "127700",
+  "updateVault_974B": "206228"
 }

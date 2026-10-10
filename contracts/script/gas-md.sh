@@ -19,6 +19,10 @@ label() {
     VaultRegistry/addLocators_1) echo '`addLocators`, 1 new locator (full tx)' ;;
     VaultRegistryV2/createVault_1024B_2locators) echo '`createVault`, 1024-byte blob, 2 new locators (full tx)' ;;
     VaultRegistryV2/updateVault_1024B) echo '`updateVault`, 1024-byte blob (full tx)' ;;
+    VaultRegistryV2/createVault_526B_2locators) echo '`createVault`, 526-byte blob (2 keys, 12 words, 64-byte padding steps), 2 new locators (full tx)' ;;
+    VaultRegistryV2/createVault_974B_2locators) echo '`createVault`, 974-byte blob (2 keys, padded to the maximum), 2 new locators (full tx)' ;;
+    VaultRegistryV2/updateVault_526B) echo '`updateVault`, 526-byte blob replacing a 526-byte blob (full tx)' ;;
+    VaultRegistryV2/updateVault_974B) echo '`updateVault`, 974-byte blob replacing a 974-byte blob (full tx)' ;;
     VaultRegistryV2/addLocators_1) echo '`addLocators`, 1 new locator (full tx; the per-vault duplicate set adds one slot)' ;;
     VaultRegistryV2/resolveLocator_page256) echo '`resolveLocator`, 256-entry page (eth_call)' ;;
     VaultRegistryV2/getVaults_32x1024B) echo '`getVaults`, 32 ids x 1 KB (eth_call, about 36 KB response)' ;;
