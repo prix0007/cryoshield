@@ -28,7 +28,7 @@
 
 ## 5. Recovery tool [re]
 
-- [ ] 5.1 Tests first: `tests/test_vectors.py` runs `lengthHidingCases` and `legacyPaddingCases`; the test-only writer (`tests/support/writer.py`) pads to the maximum; pins updated for `v1.json` and `payload-vectors.json`. The shipped decoder is unchanged. Verify: `uv run pytest -q`.
+- [x] 5.1 Tests first: `tests/test_vectors.py` runs `lengthHidingCases` and `legacyPaddingCases`; the test-only writer (`tests/support/writer.py`) pads to the maximum; pins updated for `v1.json` and `payload-vectors.json`. The shipped decoder is unchanged. Verify: `uv run pytest -q`.
 
 ## 6. Security review [sec]
 

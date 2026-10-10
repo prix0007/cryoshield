@@ -51,10 +51,17 @@ class ExhaustedRng(FixedRng):
         super().__init__(b"")
 
 
-def _pad(secret: bytes) -> bytes:
+def padded_length_for(rp_id: str, cred_ids: Sequence[bytes], mode: int) -> int:
+    """Spec §6.1/§7 (pad-to-max-payload): every encoder pads to 64 * floor((1024 - overhead) / 64) bytes."""
+    cap = max_payload_bytes(rp_id, cred_ids, mode)
+    return cap + 2 if cap > 0 else 0
+
+
+def _pad(secret: bytes, target: int) -> bytes:
+    """u16be(len) || secret || zeros, to exactly `target` bytes (the key set's maximum)."""
     n = len(secret)
-    total = 64 * -(-(2 + n) // 64)
-    return n.to_bytes(2, "big") + secret + b"\x00" * (total - 2 - n)
+    assert target % 64 == 0 and target >= 2 + n
+    return n.to_bytes(2, "big") + secret + b"\x00" * (target - 2 - n)
 
 
 def _check_rp(rp_id: str) -> None:
@@ -138,7 +145,8 @@ def create(
             nonces[i], plaintexts[i], _entry_aad(mode, rp_id, wrap_salt, vault_id, i, cred_id)
         )
         out += bytes([len(cred_id)]) + cred_id + nonces[i] + wrapped
-    out += payload_nonce + AESGCM(data_key).encrypt(payload_nonce, _pad(secret), bytes(out) + vault_id)
+    padded = _pad(secret, cap + 2)
+    out += payload_nonce + AESGCM(data_key).encrypt(payload_nonce, padded, bytes(out) + vault_id)
     assert len(out) <= MAX_BLOB
     return bytes(out)
 
@@ -178,12 +186,12 @@ def create_from_vector(v: dict[str, Any]) -> bytes:
 
 
 def _reencrypt(
-    prefix: bytes, vault_id: bytes, data_key: bytes, secret: bytes, old_nonce: bytes, rng: FixedRng
+    prefix: bytes, vault_id: bytes, data_key: bytes, secret: bytes, old_nonce: bytes, rng: FixedRng, target: int
 ) -> bytes:
     nonce = rng.take(12)
     if nonce == old_nonce:  # §6.6/§6.7: the new payload nonce MUST differ
         raise AssertionError("payload nonce reuse")
-    return prefix + nonce + AESGCM(data_key).encrypt(nonce, _pad(secret), prefix + vault_id)
+    return prefix + nonce + AESGCM(data_key).encrypt(nonce, _pad(secret, target), prefix + vault_id)
 
 
 def _open_parts(d: DecodedVault, keys: Sequence[UnlockKey], vault_id: bytes) -> tuple[bytes, bytes]:
@@ -206,16 +214,16 @@ def add_key(
         raise VaultError("INVALID_ARGUMENT")
     data_key, secret = _open_parts(d, [key], vault_id)
     new_ids = [e.cred_id for e in d.entries] + [new_id]
-    new_len = len(blob) + 1 + len(new_id) + 12 + 48
-    if new_len > MAX_BLOB:
-        raise VaultError("VAULT_TOO_LARGE", max_payload_bytes=max_payload_bytes(d.rp_id, new_ids, d.mode))
+    cap = max_payload_bytes(d.rp_id, new_ids, d.mode)
+    if len(secret) > cap:  # §6.6: the secret must fit the N + 1 maximum
+        raise VaultError("VAULT_TOO_LARGE", max_payload_bytes=cap)
     header = _header(d.mode, d.threshold, d.count + 1, d.rp_id, d.wrap_salt)
     entries = blob[d.header_length : d.payload_offset]
     nonce = rng.take(12)
     wk = bytes(derive_wrap_key(new_prf, d.wrap_salt))
     aad = _entry_aad(d.mode, d.rp_id, d.wrap_salt, vault_id, d.count, new_id)
     new_entry = bytes([len(new_id)]) + new_id + nonce + AESGCM(wk).encrypt(nonce, data_key, aad)
-    return _reencrypt(header + entries + new_entry, vault_id, data_key, secret, d.payload_nonce, rng)
+    return _reencrypt(header + entries + new_entry, vault_id, data_key, secret, d.payload_nonce, rng, cap + 2)
 
 
 def update_payload(
@@ -229,7 +237,7 @@ def update_payload(
     cap = max_payload_bytes(d.rp_id, [e.cred_id for e in d.entries], d.mode)
     if len(new_secret) > cap:
         raise VaultError("VAULT_TOO_LARGE", max_payload_bytes=cap)
-    return _reencrypt(blob[: d.payload_offset], vault_id, data_key, new_secret, d.payload_nonce, rng)
+    return _reencrypt(blob[: d.payload_offset], vault_id, data_key, new_secret, d.payload_nonce, rng, cap + 2)
 
 
 __all__ = ["wrap_aad"]
