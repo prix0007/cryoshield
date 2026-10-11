@@ -17,6 +17,7 @@ const TITLES: [string, readonly (string | undefined)[]][] = [
   ['Setup needs your keys again', [S.create.idleReset]],
   ['This vault can’t be changed', [S.vault.legacyReadOnly]],
   ['Too much to store', [S.save.tooLarge, S.save.tooMany]],
+  ['CryoShield was updated', [S.save.outdated]],
   ['Nothing was saved', [S.save.nothingSaved, S.save.notConfirmed, S.save.loadFailed, S.keyErrors.PRF_UNAVAILABLE]],
 ];
 

@@ -6,7 +6,7 @@ import { defineConfig, devices } from '@playwright/test';
  * Arweave / Turbo are stubbed per test with page.route (e2e/fixtures/arweave.ts).
  */
 /** add-mobile-e2e D2: the specs re-run on the phone project. */
-const MOBILE_SPECS = /\/(05-landing|08-legal|10-flows|11-architecture|14-devices|15-support|16-seo|17-vaults|18-vault-layout|19-theme|21-mobile|22-lost-key|30-a11y|40-errors)\.spec\.ts$/;
+const MOBILE_SPECS = /\/(05-landing|08-legal|10-flows|11-architecture|14-devices|15-support|16-seo|17-vaults|18-vault-layout|19-theme|21-mobile|22-lost-key|30-a11y|40-errors|41-outdated-build)\.spec\.ts$/;
 
 /** parallel-e2e-shards D2: the projects picked with --project (both `--project=x` and `--project x`); empty = all. */
 const selected = process.argv.flatMap((arg, i, argv) =>

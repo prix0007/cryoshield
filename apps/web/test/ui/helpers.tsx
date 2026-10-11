@@ -17,6 +17,7 @@ export function fakeServices(over: Partial<Services> = {}): Services {
     network: { name: 'local test chain', explorerUrl: null },
     registries: [{ version: 'v2', address: '0x00000000000000000000000000000000000000a2' }],
     arweaveGatewayUrl: 'https://arweave.net',
+    buildCheck: async () => 'current',
     ...over,
   };
 }

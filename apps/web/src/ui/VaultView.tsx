@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import type { SecretItem } from '../vault/payload';
 import { visibleName } from '../vault/name';
-import { ChunkBoundary, ChunkFailed, cleanItems, useLazyModule, KeyPrompt, Notice, SecretsEditor, StepHeading } from './components';
+import { ChunkBoundary, ChunkFailed, cleanItems, useLazyModule, KeyPrompt, Notice, ReloadButton, SecretsEditor, StepHeading } from './components';
 import { MirrorLine } from './CreateFlow';
 import { ensureMirror, errorReference, isReadOnly, messageFor, mirrorWrite, rewrite, saveAddKey, saveEdit, withPayload, type MirrorItem, type MirrorResult, type VaultSession } from './operations';
 import { testnetName, useServices } from './services';
@@ -384,7 +384,14 @@ export function VaultView(props: {
             )}
             <div className="vault-location-disclosure">
               <Disclosure label={S.location.title}>
-                <ChunkBoundary fallback={<p className="hint">{S.location.failed}</p>}>
+                <ChunkBoundary
+                  fallback={
+                    <div className="location-failed">
+                      <p className="hint">{S.location.failed}</p>
+                      <ReloadButton />
+                    </div>
+                  }
+                >
                 <Suspense fallback={<Loading text={S.location.loading} />}>
                   <VaultLocation
                     network={svc.network}
