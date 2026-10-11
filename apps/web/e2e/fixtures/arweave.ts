@@ -82,9 +82,14 @@ export class ArweaveStub {
           body: JSON.stringify({ data: { transactions: { edges: hits.reverse().map((h) => ({ node: { id: h.id, data: { size: String(h.data.length) } } })) } } }),
         });
       }
-      const id = url.pathname.slice(1);
+      // Like the real gateways (fix-arweave-raw-fetch): the plain item path redirects to a per-item sandbox host
+      // (outside the app CSP); only `/raw/<id>` serves the bytes.
+      const raw = url.pathname.startsWith('/raw/');
+      const id = raw ? url.pathname.slice('/raw/'.length) : url.pathname.slice(1);
       const it = this.items.find((x) => x.id === id);
-      return it ? route.fulfill({ status: 200, body: it.data }) : route.fulfill({ status: 404 });
+      if (!it) return route.fulfill({ status: 404 });
+      if (!raw) return route.fulfill({ status: 302, headers: { location: `https://sandbox-${index}.arweave.net/${id}` } });
+      return route.fulfill({ status: 200, headers: { 'access-control-allow-origin': '*' }, body: it.data });
     };
     await page.route('https://arweave.net/**', gateway('arweave'));
     await page.route('https://turbo-gateway.com/**', gateway('fast'));

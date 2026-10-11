@@ -141,8 +141,10 @@ describe('fix-arweave-mirror-status 1.1: copy found on either index', () => {
   const ID = 'A'.repeat(43);
   function server(over: { fastHas?: Uint8Array | null; gwHas?: Uint8Array | null; fastDown?: boolean } = {}) {
     const calls: string[] = [];
-    const fetchFn = vi.fn(async (url: string) => {
+    const inits: (RequestInit | undefined)[] = [];
+    const fetchFn = vi.fn(async (url: string, init?: RequestInit) => {
       calls.push(url);
+      inits.push(init);
       const host = url.startsWith(FAST) ? 'fast' : url.startsWith(GW) ? 'gw' : 'upload';
       if (host === 'upload') return new Response(JSON.stringify({ id: 'up' }), { status: 200 });
       if (host === 'fast' && over.fastDown) throw new TypeError('network');
@@ -151,10 +153,13 @@ describe('fix-arweave-mirror-status 1.1: copy found on either index', () => {
         const edges = has ? [{ node: { id: ID, data: { size: String(has.length) } } }] : [];
         return new Response(JSON.stringify({ data: { transactions: { edges } } }), { status: 200 });
       }
+      // Like the real gateways (fix-arweave-raw-fetch): the plain item path redirects to a per-item sandbox host,
+      // which the app CSP blocks (a network error in the browser); only `/raw/<id>` serves the bytes.
+      if (!url.includes('/raw/')) throw new TypeError('redirected to a sandbox host: blocked by connect-src');
       return has ? new Response(has.slice().buffer, { status: 200 }) : new Response('nf', { status: 404 });
     });
     const m = createMirror({ turboUploadUrl: 'https://upload.example', arweaveGatewayUrl: GW, fastIndexUrl: FAST, fetchFn: fetchFn as any });
-    return { m, calls };
+    return { m, calls, inits };
   }
   const input = { vaultId, version: 1, locators: [locs[0]!], blob };
 
@@ -162,7 +167,16 @@ describe('fix-arweave-mirror-status 1.1: copy found on either index', () => {
     const { m, calls } = server({ fastHas: blob, gwHas: null });
     expect((await m.ensure(input)).state).toBe('present');
     expect(calls.some((u) => u.includes('upload.example'))).toBe(false);
-    expect(calls).toContain(`${FAST}/${ID}`); // data fetched from the host that listed it
+    expect(calls).toContain(`${FAST}/raw/${ID}`); // data fetched from the host that listed it, on its raw path
+  });
+
+  it('fix-arweave-raw-fetch: reads <host>/raw/<id> without following redirects, so a redirecting gateway is no re-upload', async () => {
+    const { m, calls, inits } = server({ fastHas: null, gwHas: blob });
+    expect(await m.ensure(input)).toEqual({ state: 'present', id: ID });
+    expect(calls.some((u) => u.includes('upload.example'))).toBe(false);
+    const data = calls.map((u, i) => [u, inits[i]] as const).filter(([u]) => !u.endsWith('/graphql'));
+    expect(data.map(([u]) => u)).toEqual([`${GW}/raw/${ID}`]);
+    expect(data[0]![1]).toMatchObject({ redirect: 'error', credentials: 'omit', referrerPolicy: 'no-referrer' });
   });
 
   it('uploads when the fast index serves different bytes and the gateway has nothing', async () => {

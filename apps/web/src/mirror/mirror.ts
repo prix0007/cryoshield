@@ -3,7 +3,8 @@
  * - upload(): signs an ANS-104 data item with a per-session in-memory key and POSTs it to Turbo;
  * - ensure(): self-heal on unlock: GraphQL by (Vault-Id, Version) on the fast-finality index (Turbo's gateway, which
  *   indexes items immediately) AND the configured gateway (arweave.net lists bundled items only after settlement);
- *   byte-compare data from the host that listed it (1024-byte cap); else upload (fix-arweave-mirror-status D1).
+ *   byte-compare data from the host that listed it, read from `/raw/<id>` (1024-byte cap, no redirects); else upload
+ *   (fix-arweave-mirror-status D1, fix-arweave-raw-fetch).
  * Everything on Arweave is untrusted: only the on-chain blob (or a blob that authenticates) is ever used.
  */
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
@@ -170,7 +171,9 @@ export function createMirror(opts: { turboUploadUrl: string; arweaveGatewayUrl: 
     for (const n of nodes) {
       if (n.size !== p.blob.length || n.size > MAX_BLOB) continue;
       try {
-        const res = await fetchFn(`${n.host}/${n.id}`, { credentials: 'omit', referrerPolicy: 'no-referrer' });
+        // `/raw/<id>` (fix-arweave-raw-fetch D1, D3): gateways redirect the plain path to a per-item sandbox host that
+        // the CSP blocks; a redirect is a failed fetch, never followed. `n.id` passed the id filter in lookupOn.
+        const res = await fetchFn(`${n.host}/raw/${n.id}`, { credentials: 'omit', referrerPolicy: 'no-referrer', redirect: 'error' });
         if (!res.ok) continue;
         const data = await readCapped(res, MAX_BLOB);
         if (data && bytesEqual(data, p.blob)) return { state: 'present', id: n.id };
