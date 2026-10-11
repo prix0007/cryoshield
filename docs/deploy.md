@@ -240,7 +240,8 @@ If a Pimlico key changes, re-run step 3 of the setup. If any other value changes
 
 The plan, its go/no-go criteria (G1 to G11) and the launch-day runbook are in the OpenSpec change
 [`launch-op-mainnet`](../openspec/changes/launch-op-mainnet/design.md) (design → Go/no-go criteria, Launch-day
-runbook). Follow that runbook; this section is only the summary.
+runbook). Follow that runbook; this section is only the summary. On the day, work through the ordered
+[release checklist](launch/mainnet-release-checklist.md).
 
 **The human gate is the owner's release.** Founder decision of 2026-10-08 (CI-C1): production deploys only from a `v*`
 release the owner publishes (admin-only tags, the owner-only workflow gate, tag-only `production` environments), and

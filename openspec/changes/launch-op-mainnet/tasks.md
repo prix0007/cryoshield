@@ -60,6 +60,8 @@
 
 ## 7. Go/no-go and launch [owner] (design → Launch-day runbook)
 
+Ordered, copyable checklist for the day: [`docs/launch/mainnet-release-checklist.md`](../../../docs/launch/mainnet-release-checklist.md).
+
 - [ ] 7.1 [owner] Fill in every go/no-go criterion G1–G11 with evidence and date in `docs/reviews/launch-op-mainnet.md`, and record `harden-gas-sponsorship` task 8.1 approval. Verify: no criterion open; otherwise stop.
 - [ ] 7.2 [owner] Simulate, then broadcast the mainnet deploy (runbook steps 1–2) with `DEPLOYER_ACCOUNT=cryoshield-deployer`, then run `verify-etherscan.sh 10` with the founder's key in the environment (step 3). Verify: `contracts/deployments/10.json` has only `contracts.vaultRegistryV2` and `contracts.wallets["cryoshield.app"]` at the D1 addresses; Blockscout, Sourcify and Etherscan show verified source; the runtime bytecode equals `forge inspect … deployedBytecode`.
 - [ ] 7.3 [rec] [fe] PR with `10.json` (from 7.2) and the regenerated recovery `op-mainnet` preset. Verify: 3.1 green; web parity tests green; dev deploy green on OP Sepolia.
