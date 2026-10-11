@@ -6,18 +6,18 @@ Everything below is done by the founder. Agents never create credentials.
 
 ## 1. Create the machine user and invite it
 
-1. Create a GitHub account for the agents, for example `cryoshield-agent`. GitHub's terms allow one machine account per person. Use its own email address, and turn on 2FA.
+1. Create a GitHub account for the agents. CryoShield's is **`cryoshield`** (created 2026-10, Write role, listed in `.github/trusted-authors.json`); the commands below use that login. GitHub's terms allow one machine account per person. Use its own email address, and turn on 2FA.
 2. Invite it with **Write** (not Maintain, not Admin):
 
    ```sh
-   gh api -X PUT repos/prix0007/cryoshield/collaborators/cryoshield-agent -f permission=push
+   gh api -X PUT repos/prix0007/cryoshield/collaborators/cryoshield -f permission=push
    ```
 
 3. Accept the invitation while logged in as the machine user (`https://github.com/prix0007/cryoshield/invitations`).
 4. **Add it to the trusted authors** (OpenSpec change `gate-external-pr-automation`). Until you do, its PRs are treated like any outside author's: the `ecc-review` check fails with "Awaiting owner approval" until you comment `/ecc-review <head sha>` on each push, and auto-merge stays off. Open the PR yourself, as the owner, adding the login to `.github/trusted-authors.json`:
 
    ```json
-   ["prix0007", "cryoshield-agent"]
+   ["prix0007", "cryoshield"]
    ```
 
    The workflows read the list from `main`, so it takes effect when that PR merges. The workflow policy accepts only GitHub user logins in it: no bots, no wildcards, at most 20 entries.
@@ -88,7 +88,7 @@ Host github-agent
 
 ```
 [user]
-  name = cryoshield-agent
+  name = cryoshield
   email = <machine user's noreply address>
 [url "git@github-agent:"]
   insteadOf = git@github.com:
@@ -109,7 +109,7 @@ gh auth status    # must show the machine user, not prix0007
 Run these as the machine user (`GH_TOKEN` set). The role check comes first. The write probes send back the values that are already committed, so even if one wrongly succeeds, nothing changes. If the role check shows `admin` or `maintain`, stop and fix the role before running anything else.
 
 ```sh
-gh api user --jq .login                                                   # cryoshield-agent
+gh api user --jq .login                                                   # cryoshield
 gh api repos/prix0007/cryoshield --jq .permissions                        # admin: false, maintain: false, push: true
 # No-op write probes (same values as the committed settings); each must fail with 403/404:
 gh api -X PUT repos/prix0007/cryoshield/actions/permissions/workflow \
@@ -135,4 +135,4 @@ To see that the machine user cannot release, as the machine user: pushing **any*
 
 - Rotate the token before it expires. Create the new one, update the keychain entry, then delete the old one.
 - If the token may have leaked, delete it at once (machine user → Settings → Developer settings), then check the machine user's security log (Settings → Security log), the organization audit log under option A, and the repository's recent branches, PRs and Deploy runs.
-- To remove all agent access: `gh api -X DELETE repos/prix0007/cryoshield/collaborators/cryoshield-agent`, and remove the login from `.github/trusted-authors.json` in a PR.
+- To remove all agent access: `gh api -X DELETE repos/prix0007/cryoshield/collaborators/cryoshield`, and remove the login from `.github/trusted-authors.json` in a PR.

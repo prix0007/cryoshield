@@ -2,8 +2,13 @@
  * launch-op-mainnet (design D6, Communications; founder decisions Q4 and Q5): the dated notices around the switch of
  * cryoshield.app from OP Sepolia to OP Mainnet. Pure: used by the app at run time and by the landing page at build time.
  *
- * The dates are set by an agent PR once the founder fixes the switch day (design → Launch-day runbook). Until then
- * both are null: the "moving" notice stays off, and a chain-10 build shows the testnet-vaults help (fail safe).
+ * The dates are set by an agent PR once the founder fixes the switch day (design → Launch-day runbook). A null
+ * `switchDate` makes a chain-10 build show the testnet-vaults help with no end (fail safe); a null `moveNoticeFrom`
+ * keeps the "moving" notice off.
+ *
+ * Founder, 2026-10-12: the switch day is 2026-10-13. `moveNoticeFrom` stays null, because only a production testnet
+ * build could show that notice and the next production release is the OP Mainnet one; the move is announced in the
+ * README and a GitHub discussion instead (Sequencing B).
  */
 import { networkFor } from './networks';
 
@@ -14,7 +19,7 @@ export interface LaunchDates {
   switchDate: string | null;
 }
 
-export const LAUNCH: LaunchDates = { moveNoticeFrom: null, switchDate: null };
+export const LAUNCH: LaunchDates = { moveNoticeFrom: null, switchDate: '2026-10-13' };
 
 /** The production RP ID. The dev site (cryoshield-web-dev.fly.dev) and local builds never show launch notices. */
 export const PRODUCTION_RP_ID = 'cryoshield.app';

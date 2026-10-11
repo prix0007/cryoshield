@@ -10,7 +10,8 @@
   - The recovery tool has an `op-mainnet` preset with three public RPCs but placeholder registry addresses, and its default network is `op-sepolia`.
   - Public copy is hard-coded to "Testnet preview" and "OP Sepolia" (`apps/web/index.html`, `legal/*.md`, `src/ui/strings.ts`, `src/ui/chrome.tsx`, `vite-plugins/seo.ts`, `terms/index.html`). The app banner is shown only for chains in a testnet map, so on chain 10 it would silently disappear, along with the "not independently audited" sentence.
 - **Founder facts for this plan:** the deployer keystore `cryoshield-deployer` (`0x33144f681d83527c0a8f364751a5d2f4505d26bf`) holds 0.005 ETH on OP Mainnet (confirmed read-only below, nonce 0). The Pimlico mainnet policy limits are fixed (proposal item 4; the founder's values of 2026-10-09 are in D8). Etherscan verification uses a founder-supplied V2 key.
-- **Founder decisions of 2026-10-09** (Open questions, answered below): launch unaudited with no audit planned (Q1); recovery default `op-mainnet` (Q2); no migration, a 90-day notice and `--testnet` (Q4); a 7-day soft launch (Q5); **no separate testnet release** before the switch (D3, Sequencing); the mainnet Pimlico policy values (D8). **After the pre-launch review (same day):** the mainnet production values are set **before** the first `v*` tag, so `vA` deploys straight to chain 10 (Sequencing B, D3); the Pimlico limits get resets (per user monthly, global daily) and keep the $0.50 per-operation cap (D8); donations no longer mention an audit.
+- **Founder decisions of 2026-10-09** (Open questions, answered below): launch unaudited with no audit planned (Q1); recovery default `op-mainnet` (Q2); no migration, a 90-day notice and `--testnet` (Q4); a 7-day soft launch (Q5); **no separate testnet release** before the switch (D3, Sequencing); the mainnet Pimlico policy values (D8). **After the pre-launch review (same day):** the mainnet production values are set **before** the first `v*` tag, so `v1.0.0` deploys straight to chain 10 (Sequencing B, D3); the Pimlico limits get resets (per user monthly, global daily) and keep the $0.50 per-operation cap (D8); donations no longer mention an audit.
+- **Founder decisions of 2026-10-12:** the first production release tag is **`v1.0.0`** (it replaces the placeholder `vA` and the briefly planned `v0.1.0` everywhere in this change); the switch day is **2026-10-13** (`switchDate`, task 5.5).
 
 ## Goals / Non-Goals
 
@@ -75,10 +76,10 @@ So the same build, salts and RP ID give the same three addresses on every chain.
 
 ### D3. Production switch through a release (Sequencing B, founder decision 2026-10-09)
 
-The chain is configuration in `production-build`, not code. The founder decided, after the pre-launch review, that there is **no OP Sepolia release of `vA`**: production goes from the 2026-10-05 build straight to `vA` on OP Mainnet.
+The chain is configuration in `production-build`, not code. The founder decided, after the pre-launch review, that there is **no OP Sepolia release of `v1.0.0`**: production goes from the 2026-10-05 build straight to `v1.0.0` on OP Mainnet.
 
 1. **Before tagging,** the owner saves the four current values offline and sets the mainnet ones (runbook step 6). `VITE_BUNDLER_URL` is a secret, and GitHub cannot return a secret's value: the testnet bundler URL (with its key) is copied from the **Pimlico dashboard** into the offline record before it is replaced, or a chain rollback cannot restore it (review L8).
-2. **Then** the owner publishes `vA` (step 7 = S). Its first production deploy builds for chain 10, and the smoke test checks chain 10, registry v2 and no v1 in `/release.json`.
+2. **Then** the owner publishes `v1.0.0` (step 7 = S). Its first production deploy builds for chain 10, and the smoke test checks chain 10, registry v2 and no v1 in `/release.json`.
 
 The spec requirement "Production chain switch through a release" (`deployment-targets`) was rewritten to allow this order.
 
@@ -87,13 +88,13 @@ The spec requirement "Production chain switch through a release" (`deployment-ta
 | Risk | What happens | Mitigation |
 |---|---|---|
 | The first chain-10 deploy fails after `fly deploy` started | The `release` job rolls back to the previous image, the **2026-10-05 OP Sepolia build**. That image is self-contained (its config is baked in), so the site keeps working on testnet. The values now say chain 10, so no redeploy succeeds until they are fixed or restored | Fix forward with a new tag, or restore the saved testnet values (with the bundler URL from the Pimlico dashboard) |
-| Old tags cannot be rebuilt for chain 10 | Every pre-`vA` tag lacks `10.json`; its chain-10 build fails by design ("No deployment record for chain 10") | After the switch only `vA` and later tags are rollback targets (R9) |
-| `vA`'s code was never deployed to production on OP Sepolia | A code defect and a chain problem show up in the same deploy | `vA`'s commit already runs on OP Sepolia on the **dev site**, which deploys every `main` commit through the same pipeline and smoke test; the copy tests cover both chains |
-| Chain rollback | There is no production run of `vA` on OP Sepolia to point back to | Restore the saved testnet values and redeploy `vA` (`gh workflow run deploy.yml --ref vA`), or publish a new tag on the same commit; `vA` contains `11155420.json`, so it builds for OP Sepolia |
+| Old tags cannot be rebuilt for chain 10 | Every pre-`v1.0.0` tag lacks `10.json`; its chain-10 build fails by design ("No deployment record for chain 10") | After the switch only `v1.0.0` and later tags are rollback targets (R9) |
+| `v1.0.0`'s code was never deployed to production on OP Sepolia | A code defect and a chain problem show up in the same deploy | `v1.0.0`'s commit already runs on OP Sepolia on the **dev site**, which deploys every `main` commit through the same pipeline and smoke test; the copy tests cover both chains |
+| Chain rollback | There is no production run of `v1.0.0` on OP Sepolia to point back to | Restore the saved testnet values and redeploy `v1.0.0` (`gh workflow run deploy.yml --ref v1.0.0`), or publish a new tag on the same commit; `v1.0.0` contains `11155420.json`, so it builds for OP Sepolia |
 
-**Why the plan's order A was dropped:** A (release `vA` on OP Sepolia, then switch and redeploy the same tag) proved `vA` in production on both chains, at the cost of an extra production deploy and a testnet release the founder does not want. The dev site gives most of that proof for the code; what B gives up is a production-proven chain rollback, which only matters before real users arrive (the soft-launch window, Q5).
+**Why the plan's order A was dropped:** A (release `v1.0.0` on OP Sepolia, then switch and redeploy the same tag) proved `v1.0.0` in production on both chains, at the cost of an extra production deploy and a testnet release the founder does not want. The dev site gives most of that proof for the code; what B gives up is a production-proven chain rollback, which only matters before real users arrive (the soft-launch window, Q5).
 
-The `VITE_RPC_URL` host must be in the privacy policy's sub-processor table, because the origins check fails the build for any CSP origin not listed there. `vA` therefore lists the OP Mainnet RPC host (task 4.4).
+The `VITE_RPC_URL` host must be in the privacy policy's sub-processor table, because the origins check fails the build for any CSP origin not listed there. `v1.0.0` therefore lists the OP Mainnet RPC host (task 4.4).
 
 Because nothing is released on OP Sepolia before the switch, the dated "moving to OP Mainnet" notice (task 4.6) never reaches production; it is published in the README and a GitHub discussion instead (Communications). The main mitigation for testnet users is the 90-day help on OP Mainnet (task 4.5).
 
@@ -102,10 +103,10 @@ Because nothing is released on OP Sepolia before the switch, the dated "moving t
 | What fails | When | Rollback | User impact |
 |---|---|---|---|
 | Contract deploy or verification | Before the switch | None needed: contracts are immutable and unused. Retry verification; a wrong deploy means a new versioned contract in a new change | None |
-| Mainnet values set, `vA` not yet tagged | Before the switch | Nothing is deployed yet; restore the saved values (bundler URL from the Pimlico dashboard) if the launch is called off | None |
-| The first `vA` build or smoke test on chain 10 | At the switch | Build failure: nothing deployed. Deploy or smoke failure: automatic image rollback to the 2026-10-05 OP Sepolia image (self-contained, keeps working). Then fix forward with a new tag, or restore the saved testnet values before any redeploy | None (no mainnet users yet); the site stays on testnet |
-| A defect found in the first hours, before the announcement | Soft-launch window | Chain rollback: restore the saved testnet values and redeploy `vA` (dispatch at the tag) or re-tag the same commit; `vA` builds for OP Sepolia. Only the founder's test vault exists on mainnet; it stays readable with the recovery tool | Founder only |
-| A front-end defect after the announcement | Post-launch | Redeploy the last good mainnet-capable tag (`vA` or later). **Do not** roll the chain back: users' mainnet vaults would vanish from the web app (they stay safe and readable with the recovery tool) | Short outage at worst |
+| Mainnet values set, `v1.0.0` not yet tagged | Before the switch | Nothing is deployed yet; restore the saved values (bundler URL from the Pimlico dashboard) if the launch is called off | None |
+| The first `v1.0.0` build or smoke test on chain 10 | At the switch | Build failure: nothing deployed. Deploy or smoke failure: automatic image rollback to the 2026-10-05 OP Sepolia image (self-contained, keeps working). Then fix forward with a new tag, or restore the saved testnet values before any redeploy | None (no mainnet users yet); the site stays on testnet |
+| A defect found in the first hours, before the announcement | Soft-launch window | Chain rollback: restore the saved testnet values and redeploy `v1.0.0` (dispatch at the tag) or re-tag the same commit; `v1.0.0` builds for OP Sepolia. Only the founder's test vault exists on mainnet; it stays readable with the recovery tool | Founder only |
+| A front-end defect after the announcement | Post-launch | Redeploy the last good mainnet-capable tag (`v1.0.0` or later). **Do not** roll the chain back: users' mainnet vaults would vanish from the web app (they stay safe and readable with the recovery tool) | Short outage at worst |
 | A contract defect after the announcement | Post-launch | Contracts cannot be changed. Pause new writes if needed (take `VITE_SPONSORSHIP_POLICY_ID` to a paused policy, or stop the policy in Pimlico, which shows "Saving is paused"), then a new versioned registry or wallet in its own OpenSpec change with a read path for the old one | Saving paused; reading and recovery keep working |
 | Sponsorship abuse or budget exhausted | Post-launch | Pimlico shows "Saving is paused". Top up only after reviewing usage; D6 trigger of `harden-gas-sponsorship` | Saving paused |
 | Site down | Any time | `fly scale count 0` is never needed for safety: vaults are on-chain and the recovery tool works without the site | Use the recovery tool |
@@ -113,8 +114,8 @@ Because nothing is released on OP Sepolia before the switch, the dated "moving t
 ### D5. Recovery tool on mainnet
 
 - The `op-mainnet` preset is generated from `10.json` (`registry_v2`, `deploy_block_v2`); `registry` (v1) stays the placeholder, and the tool already treats a network with only v2 correctly.
-- The default network becomes `op-mainnet` in the recovery-tool release that ships with `vA`; `--testnet` keeps selecting `op-sepolia`, and the tool prints the network it uses (existing behaviour). This is founder question Q2; the default is recommended because a user in a hurry runs the tool with no flags, and their real vault is on mainnet.
-- The launch-day test reads and unlocks the founder's mainnet vault with two YubiKeys, from the public RPCs only, with the released binary or `uvx` package, and a second run with `--arweave-only` (or the equivalent Arweave path) proves the mirror.
+- The default network becomes `op-mainnet` in the recovery-tool release that ships with `v1.0.0`; `--testnet` keeps selecting `op-sepolia`, and the tool prints the network it uses (existing behaviour). This is founder question Q2; the default is recommended because a user in a hurry runs the tool with no flags, and their real vault is on mainnet.
+- The launch-day test reads and unlocks the founder's mainnet vault with two YubiKeys, from the public RPCs only (`--no-arweave`), with the released binary or `uvx` package, and a second run from Arweave only (`--no-chain`) proves the mirror.
 
 ### D6. Honest copy, driven by the chain
 
@@ -134,7 +135,7 @@ Because nothing is released on OP Sepolia before the switch, the dated "moving t
 - **Landing FAQ for testnet vaults: not added (spec conflict resolved).** D6 above mentions the landing FAQ, but the `landing-page` scenario for chain 10 requires that neither "OP Sepolia" nor "Testnet" appears there. The testnet-vault help is therefore only in the app's no-vault state (spec `vault-web-app`), shown to exactly the users who need it.
 - **Share image:** neutral, preferred over a per-chain PNG. `brand/og-image.svg` drops the "Testnet preview" pill and says "Not independently audited" instead of "Not yet audited"; the PNG and `og-image.sha256` are regenerated; the alt text describes that card ("Free and open source, not independently audited") and is the same on every chain.
 - **Privacy RPC row:** generated from `VITE_RPC_URL` and the vendor recorded for its origin in `docs/compliance/origins.json` (which already lists `https://mainnet.optimism.io`, so no inventory row was added). An RPC origin missing there fails the build and names the host, and `verify-build` checks the built `/privacy` row (`VERIFY_RPC_URL`). Loopback and `.invalid` fixtures are labelled as test endpoints.
-- **Launch dates:** `src/config/launch.ts` holds `moveNoticeFrom` and `switchDate` (UTC days), both `null` until an agent PR sets them for the switch day. With `switchDate` unset, a chain-10 build shows the testnet-vault help (fail safe). The "moving" notice needs `moveNoticeFrom` and shows only on the production RP ID `cryoshield.app`, never on the dev site. The app evaluates both when it opens; the landing page at build time.
+- **Launch dates:** `src/config/launch.ts` holds `moveNoticeFrom` and `switchDate` (UTC days), both `null` until an agent PR sets them for the switch day (set 2026-10-12, task 5.5: `switchDate` `2026-10-13`, `moveNoticeFrom` `null`). With `switchDate` unset, a chain-10 build shows the testnet-vault help (fail safe). The "moving" notice needs `moveNoticeFrom` and shows only on the production RP ID `cryoshield.app`, never on the dev site. The app evaluates both when it opens; the landing page at build time.
 - **Size:** the status notice and the no-vault help are in the initial `/app` JS on purpose (+866 B gzip); `verify-build`'s baseline is raised by 1 KB with the measurement recorded.
 - **Chain-10 tests** build against a test-only fixture record (`apps/web/test/fixtures/mainnet-contracts.mjs`: v2 and the `cryoshield.app` pair at the D1 addresses, fake blocks and hashes), never against a real `contracts/deployments/10.json`. `verify-build` was run the same way: `CRYOSHIELD_CONTRACTS_DIR=<fixture> VERIFY_CHAIN_ID=10 VERIFY_RPC_URL=https://mainnet.optimism.io`.
 - **Not changed:** the app's save-budget hint stays testnet-only (D8, consequences).
@@ -184,7 +185,7 @@ In short: **per-user limits reset monthly, global limits reset daily (recorded 2
 - **One operation can cost up to $0.50** during a gas spike (five times the plan's cap), bounded by the global daily cap.
 - **The policy ends on 2027-10-02.** After that, sponsorship stops for everyone unless the founder extends it (R17).
 - **The policy is disabled until the first chain-10 deploy is green.** Saves in that window are refused.
-- The prepaid balance (about $140, no card) stays the hard bound on spend that bypasses the policy (AA-M3). The mainnet key `cryoshield-mainnet` has "verifying paymaster" off, so it refuses sponsorship without a policy (`harden-gas-sponsorship` task 1.1 (a), 2026-10-10); the balance amount and the no-card status are still to be confirmed by the founder.
+- The prepaid balance ($120, founder 2026-10-10; no card) stays the hard bound on spend that bypasses the policy (AA-M3). The mainnet key `cryoshield-mainnet` has "verifying paymaster" off, so it refuses sponsorship without a policy (`harden-gas-sponsorship` task 1.1 (a), 2026-10-10); the balance amount and the no-card status are still to be confirmed by the founder.
 
 ## Go/no-go criteria
 
@@ -199,9 +200,9 @@ All must be **met and recorded** in `docs/reviews/launch-op-mainnet.md` (task 7.
 | G5 | **Recovery tool on mainnet.** A tool release with the `op-mainnet` preset from `10.json` passes its preset-parity tests, and on launch day reads and unlocks the founder's mainnet vault from public RPCs and from Arweave. | Tests green; launch-record entry | Open |
 | G6 | **Audit decision** recorded (D7). | Launch record | Open (Q1) |
 | G7 | **Monitoring ready.** The runbook in `paymaster-policy.md` has the mainnet thresholds and cadence (below), and the founder has the calendar reminders. | Runbook PR merged | Open |
-| G8 | **Rollback ready.** The four current `production-build` values are saved offline, the testnet `VITE_BUNDLER_URL` taken from the Pimlico dashboard (L8); `vA`'s commit is green on the dev site on OP Sepolia (D3, Sequencing B); the previous-image rollback is known to work. | Launch record | Open |
+| G8 | **Rollback ready.** The four current `production-build` values are saved offline, the testnet `VITE_BUNDLER_URL` taken from the Pimlico dashboard (L8); `v1.0.0`'s commit is green on the dev site on OP Sepolia (D3, Sequencing B); the previous-image rollback is known to work. | Launch record | Open |
 | G9 | **Compliance mainnet gate** (`add-privacy-and-compliance`, rescoped 2026-10-08 for the OSS project: no company, no lawyer items): a `mainnet-gate` review-log entry dated within 30 days, covering its mainnet checklist (pages name the network truthfully, sanctions stance in `docs/compliance/legal-analysis.md` §6 still current, risk register re-scored and signed). CI enforces it: the PR that adds `10.json` fails without that entry and without this launch record (`.github/scripts/mainnet-gate.mjs`), so the launch record must be merged first (task 1.3). Placeholders are already refused by `verify-build`. | `docs/compliance/review-log.md`, this launch record | Open |
-| G10 | **Copy and build.** The chain-10 build passes `verify-build` (`VERIFY_CHAIN_ID=10`) and every copy test in section 4; the chain-11155420 build still passes. | CI on `vA` | Open |
+| G10 | **Copy and build.** The chain-10 build passes `verify-build` (`VERIFY_CHAIN_ID=10`) and every copy test in section 4; the chain-11155420 build still passes. | CI on `v1.0.0` | Open |
 | G11 | **Chain facts re-checked on the day** (table above) and the deployer balance ≥ 0.001 ETH. | Launch record | Re-run on the day |
 
 ## Launch-day runbook
@@ -224,13 +225,13 @@ Roles: **owner** = the founder (repository owner, deployer keystore holder, Piml
 | 4 | agent | PR: `10.json`, regenerated recovery `op-mainnet` preset, default network `op-mainnet`, devices row stays untested | CI green incl. preset parity; ECC review; merged; dev deploy still OP Sepolia and green | Fix forward |
 | 5 | owner | Release the recovery tool (with the mainnet preset) and publish its hashes | `uvx cryoshield-recover --version`; `--network op-mainnet` shows registry v2 | Hold the switch until it is out |
 | 6 | owner | Save the four current `production-build` values offline: the three variables from `gh variable list --env production-build`, and the testnet `VITE_BUNDLER_URL` copied from the **Pimlico dashboard** (GitHub cannot return a secret, review L8). Then set `VITE_CHAIN_ID=10`, `VITE_RPC_URL`, `VITE_SPONSORSHIP_POLICY_ID=sp_mixed_hellion` as variables and the mainnet `VITE_BUNDLER_URL` as the secret (Sequencing B, D3) | `gh variable list --env production-build` shows the mainnet values; `gh secret list --env production-build` shows `VITE_BUNDLER_URL` only; the offline record has all four testnet values | Restore the saved values |
-| 7 (= S) | owner | `gh release create vA --target main --generate-notes`: the first `v*` release since 2026-10-05, deployed straight to chain 10 | Full CI, build for chain 10, smoke green; `/release.json` shows chain 10, registry v2 `0xA622…cB7`, `registry: null`; landing shows "OP Mainnet" and "not been independently audited"; no testnet banner | Build failure: nothing deployed. Deploy or smoke failure: automatic rollback to the 2026-10-05 OP Sepolia image; fix forward or restore the values (step 6) before any redeploy |
+| 7 (= S) | owner | `gh release create v1.0.0 --target main --generate-notes`: the first `v*` release ever (no tag exists as of 2026-10-12; production still serves the 2026-10-05 build `f06ccb9`, deployed before any tag), deployed straight to chain 10 | Full CI, build for chain 10, smoke green; `/release.json` shows chain 10, registry v2 `0xA622…cB7`, `registry: null`; landing shows "OP Mainnet" and "not been independently audited"; no testnet banner | Build failure: nothing deployed. Deploy or smoke failure: automatic rollback to the 2026-10-05 OP Sepolia image; fix forward or restore the values (step 6) before any redeploy |
 | 8 | owner | Enable the Pimlico policy `sp_mixed_hellion` (D8) | The dashboard shows it enabled with the recorded values | Disable it again |
-| 9 | owner | Founder smoke with two YubiKeys on https://cryoshield.app: create, unlock, edit, add-key; check the Arweave mirror | Each operation included; explorer links point to `explorer.optimism.io`; the vault location panel names OP Mainnet | Before announcement: restore values and redeploy `vA` (D4) |
+| 9 | owner | Founder smoke with two YubiKeys on https://cryoshield.app: create, unlock, edit, add-key; check the Arweave mirror | Each operation included; explorer links point to `explorer.optimism.io`; the vault location panel names OP Mainnet | Before announcement: restore values and redeploy `v1.0.0` (D4) |
 | 10 | owner | Recovery tool against the new vault: default network, public RPCs only; then the Arweave path | Vault unlocks; secrets match | As step 9 |
 | 11 | owner | Pimlico dashboard: the four operations are under the mainnet policy; spend per operation recorded | No policy-less sponsorship; per-op cost well under $0.50 (D8) | Pause the policy if anything is unexpected |
 | 12 | agent | PR: measured costs in `apps/web/docs/costs.md`, the `/devices` YubiKey row with the mainnet test, launch record entries | Copy tests green | Fix forward |
-| 13 | owner | Soft-launch window (Q5): no announcement for 7 days, monitoring at launch cadence | No threshold crossed | Chain rollback (restore the testnet values, redeploy `vA`) still possible while only the founder's vault exists |
+| 13 | owner | Soft-launch window (Q5): no announcement for 7 days, monitoring at launch cadence | No threshold crossed | Chain rollback (restore the testnet values, redeploy `v1.0.0`) still possible while only the founder's vault exists |
 | 14 | owner | Announce (communications plan) | — | — |
 
 ## Threat and risk table
@@ -238,14 +239,14 @@ Roles: **owner** = the founder (repository owner, deployer keystore holder, Piml
 | # | Threat or risk | Likelihood | Impact | Mitigation | Residual |
 |---|---|---|---|---|---|
 | R1 | Sponsorship drained by scripted fresh accounts | M | Saving refused for everyone for the rest of the day once the global $30 or ~500 operations is reached (D8, daily reset) | Global daily caps, per-op $0.50, per-user 10 operations a month, daily review in the launch period, D6 trigger | Accepted: availability only, vaults unaffected |
-| R2 | Policy-less use of the public mainnet key (AA-M3), if Pimlico cannot make the policy mandatory | M | Loss of the prepaid balance (~$140) | Prepaid only, no card (no overdraft), origin restriction, low balance, weekly reconciliation of policy vs total spend | Bounded by the balance; founder accepts at G4 |
-| R3 | Mainnet bytecode differs from the reviewed OP Sepolia bytecode | L | Unreviewed contracts live | D1 guard (addresses must equal `11155420.json`), deploy from a clean `vA`-equivalent tree, three explorer verifications | Low |
+| R2 | Policy-less use of the public mainnet key (AA-M3), if Pimlico cannot make the policy mandatory | M | Loss of the prepaid balance ($120) | Prepaid only, no card (no overdraft), origin restriction, low balance, weekly reconciliation of policy vs total spend | Bounded by the balance; founder accepts at G4 |
+| R3 | Mainnet bytecode differs from the reviewed OP Sepolia bytecode | L | Unreviewed contracts live | D1 guard (addresses must equal `11155420.json`), deploy from a clean `v1.0.0`-equivalent tree, three explorer verifications | Low |
 | R4 | Third party front-runs the CREATE2 deployment | L | None (identical code, no admin) | D1 response: verify bytecode, record by hand | None |
 | R5 | Deployer keystore misuse or compromise | L | Attacker can deploy contracts from it, but holds no power over ours (no admin, no owner) | Keystore only, never a raw key in argv (`deploy.sh`), small balance | Low: the deployer has no privileges |
 | R6 | Contract bug found after launch | L–M | Writes may need pausing; contracts immutable | Pause sponsorship; new versioned registry/wallet in a new change; readers keep old versions (as v1/v2 today); audit decision D7 | Accepted, disclosed as "unaudited" |
 | R7 | Dishonest or stale copy (says testnet on mainnet, or drops "unaudited") | M without tests | Users misjudge risk | D6 chain-driven copy, tests on both chains, denylist, launch-day visual check | Low |
 | R8 | Users' testnet vaults "disappear" from cryoshield.app | H (certain for testnet users) | Confusion; perceived loss | 90-day notice in app and FAQ, recovery tool `--testnet`, comms | Low |
-| R9 | Rollback to a tag that cannot build for chain 10 | M | Failed rollback during an incident | Runbook names `vA`+ as the only valid targets; a failed first deploy rolls back to the self-contained 2026-10-05 image (D3, Sequencing B) | Low |
+| R9 | Rollback to a tag that cannot build for chain 10 | M | Failed rollback during an incident | Runbook names `v1.0.0`+ as the only valid targets; a failed first deploy rolls back to the self-contained 2026-10-05 image (D3, Sequencing B) | Low |
 | R10 | Public RPC outage or rate limiting (`mainnet.optimism.io`) | M | Reads slow or fail in the web app | Recovery tool uses three RPCs with quorum; web app shows the existing error state; RPC choice in `VITE_RPC_URL` can be changed with a release | Accepted |
 | R11 | Recovery tool cannot find mainnet vaults (stale preset) | L after G5 | Recovery without CryoShield broken | Preset generated from `10.json`, parity tests, launch-day recovery test | Low |
 | R12 | Cross-chain linkability: the same keys give the same account address and locators on OP Sepolia and OP Mainnet | H (by construction) | A testnet user's mainnet vault is linkable to their testnet activity | Disclosed in the privacy policy's "public and permanent data" section; no secret is exposed | Accepted |
@@ -284,8 +285,8 @@ The funded 0.005 ETH (≈ $12.86) covers this about 800 times, so even a 100× g
 ## Communications and copy plan
 
 - **Principles:** say exactly what changed and what did not. Never say "audited", "guaranteed" or "can't be lost". Always pair "permanent" with "only your keys can open it; lose all of them and nobody can".
-- **Before launch (S−7):** the "moving to OP Mainnet" text (`S.network.moving`), published in the README status line and a GitHub discussion. It does not appear on the live site: production stays on the 2026-10-05 build until `vA` deploys straight to OP Mainnet (D3, Sequencing B).
-- **At the switch:** the D6 mainnet copy on every page; the GitHub release notes for `vA` list the network, the contract addresses with explorer links (Blockscout, Etherscan, Sourcify), the audit status and the recovery-tool version.
+- **Before launch (S−7):** the "moving to OP Mainnet" text (`S.network.moving`), published in the README status line and a GitHub discussion. It does not appear on the live site: production stays on the 2026-10-05 build until `v1.0.0` deploys straight to OP Mainnet (D3, Sequencing B).
+- **At the switch:** the D6 mainnet copy on every page; the GitHub release notes for `v1.0.0` list the network, the contract addresses with explorer links (Blockscout, Etherscan, Sourcify), the audit status and the recovery-tool version.
 - **Announcement (S+7, after the soft launch):** the same facts, plus: how to back up (two keys, PIN), what CryoShield never sees, how recovery works without us, the security contact, and the cost model (CryoShield pays gas, up to limits; "Saving is paused" means the limit was reached, not that a vault is at risk).
 - **Incident wording (prepared):** "Saving is paused" (budget), "We found a problem in X; your vault is safe and readable with the recovery tool; we have paused saving while we fix it" (contract), and the existing incident runbook of `add-privacy-and-compliance` for anything involving user data.
 - **Where:** the site, GitHub release notes, the README status line, `docs/system-design.md` status line. No new channel is required.
@@ -296,7 +297,7 @@ There is no CryoShield server, so monitoring is manual and read-only.
 
 | What | How | Launch cadence (first 14 days) | Steady cadence | Threshold → action |
 |---|---|---|---|---|
-| Pimlico spend and balance | Dashboard: usage by policy, balance, daily spend against the global cap (D8) | Daily | Weekly (runbook) | Balance < $50 → review usage, then top up to ~$140; any day at the global cap → check for abuse (D6) before raising it |
+| Pimlico spend and balance | Dashboard: usage by policy, balance, daily spend against the global cap (D8) | Daily | Weekly (runbook) | Balance < $50 → review usage, then top up to ~$120; any day at the global cap → check for abuse (D6) before raising it |
 | Policy-less sponsorship | Dashboard: spend not attributed to the mainnet policy | Daily | Weekly | Any → rotate the key, review AA-M3, D6 trigger |
 | Per-operation cost | Dashboard; compare with the cost table | Daily | Monthly | Median > $0.03 → investigate gas; > $0.50 → operations being refused |
 | Refusals | Dashboard rejected requests; user reports | Daily | Weekly | Real users at the 10-operation monthly cap, or sustained refusals → raise the cap with a recorded reason |
@@ -312,7 +313,7 @@ Weekly review results go into `apps/web/docs/paymaster-policy.md`'s review log (
 
 - **[Launching unaudited]** → D7; mitigated by honest copy, open source, vectors, internal reviews; founder decision Q1.
 - **[Manual monitoring]** → a missed day can let an abuse day pass unnoticed; bounded by the daily cap and the prepaid balance.
-- **[Sequencing B: no production run of `vA` on OP Sepolia]** → no production-proven chain rollback; mitigated by the dev site running the same commit on OP Sepolia, the self-contained previous image, and the saved values (D3).
+- **[Sequencing B: no production run of `v1.0.0` on OP Sepolia]** → no production-proven chain rollback; mitigated by the dev site running the same commit on OP Sepolia, the self-contained previous image, and the saved values (D3).
 - **[Recovery default switches to mainnet]** → testnet users must pass `--testnet`; the tool prints the network and the 90-day notice tells them.
 
 ## Open questions for the founder (answered 2026-10-09)

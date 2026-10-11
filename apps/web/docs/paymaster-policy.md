@@ -167,7 +167,7 @@ key, not scripts.
 - The **dev key** (ending `ct5x`, policy `sp_light_hobgoblin`) is embedded in the live dev bundle **and** in the live
   https://cryoshield.app bundle: production runs commit `f06ccb9`, which predates the `production-build` values. So
   the dev key is in use on both origins today, against the "never reuse the dev key in production" rule above. The
-  launch release (`vA`) replaces it on `cryoshield.app`.
+  launch release (`v1.0.0`) replaces it on `cryoshield.app`.
 - `production-build` holds the policy `sp_cheerful_bastion` and a second, testnet-production key. Neither is in a live
   bundle yet.
 
@@ -240,7 +240,7 @@ There is no server to send alerts, and Pimlico has no low-balance alerting, so t
 
 - [ ] Usage page: on how many of the last 7 days was the global cap (spend or count) reached?
 - [ ] Usage page: is there any sponsored spend that did **not** use our policy ID?
-- [ ] Balance (mainnet): still about $140, and no card on the account? Days at the global cap?
+- [ ] Balance (mainnet): still about $120 (funded 2026-10-10), and no card on the account? Days at the global cap?
 - [ ] Spend rate: in line with D2, or draining faster?
 - [ ] Policy and key settings still match section 3 (webhook off, origins, methods)?
 - [ ] Any user reports of "Saving is paused" that the numbers don't explain?
@@ -254,7 +254,7 @@ log below, naming the balance and any threshold crossed with the action taken.
 
 | What | How | Launch cadence (first 14 days) | Steady cadence | Threshold → action |
 |---|---|---|---|---|
-| Pimlico spend and balance | Dashboard: usage by policy, balance, daily spend against the global cap | Daily | Weekly | Balance < $50 → review usage, then top up to ~$140; any day at the global cap → check for abuse (section 8) before raising it |
+| Pimlico spend and balance | Dashboard: usage by policy, balance, daily spend against the global cap | Daily | Weekly | Balance < $50 → review usage, then top up to ~$120; any day at the global cap → check for abuse (section 8) before raising it |
 | Policy-less sponsorship | Dashboard: spend not attributed to `sp_mixed_hellion` | Daily | Weekly | Any → rotate the mainnet key, review AA-M3, evaluate section 8 |
 | Per-operation cost | Dashboard; compare with `docs/costs.md` | Daily | Monthly | Median > $0.03 → investigate gas; > $0.50 → operations are being refused |
 | Refusals | Dashboard rejected requests; user reports | Daily | Weekly | Real users at the 10-operation monthly cap, or sustained refusals → raise the cap with a recorded reason |
