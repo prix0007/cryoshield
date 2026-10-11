@@ -23,8 +23,8 @@
 
 ## 5. End to end [fe]
 
-- [ ] 5.1 `e2e/specs/41-outdated-build.spec.ts` (desktop and phone projects): create and unlock a vault, then serve `/app/` with a different entry script; Save is refused with the alert and Reload page, the edit stays, and the vault version on chain is unchanged; after removing the route, Reload page reloads and a save succeeds. Verify: `pnpm test:e2e --project=chromium` and `--project=mobile`.
-- [ ] 5.2 Full checks: lint, typecheck, unit tests, `pnpm build`, `verify-build`, `openspec validate --all --strict`. Verify: all green.
+- [x] 5.1 `e2e/specs/41-outdated-build.spec.ts` (desktop and phone projects): create and unlock a vault, then serve `/app/` with a different entry script; Save is refused with the alert and Reload page, the edit stays, and the vault version on chain is unchanged; after removing the route, Reload page reloads and a save succeeds. Verify: `pnpm test:e2e --project=chromium` and `--project=mobile`.
+- [x] 5.2 Full checks: lint, typecheck, unit tests, `pnpm build`, `verify-build`, `openspec validate --all --strict`. Verify: all green.
 
 ## 6. Security review [sec]
 

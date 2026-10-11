@@ -53,4 +53,6 @@ nothing secret is sent or read. The build and its reproducibility are unchanged:
   (location fallback), `src/ui/strings.ts`, `src/ui/ceremony.ts`.
 - Tests: `test/lib/build-check.test.ts`, `test/ui/build-check-flows.test.tsx`, `e2e/specs/41-outdated-build.spec.ts`
   (desktop and phone projects).
+- `apps/web/scripts/verify-build.mjs`: the `/app` initial-JS baseline +1 KB, deliberately (measured +998 B; the checker
+  must be in the initial chunk, since a lazy one would 404 in the stale tab it is meant to catch).
 - Security review: required (touches the write path); recorded in design.md.

@@ -318,7 +318,11 @@ const gz = (f) => gzipSync(readFileSync(join(dist, f)), { level: 9 }).length;
 // must show on every network before anything loads (the Unaudited notice and chip on OP Mainnet, the testnet banner
 // elsewhere), the no-vault help for testnet-preview vaults sits in the unlock screen, and the launch-date helpers decide
 // both. Headroom before: 358 B; after: about 516 B.
-const APP_BASELINE = 194_689 - 12 * 1024 + 1024 + 1024 + 1024 + 1024;
+// reload-on-new-build (2026-10-12, founder request): +1 KB, deliberately. Measured gzip: main 1822d1f 206,598 B / 206,616 B
+// (e2e / production) -> 207,596 B / 207,609 B (+998 B / +993 B), all initial on purpose: the build check must already be in memory in a
+// stale tab (a lazily loaded checker would 404 after the very deploy it detects, and fail open), plus the update notice
+// and the Reload page button. Headroom before: 379 B; after: about 400 B.
+const APP_BASELINE = 194_689 - 12 * 1024 + 1024 + 1024 + 1024 + 1024 + 1024;
 const APP_ALLOWANCE = 20 * KB;
 const WRITE_STACK_MARKERS = ['eth_sendUserOperation', 'pimlico_getUserOperationGasPrice', 'WalletConfigError'];
 // vault-list-labels-archive 3.1 (design D5): the vault list, the Edit vault sheet, Archive and clear and the dates
