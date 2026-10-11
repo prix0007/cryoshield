@@ -223,9 +223,19 @@ button.link-button {
 .group-list li {
   position: relative;
 }
-/* add-compromised-key-guide D5: a footnote link under the Manage vault list, indented like its heading. */
+/* add-compromised-key-guide D5: a footnote link under the Manage vault list, indented like its heading. A 24 px+ tap
+   target (WCAG 2.2 SC 2.5.8) and a visible focus ring in both themes. */
 .lost-key-link {
   margin: var(--space-xs) 0 0 var(--space-lg);
+}
+.lost-key-link a {
+  display: inline-block;
+  min-height: 24px;
+  padding-block: var(--space-xs);
+}
+.lost-key-link a:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
 }
 .group-list li + li::before {
   content: '';

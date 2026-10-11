@@ -88,7 +88,7 @@ describe('/support (built)', () => {
 });
 
 describe('the coffee button everywhere', () => {
-  const PAGES = ['index.html', 'privacy/index.html', 'terms/index.html', 'cookies/index.html', 'architecture/index.html', 'devices/index.html', 'support/index.html'];
+  const PAGES = ['index.html', 'privacy/index.html', 'terms/index.html', 'cookies/index.html', 'architecture/index.html', 'devices/index.html', 'support/index.html', 'lost-key/index.html'];
   it('every page footer has one "Buy me a coffee" link to /support', () => {
     for (const p of PAGES) {
       const links = [...doc(p).querySelectorAll('footer a[href="/support"]')];

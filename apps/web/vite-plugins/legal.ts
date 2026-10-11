@@ -191,8 +191,11 @@ export function renderLegalPage(root: string, name: string, network: (md: string
   return html;
 }
 
-/** Repository documents rendered into pages: /devices and /lost-key (add-compromised-key-guide). */
-export type RepoDoc = 'supported-devices' | 'lost-or-compromised-key';
+/** Repository documents rendered into pages: /devices and /lost-key (add-compromised-key-guide). The one list. */
+export const REPO_DOCS = ['supported-devices', 'lost-or-compromised-key'] as const;
+export type RepoDoc = (typeof REPO_DOCS)[number];
+/** The shell marker for any listed document, `<!--doc:<name>-->`; names are lower-case words and hyphens only. */
+export const repoDocMarker = (): RegExp => new RegExp(`<!--doc:(${REPO_DOCS.join('|')})-->`);
 
 /**
  * add-supported-devices-page: renders docs/<name>.md from the repository root with the same escaped renderer and

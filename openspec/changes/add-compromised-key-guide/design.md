@@ -51,6 +51,8 @@ secrets may have been seen on screen whatever happened to the keys.
 ### D5. Links
 - **Vault view:** a plain link under the "Manage vault" rows (`S.vault.lostKey`), visible in read-only vaults too. It
   opens the page in the same tab; the vault locks as on any navigation away, which the guide's first step expects.
+  It is hidden while a write is in flight (`busy`), so a same-tab navigation can never hide a save's outcome (ECC
+  review of #87, finding 3). It has a 24 px+ tap target and a visible focus ring.
 - **Landing FAQ** "What happens if I lose my YubiKey?": one added sentence and link.
 - **Footers:** "Lost or compromised key" next to "Supported devices".
 
@@ -73,8 +75,10 @@ Scope: the new page, its route and headers, the vault-view link, the guide's cla
   with anyone claiming to be CryoShield, and offers no contact for recovery. It names no third-party service to paste
   secrets into. **Pass.**
 - **Claims (false comfort):** checked against D2's sources; the content test fails if the clear-sheet warnings drift
-  from the app's text, if a "remove a key" or "delete old versions" promise appears, or if a PIN count is stated.
-  **Pass.**
+  from the app's text. A sentence-level guard (`falseComfort`) fails on any non-negated sentence promising to remove,
+  revoke, delete or erase keys or versions, on a PIN-attempt count (digits or number words), on CryoShield recovering,
+  restoring or unlocking anything, and on any "contact us/support". The guard is itself tested against sample bad
+  sentences. Wording that dodges it is still possible; the guide's review is the backstop. **Pass.**
 - **Residual:** guidance can't force users to rotate secrets; the guide says plainly that step 2 is the one that
   protects them. Markdown-only edits skip web CI until D6 is done.
 

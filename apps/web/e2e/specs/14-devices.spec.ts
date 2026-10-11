@@ -7,7 +7,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { VirtualKeys } from '../fixtures/webauthn';
 import { settled } from '../fixtures/motion';
 
-const PAGES = ['/', '/app/', '/privacy', '/terms', '/cookies', '/architecture', '/devices'];
+const PAGES = ['/', '/app/', '/privacy', '/terms', '/cookies', '/architecture', '/devices', '/lost-key'];
 
 async function axe(page: Page, where: string) {
   const r = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa']).analyze();

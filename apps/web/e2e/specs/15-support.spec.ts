@@ -7,7 +7,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { settled } from '../fixtures/motion';
 
 const ADDRESS = '0xfb4172e26AC8735C06656f1df14151cFe8441481';
-const PAGES = ['/', '/app/', '/privacy', '/terms', '/cookies', '/architecture', '/devices', '/support'];
+const PAGES = ['/', '/app/', '/privacy', '/terms', '/cookies', '/architecture', '/devices', '/support', '/lost-key'];
 
 async function axe(page: Page, where: string) {
   const r = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa']).analyze();

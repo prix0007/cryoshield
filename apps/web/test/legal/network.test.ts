@@ -80,7 +80,7 @@ describe('/privacy names the network and the configured RPC host', () => {
 
 describe('legal header, footer and metadata follow the chain', () => {
   it('the header chip and the footer line', () => {
-    for (const p of ['terms/index.html', 'privacy/index.html', 'cookies/index.html', 'architecture/index.html', 'devices/index.html', 'support/index.html']) {
+    for (const p of ['terms/index.html', 'privacy/index.html', 'cookies/index.html', 'architecture/index.html', 'devices/index.html', 'support/index.html', 'lost-key/index.html']) {
       expect(testnet.doc(p).querySelector('.sub-nav .chip')?.textContent?.trim(), p).toBe('Testnet preview');
       expect(mainnet.doc(p).querySelector('.sub-nav .chip')?.textContent?.trim(), p).toBe('Unaudited');
       expect(testnet.doc(p).querySelector('footer .legal')?.textContent, p).toMatch(/Testnet preview on OP Sepolia, not independently audited\./);
@@ -89,7 +89,7 @@ describe('legal header, footer and metadata follow the chain', () => {
   });
 
   it('no page of the mainnet build says testnet or OP Sepolia, and llms.txt matches', () => {
-    for (const p of ['index.html', 'terms/index.html', 'privacy/index.html', 'cookies/index.html', 'architecture/index.html', 'devices/index.html', 'support/index.html']) {
+    for (const p of ['index.html', 'terms/index.html', 'privacy/index.html', 'cookies/index.html', 'architecture/index.html', 'devices/index.html', 'support/index.html', 'lost-key/index.html']) {
       expect(mainnet.html(p), p).not.toMatch(/OP Sepolia|testnet|test network/i);
     }
     const llms = readFileSync(join(mainnet.out, 'llms.txt'), 'utf8');
