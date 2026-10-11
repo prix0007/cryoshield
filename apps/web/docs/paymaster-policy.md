@@ -42,7 +42,7 @@ nothing here needs a code change.
 | | Production (OP Mainnet) | Dev (OP Sepolia) |
 |---|---|---|
 | Policy | `sp_mixed_hellion` (Disabled until launch day) | `sp_light_hobgoblin` |
-| API key | `cryoshield-mainnet`: "verifying paymaster" off, so it refuses sponsorship without a policy | the key ending `ct5x`: "verifying paymaster" turned off by the founder on 2026-10-10 (confirming save pending; section 3) |
+| API key | `cryoshield-mainnet`: "verifying paymaster" off, so it refuses sponsorship without a policy | the key ending `ct5x`: "verifying paymaster" turned off by the founder on 2026-10-10; policy-scoped saves still sponsored (confirmed 2026-10-12; section 3) |
 
 ### Pause (fastest first)
 
@@ -103,9 +103,9 @@ Starting values from design D2/D3. The founder may tune them; the **Live** colum
 > [`docs/reviews/2026-10-09-pre-production.md`](../../../docs/reviews/2026-10-09-pre-production.md).
 >
 > **Status 2026-10-10 (mainnet):** the Live mainnet column, the mainnet API key and the section 4 answers are recorded
-> from the founder's Pimlico dashboard (`launch-op-mainnet` task 1.2, G4). Still pending: the prepaid balance amount
-> and the no-card status (Balance below), and the testnet check that policy-scoped sponsorship works with "verifying
-> paymaster" off (section 4, (a)).
+> from the founder's Pimlico dashboard (`launch-op-mainnet` task 1.2, G4). The prepaid balance and no-card status
+> (Balance below) were recorded on 2026-10-10. The testnet check that policy-scoped sponsorship works with
+> "verifying paymaster" off (section 4, (a)) passed on 2026-10-12.
 
 ### Sponsorship policy
 
@@ -175,10 +175,14 @@ key, not scripts.
 (2026-10-10). Still to do: account APIs **off**, and the origin allowlist set to `cryoshield-web-dev.fly.dev` only,
 once the testnet cryoshield.app no longer uses this key. Record the date here.
 
-**Pending verification (founder, 2026-10-10 evening, before mainnet):** the `ct5x` key's "verifying paymaster" was
-turned off on 2026-10-10; run one sponsored save on the dev site (the add-key with the third YubiKey). This proves that policy-scoped sponsorship (the app always
-sends `sponsorshipPolicyId`) still works with that toggle off, which the mainnet key relies on. Result: _pending:
-founder to record_.
+**Verified (2026-10-12):** the `ct5x` key's "verifying paymaster" was turned off on 2026-10-10. Policy-scoped
+sponsorship (the app always sends `sponsorshipPolicyId`) still works with that toggle off, which the mainnet key
+relies on. Evidence: two dev-site saves after the change were sponsored by Pimlico's `SingletonPaymasterV6`
+`0x6666…c68b` and included with `success = true`:
+- the add-key with the third YubiKey, tx `0x6180e582…` (2026-10-10 14:03 UTC);
+- an edit, tx `0x8328747f…` (2026-10-11 19:28 UTC).
+
+Links are in [`contracts/GAS.md`](../../../contracts/GAS.md#on-chain-op-sepolia-through-pimlico-harden-gas-sponsorship-6263).
 
 ### Balance
 
@@ -196,7 +200,7 @@ Pimlico's public docs leave these open. The founder confirms each in the dashboa
 
 | Question | Answer | Date |
 |---|---|---|
-| (a) Can a key require a sponsorship policy, or be limited to specific policy IDs? | A key cannot name a policy. But turning the key's "verifying paymaster" method **off** means only policy-scoped requests are sponsored: `pm_sponsorUserOperation` without a sponsorship policy is refused. The mainnet key has it off. Source: Pimlico dashboard. Pending: the testnet check that policy-scoped sponsorship works with the toggle off (section 3, API keys). | 2026-10-10 |
+| (a) Can a key require a sponsorship policy, or be limited to specific policy IDs? | A key cannot name a policy. But turning the key's "verifying paymaster" method **off** means only policy-scoped requests are sponsored: `pm_sponsorUserOperation` without a sponsorship policy is refused. The mainnet key has it off. Source: Pimlico dashboard. Confirmed on testnet on 2026-10-12: policy-scoped sponsorship works with the toggle off (section 3, API keys). | 2026-10-10; testnet check 2026-10-12 |
 | (b) Is a policy-less request refused when the balance is empty and there is no card? | Moot for the mainnet key, which refuses policy-less sponsorship (a). The prepaid balance with no card is still the hard bound on spend. | 2026-10-10 |
 | (c) How do USD limits count testnet operations? (If $0, the count limits are the testnet bound.) | Testnet operations are free, with no surcharge, so the USD limits do not bind on testnet; only the operation counts do. Source: https://www.pimlico.io/pricing | 2026-10-10 |
 | (d) Which origin and method restrictions are available on a key? | Methods (bundler, verifying paymaster, account APIs); origin (with a leftmost `*` wildcard); IP/CIDR; user agent; custom headers only through Pimlico support. There is no per-chain restriction on the key: the policy restricts the chain. Source: Pimlico dashboard. | 2026-10-10 |
@@ -210,7 +214,7 @@ policy bypass bounded by the balance, and the global cap reached.
 | Attacker | Can do | Bounded by | Cannot do |
 |---|---|---|---|
 | A script making fresh accounts with software passkeys, through our policy | Sponsored writes until the day's global cap is spent. Per-sender limits don't help: every account is a new sender. | The **global daily cap** (spend and count); the per-operation cap bounds each operation | Read, change or delete any vault; get any plaintext; block a registration (v2 has no locator cap); squat a vaultId (v2 derives it from the sender) |
-| A script using our key **without** the policy (if Pimlico allows it) | On the mainnet key: nothing, because "verifying paymaster" is off (section 4, (a)). On a testnet key with it still on (the `ct5x` dev key until its follow-up): sponsored operations with no policy limits | The mainnet key's method setting; behind it, the **prepaid balance** with no overdraft. Testnet costs nothing. | The same as above |
+| A script using our key **without** the policy (if Pimlico allows it) | On the mainnet key: nothing, because "verifying paymaster" is off (section 4, (a)). On a testnet key with it still on: sponsored operations with no policy limits (the `ct5x` dev key has it off since 2026-10-10) | The mainnet key's method setting; behind it, the **prepaid balance** with no overdraft. Testnet costs nothing. | The same as above |
 | A website embedding our key | Nothing | The origin restriction | n/a |
 | A stolen key **without** its PIN | Nothing: the account refuses signatures without user verification, and the key itself refuses without its PIN (credProtect 3) | n/a | n/a |
 | A stolen key **with** its PIN | Everything that key can do. The user removes that key by re-keying. | Out of scope | n/a |

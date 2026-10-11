@@ -30,16 +30,19 @@ testnet build. Both need `contracts.vaultRegistryV2` and `contracts.wallets.<the
 
 | # | Step | Expected | Result |
 |---|---|---|---|
-| H1 | Create a vault with key A and key B (PIN at each touch) | "Your vault is saved". On the explorer, the userOp's `initCode` factory is `contracts.wallets.<RP ID>.factory` (not Coinbase's `0xba5ed110…`), and the account's implementation slot holds `contracts.wallets.<RP ID>.implementation` | not run |
-| H2 | On the explorer, the create calls **VaultRegistry v2** `createVault(salt, …)`; the emitted vaultId equals the one under "Details & backup file" | the same id | not run |
-| H3 | Unlock with A, then with B (fresh profiles) | one touch each; secrets shown | not run |
-| H4 | Edit with B; add key C with A | "Saved."; C alone unlocks | not run |
-| H5 | Unlock with a key whose vault exists only in VaultRegistry v1 (the old test vault) | it opens; secrets can be shown and copied; no Edit or Add key; the notice "This vault was made with an earlier test version…" | not run |
-| H6 | Re-create the old test vault on v2 with the same keys (task 6.4), then unlock | the v2 vault opens directly (no picker) with Edit; "Open an older test vault" shows the v1 copy read-only; "Back to your current vault" returns | not run |
+| H1 | Create a vault with key A and key B (PIN at each touch) | "Your vault is saved". On the explorer, the userOp's `initCode` factory is `contracts.wallets.<RP ID>.factory` (not Coinbase's `0xba5ed110…`), and the account's implementation slot holds `contracts.wallets.<RP ID>.implementation` | founder: passed (2026-10-07). On chain, the create (tx `0x026e0b69…`) deployed the account through the dev factory `0x5945…73d3` (`contracts/GAS.md`) |
+| H2 | On the explorer, the create calls **VaultRegistry v2** `createVault(salt, …)`; the emitted vaultId equals the one under "Details & backup file" | the same id | passed: the create called VaultRegistry v2 `0xA622…cB7` (`contracts/GAS.md`) |
+| H3 | Unlock with A, then with B (fresh profiles) | one touch each; secrets shown | founder: passed |
+| H4 | Edit with B; add key C with A | "Saved."; C alone unlocks | passed. Edits are on chain from 2026-10-07. Add key C (a YubiKey 5C NFC) is on chain from 2026-10-10 14:03 UTC (tx `0x6180e582…`; the account has 3 owners). Founder: C alone unlocked on mobile over NFC (2026-10-11) |
+| H5 | Unlock with a key whose vault exists only in VaultRegistry v1 (the old test vault) | it opens; secrets can be shown and copied; no Edit or Add key; the notice "This vault was made with an earlier test version…" | waived for mainnet (founder decision: v1 is OP Sepolia only) |
+| H6 | Re-create the old test vault on v2 with the same keys (task 6.4), then unlock | the v2 vault opens directly (no picker) with Edit; "Open an older test vault" shows the v1 copy read-only; "Back to your current vault" returns | not run (task 6.4) |
 | H7 | Pimlico dashboard: temporarily set the per-sender count to the sender's current count, then edit | "Saving is paused right now…"; nothing sent; unlock still works. Restore the cap | not run |
-| H8 | Recovery tool reads the v1 and the v2 vault | both open | not run |
-| H10 | After H4, open "Where your vault is stored" (show-vault-onchain-location) | network "OP Sepolia testnet (chain ID 11155420)"; registry = `contracts.vaultRegistryV2`, Version 2; vault ID = the one under "Details & backup file"; the Vault account link opens `testnet-explorer.optimism.io/address/<owner>` in a new tab; the Last save link opens the edit's transaction; Copy puts the full value on the clipboard; no locator is shown; after Lock the panel is gone | not run |
-| H9 | Record gas and USD per create / edit / add-key in `docs/costs.md` and `contracts/GAS.md`; re-check the D2 per-operation caps | filled | not run |
+| H8 | Recovery tool reads the v1 and the v2 vault | both open | v1 waived. v2: read from public RPCs and decoded by the recovery tool's chain reader on 2026-10-12 (version 11, 3 key entries). A hardware unlock with the tool is not recorded here |
+| H10 | After H4, open "Where your vault is stored" (show-vault-onchain-location) | network "OP Sepolia testnet (chain ID 11155420)"; registry = `contracts.vaultRegistryV2`, Version 2; vault ID = the one under "Details & backup file"; the Vault account link opens `testnet-explorer.optimism.io/address/<owner>` in a new tab; the Last save link opens the edit's transaction; Copy puts the full value on the clipboard; no locator is shown; after Lock the panel is gone | founder: correct on mobile (2026-10-11). An earlier "Couldn’t load this section" came from a tab running a build older than the current deploy, not from the panel |
+| H9 | Record gas and USD per create / edit / add-key in `docs/costs.md` and `contracts/GAS.md`; re-check the D2 per-operation caps | filled | filled (2026-10-12): create, edit and add-key are in `contracts/GAS.md` and `apps/web/docs/costs.md`; the D2 caps fit at ×10 |
+
+Recorded 2026-10-12 from the founder's reports and public OP Sepolia receipts (vault `0x94a68b0b…5e87`). H7 was not
+run.
 
 ## vault-list-labels-archive (task 6.2): two vaults on two keys, names and archive
 
