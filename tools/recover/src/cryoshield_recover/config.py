@@ -34,7 +34,7 @@ def parse_address(s: str) -> str:
 DEFAULT_RP_ID = "cryoshield.app"
 
 ARWEAVE_GRAPHQL = ("https://arweave.net/graphql", "https://arweave-search.goldsky.com/graphql")
-ARWEAVE_GATEWAYS = ("https://arweave.net", "https://ar-io.net")
+ARWEAVE_GATEWAYS = ("https://arweave.net", "https://turbo-gateway.com")  # fix-arweave-raw-fetch D2
 
 
 AbiKind = Literal[1, 2]

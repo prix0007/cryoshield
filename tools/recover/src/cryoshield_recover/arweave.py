@@ -248,7 +248,9 @@ class Arweave:
                     break
                 per_request = max(0.001, min(self.timeout, remaining))
             try:
-                got = get_capped(f"{gw}/{tx.id}", timeout=per_request, max_bytes=MAX_BLOB)
+                # `/raw/<id>`: gateways redirect the plain path to a per-item sandbox host, and redirects are
+                # refused (fix-arweave-raw-fetch D1). `tx.id` matched _TXID when it was parsed.
+                got = get_capped(f"{gw}/raw/{tx.id}", timeout=per_request, max_bytes=MAX_BLOB)
             except TooLarge:
                 self.warnings.append(
                     f"Arweave gateway {host_of(gw)}: tx {tx.id} larger than {MAX_BLOB} bytes"

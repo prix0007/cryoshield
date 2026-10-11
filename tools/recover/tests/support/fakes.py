@@ -380,6 +380,7 @@ class FakeArweave(FakeServer):
     def __post_init__(self) -> None:
         FakeServer.__init__(self)
         self.down = False
+        self.redirect_raw = False
         self.graphql_pages = 0
 
     @property
@@ -456,8 +457,14 @@ class FakeArweave(FakeServer):
             }
             return 200, {"Content-Type": "application/json"}, json.dumps(body_out).encode()
         if method == "GET":
-            tx = self.txs.get(path.lstrip("/"))
+            # Like the real ar.io gateways (fix-arweave-raw-fetch): the plain path redirects to a per-item sandbox
+            # host, and only `/raw/<id>` serves the data. `redirect_raw` makes even `/raw/` redirect.
+            raw = path.startswith("/raw/")
+            tid = path[len("/raw/") :] if raw else path.lstrip("/")
+            tx = self.txs.get(tid)
             if tx is None:
                 return 404, {}, b""
+            if not raw or self.redirect_raw:
+                return 302, {"Location": f"http://sandbox.invalid/{tid}"}, b""
             return 200, {"Content-Type": "application/octet-stream"}, tx.data
         return 400, {}, b""
