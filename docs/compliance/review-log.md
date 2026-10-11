@@ -63,7 +63,7 @@ was sent. No dashboard, secret, `.env` file or keystore was opened. No code, wor
 | CAA on `cryoshield.app` (pre-production M1) | **As required (2026-10-10).** The founder disabled Cloudflare Universal SSL, which removed its unused Universal and Backup edge certificates and the CA records Cloudflare added with them. Cloudflare's authoritative server and the 1.1.1.1, 8.8.8.8 and 9.9.9.9 resolvers now return exactly `0 issue "letsencrypt.org"` and `0 issuewild ";"`. The site still serves Fly's Let's Encrypt certificate (HTTP 200) | `dig +short CAA cryoshield.app`; [`apps/web/deploy/README.md`](../../apps/web/deploy/README.md) §4 |
 | Cloudflare Security Center "Exposed RDP Servers" (2026-10-09) | **False positive.** `66.241.124.125` is Fly.io's shared anycast IPv4: the edge proxy accepts TCP on every port (3389, 22, 5900 and a random 47123 all connect). An RDP X.224 connection request gets 0 bytes back, and port 22 sends no SSH banner. The dedicated IPv6 refuses 3389. `apps/web/fly.toml` defines only `[http_service]` (80/443 to 8080). Checked 2026-10-10 | `nc`, a raw RDP probe; `fly ips list -a cryoshield-web`; [`apps/web/fly.toml`](../../apps/web/fly.toml) |
 | Production today | `/release.json` shows commit `f06ccb9`, chain 11155420, RP ID `cryoshield.app` (the 2026-10-05 build). Nothing is on OP Mainnet yet | `curl -s https://cryoshield.app/release.json` |
-| Pimlico mainnet policy | The record has the policy id, chain 10, $0.50 per operation and the date range (2026-10-09 to 2027-10-02). The monthly per-user values, the daily global values, the mainnet key's restrictions and the task 1.1 answers (a)–(e) are all **pending** | [`paymaster-policy.md`](../../apps/web/docs/paymaster-policy.md) §3–4 |
+| Pimlico mainnet policy | **Recorded 2026-10-10 (#83).** Policy `sp_mixed_hellion`, chain 10 only, Disabled until the deploy's smoke test: per user $1 and 10 operations, reset monthly; global $30 and 500 operations, reset daily; $0.50 per operation; 2026-10-10 to 2027-10-02. The first policy, `sp_many_longshot`, was deleted (resets "never"). Key `cryoshield-mainnet`: origin `cryoshield.app`, bundler on, "verifying paymaster" off, account APIs off. $120 prepaid, no card. Task 1.1 (a): policy-scoped sponsorship with "verifying paymaster" off **verified on the dev key 2026-10-10/11** (#86) | [`paymaster-policy.md`](../../apps/web/docs/paymaster-policy.md) §3–4 |
 | CI gate behaviour | Before this entry, `node .github/scripts/mainnet-gate.mjs` on an added-file list naming `contracts/deployments/10.json` exited 1 ("no mainnet-gate entry"). With this entry it exits 0 | `.github/scripts/mainnet-gate.mjs`; `npm test --prefix .github/scripts` |
 
 **Founder decisions accepted in this review** (recorded in the [launch record](../reviews/launch-op-mainnet.md#founder-decisions-2026-10-09)
@@ -75,12 +75,13 @@ and design D3, D7 and D8; this review records them and does not make them):
    are set before the first `v*` tag. The proof that `vA` works on OP Sepolia comes from the dev site, not from
    production. A failed first deploy rolls back to the 2026-10-05 OP Sepolia image. A later chain rollback depends on
    the four testnet values having been saved offline beforehand (G8).
-3. **The D8 Pimlico values.** Policy `sp_many_longshot`, chain 10 only:
+3. **The D8 Pimlico values.** Policy `sp_mixed_hellion`, chain 10 only (it replaced `sp_many_longshot`, deleted
+   2026-10-10 because its resets were "never"):
    - per user: $1 and 10 operations, reset monthly;
-   - global: $30 and about 500 operations, reset daily;
+   - global: $30 and 500 operations, reset daily;
    - $0.50 per operation;
-   - valid 2026-10-09 to 2027-10-02;
-   - about $140 prepaid, no card;
+   - valid 2026-10-10 to 2027-10-02;
+   - $120 prepaid, no card;
    - created disabled and enabled after the first green chain-10 deploy.
 
 **Residual risks** (scored in [`risk-register.md`](risk-register.md)):
@@ -93,46 +94,47 @@ and design D3, D7 and D8; this review records them and does not make them):
   Mainnet makes that worth more to an attacker. CAA is now Let's Encrypt only (2026-10-10).
 - **Sponsorship availability (R9, R17, R18).** Abuse or real growth can pause saving for everyone for the rest of a
   day ($30 global cap), or for one user for the rest of a month (10 operations or $1).
-- **The bundler key in the browser (R18).** The Pimlico key ships to every browser. Whether it can be bound to the
-  policy is unknown (task 1.1 (a)). If it cannot, policy-less use is bounded only by the ~$140 prepaid balance.
+- **The bundler key in the browser (R18).** The Pimlico key ships to every browser. A key cannot name a policy, but
+  with "verifying paymaster" off it sponsors only policy-scoped requests (task 1.1 (a), verified on the dev key
+  2026-10-10/11). The $120 prepaid balance with no card remains the hard bound.
 - **Recovery without CryoShield (R21)** needs the recovery tool's `op-mainnet` preset to be generated from the real
   `10.json` and released. Until then it does not find mainnet vaults.
 - **Single maintainer (R25).** Monitoring is manual and daily for 14 days, done by one person (tabletop G6).
 - **Testnet users and linkability (R22, R23).** Testnet users' vaults are not on mainnet. A user's testnet activity
   is linkable to their mainnet activity by construction. Both are disclosed.
-- **Permanence (R3).** Real users' ciphertext and identifiers are permanent. The fixed-padding decision (O3), due
-  "before the first mainnet vault", is still open.
+- **Permanence (R3).** Real users' ciphertext and identifiers are permanent. Fixed padding (O3) is decided and
+  implemented (#85): every payload is padded to its key set's maximum, so ciphertext length no longer reveals the
+  secret's size.
+- **Outdated tabs (new, #88).** A tab left open across a deploy refuses to write and asks for a reload. Accepted LOW
+  risks (its `design.md`): if the build check cannot answer (offline, timeout) the save goes ahead; a deploy in the
+  seconds between check and signature is not caught; reloading discards unsaved edits, because keeping them would
+  put secrets in browser storage.
+- **Compromised keys (new, #87).** `/lost-key` tells users that past vault versions stay public and that every key
+  ever enrolled can read them, so a compromised key and PIN means rotating the secrets at their source and creating
+  a new vault; removing a key would not protect them.
 
 **Conditions: each must be closed (or, where marked, explicitly accepted in writing) before the mainnet deploy**
 (`launch-op-mainnet` tasks 7.2 onward):
 
-1. **G4 / task 1.2 (Pimlico).** Record the live per-user (monthly) and global (daily) values, the dedicated mainnet
-   key (origin `https://cryoshield.app`, bundler and paymaster only, policy-required if offered) and the prepaid
-   balance with no card in `paymaster-policy.md` §3, dated. Also answer task 1.1 (a)–(e) in §4, which is still
-   pending for testnet and mainnet alike.
-2. **G3 (founder's YubiKey run).** The founder ran it on dev (OP Sepolia, hosted bundler) and reported on 2026-10-10:
-   - **6.3 hardware checklist:** create with two real YubiKeys, unlock, edit, and a recovery-tool unlock of a v2 vault
-     were reported passed. **Add-key is not evidenced** (checked 2026-10-10, read-only, OP Sepolia):
-     - registry v2 has one vault ever (the founder's, created 2026-10-07), with 7 updates that all keep the same two
-       keys, and the wallet's `nextOwnerIndex()` is 2;
-     - registry v1 has never emitted an add-key trace;
-     - the app shows "Key added" only after it re-reads a confirmed `addOwnerPublicKey` + `addLocators` +
-       `updateVault` batch.
+1. **G4 / task 1.2 (Pimlico). Closed 2026-10-10** (#83): the live policy, key restrictions and balance are
+   recorded in `paymaster-policy.md` §3, dated; task 1.1 (a) is answered and verified on the dev key (#86). The
+   policy stays Disabled until runbook step 8.
+2. **G3 (founder's YubiKey run). Closed 2026-10-12** (#86, `harden-gas-sponsorship` 6.2 and 6.3 ticked, 6.4 done
+   2026-10-10). Evidence on OP Sepolia, vault `0x94a68b0b…5e87`:
+   - **create, unlock, edit, recovery-tool unlock of v2:** reported by the founder 2026-10-10; create and 7 edits on
+     chain, all sponsored through Pimlico's `SingletonPaymasterV6`; UV=0 refusal shown by fork simulation;
+   - **add-key with a third key (YubiKey 5C NFC):** tx `0x6180e582…`, 2026-10-10 14:03 UTC, `LocatorAdded` +
+     `VaultUpdated`, 3 entries, wallet `nextOwnerIndex()` = `ownerCount()` = 3; 502,562 gas, within the D2/D8 caps
+     at ×10;
+   - **padded save with 3 keys:** tx `0x8328747f…`, 2026-10-11 19:28 UTC, version 11, 999 bytes (padded to the
+     3-key maximum), sponsored. The founder reports unlocking with only the new key, on mobile over NFC;
+   - **accepted by the founder, 2026-10-12:** that save was signed by an original key (wallet owner 1), so no
+     on-chain operation is signed by the new key alone. The founder accepts this for the use case ("we are fine for
+     that usecase");
+   - the v1 items stay **waived for mainnet** (founder, 2026-10-10): v1 is OP Sepolia only.
 
-     Add-key with a third key, then an unlock with only that key, must be re-run. The v1 items (an old v1 vault still unlocking, and
-     a recovery-tool read of v1) are **waived for the mainnet launch by founder decision (2026-10-10)**: v1 exists only on
-     OP Sepolia, chain 10 has registry v2 only, and testnet vaults do not carry over (R22). The automated tests still
-     cover the tool's v1 reads.
-   - **6.4 founder's vault on v2:** reported by the founder. On chain, the only v2 vault was created on 2026-10-07 and last
-     written on 2026-10-09 18:51 UTC; unlocking writes nothing.
-
-   Still open:
-   - **6.3:** gas and cost per operation, from the receipts of that run, recorded in `contracts/GAS.md` and
-     `apps/web/docs/costs.md` and checked against the D8 per-operation cap;
-   - **6.2:** included-operation receipts for the sponsored create, edit and add-key, plus the UV=0 refusal in
-     simulation;
-   - **8.1:** the founder's approval.
-
+   `harden-gas-sponsorship` 8.1 (the founder's approval, against the D8 values `sp_mixed_hellion`) stays open with
+   this sign-off.
 3. **G1.** 2FA is on for the GitHub owner account and for Cloudflare (founder's statement, 2026-10-09). The founder
    confirmed on 2026-10-10 that the method is hardware security keys on both accounts. **CI-H1 closed 2026-10-09:** agents now push and
    open PRs as the machine account `cryoshield` (Write role, classic token with `repo` scope only, expiring
@@ -164,8 +166,9 @@ and design D3, D7 and D8; this review records them and does not make them):
    launch day, re-check the chain facts and that the deployer holds at least 0.001 ETH (task 1.1).
 9. **Task 1.3.** The launch record's G6 and G9 rows are dated and signed, and this entry is signed, before the
    `10.json` PR.
-10. **Fixed padding O3** ([`on-chain-minimisation-options.md`](on-chain-minimisation-options.md)). Decide it before
-    the first mainnet vault, as that document says. Rejecting it is a valid decision, but write it down.
+10. **Fixed padding O3. Closed 2026-10-10:** accepted by the founder and implemented in #85 (`pad-to-max-payload`;
+    format version unchanged, decoders accept both paddings). Live on dev: the founder's vault saves at the padded
+    size (1,018 bytes with 2 keys, 999 bytes with 3).
 11. **Tabletop gaps G2–G6** ([`tabletop-2026-10-08.md`](tabletop-2026-10-08.md)). Founder decisions, 2026-10-10:
     - **G2, accepted for launch:** users cannot check which bundle they loaded. Each release's tree hash is already
       in `/release.json`. Follow-up after launch: publish it in the GitHub Release notes.
@@ -185,6 +188,22 @@ and design D3, D7 and D8; this review records them and does not make them):
 13. **Sanctions stance for mainnet: closed 2026-10-10.** The founder confirmed that `legal-analysis.md` §6 applies
     unchanged to OP Mainnet: eligibility through the terms only, no screening and no geoblocking. §6 now states the
     D8 bound ($0.50 per operation, $1 per user per month).
+
+**Pre-release check, 2026-10-12** (read-only, agent; nothing changed):
+
+- `main` `36842e3`: CI and the dev deploy green; dev serves `main`'s head. Changes since this draft: #85 padding,
+  #86 hardware results, #87 `/lost-key` guide, #88 outdated-tab guard.
+- `openspec validate --all --strict`: all changes pass. Dependency audits (web and recovery tool): no known
+  vulnerabilities; gitleaks and osv-scanner run in CI.
+- Recovery tool: 921 tests pass; it reads the founder's dev vault from public RPCs (version 11, 3 keys, 999 bytes).
+- `cryoshield.app`: CAA Let's Encrypt only, wildcard blocked; certificate Let's Encrypt, expires 2026-12-31 (auto
+  renew); production still serves the 2026-10-05 OP Sepolia build, as planned.
+- OP Mainnet (read-only RPC): chain id 10; the CREATE2 deployer, EntryPoint v0.6 and Pimlico's paymaster have code;
+  CryoShield's predicted addresses are empty; deployer `0x3314…26bf` holds 0.005 ETH, nonce 0.
+- GitHub: `production` and `production-build` accept only `v*` tags; the `release-tags` ruleset is active; no tags or
+  releases exist. `production-build` still holds the testnet values by design (set on launch day, after G8).
+- `feat/mainnet-recovery-default` @ `40b5cc1` pushed to origin 2026-10-12; it merges cleanly with `main` and ships
+  with the `10.json` PR (G5).
 
 Not checked here, and left to the owner: anything that needs a dashboard or a credential (Pimlico, Cloudflare,
 GoDaddy, Fly, GitHub settings), running the incident runbook's commands, and the live chain facts.
