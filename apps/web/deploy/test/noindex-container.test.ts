@@ -39,7 +39,7 @@ beforeAll(async () => {
   const html = `<html><head><meta http-equiv="Content-Security-Policy" content="${META}"></head><body>x</body></html>`;
   mkdirSync(join(dir, 'dist'));
   writeFileSync(join(dir, 'dist', 'index.html'), html);
-  for (const p of ['app', 'privacy', 'terms', 'cookies', 'architecture', 'devices', 'support']) {
+  for (const p of ['app', 'privacy', 'terms', 'cookies', 'architecture', 'devices', 'support', 'lost-key']) {
     mkdirSync(join(dir, 'dist', p));
     writeFileSync(join(dir, 'dist', p, 'index.html'), html);
   }

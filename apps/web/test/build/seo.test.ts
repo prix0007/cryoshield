@@ -126,7 +126,7 @@ describe('crawl files', () => {
     expect(xml).toMatch(/^<\?xml version="1.0" encoding="UTF-8"\?>\n<urlset xmlns="http:\/\/www\.sitemaps\.org\/schemas\/sitemap\/0\.9">/);
     const locs = [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]);
     expect(locs).toEqual(PUBLIC_PAGES.map((p) => `${SITE}${p.path}`));
-    expect(locs).toEqual(['/', '/architecture', '/devices', '/support', '/privacy', '/terms', '/cookies'].map((p) => `${SITE}${p}`));
+    expect(locs).toEqual(['/', '/architecture', '/devices', '/lost-key', '/support', '/privacy', '/terms', '/cookies'].map((p) => `${SITE}${p}`));
     expect(xml).not.toContain('/app');
     expect(xml).not.toContain('lastmod'); // reproducible builds
   });

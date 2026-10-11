@@ -149,6 +149,8 @@ export const S = {
     allVaults: (n: number) => `All vaults (${n})`,
     editVault: 'Rename or archive',
     manage: 'Manage vault',
+    /** add-compromised-key-guide D5: links /lost-key under the Manage vault rows. */
+    lostKey: 'Lost a key, or think someone has it?',
     archived: 'This vault is archived.',
     unarchive: 'Unarchive',
     legacyReadOnly:

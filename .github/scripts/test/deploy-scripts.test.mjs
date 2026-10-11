@@ -74,7 +74,7 @@ before(async () => {
       res.writeHead(200, { "content-type": "text/plain", ...site.headers });
       return res.end(site.robots);
     }
-    const known = ['/', '/app/', '/architecture', '/devices', '/support', '/privacy', '/healthz'];
+    const known = ['/', '/app/', '/architecture', '/devices', '/lost-key', '/support', '/privacy', '/healthz'];
     if (!known.includes(path)) {
       res.writeHead(404);
       return res.end();

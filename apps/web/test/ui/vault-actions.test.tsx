@@ -72,15 +72,19 @@ describe('vault actions layout', () => {
     }
   });
 
-  it('keyboard order: Edit secrets, the rows, All vaults', async () => {
+  it('keyboard order: Edit secrets, the rows, the lost-key guide link, All vaults', async () => {
     const u = userEvent.setup();
     show({}, { onAllVaults: () => {} });
     screen.getByRole('button', { name: S.vault.edit }).focus();
-    const order = [S.vault.editVault, S.vault.addKey, S.vault.details, S.vault.allVaults(3)];
+    const order = [S.vault.editVault, S.vault.addKey, S.vault.details];
     for (const name of order) {
       await u.tab();
       expect(document.activeElement).toBe(screen.getByRole('button', { name }));
     }
+    await u.tab(); // add-compromised-key-guide D5
+    expect(document.activeElement).toBe(screen.getByRole('link', { name: S.vault.lostKey }));
+    await u.tab();
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: S.vault.allVaults(3) }));
   });
 
   it('All vaults is the navigation row, outside the floating bar and the list; Lock is not repeated here (M3: header)', () => {

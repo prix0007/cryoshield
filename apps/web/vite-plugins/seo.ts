@@ -26,6 +26,7 @@ export const PUBLIC_PAGES: readonly { html: string; path: string }[] = [
   { html: '/index.html', path: '/' },
   { html: '/architecture/index.html', path: '/architecture' },
   { html: '/devices/index.html', path: '/devices' },
+  { html: '/lost-key/index.html', path: '/lost-key' },
   { html: '/support/index.html', path: '/support' },
   { html: '/privacy/index.html', path: '/privacy' },
   { html: '/terms/index.html', path: '/terms' },
