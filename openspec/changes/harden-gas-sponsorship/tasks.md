@@ -28,6 +28,7 @@
   Verify: each design R1 UNVERIFIED item is marked confirmed or "not available".
 
   Note 2026-10-10 (mainnet answers, `launch-op-mainnet` task 1.2; not ticked): all five answers are recorded with sources in `apps/web/docs/paymaster-policy.md` §4. (a) A key cannot name a policy, but with "verifying paymaster" off only policy-scoped requests are sponsored (dashboard); (b) moot for the mainnet key, the balance with no card stays the bound; (c) testnet operations are free, so only the counts bind (pricing page); (d) methods, origin (leftmost `*`), IP/CIDR, user agent, custom headers through support, no per-chain key restriction; (e) not documented for counts, Pimlico pre-charges the maximum cost and refunds after about 15 minutes, and a failed or abandoned operation is assumed to use up one of the user's 10. Left unticked because (a) still awaits the founder's testnet check that policy-scoped sponsorship works with "verifying paymaster" off, and (b) is answered as moot rather than confirmed; the mainnet balance amount and no-card status are also still pending.
+  Note 2026-10-12: (a) is confirmed. With the `ct5x` dev key's "verifying paymaster" off, the dev site's policy-scoped saves were still sponsored (txs `0x6180e582…` and `0x8328747f…`, `paymaster-policy.md` section 3). The mainnet balance ($120) and no-card status are recorded in section 3 → Balance. Still unticked only because (b) is moot rather than confirmed.
 - [ ] 1.2 [ow] Apply the testnet settings from design D2/D3:
   - a chain allowlist of 11155420;
   - 50 operations per sender lifetime;
@@ -139,9 +140,14 @@
 - [x] 6.1 [ow] Deploy VaultRegistry v2 and the wallet implementation and factory for **both** `cryoshield.app` and `cryoshield-web-dev.fly.dev` to OP Sepolia with `BROADCAST=1`. Verify: `contracts/deployments/11155420.json` has `contracts.vaultRegistryV2` and both `contracts.wallets.<rpId>` entries, Blockscout verification passes, and both the production and the dev builds (`deploy-dev.yml`) succeed.
   - [x] 2026-10-07: deployed and Blockscout-verified (registry v2 `0xA622…cB7`; wallet pairs for both RP IDs). Dev deploy succeeded; the `/architecture` page now names registry v2, the account implementation and the v2 vault limits.
   - [x] [fe] Web part (2026-10-07): both builds pass against the real `contracts/deployments/11155420.json` (2ad376c), production mode with stub env values: `VITE_RP_ID=cryoshield.app` (`verify-build`, `VERIFY_CHAIN_ID=11155420`) and `VITE_RP_ID=cryoshield-web-dev.fly.dev` (`vite build --mode production`). Each bundle and `/architecture` carry registry v2 `0xA622…cB7` and only their own RP ID's factory (`0x775d…DfED` / `0x5945…73d3`).
-- [ ] 6.2 [sol] Through the hosted Pimlico OP Sepolia endpoint with the testnet policy, run: a sponsored create via our factory, an edit and an add-key, plus a UV=0 operation that must be refused in simulation. Verify: three included operations with receipts, and the refusal recorded.
+- [x] 6.2 [sol] Through the hosted Pimlico OP Sepolia endpoint with the testnet policy, run: a sponsored create via our factory, an edit and an add-key, plus a UV=0 operation that must be refused in simulation. Verify: three included operations with receipts, and the refusal recorded.
 
-  2026-10-09, partial (not ticked: no add-key on chain). Details and links are in `contracts/GAS.md` → On-chain.
+  2026-10-12: passed. The add-key is on chain: tx `0x6180e582…` (2026-10-10 14:03 UTC), sponsored by Pimlico's
+  `SingletonPaymasterV6`, `success = true`. It emitted `LocatorAdded` and `VaultUpdated`, the vault blob now has 3
+  entries, and the account's `nextOwnerIndex()` and `ownerCount()` are both 3. Create, edits and the UV=0 refusal are
+  as recorded below. Details and links are in `contracts/GAS.md` → On-chain.
+
+  2026-10-09, partial (not ticked then: no add-key on chain).
   - **Done, create and edits.** The founder's run on the dev site went through Pimlico's hosted endpoint via the app,
     with no direct endpoint calls. It produced one sponsored create through the dev factory `0x5945…73d3` and 7 edits:
     EntryPoint v0.6, Pimlico `SingletonPaymasterV6`, all `success = true`.
@@ -155,9 +161,19 @@
     there is no Pimlico key here. `simulateValidation` returns `sigFailed = true` and `handleOps` reverts with AA24 for
     UV=0. The UV=1 control validates and is included.
 
-- [ ] 6.3 [fe] Run the hardware checklist (`apps/web/docs/hardware-test.md`) with two real YubiKeys: create, unlock, edit, add-key, the old v1 vault still unlocking, and recovery-tool reads of v1 and v2. Record the measured gas and cost per operation in `contracts/GAS.md` and `apps/web/docs/costs.md`, and re-check the D2 per-operation caps against them. Verify: the checklist is recorded.
+- [x] 6.3 [fe] Run the hardware checklist (`apps/web/docs/hardware-test.md`) with two real YubiKeys: create, unlock, edit, add-key, the old v1 vault still unlocking, and recovery-tool reads of v1 and v2. Record the measured gas and cost per operation in `contracts/GAS.md` and `apps/web/docs/costs.md`, and re-check the D2 per-operation caps against them. Verify: the checklist is recorded.
 
-  2026-10-10, partial (not ticked: add-key is not evidenced on chain).
+  2026-10-12: passed, with the v1 items waived (below). The checklist is recorded in `apps/web/docs/hardware-test.md`.
+  - **Add-key measured:** 502,562 gas (op `actualGasUsed`), recorded in `contracts/GAS.md` and
+    `apps/web/docs/costs.md`. The D2 caps still hold at ×10.
+  - **Third key (YubiKey 5C NFC).** The founder reports unlocking with only the new key on mobile over NFC (2026-10-11)
+    and then saving. That save (tx `0x8328747f…`, 999 bytes, padded to the 3-key maximum) was signed by wallet owner
+    index 1, an original key, so no on-chain operation is signed by the new key (owner index 2) yet. The founder's
+    unlock is the evidence for "C alone unlocks".
+  - **Stale tab.** The add-key blob is 615 bytes with the pre-`pad-to-max-payload` padding: it came from a tab
+    loaded before that build reached dev. It is valid and decodes, and the next save re-padded it.
+
+  2026-10-10, partial (not ticked then: add-key was not evidenced on chain).
   - **Checklist.** The founder reports passing the hardware checklist. The v1 items are waived for mainnet by founder
     decision, because v1 is OP Sepolia only.
   - **Gas recorded.** Measured gas per operation (create 987,350; edit 219,510–236,716) is in `contracts/GAS.md` and

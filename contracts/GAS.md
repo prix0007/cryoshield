@@ -70,7 +70,8 @@ run on the dev site (RP ID `cryoshield-web-dev.fly.dev`), read on 2026-10-09 fro
   `0x59454AD6Af26BEfF43851356B9Dc95a875C673d3`.
 - The vault is `0x94a68b0b…505e87` in VaultRegistryV2 `0xA622c92d3D5b54aeA081Cf410224a8A2eCb08cB7`.
 - `UserOperationEvent.success` is true for all of them.
-- Blob sizes are decoded from the calldata. The vault is 442 bytes, with 2 keys and a 144-byte ciphertext.
+- Blob sizes are decoded from the calldata. Up to 2026-10-09 the vault is 442 bytes, with 2 keys and a 144-byte
+  ciphertext; later sizes are in the table.
 
 | UTC | Operation | Tx | Op `actualGasUsed` | Tx `gasUsed` |
 |---|---|---|---:|---:|
@@ -82,10 +83,22 @@ run on the dev site (RP ID `cryoshield-web-dev.fly.dev`), read on 2026-10-09 fro
 | 2026-10-08 15:02 | edit | [0x61c817da…](https://optimism-sepolia.blockscout.com/tx/0x61c817da9e30821f0feea911968a9057d2b562ef3222ab0f6b82cc5aa5b99f5d) | 219,537 | 198,539 |
 | 2026-10-08 19:18 | edit | [0x2681589c…](https://optimism-sepolia.blockscout.com/tx/0x2681589cfd10be8dd357254d05360a012a6859954bb5705bb350767efa4a3874) | 219,550 | 198,551 |
 | 2026-10-09 18:51 | edit | [0x537d2e68…](https://optimism-sepolia.blockscout.com/tx/0x537d2e682bb8a2e931aec5868d969dc762f1ae7823fcb14b4f9e6dee205f6c9d) | 219,510 | 198,527 |
+| 2026-10-10 02:16 | edit, first padded save (442 → 1,018 B, N = 2) | [0xfbbcd9d3…](https://optimism-sepolia.blockscout.com/tx/0xfbbcd9d3eb2d871839af91b2d3fe400e765d492f76f906321098e1d138f2577f) | 633,216 | 611,279 |
+| 2026-10-10 14:03 | **add-key** (third YubiKey; 1,018 → 615 B, N = 3) | [0x6180e582…](https://optimism-sepolia.blockscout.com/tx/0x6180e5823ceff4e06ac48d6efe1d2e8f668718be1b220cc8cec7f5fd9aca043d) | 502,562 | 423,147 |
+| 2026-10-11 19:28 | edit, re-padded (615 → 999 B, N = 3) | [0x8328747f…](https://optimism-sepolia.blockscout.com/tx/0x8328747f8649cab2fc6ee775584a8d025928479ccb0901be3af92febafb70372) | 519,269 | 499,061 |
 
-- **Add-key: not measured.** None of these operations adds a key. All 7 edits are `execute(updateVault)`, and every
-  blob keeps N = 2 with the same two credential IDs. The account's `nextOwnerIndex()` is 2. Registry v2 has logged no
-  `LocatorAdded` outside the create.
+The first eight rows predate `pad-to-max-payload` (442-byte blob). The last three were added on 2026-10-12, read the
+same way. In those three, every operation used the same sender, EntryPoint, paymaster and `success = true`.
+
+- **Add-key (2026-10-10 14:03).** The tx emitted `LocatorAdded` and `VaultUpdated`, and the blob has 3 entries. The
+  account's `nextOwnerIndex()` and `ownerCount()` are 3, and `ownerAtIndex(2)` holds a 64-byte P-256 public key (the new key).
+- **Stale-tab blob.** Its 615-byte blob uses the earlier 64-byte padding steps: it was written by a tab loaded before
+  the `pad-to-max-payload` build reached dev (about 02:04 UTC). It is valid and decodes. The 19:28 save re-padded it
+  to the 3-key maximum (payload offset 395, 576-byte padded plaintext).
+- **Which key signed.** Decoding the user operations' signatures (`SignatureWrapper.ownerIndex`) gives owner index 0
+  for 02:16 and 14:03, and index 1 for 19:28. No operation is signed by the new key (index 2) yet.
+- **Why these cost more than the earlier edits.** Each changes the blob length, so the registry writes new storage
+  slots (about 20,000 gas per newly used 32-byte slot). A same-size edit of a padded vault does not grow storage.
 - **Why edits are 236.7k or 219.5k.** The first four edits (up to 05:47) each opened a fresh EntryPoint nonce key: a
   timestamp key, then key 0's first use. That is a zero-to-nonzero nonce write, about 20,000 gas, against about 2,900
   for a reused key. The difference is 236,716 − 219,537 = 17,179 gas.

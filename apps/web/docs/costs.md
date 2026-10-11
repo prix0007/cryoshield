@@ -29,14 +29,17 @@ This is the founder's YubiKey run on the dev site (`cryoshield-web-dev.fly.dev`)
 |---|---:|---:|---:|---:|---|
 | Create (deploys account, 2 keys, 2 locators) | 1 | 987,350 | 1.086e12 wei (0.0000011 ETH) | 5,134 wei | test ETH |
 | Edit (same-size payload) | 7 | 219,510 – 236,716 | 2.42e11 – 2.60e11 wei | 2,507 – 3,988 wei | test ETH |
-| Add key | 0 | **not measured** | | | |
+| Add key (third key; 615-byte blob, see below) | 1 | 502,562 | 5.53e11 wei | not read | test ETH |
 
 - **The upper edit figure** (236.7k) is an edit that opens a new EntryPoint nonce key. Later edits on the same key
   cost 219.5k.
 - **The L1 data fee** on OP Sepolia is a few thousand wei, because the Sepolia blob base fee is tiny. The bundler pays
   it from `preVerificationGas`.
-- **Add key has no on-chain run yet.** None of the 7 edits adds a key: every blob keeps 2 keys and the account still
-  has 2 owners. The estimate below is labelled as one.
+- **Add key, measured 2026-10-12** (tx `0x6180e582…`, 2026-10-10 14:03 UTC): the third YubiKey, sponsored, with
+  `success = true`. It came from a tab loaded before `pad-to-max-payload` reached dev, so its blob (615 bytes) uses
+  the earlier padding and is shorter than the 1,018-byte blob it replaced: no new registry storage. A padded add-key
+  also stays at or below 1,024 bytes, so this is a fair measure. The two padded saves around it (633,216 and 519,269
+  gas) grew the blob and are in `contracts/GAS.md`.
 
 ## OP Mainnet estimate from the measured OP Sepolia gas
 
@@ -58,11 +61,11 @@ high. The same bytecode and the same RIP-7212 precompile run on OP Mainnet, so t
 |---|---:|---:|---:|---:|---:|---|---|
 | Create | 987,350 | 9.88e11 wei ($0.00245) | 7.94e10 wei ($0.00020) | 1.07e12 wei = **$0.0027** | **$0.027** | fits, 3.8× headroom at ×10 | fits, 19× |
 | Edit (worst measured) | 236,716 | 2.37e11 wei ($0.00059) | 6.30e10 wei ($0.00016) | 3.00e11 wei = **$0.00074** | **$0.0074** | fits, 13× | fits, 67× |
-| Add key (**estimate**) | ≈ 418,140 | 4.18e11 wei ($0.00104) | 7.94e10 wei ($0.00020) | 4.98e11 wei = **$0.0012** | **$0.012** | fits, 8× | fits, 40× |
+| Add key (measured 2026-10-12) | 502,562 | 5.03e11 wei ($0.00125) | 7.94e10 wei ($0.00020) | 5.82e11 wei = **$0.0014** | **$0.014** | fits, 6.9× | fits, 34× |
 
-The add-key gas is an estimate. It is the measured OP Sepolia edit (236,716) plus the local add-key-minus-edit delta
-from the anvil table above (755,714 − 574,290 = 181,424). Its L1 bound is the create-sized one. Replace it once an
-add-key operation is measured.
+The add-key row uses the OP Sepolia add-key measured on 2026-10-10 (`contracts/GAS.md`) and the same 2026-10-09 gas
+price and ETH rate as the other rows. Its L1 bound is the create-sized one. It replaces the earlier estimate (≈ 418,140
+gas, $0.0012), which was the measured edit plus the anvil add-key-minus-edit delta.
 
 **Pre-charge at the maximum cost.** Pimlico pre-charges the maximum cost (gas limits × max gas price) when it signs,
 then refunds the unspent part after about 15 minutes
@@ -147,7 +150,7 @@ At today's gas the fee, not gas, dominates. Per sponsored operation, with the ga
 |---|---:|---:|---:|---:|
 | Create | $0.0027 | $0.0030 | $0.0105 | **≈ $0.0135** |
 | Edit | $0.00074 | $0.0008 | $0.0105 | **≈ $0.0113** |
-| Add key (estimate) | $0.0012 | $0.0013 | $0.0105 | **≈ $0.0118** |
+| Add key (measured) | $0.0014 | $0.0016 | $0.0105 | **≈ $0.0121** |
 
 **Budget, corrected.** Counting gas alone, the ~$140 prepaid balance looks like hundreds of thousands of operations
 ($140 ÷ $0.00074 ≈ 190k edits). That is wrong once the fee is included:
@@ -156,7 +159,7 @@ At today's gas the fee, not gas, dominates. Per sponsored operation, with the ga
   $0.0113 ≈ 12,390 if every one were an edit, and $140 ÷ $0.0105 ≈ 13,330 is the ceiling even with free gas.
 - **Per user, $1 still covers the 10-operation monthly cap:** 10 edits ≈ 10 × $0.0113 = $0.113; 1 create and 9 edits
   ≈ $0.0135 + 9 × $0.0113 = $0.115. So about **$0.11**, and the count (10) binds long before the $1. A typical first
-  month (1 create, 3 edits, 1 add-key) is ≈ $0.0135 + 3 × $0.0113 + $0.0118 = **$0.059**.
+  month (1 create, 3 edits, 1 add-key) is ≈ $0.0135 + 3 × $0.0113 + $0.0121 = **$0.060**.
 - **Global, the 500-operation count binds before the $30:** 500 × $0.0113–0.0135 ≈ **$5.65–6.75 a day**. Reaching $30
   with 500 operations needs about $0.06 each, about 4–5× today's total. At most 500 operations a day, the balance
   lasts at least 140 ÷ 6.75 ≈ 20 days at the cap, and more than four days even if $30 were spent every day.
