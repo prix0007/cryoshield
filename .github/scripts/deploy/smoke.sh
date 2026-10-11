@@ -39,7 +39,7 @@ EXPECT_TREE_HASH="${EXPECT_TREE_HASH:-}"
 REG_ITEM='v[1-9][0-9]{0,2}=0x[0-9a-fA-F]{40}'
 [ -z "$REGISTRIES" ] || [[ "$REGISTRIES" =~ ^$REG_ITEM( $REG_ITEM)*$ ]] || { echo "smoke: REGISTRIES must be 'vN=0x<40 hex>' entries separated by single spaces" >&2; exit 2; }
 
-PAGES=(/ /app/ /architecture /devices /support /privacy /healthz)
+PAGES=(/ /app/ /architecture /devices /lost-key /support /privacy /healthz)
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 errors=()

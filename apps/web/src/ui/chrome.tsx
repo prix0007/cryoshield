@@ -148,6 +148,9 @@ export function AppFooter() {
           <a href="/devices">Supported devices</a>
         </li>
         <li>
+          <a href="/lost-key">Lost or compromised key</a>
+        </li>
+        <li>
           <a href="/support">
             <span className="coffee-link-cup" aria-hidden="true">
               ☕

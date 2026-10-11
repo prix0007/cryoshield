@@ -191,11 +191,14 @@ export function renderLegalPage(root: string, name: string, network: (md: string
   return html;
 }
 
+/** Repository documents rendered into pages: /devices and /lost-key (add-compromised-key-guide). */
+export type RepoDoc = 'supported-devices' | 'lost-or-compromised-key';
+
 /**
  * add-supported-devices-page: renders docs/<name>.md from the repository root with the same escaped renderer and
  * link allowlist as the legal pages. The same file is what GitHub shows in the repo.
  */
-export function renderRepoDoc(root: string, name: 'supported-devices'): string {
+export function renderRepoDoc(root: string, name: RepoDoc): string {
   return renderMarkdown(readFileSync(join(root, '..', '..', 'docs', `${name}.md`), 'utf8'));
 }
 

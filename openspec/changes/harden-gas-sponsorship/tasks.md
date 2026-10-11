@@ -170,6 +170,7 @@
     and then saving. That save (tx `0x8328747f…`, 999 bytes, padded to the 3-key maximum) was signed by wallet owner
     index 1, an original key, so no on-chain operation is signed by the new key (owner index 2) yet. The founder's
     unlock is the evidence for "C alone unlocks".
+  - **Signer gap accepted (founder, 2026-10-12):** no further save signed by the new key alone is needed for this use case.
   - **Stale tab.** The add-key blob is 615 bytes with the pre-`pad-to-max-payload` padding: it came from a tab
     loaded before that build reached dev. It is valid and decodes, and the next save re-padded it.
 

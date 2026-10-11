@@ -288,6 +288,21 @@ describe('served by the container', () => {
     expect((await get('/devices/x')).status).toBe(404);
   });
 
+  it('/lost-key serves the lost-or-compromised-key guide with the app CSP, all headers, no-cache and no analytics (add-compromised-key-guide)', async () => {
+    const app = await get('/app/');
+    const r = await get('/lost-key');
+    expect(r.status).toBe(200);
+    expect(r.body).toContain('<h1 id="if-a-key-is-lost-or-compromised">If a key is lost or compromised</h1>');
+    expect(r.body).not.toMatch(/cloudflareinsights|cf-beacon/);
+    expect(scriptTags(r.body)).toEqual([THEME_TAG]);
+    expect(r.headers['content-security-policy']).toBe(`${metaCsp(r.body)}; frame-ancestors 'none'`);
+    expect(r.headers['content-security-policy']).toBe(app.headers['content-security-policy']);
+    for (const k of ['X-Frame-Options', 'Strict-Transport-Security', 'X-Content-Type-Options', 'Referrer-Policy', 'Permissions-Policy']) expect(r.headers[k.toLowerCase()], k).toBe(SECURITY_HEADERS[k]);
+    expect(r.headers['cache-control']).toBe('no-cache');
+    expect((await get('/lost-key/')).status).toBe(200);
+    expect((await get('/lost-key/x')).status).toBe(404);
+  });
+
   it('/support serves the donation page with the app CSP (no new connect-src), all headers, no-cache, no analytics (add-donation)', async () => {
     const app = await get('/app/');
     const r = await get('/support');

@@ -372,6 +372,10 @@ export function VaultView(props: {
                 </ul>
               </>
             )}
+            {/* add-compromised-key-guide D5: shown for read-only vaults too. */}
+            <p className="hint lost-key-link">
+              <a href="/lost-key">{S.vault.lostKey}</a>
+            </p>
             {/* M3: Lock is in the always-visible header bar (App), so it is not repeated here. */}
             {props.onAllVaults && (
               <div className="actions vault-nav">

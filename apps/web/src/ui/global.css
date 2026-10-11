@@ -223,6 +223,10 @@ button.link-button {
 .group-list li {
   position: relative;
 }
+/* add-compromised-key-guide D5: a footnote link under the Manage vault list, indented like its heading. */
+.lost-key-link {
+  margin: var(--space-xs) 0 0 var(--space-lg);
+}
 .group-list li + li::before {
   content: '';
   position: absolute;

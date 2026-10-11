@@ -130,7 +130,7 @@ for (const page of pages) {
   if (/\sstyle=|<style[\s>]/i.test(h)) fail(`inline style in ${name}`);
   // Only the integrity-pinned beacon, inert in its <template> on the landing page, may name another origin.
   // improve-landing-seo D7: the canonical link names the production URL; it is not a fetched resource.
-  let rest = h.replace(/<a\s[^>]*>/g, '').replace(/<link rel="canonical" href="https:\/\/cryoshield\.app\/[a-z]*">/g, '');
+  let rest = h.replace(/<a\s[^>]*>/g, '').replace(/<link rel="canonical" href="https:\/\/cryoshield\.app\/[a-z-]*">/g, '');
   if (name === 'index.html') {
     const tpl = rest.match(/<template id="cf-beacon" data-host="[^"]+"><script defer src="([^"]+)" integrity="([^"]+)" crossorigin="anonymous" data-cf-beacon="[^"]+"><\/script><\/template>/);
     if (tpl) {
@@ -144,7 +144,7 @@ for (const page of pages) {
 // add-privacy-preserving-analytics 4.2: no file of the app or the legal pages (HTML + reachable JS) mentions analytics.
 const token = label === 'production' && !realEnv ? PROD_ENV.VITE_CF_BEACON_TOKEN : undefined;
 const confined = {};
-for (const rel of [join('app', 'index.html'), join('privacy', 'index.html'), join('terms', 'index.html'), join('cookies', 'index.html'), join('architecture', 'index.html'), join('devices', 'index.html'), join('support', 'index.html')]) {
+for (const rel of [join('app', 'index.html'), join('privacy', 'index.html'), join('terms', 'index.html'), join('cookies', 'index.html'), join('architecture', 'index.html'), join('devices', 'index.html'), join('support', 'index.html'), join('lost-key', 'index.html')]) {
   // The legal pages must NAME the analytics in their prose (5.1); everything else on them must not reference it.
   confined[rel] = readFileSync(join(dist, rel), 'utf8').replace(/<article class="(legal-doc|arch-doc)">[\s\S]*?<\/article>/, '');
   for (const f of graphOf(rel)) confined[f] = readFileSync(join(dist, f), 'utf8');
@@ -168,7 +168,7 @@ if (label === 'production' && !realEnv) {
   console.log(`ok   [${label}] /privacy names the RPC host of ${PROD_ENV.VITE_RPC_URL}`);
 }
 // add-privacy-and-compliance 3.2: the legal pages exist.
-for (const p of ['privacy', 'terms', 'cookies', 'architecture', 'devices', 'support']) {
+for (const p of ['privacy', 'terms', 'cookies', 'architecture', 'devices', 'support', 'lost-key']) {
   if (!all.includes(join(dist, p, 'index.html'))) fail(`[${label}] missing legal page ${p}/index.html`);
 }
 // add-donation: anti-swap. The donation address comes only from config/donation.json, and no other address or payment

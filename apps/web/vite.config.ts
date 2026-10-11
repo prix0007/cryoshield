@@ -36,6 +36,7 @@ export default defineConfig(({ mode }) => {
           architecture: `${root}/architecture/index.html`,
           devices: `${root}/devices/index.html`,
           support: `${root}/support/index.html`,
+          lostKey: `${root}/lost-key/index.html`,
         },
         output: { minify: { compress: { dropConsole: true } } },
       },
