@@ -15,26 +15,66 @@ Nothing is ever sent anywhere except read-only lookups. No CryoShield server is 
 
 ## Install
 
-You need Python 3.10 or newer, or a single-file binary from the releases page.
+Every CryoShield release carries the tool. The easiest way is a single-file program for your computer (see "Download" below); nothing else to install. The tool is **not on PyPI**, so `pip install cryoshield-recover` will not find it.
+
+With Python 3.10 or newer you can instead install it from a release, or run it from the source at a release tag:
 
 ```sh
-# with uv (recommended): run without installing
-uvx cryoshield-recover --version
-# from the source repository instead of PyPI
-uvx --from "git+https://github.com/prix0007/cryoshield#subdirectory=tools/recover" cryoshield-recover --version
-# with pipx
-pipx install cryoshield-recover
-# NFC readers (PC/SC) need the optional extra
-pipx install "cryoshield-recover[nfc]"
+# with pipx, from the wheel attached to a release (copy its exact URL from the release page)
+pipx install "https://github.com/prix0007/cryoshield/releases/download/v1.0.0/cryoshield_recover-1.0.0-py3-none-any.whl"
+# NFC readers (PC/SC) also need pyscard in the same environment
+pipx inject cryoshield-recover pyscard
+# with uv, run from the source at a release tag without installing
+uvx --from "git+https://github.com/prix0007/cryoshield@v1.0.0#subdirectory=tools/recover" cryoshield-recover --version
 ```
+
+The tool's version is the release it ships with: the files on release `v1.0.0` print `cryoshield-recover 1.0.0`.
 
 **Dependency pinning.** `pipx` and `uvx` resolve dependencies themselves. They do **not** use this project's `uv.lock`, so they install the newest `fido2` and `cryptography` releases allowed by `pyproject.toml`.
 
 For the exact, hash-checked dependency set, use one of:
-- the single-file binary (built from `uv.lock`, see "Verifying a download");
+- the single-file program (built from `uv.lock`, see "Verifying a download");
 - a clone of the tagged source, with `uv sync --frozen && uv run cryoshield-recover`.
 
-**NFC.** The single-file binaries support **USB keys only**. For NFC readers (PC/SC), install with pipx and the `[nfc]` extra, as shown above.
+**NFC.** The single-file programs support **USB keys only**. For NFC readers (PC/SC), install with pipx and add `pyscard`, as shown above.
+
+## Download
+
+Each release has one file per platform. These links always point at the newest release:
+
+| Computer | File |
+|---|---|
+| Linux, Intel/AMD (x86_64) | [`cryoshield-recover-linux-x86_64`](https://github.com/prix0007/cryoshield/releases/latest/download/cryoshield-recover-linux-x86_64) |
+| Linux, ARM (arm64) | [`cryoshield-recover-linux-arm64`](https://github.com/prix0007/cryoshield/releases/latest/download/cryoshield-recover-linux-arm64) |
+| Mac with Apple silicon (M1 and later) | [`cryoshield-recover-macos-arm64`](https://github.com/prix0007/cryoshield/releases/latest/download/cryoshield-recover-macos-arm64) |
+| Mac with an Intel processor | [`cryoshield-recover-macos-x86_64`](https://github.com/prix0007/cryoshield/releases/latest/download/cryoshield-recover-macos-x86_64) |
+| Windows, Intel/AMD (x86_64) | [`cryoshield-recover-windows-x86_64.exe`](https://github.com/prix0007/cryoshield/releases/latest/download/cryoshield-recover-windows-x86_64.exe) |
+
+Every file has a checksum next to it (the same link with `.sha256` added), and the release lists them all in `SHA256SUMS`. Check it before running (see "Verifying a download").
+
+macOS or Linux, for example on a Mac with Apple silicon:
+
+```sh
+curl -LO https://github.com/prix0007/cryoshield/releases/latest/download/cryoshield-recover-macos-arm64
+curl -LO https://github.com/prix0007/cryoshield/releases/latest/download/cryoshield-recover-macos-arm64.sha256
+shasum -a 256 -c cryoshield-recover-macos-arm64.sha256
+chmod +x cryoshield-recover-macos-arm64
+./cryoshield-recover-macos-arm64 --version
+```
+
+Windows (PowerShell): download the `.exe` and its `.sha256`, compare the two hashes, then run it:
+
+```powershell
+certutil -hashfile cryoshield-recover-windows-x86_64.exe SHA256
+type cryoshield-recover-windows-x86_64.exe.sha256
+.\cryoshield-recover-windows-x86_64.exe --version
+```
+
+**The programs are not code-signed** (signing needs paid Apple and Windows certificates). Your computer may warn you:
+- **macOS** refuses to open an unsigned program downloaded with a browser ("cannot be verified"). Download with `curl` as above, or, after checking the checksum, run `xattr -d com.apple.quarantine cryoshield-recover-macos-arm64`.
+- **Windows** SmartScreen may say "Windows protected your PC". After checking the checksum, choose **More info**, then **Run anyway**.
+
+Only do this for a file whose checksum matches the release.
 
 ## Use
 
@@ -267,18 +307,24 @@ To limit exposure, recover on a computer you trust, close the terminal afterward
 
 ## Verifying a download
 
-Each release lists the SHA-256 of every binary. Compare it before running:
+Every file on a release (the five programs, the wheel and the source archive) has:
+- a `.sha256` file, and a line in the release's `SHA256SUMS`. These are computed by the release workflow from the exact bytes it uploads;
+- a signed build-provenance attestation, which records that the file was built by this repository's release workflow from the release's tagged commit.
 
 ```sh
-shasum -a 256 cryoshield-recover        # macOS / Linux
-certutil -hashfile cryoshield-recover.exe SHA256   # Windows
+# the checksum (macOS / Linux; on Windows use certutil as shown under "Download")
+shasum -a 256 -c cryoshield-recover-linux-x86_64.sha256
+# the provenance, with the GitHub CLI
+gh attestation verify cryoshield-recover-linux-x86_64 --repo prix0007/cryoshield
 ```
 
-You can rebuild the Linux binary yourself from the tagged source:
-- `scripts/build-binary.sh --docker` builds it in a base image pinned by digest, with hash-checked `uv`, a pinned `binutils`, and every Python dependency from `uv.lock`;
+The attestation proves where and from which commit a file was built. It does not prove that the code is safe: for that, read the source at the release tag, or rebuild.
+
+You can rebuild the Linux programs yourself from the tagged source and compare hashes:
+- `scripts/build-binary.sh --docker` builds in a base image pinned by digest, with hash-checked `uv`, a pinned `binutils`, and every Python dependency from `uv.lock`;
 - `scripts/build-binary.sh --docker --check` builds twice and compares the hashes.
 
-Binaries are not code-signed yet.
+The macOS and Windows programs are built the same way but are not bit-for-bit reproducible, and none of the programs is code-signed (see "Download").
 
 ## Reimplementing
 

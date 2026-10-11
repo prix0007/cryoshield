@@ -186,26 +186,32 @@ All read-only, against `https://mainnet.optimism.io`. Record each value and the 
     - the ECC review has no blocking findings;
     - after the merge, the dev deploy is green and **still on OP Sepolia**.
   - **If it fails:** fix forward. Nothing on production has changed.
-- [ ] **3.2 Founder: release the recovery tool (task 7.4). Decision needed. No documented procedure exists:**
-  - `cryoshield-recover` is **not on PyPI** (404, 2026-10-12), so the plain `uvx cryoshield-recover` in task 7.4 and
-    in the tool's README does not work today.
-  - Publishing *any* GitHub Release starts `deploy.yml`, so a separate tool release named `v*` would deploy
-    production. A non-`v*` tag fails at `detect`.
-  - Pick one and record it in the launch record:
-    - **A (no extra tag):**
-      - the source install is pinned to the `v0.1.0` tag:
-        `uvx --from "git+https://github.com/prix0007/cryoshield@v0.1.0#subdirectory=tools/recover" cryoshield-recover`;
-      - the Linux binary is built from that tag with `tools/recover/scripts/build-binary.sh --docker --check`;
-      - the binary and its SHA-256 are attached to the `v0.1.0` release.
-      - Before tagging, the design's "hold the switch until the tool is out" (runbook step 5) is met by running the
-        same `uvx --from git+…@<main commit sha>` from `main`.
-    - **B:** publish to PyPI (trusted publishing). This needs a new workflow, which the owner adds through an OpenSpec
-      change.
+- [ ] **3.2 Founder: dry-run the recovery tool build (task 7.4; decided 2026-10-12: the tool ships attached to the
+  `v1.0.0` release, change `release-recovery-tool-assets`).** The files are built and uploaded by
+  `.github/workflows/recover-release.yml` when you publish the release in 5.2; nothing is published here.
+  - **Before:** GitHub "immutable releases" stays **off** for this repository (assets are added after publishing). The
+    tool's version must equal the tag: `tools/recover` is `1.0.0` for `v1.0.0` (bump `pyproject.toml`, `__init__.py`
+    and `uv.lock` before any later release; the workflow refuses a mismatch).
+  - **Do:** `gh workflow run recover-release.yml --ref main`, then download the `recover-release-dry-run` artifact from
+    the run.
   - **Check:**
-    - `--version` works;
-    - `--network op-mainnet` shows registry v2 `0xA622…cB7` and no v1;
-    - a run with no network flag says it uses `op-mainnet`.
-  - **If it fails:** hold the switch until it works.
+    - all 5 binary jobs, the wheel job and the dry-run job are green (each binary ran `--version`, `--help` and a lookup
+      that stops with "No security key found");
+    - the artifact holds the 5 programs, the wheel and source archive, a `.sha256` for each and `SHA256SUMS`;
+    - on your own computer, with the 10.json PR (3.1) merged: `--version` prints `1.0.0`;
+      `--network op-mainnet` shows registry v2 `0xA622…cB7` and no v1; a run with no network flag says it uses
+      `op-mainnet`; and `--testnet` unlocks your dev vault with a YubiKey.
+  - **If it fails:** a platform whose job fails is fixed or dropped (an OpenSpec follow-up) before the release; the
+    release workflow needs all five. Hold the release until the dry run is green.
+- [ ] **3.3 After publishing `v1.0.0` (step 5.2): check the recovery tool downloads.**
+  - **Check:** the release lists the 7 files, their `.sha256` files and `SHA256SUMS`; the `recover-release.yml` run is
+    green; `curl -LO https://github.com/prix0007/cryoshield/releases/latest/download/cryoshield-recover-linux-x86_64`
+    downloads, its checksum matches, and
+    `gh attestation verify cryoshield-recover-linux-x86_64 --repo prix0007/cryoshield` passes.
+  - **If it fails:** production is already live, and the tool still runs from source at the tag
+    (`uvx --from "git+https://github.com/prix0007/cryoshield@v1.0.0#subdirectory=tools/recover" cryoshield-recover`).
+    Delete any files the failed run uploaded from the release page, then "Re-run failed jobs" (the workflow never
+    replaces a file, so leftovers make the re-run fail).
 
 ## 4. Production settings (Founder only; task 7.5, G8)
 
@@ -246,6 +252,7 @@ All read-only, against `https://mainnet.optimism.io`. Record each value and the 
     - `curl -s https://cryoshield.app/release.json` shows the tagged commit, chain `10`, registry v2 `0xA622…cB7` and
       `registry: null` (no v1).
     - The landing page shows "OP Mainnet" and "not been independently audited", with no testnet banner.
+    - The same release started `recover-release.yml`: check the recovery tool downloads (3.3).
   - **If it fails:**
     - a build failure deploys nothing;
     - a deploy or smoke failure rolls back automatically to the self-contained 2026-10-05 OP Sepolia image.

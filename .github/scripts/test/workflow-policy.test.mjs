@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -205,7 +205,7 @@ test('write-exception workflow: other jobs read-only, no secrets, token only in 
   dcExpect(reportJob.replace('        run: echo check\n', '        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1\n'), /persist-credentials: false/);
 });
 
-test('the deployments-check report job holds the ONLY write scope in the repository', async () => {
+test('only the deployments-check report job and the recover-release publish job hold write scopes', async () => {
   const { readdirSync, readFileSync } = await import('node:fs');
   const { parse } = await import('yaml');
   const { SCHEDULED_READ_ONLY, WRITE_EXCEPTIONS } = await import('../workflow-policy.mjs');
@@ -222,7 +222,81 @@ test('the deployments-check report job holds the ONLY write scope in the reposit
   // Privileged workflows (PRIVILEGED) carry their own reviewed write scopes; this test is about everything else.
   const { PRIVILEGED } = await import('../workflow-policy.mjs');
   const nonPrivileged = writes.filter((w) => !Object.hasOwn(PRIVILEGED, w.split(':')[0]));
-  assert.deepEqual(nonPrivileged, ['deployments-check.yml:report-failure:issues']);
+  assert.deepEqual(nonPrivileged.sort(), [
+    'deployments-check.yml:report-failure:issues',
+    'recover-release.yml:publish:attestations',
+    'recover-release.yml:publish:contents',
+    'recover-release.yml:publish:id-token',
+  ]);
   assert.deepEqual(Object.keys(WRITE_EXCEPTIONS), ['deployments-check.yml']);
   assert.ok(!Object.hasOwn(SCHEDULED_READ_ONLY, 'deployments-check.yml'));
+  const { RELEASE_ASSETS } = await import('../workflow-policy.mjs');
+  assert.deepEqual(Object.keys(RELEASE_ASSETS), ['recover-release.yml']);
+});
+
+// release-recovery-tool-assets (design D4): the release asset workflow's profile, tested on the real file.
+// Read lazily: only these tests fail (not the whole file) if the workflow is missing.
+let releaseText;
+const realRelease = () =>
+  (releaseText ??= readFileSync(fileURLToPath(new URL('../../workflows/recover-release.yml', import.meta.url)), 'utf8'));
+const raErrs = (text, file = 'recover-release.yml') => checkWorkflow(file, text);
+const raExpect = (text, re) => {
+  const e = raErrs(text);
+  assert.ok(e.some((m) => re.test(m)), `expected ${re} in ${JSON.stringify(e)}`);
+};
+const swap = (from, to) => {
+  assert.ok(realRelease().includes(from), `fixture drift: ${from}`);
+  return realRelease().replace(from, to);
+};
+
+test('recover-release.yml passes as committed', () => assert.deepEqual(raErrs(realRelease()), []));
+
+test('the release-asset profile is bound to its file name', () => {
+  assert.ok(checkWorkflow('other.yml', realRelease()).some((m) => /publish' requests contents: write/.test(m)));
+});
+
+test('release-asset triggers: published releases and an input-less dispatch only', () => {
+  raExpect(swap('    types: [published]\n', '    types: [published, edited]\n'), /release must be limited to types: \[published\]/);
+  raExpect(swap('on:\n  release:\n', 'on:\n  push:\n    branches: [main]\n  release:\n'), /trigger 'push' is not allowed/);
+  raExpect(
+    swap('  workflow_dispatch: # owner dry run', '  workflow_dispatch:\n    inputs:\n      tag:\n        type: string\n  x_unused: # owner dry run'),
+    /workflow_dispatch may not take inputs/,
+  );
+});
+
+test('release-asset gate: owner and (release at v* | dispatch on main) on the first job', () => {
+  raExpect(swap('github.triggering_actor == github.repository_owner && ((', '(('), /job 'detect' has no needs, so its condition must include "github\.triggering_actor == github\.repository_owner"/);
+  raExpect(swap(" || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'))", ')'), /job 'detect' has no needs, so its condition must include/);
+  raExpect(swap("    if: needs.detect.outputs.deploy == 'true' && github.event_name == 'release'\n", "    if: github.event_name == 'release'\n"), /job 'publish' .*needs\.detect\.outputs\.deploy == 'true'/);
+  raExpect(swap("    if: needs.detect.outputs.deploy == 'true' && github.event_name == 'release'\n", "    if: needs.detect.outputs.deploy == 'true'\n"), /job 'publish' condition must include "github\.event_name == 'release'"/);
+  raExpect(swap("    if: needs.detect.outputs.deploy == 'true' && github.event_name == 'release'\n", "    if: always() && needs.detect.outputs.deploy == 'true' && github.event_name == 'release'\n"), /always\(\), failure\(\) and cancelled\(\)/);
+  raExpect(swap("    if: needs.detect.outputs.deploy == 'true' && github.event_name == 'release'\n", "    if: needs.detect.outputs.deploy == 'true' && github.event_name == 'release' || true\n"), /no top-level \|\|/);
+});
+
+test('release-asset permissions: only publish writes, exactly its three scopes', () => {
+  raExpect(swap('      contents: read # checkout only; nothing is published\n', '      contents: write\n'), /job 'dry-run' must hold exactly contents: read/);
+  raExpect(swap('      attestations: write # store', '      packages: write\n      attestations: write # store'), /job 'publish' must request exactly/);
+  raExpect(swap('      id-token: write # build provenance (Sigstore)\n', ''), /job 'publish' must request exactly/);
+});
+
+test('release-asset publish job: allow-listed pinned actions, pinned run steps, no release or tag mutation', () => {
+  raExpect(swap('      - name: Attest build provenance\n        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2\n', '      - name: Attest build provenance\n        uses: actions/attest-build-provenance@v4\n'), /publish.*action 'actions\/attest-build-provenance@v4' is not allowed/);
+  raExpect(swap('      - name: Attest build provenance\n        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2\n', '      - name: Attest build provenance\n        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0\n'), /publish.*action 'astral-sh\/setup-uv@.*' is not allowed/);
+  raExpect(swap('gh release upload "$TAG" "$DIR"/* --repo "$REPO"\n', 'gh release upload "$TAG" "$DIR"/* --repo "$REPO" --clobber\n'), /--clobber/);
+  raExpect(swap('gh release upload "$TAG" "$DIR"/* --repo "$REPO"\n', 'gh release upload "$TAG" "$DIR"/* --repo "$REPO"\n          gh release edit "$TAG" --draft\n'), /gh release edit/);
+  raExpect(swap('gh release upload "$TAG" "$DIR"/* --repo "$REPO"\n', 'gh release upload "$TAG" "$DIR"/* --repo "$REPO"\n          git push origin HEAD\n'), /git push/);
+  raExpect(swap('gh release upload "$TAG" "$DIR"/* --repo "$REPO"\n', 'gh release upload "$TAG" "$DIR"/* --repo "$REPO"\n          gh release delete-asset "$TAG" x\n'), /gh release delete-asset/);
+  raExpect(swap('        run: node .github/scripts/recover-release.mjs "$DIR" --tag "$TAG"\n', '        run: node .github/scripts/recover-release.mjs "$DIR"\n'), /run step .* is not pinned/);
+  raExpect(swap('        run: node .github/scripts/recover-release.mjs "$DIR" --tag "$TAG"\n', '        run: npx something && node .github/scripts/recover-release.mjs "$DIR" --tag "$TAG"\n'), /build tooling/);
+});
+
+test('release-asset token, secrets, environments and checkout credentials', () => {
+  raExpect(swap('          DOCKER: ${{ matrix.docker }}\n', '          DOCKER: ${{ matrix.docker }}\n          GH_TOKEN: ${{ github.token }}\n'), /job 'binaries': github\.token may only be referenced in detect and publish/);
+  raExpect(swap('          DOCKER: ${{ matrix.docker }}\n', '          DOCKER: ${{ matrix.docker }}\n          X: ${{ secrets.ANYTHING }}\n'), /secrets must not be referenced/);
+  raExpect(swap('    timeout-minutes: 15\n', '    timeout-minutes: 15\n    environment: release\n'), /may not use an environment/);
+  // The first such checkout is publish's.
+  raExpect(
+    swap('          persist-credentials: false\n          ref: ${{ needs.detect.outputs.sha }}\n          sparse-checkout: .github/scripts\n', '          persist-credentials: true\n          ref: ${{ needs.detect.outputs.sha }}\n          sparse-checkout: .github/scripts\n'),
+    /job 'publish' step 'Checkout \(release scripts only\)': checkout must set persist-credentials: false/,
+  );
 });

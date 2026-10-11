@@ -1,5 +1,5 @@
 {
-  "_comment": "Reviewed SHA-256 of every run step in the privileged workflows (adopt-ecc-review-and-auto-merge, security review M1) and in the Fly-token jobs of deploy.yml and deploy-dev.yml (add-continuous-deploy, ECC review #7; split-dev-and-release-deploys). Update ONLY after a security review of each changed run step: node .github/scripts/workflow-policy.mjs --digests .github",
+  "_comment": "Reviewed SHA-256 of every run step in the privileged workflows (adopt-ecc-review-and-auto-merge, security review M1) and in the Fly-token jobs of deploy.yml and deploy-dev.yml (add-continuous-deploy, ECC review #7; split-dev-and-release-deploys), and in the publish job of recover-release.yml (release-recovery-tool-assets D4). Update ONLY after a security review of each changed run step: node .github/scripts/workflow-policy.mjs --digests .github",
   "ecc-review.yml": {
     "review/Refuse fork PRs (they get no secrets and are not reviewed automatically)": "b30ea158e7b09359aafeaaa1a09ae546a964ccc83a07ea9fcd38fafca09d451c",
     "review/Require a trusted author or the owner's /ecc-review approval": "16695e6116c7939678a947eafaae36d5fc6c93c345abc394708ba3ce6157e6fe",
@@ -53,5 +53,9 @@
     "release/Smoke test the live site": "97a606d62e1082dab8a53c2811dc82f91fac8436e85bf7a797139a581d7e33c3",
     "release/Roll back to the previous release": "99353c10d5d7ce0e22f85051509d133857926a5c63beb0d19d397522f6ee47de",
     "release/Fail loudly": "a09790e6c5b4015d4b680773e5e40f6c835f3863935506b4fe3f13a95a0aa41c"
+  },
+  "recover-release.yml": {
+    "publish/Check the file set, the tool version against the tag, and write the checksums": "1032c54b065bd528c5cce6001e9af7f876383dadbaccf037d2f5728805592238",
+    "publish/Upload to the release (the tag must still be the built commit; never replaces a file)": "5a7f4e9a6d2d435bb0ba37d0c7688ae054d80e8a8f3a623b2b413df889590645"
   }
 }
