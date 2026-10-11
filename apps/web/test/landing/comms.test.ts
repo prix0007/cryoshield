@@ -1,6 +1,6 @@
 // @vitest-environment node
 /**
- * launch-op-mainnet 5.4 (design → Communications and copy plan): the prepared launch texts and the `vA` release-notes
+ * launch-op-mainnet 5.4 (design → Communications and copy plan): the prepared launch texts and the `v1.0.0` release-notes
  * template pass the same honesty denylist as the site (the OP Mainnet build's list), keep the unaudited and
  * all-keys-lost statements, and reuse the app's exact notice wording.
  */
@@ -24,7 +24,7 @@ const prose = md
 describe('docs/launch/op-mainnet-comms.md', () => {
   it('has every planned text, unpublished', () => {
     const h2 = [...md.replace(/```[\s\S]*?```/g, '').matchAll(/^## (.+)$/gm)].map((m) => m[1]);
-    expect(h2).toEqual(['Before the switch', 'At the switch', 'Release notes template for vA', 'Announcement (after the soft launch)', 'Incident wording', 'Checklist before publishing']);
+    expect(h2).toEqual(['Before the switch', 'At the switch', 'Release notes template for v1.0.0', 'Announcement (after the soft launch)', 'Incident wording', 'Checklist before publishing']);
     expect(flat).toMatch(/Prepared, not published/);
   });
 

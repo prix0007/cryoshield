@@ -16,8 +16,9 @@ broadcast transactions.
 **Never paste a secret value** (bundler URL, Pimlico or Etherscan API key, Fly token) into a chat, an issue, a PR, a
 commit or a terminal log. Every check below uses names only.
 
-**Release tag.** The design calls the first mainnet release `vA`. The planned tag is **`v0.1.0`**; `docs/deploy.md`
-names the same tag for the first production release. There are no tags yet (checked 2026-10-12).
+**Release tag and day.** The first mainnet release is **`v1.0.0`** (founder, 2026-10-12; it replaces the design's
+placeholder `vA` and the briefly planned `v0.1.0`), on **2026-10-13**, the switch day set in
+`apps/web/src/config/launch.ts`. There are no tags yet (checked 2026-10-12).
 
 **Fixed values** (all public):
 
@@ -72,9 +73,13 @@ names the same tag for the first production release. There are no tags yet (chec
 - [ ] **0.7 Founder: "moving" notice, a few days before.** Publish the "Before the switch" text of
   [`op-mainnet-comms.md`](op-mainnet-comms.md) in the README status line and a GitHub discussion. It does not appear
   on the live site (Sequencing B).
-- [ ] **0.8 Agent: launch-dates PR.** Set `switchDate` (and `moveNoticeFrom` if wanted) in
+- [x] **0.8 Agent: launch-dates PR.** Set `switchDate` (and `moveNoticeFrom` if wanted) in
   `apps/web/src/config/launch.ts` to the founder's chosen day, in a normal PR. It must merge before the tag (phase 5).
   While `switchDate` is `null`, the chain-10 build shows the testnet-vaults help with no 90-day end.
+  - **Done (2026-10-12):** `switchDate: '2026-10-13'` (founder's day), `moveNoticeFrom: null` (only a production
+    testnet build could show that notice, and none is released before the switch). The chain-10 build shows the
+    testnet-vaults help until 2027-01-11 00:00 UTC. If the release slips past 2026-10-13, the 90 days still count from
+    the 13th; update the date in a new PR if that matters.
 - [ ] **0.9 Either: `main` is green on dev.**
   - **Do:** `curl -s https://cryoshield-web-dev.fly.dev/release.json`.
   - **Check:**
@@ -222,7 +227,7 @@ All read-only, against `https://mainnet.optimism.io`. Record each value and the 
     - `gh variable list --env production-build` shows the three mainnet values;
     - `gh secret list --env production-build` lists only `VITE_BUNDLER_URL`;
     - `gh secret list --repo prix0007/cryoshield` lists no `VITE_BUNDLER_URL` or `FLY_API_TOKEN`.
-  - **If it fails, or the launch is called off:** restore the saved values (D4: "Mainnet values set, `vA` not yet
+  - **If it fails, or the launch is called off:** restore the saved values (D4: "Mainnet values set, `v1.0.0` not yet
     tagged").
 
 ## 5. Release (Founder only; task 7.5 = runbook step 7, the switch)
@@ -232,7 +237,7 @@ All read-only, against `https://mainnet.optimism.io`. Record each value and the 
 - [ ] **5.2 Founder: publish the release.**
 
   ```sh
-  gh release create v0.1.0 --target main --generate-notes
+  gh release create v1.0.0 --target main --generate-notes
   gh run watch "$(gh run list --workflow deploy.yml --limit 1 --json databaseId --jq '.[0].databaseId')"
   ```
 
@@ -245,7 +250,7 @@ All read-only, against `https://mainnet.optimism.io`. Record each value and the 
     - a build failure deploys nothing;
     - a deploy or smoke failure rolls back automatically to the self-contained 2026-10-05 OP Sepolia image.
     - Then fix forward with a new tag, or restore the saved values (4.1) **before** any redeploy.
-- [ ] **5.3 Founder: release notes.** Replace the generated notes with the `vA` template from
+- [ ] **5.3 Founder: release notes.** Replace the generated notes with the `v1.0.0` template from
   [`op-mainnet-comms.md`](op-mainnet-comms.md), filled in from `10.json` and phase 3.2. Optionally add the live
   `treeHash` from `/release.json` (tabletop gap G2, accepted, so not required).
 
@@ -276,7 +281,7 @@ Enabled after the chain-10 smoke test is green, and before your smoke test, whic
     - explorer links go to `explorer.optimism.io`;
     - "Where your vault is stored" names OP Mainnet.
   - **If it fails, before the announcement:** chain rollback per D4. Restore the saved testnet values and redeploy
-    `v0.1.0` (`gh workflow run deploy.yml --ref v0.1.0`). Your test vault stays readable with the recovery tool.
+    `v1.0.0` (`gh workflow run deploy.yml --ref v1.0.0`). Your test vault stays readable with the recovery tool.
 - [ ] **7.2 Founder: recovery tool against the new vault.**
   - **Do:**
     - first with no network flag and `--no-arweave` (public RPCs only);
@@ -307,7 +312,7 @@ Enabled after the chain-10 smoke test is green, and before your smoke test, whic
     - registry events;
     - `/release.json`.
   - Record each day in its mainnet review log.
-  - Then publish the announcement and the final `v0.1.0` notes (`op-mainnet-comms.md`).
+  - Then publish the announcement and the final `v1.0.0` notes (`op-mainnet-comms.md`).
 - [ ] **8.3 Agent with the security reviewer: final security review (task 8.1).** The live bytecode, the verifications,
   `10.json`, `/release.json`, CSP, copy, the Pimlico settings (no secrets) and the recovery-tool hashes match what was
   reviewed.
@@ -327,7 +332,7 @@ Enabled after the chain-10 smoke test is green, and before your smoke test, whic
 | Contracts deployed, nothing else done | Nothing to undo. The contracts are immutable and unused | — |
 | Mainnet values set, not tagged | Restore the saved values (4.1) | Founder |
 | First chain-10 deploy or smoke test fails | Automatic image rollback to the 2026-10-05 OP Sepolia build. Restore the values or fix forward before any redeploy | Founder |
-| Defect before the announcement | Restore the saved testnet values, then `gh workflow run deploy.yml --ref v0.1.0`. `v0.1.0` contains `11155420.json`, so it builds for OP Sepolia | Founder |
+| Defect before the announcement | Restore the saved testnet values, then `gh workflow run deploy.yml --ref v1.0.0`. `v1.0.0` contains `11155420.json`, so it builds for OP Sepolia | Founder |
 | Front-end defect after the announcement | `gh workflow run deploy.yml --ref <last good mainnet tag>`. **Do not** roll the chain back: users' mainnet vaults would disappear from the web app (they stay readable with the recovery tool) | Founder |
 | Sponsorship abuse, spend without a policy, or a contract problem | Pause sponsorship: disable `sp_mixed_hellion`, and delete or rotate the key if it was abused (`paymaster-policy.md` §2a). Reading and recovery keep working | Founder |
 | Site down | Nothing is at risk. Vaults are on chain and the recovery tool works without the site | — |
@@ -337,5 +342,5 @@ Enabled after the chain-10 smoke test is green, and before your smoke test, whic
 - vault blobs once published on chain or Arweave: every version stays public forever;
 - the deployer's spent gas.
 
-Only `v0.1.0` and later tags can be rollback targets after the switch, because older tags have no `10.json` and cannot
+Only `v1.0.0` and later tags can be rollback targets after the switch, because older tags have no `10.json` and cannot
 build for chain 10.

@@ -188,7 +188,7 @@ gh secret list --repo prix0007/cryoshield   # must NOT list FLY_API_TOKEN or VIT
 
 **7. First deploys.**
 - Dev: `gh workflow run deploy-dev.yml --ref main -f force=true`, then check `curl -sI https://cryoshield-web-dev.fly.dev/ | grep -i x-robots-tag`, which must say `noindex, nofollow`.
-- Production: `gh release create v0.1.0 --target main --generate-notes`.
+- Production: `gh release create v1.0.0 --target main --generate-notes`.
 
 **Not configured yet?** Until a build environment has every required variable and its `VITE_BUNDLER_URL` secret, that workflow's `config` job reports "deploy not configured" and names what is missing (never the values). Nothing after it runs.
 - **Dev:** it is a warning, and the run **succeeds**, so `main` is not marked red.
@@ -251,36 +251,36 @@ account has hardware-key 2FA (G1).
 
 **First release straight to OP Mainnet (design D3, Sequencing B; founder, 2026-10-09).** Production's chain changes
 only through four `production-build` values (`VITE_CHAIN_ID`, `VITE_RPC_URL`, `VITE_SPONSORSHIP_POLICY_ID` and the
-`VITE_BUNDLER_URL` secret) plus a committed `contracts/deployments/10.json`. There is no OP Sepolia release of `vA`:
-production goes from the 2026-10-05 build straight to `vA` on OP Mainnet.
+`VITE_BUNDLER_URL` secret) plus a committed `contracts/deployments/10.json`. There is no OP Sepolia release of `v1.0.0`:
+production goes from the 2026-10-05 build straight to `v1.0.0` on OP Mainnet.
 
 1. **Save the current values offline.** The three variables come from `gh variable list --env production-build`.
    `VITE_BUNDLER_URL` is a secret, and GitHub never returns a secret's value: copy the testnet bundler URL (with its
    key) from the **Pimlico dashboard** into the offline record now, or a chain rollback cannot restore it.
 2. **Set the mainnet values** (variables and the secret).
-3. **Publish `vA`** (`gh release create vA --target main --generate-notes`). Its first deploy builds for chain 10;
+3. **Publish `v1.0.0`** (`gh release create v1.0.0 --target main --generate-notes`). Its first deploy builds for chain 10;
    `/release.json` must show chain 10, registry v2 and no v1. Then enable the mainnet Pimlico policy.
 
 What this order risks, and why it is acceptable:
-- `vA` never runs in production on OP Sepolia. Its commit does run on OP Sepolia on the dev site, which deploys every
+- `v1.0.0` never runs in production on OP Sepolia. Its commit does run on OP Sepolia on the dev site, which deploys every
   `main` commit through the same pipeline and smoke test.
 - If the first chain-10 deploy fails after `fly deploy` started, the release job rolls back to the 2026-10-05 image.
   That image is a self-contained OP Sepolia build and keeps working, but no redeploy succeeds until the values are
   fixed or restored.
-- Old tags cannot be rebuilt for chain 10 (no `10.json`). After the switch, **only `vA` and later tags are rollback
+- Old tags cannot be rebuilt for chain 10 (no `10.json`). After the switch, **only `v1.0.0` and later tags are rollback
   targets**.
-- A chain rollback means restoring the saved testnet values and redeploying `vA` (`gh workflow run deploy.yml --ref
-  vA`) or re-tagging the same commit; `vA` contains `11155420.json`, so it builds for OP Sepolia.
+- A chain rollback means restoring the saved testnet values and redeploying `v1.0.0` (`gh workflow run deploy.yml --ref
+  v1.0.0`) or re-tagging the same commit; `v1.0.0` contains `11155420.json`, so it builds for OP Sepolia.
 
 **Rollback (design D4):**
 
 | What fails | When | Rollback | User impact |
 |---|---|---|---|
 | Contract deploy or verification | Before the switch | None needed: contracts are immutable and unused. Retry verification | None |
-| Mainnet values set, `vA` not yet tagged | Before the switch | Restore the saved values (bundler URL from the Pimlico dashboard) if the launch is called off | None |
-| The first `vA` build or smoke test on chain 10 | At the switch | Build failure: nothing deployed. Deploy or smoke failure: automatic rollback to the self-contained 2026-10-05 OP Sepolia image; fix forward with a new tag, or restore the values before any redeploy | None (no mainnet users yet) |
-| A defect found before the announcement | Soft-launch window | Chain rollback: restore the saved testnet values and redeploy `vA` (or re-tag the same commit). The founder's test vault stays readable with the recovery tool | Founder only |
-| A front-end defect after the announcement | Post-launch | Redeploy the last good mainnet-capable tag (`vA` or later). **Do not** roll the chain back | Short outage at worst |
+| Mainnet values set, `v1.0.0` not yet tagged | Before the switch | Restore the saved values (bundler URL from the Pimlico dashboard) if the launch is called off | None |
+| The first `v1.0.0` build or smoke test on chain 10 | At the switch | Build failure: nothing deployed. Deploy or smoke failure: automatic rollback to the self-contained 2026-10-05 OP Sepolia image; fix forward with a new tag, or restore the values before any redeploy | None (no mainnet users yet) |
+| A defect found before the announcement | Soft-launch window | Chain rollback: restore the saved testnet values and redeploy `v1.0.0` (or re-tag the same commit). The founder's test vault stays readable with the recovery tool | Founder only |
+| A front-end defect after the announcement | Post-launch | Redeploy the last good mainnet-capable tag (`v1.0.0` or later). **Do not** roll the chain back | Short outage at worst |
 | A contract defect after the announcement | Post-launch | Pause saving (stop the Pimlico policy), then a new versioned registry or wallet in its own OpenSpec change | Saving paused; reading and recovery keep working |
 | Sponsorship abuse or budget exhausted | Post-launch | Pimlico shows "Saving is paused". Review usage before raising any cap ([paymaster runbook](../apps/web/docs/paymaster-policy.md)) | Saving paused |
 | Site down | Any time | Nothing is at risk: vaults are on-chain and the recovery tool works without the site | Use the recovery tool |

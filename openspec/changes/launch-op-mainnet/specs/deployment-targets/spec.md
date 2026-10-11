@@ -59,11 +59,11 @@ The OP Mainnet (chain 10) deployment SHALL contain only VaultRegistry v2 and the
 The production site's chain SHALL change only through the `production-build` environment values (`VITE_CHAIN_ID`, `VITE_RPC_URL`, `VITE_SPONSORSHIP_POLICY_ID` and the `VITE_BUNDLER_URL` secret) followed by a deploy of an owner-published `v*` release. The owner MAY set the new chain's values before publishing that release, so that the release's first production deploy is already on the new chain (founder decision 2026-10-09). In that case the release's commit SHALL have been deployed on the previous chain by the development site (which deploys every `main` commit), and the previous values SHALL be saved offline before they are changed, including the `VITE_BUNDLER_URL` secret, which GitHub cannot return and which is taken from the bundler provider's dashboard. After the switch, only releases whose tree contains the new chain's deployment record SHALL be used as rollback targets; a chain rollback restores the saved values and redeploys a release that contains the previous chain's record.
 
 #### Scenario: First release deploys straight to the new chain
-- **WHEN** the owner sets `VITE_CHAIN_ID=10` and the other mainnet values in `production-build` and then publishes release `vA`, which contains `contracts/deployments/10.json` and whose commit the development site has deployed on OP Sepolia
+- **WHEN** the owner sets `VITE_CHAIN_ID=10` and the other mainnet values in `production-build` and then publishes release `v1.0.0`, which contains `contracts/deployments/10.json` and whose commit the development site has deployed on OP Sepolia
 - **THEN** the deploy passes the build, the smoke test and the copy checks, and `/release.json` names chain 10
 
 #### Scenario: Failed first mainnet deploy
-- **WHEN** the deploy of `vA` with the chain-10 values fails after `fly deploy` started
+- **WHEN** the deploy of `v1.0.0` with the chain-10 values fails after `fly deploy` started
 - **THEN** the release job rolls back to the previous image (the self-contained OP Sepolia build), and no redeploy succeeds until the values are either fixed or restored
 
 #### Scenario: Pre-mainnet tag cannot be a mainnet rollback target

@@ -69,3 +69,26 @@ describe('testnet-vaults help on OP Mainnet (4.5, Q4)', () => {
     expect(on(sw, { chainId: 42161 })).toBe(false); // the testnet preview was on OP Sepolia; only OP Mainnet replaces it
   });
 });
+
+/**
+ * The committed launch dates (founder, 2026-10-12: switch on 2026-10-13). `moveNoticeFrom` stays null: only a
+ * production testnet build could show the "moving" notice, and the next production release is the OP Mainnet one, so
+ * the move is announced off-site instead (README and a GitHub discussion, Sequencing B).
+ */
+describe('committed launch dates', () => {
+  it('switch day is 2026-10-13 (UTC) and the "moving" notice is off', () => {
+    expect(LAUNCH.switchDate).toBe('2026-10-13');
+    expect(LAUNCH.moveNoticeFrom).toBeNull();
+  });
+
+  it('the OP Mainnet build shows the testnet-vaults help until 2027-01-11 00:00 UTC; testnet builds never', () => {
+    const live = (iso: string, chainId = 10) => testnetVaultsNoticeActive({ now: at(iso), chainId });
+    expect(live('2026-10-13T00:00:00Z')).toBe(true);
+    expect(live('2027-01-10T23:59:59Z')).toBe(true);
+    expect(live('2027-01-11T00:00:00Z')).toBe(false);
+    expect(live('2026-10-13T12:00:00Z', 11155420)).toBe(false);
+    for (const rpId of ['cryoshield-web-dev.fly.dev', PRODUCTION_RP_ID]) {
+      expect(moveNoticeActive({ now: at('2026-10-12T12:00:00Z'), chainId: 11155420, rpId })).toBe(false);
+    }
+  });
+});

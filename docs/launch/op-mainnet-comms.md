@@ -29,10 +29,10 @@ What the site says on OP Mainnet (built from the chain; tested in `apps/web/test
 
 > Vaults created during the testnet preview are not on OP Mainnet. They are still there, and you can read yours with the open-source recovery tool and its --testnet option. To use CryoShield on OP Mainnet, create a new vault.
 
-## Release notes template for vA
+## Release notes template for v1.0.0
 
 Fill in the bracketed values from `contracts/deployments/10.json` and the recovery-tool release, then paste as the body
-of the GitHub release `vA` (published by the owner at runbook step 7, after the OP Mainnet values are set; the notes are
+of the GitHub release `v1.0.0` (published by the owner at runbook step 7, after the OP Mainnet values are set; the notes are
 edited to this text before the announcement, step 14).
 
 ```markdown
@@ -100,5 +100,5 @@ Published at runbook step 14, after the 7-day soft launch with no threshold cros
 ## Checklist before publishing
 
 - [ ] The bracketed values are filled in from `contracts/deployments/10.json` and the recovery-tool release.
-- [ ] `/release.json` on https://cryoshield.app shows chain 10 and the commit of `vA`.
+- [ ] `/release.json` on https://cryoshield.app shows chain 10 and the commit of `v1.0.0`.
 - [ ] The copy test still passes on this file after any edit.
