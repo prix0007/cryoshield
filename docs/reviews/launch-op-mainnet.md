@@ -14,7 +14,7 @@
 | Q4 | Testnet vaults | No migration; a 90-day notice; testnet-preview vaults stay readable with the recovery tool `--testnet`. |
 | Q5 | Exposure | 7-day soft launch with daily monitoring before any announcement. |
 | D8 | Pimlico mainnet policy | `sp_mixed_hellion` ("CryoShield App (Prod)"), chain 10 only: per user $1 and 10 operations, reset **monthly**; global $30 and 500 operations, reset **daily**; $0.50 per operation; 2026-10-10 to 2027-10-02. Disabled; enabled only after the deploy's smoke test. Live values recorded 2026-10-10 (task 1.2) in `apps/web/docs/paymaster-policy.md`. History: the first policy, `sp_many_longshot`, was deleted and replaced on 2026-10-10 because it had been created with resets "never" (lifetime limits). |
-| D3 | Sequencing | **B**: set the mainnet `production-build` values before the first `v*` tag; `vA` deploys straight to chain 10 (no OP Sepolia release of `vA`). Risks and rollback paths in design D3/D4. |
+| D3 | Sequencing | **B**: set the mainnet `production-build` values before the first `v*` tag; `v1.0.0` deploys straight to chain 10 (no OP Sepolia release of `v1.0.0`). Risks and rollback paths in design D3/D4. |
 
 ## Go/no-go (G1–G11)
 
@@ -30,9 +30,9 @@ is done.
 | G5 | Recovery tool on mainnet | Open until `10.json` and the regenerated preset (task 7.3/7.4). Branch `feat/mainnet-recovery-default` @ `40b5cc1` pushed to origin 2026-10-12; merges cleanly with `main` | |
 | G6 | Audit decision | **Done**: see Q1 above | this file |
 | G7 | Monitoring ready | Runbook thresholds in `apps/web/docs/paymaster-policy.md` (task 5.3); founder calendar reminders **to confirm** | |
-| G8 | Rollback ready | Open: save the four current `production-build` values offline and the testnet bundler URL from the Pimlico dashboard; `vA`'s commit green on dev | |
+| G8 | Rollback ready | Open: save the four current `production-build` values offline and the testnet bundler URL from the Pimlico dashboard; `v1.0.0`'s commit green on dev | |
 | G9 | Compliance `mainnet-gate` entry | **Drafted, awaiting signature** (2026-10-09). The `mainnet-gate` entry in `docs/compliance/review-log.md` is dated 2026-10-09; its CI window ends 2026-11-08. The risk register is re-scored. Neither is signed, and the entry lists conditions that are still open. CI reads only the entry's heading, so merge the entry only once it is signed | [review-log 2026-10-09 entry](../compliance/review-log.md#2026-10-09-mainnet-gate-reviewer-prix0007), [risk register](../compliance/risk-register.md) |
-| G10 | Copy and build | Chain-10 and chain-11155420 builds pass `verify-build` and the section-4 copy tests (6.1 evidence below); confirmed again by CI on `vA` | |
+| G10 | Copy and build | Chain-10 and chain-11155420 builds pass `verify-build` and the section-4 copy tests (6.1 evidence below); confirmed again by CI on `v1.0.0` | |
 | G11 | Chain facts on the day; deployer ≥ 0.001 ETH | Re-run on launch day | |
 
 ## 6.1 Pre-launch security review

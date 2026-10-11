@@ -71,8 +71,8 @@ and design D3, D7 and D8; this review records them and does not make them):
 
 1. **No external contract audit, and none planned** (Q1/G6, D7). The contracts are the OP Sepolia bytecode, reviewed
    internally; every chain's copy says "has not been independently audited", and nothing promises an audit.
-2. **Straight to mainnet with no testnet release of `vA`** (Sequencing B, D3). The mainnet `production-build` values
-   are set before the first `v*` tag. The proof that `vA` works on OP Sepolia comes from the dev site, not from
+2. **Straight to mainnet with no testnet release of `v1.0.0`** (Sequencing B, D3). The mainnet `production-build` values
+   are set before the first `v*` tag. The proof that `v1.0.0` works on OP Sepolia comes from the dev site, not from
    production. A failed first deploy rolls back to the 2026-10-05 OP Sepolia image. A later chain rollback depends on
    the four testnet values having been saved offline beforehand (G8).
 3. **The D8 Pimlico values.** Policy `sp_mixed_hellion`, chain 10 only (it replaced `sp_many_longshot`, deleted
@@ -156,13 +156,13 @@ and design D3, D7 and D8; this review records them and does not make them):
    `0 issue "letsencrypt.org"` and `0 issuewild ";"`, after Universal SSL was disabled. Keep Universal SSL **off**:
    re-enabling it brings Cloudflare's CAs back. (Cloudflare 2FA: on, per the founder's statement, 2026-10-09; see G1.)
 6. **G8 (rollback).** Save the four current `production-build` values offline, with the testnet `VITE_BUNDLER_URL`
-   taken from the Pimlico dashboard, and confirm `vA`'s commit is green on the dev site.
+   taken from the Pimlico dashboard, and confirm `v1.0.0`'s commit is green on the dev site.
 7. **G5 and `launch-op-mainnet` section 3 (recovery tool).** Tasks 3.1–3.4 are unticked (the
    `feat/mainnet-recovery-default` branch is held for task 7.3). Close them through tasks 7.3 and 7.4 (the preset
    from `10.json`, a tool release with published hashes), then 7.8 (unlock the founder's mainnet vault from public
    RPCs and from Arweave). This sits after the deploy by design, but it must be closed before the soft-launch window
    ends and before any announcement.
-8. **G10 and G11.** CI on `vA` passes `verify-build` for chain 10 and chain 11155420 against the real `10.json`. On
+8. **G10 and G11.** CI on `v1.0.0` passes `verify-build` for chain 10 and chain 11155420 against the real `10.json`. On
    launch day, re-check the chain facts and that the deployer holds at least 0.001 ETH (task 1.1).
 9. **Task 1.3.** The launch record's G6 and G9 rows are dated and signed, and this entry is signed, before the
    `10.json` PR.
