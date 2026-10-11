@@ -1,0 +1,265 @@
+# Recovery tool downloads on every CryoShield release (OpenSpec change release-recovery-tool-assets).
+#
+#   detect (owner only; a release at a v* tag on main, or the owner's dry run on main)
+#   -> binaries (5 platforms, read-only) + python-dist (wheel + sdist + release guard test, read-only)
+#   -> publish  (release only: exact file set, checksums from the bytes, provenance, gh release upload; never replaces)
+#   -> dry-run  (workflow_dispatch only: the same file set and checksums as a workflow artifact; nothing published)
+#
+# Triggers: the owner's published release (gh release create vX.Y.Z --target main --generate-notes), the same event
+# that deploys production (deploy.yml); and workflow_dispatch on main for a dry run before release day
+# (gh workflow run recover-release.yml --ref main). This workflow never creates, edits or deletes a release or tag and
+# never replaces an asset: an upload with an existing name fails (design D1). The release's tag must equal the tool's
+# version (design D8). Enforced by .github/scripts/workflow-policy.mjs (RELEASE_ASSETS).
+#
+# Permissions: read-only everywhere except `publish` (contents: write to upload; id-token + attestations: write for
+# build provenance). The job token is referenced only by `detect` (read-only API) and `publish`; jobs that run
+# PyInstaller or dependency code never see it. No secrets, no environments.
+
+name: Recovery tool release assets
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch: # owner dry run on main: gh workflow run recover-release.yml --ref main (no inputs)
+
+permissions:
+  contents: read
+
+env:
+  UV_VERSION: "0.12.21"
+
+jobs:
+  detect:
+    name: detect
+    if: github.triggering_actor == github.repository_owner && ((github.event_name == 'release' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    concurrency: # per run: shared with no other run, so none can hold or replace it
+      group: recover-release-detect-${{ github.run_id }}
+      cancel-in-progress: false
+    permissions:
+      contents: read # the tag, main's HEAD and the compare API
+    outputs:
+      deploy: ${{ steps.detect.outputs.deploy }}
+      sha: ${{ steps.detect.outputs.sha }}
+      tag: ${{ steps.detect.outputs.tag }}
+    steps:
+      - name: Checkout (release scripts only)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/scripts/deploy
+      - name: Resolve the release tag (must be reachable from main), or the dry-run commit
+        id: detect
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          EVENT: ${{ github.event_name }}
+          TAG: ${{ github.ref_name }}
+          EXPECT_SHA: ${{ github.sha }}
+        run: |
+          if [ "$EVENT" = release ]; then
+            .github/scripts/deploy/release-ref.sh
+          else
+            [[ "$EXPECT_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::unexpected commit id"; exit 1; }
+            { echo "deploy=true"; echo "sha=$EXPECT_SHA"; echo "tag=dry-run"; } | tee -a "$GITHUB_OUTPUT"
+          fi
+
+  binaries:
+    name: binary (${{ matrix.asset }})
+    needs: detect
+    if: needs.detect.outputs.deploy == 'true'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    concurrency: # per run: shared with no other run, so none can hold or replace it
+      group: recover-release-binary-${{ github.run_id }}-${{ matrix.asset }}
+      cancel-in-progress: false
+    permissions:
+      contents: read # checkout only
+    strategy:
+      fail-fast: false # a dry run reports every platform; a release still needs all five (publish checks the set)
+      matrix:
+        include:
+          - { asset: cryoshield-recover-linux-x86_64, os: ubuntu-24.04, docker: "true" }
+          - { asset: cryoshield-recover-linux-arm64, os: ubuntu-24.04-arm, docker: "true" }
+          - { asset: cryoshield-recover-macos-arm64, os: macos-15, docker: "false" }
+          - { asset: cryoshield-recover-macos-x86_64, os: macos-15-intel, docker: "false" }
+          - { asset: cryoshield-recover-windows-x86_64.exe, os: windows-2025, docker: "false" }
+    steps:
+      - name: Checkout the release commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.detect.outputs.sha }}
+      - name: Set up uv
+        if: matrix.docker != 'true'
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: false
+      # Linux: the digest-pinned image, bit-for-bit reproducible (build-binary.sh --docker). Elsewhere: native build
+      # from uv.lock (best effort). build-binary.sh runs the binary's --version.
+      - name: Build
+        shell: bash
+        working-directory: tools/recover
+        env:
+          DOCKER: ${{ matrix.docker }}
+        run: |
+          mkdir -p dist
+          if [ "$DOCKER" = true ]; then scripts/build-binary.sh --docker; else scripts/build-binary.sh; fi
+      - name: Name the file and smoke-test it (no key attached, so it must stop with exit 3 after the lookup)
+        shell: bash
+        timeout-minutes: 5 # a key dialog (Windows without admin rights) would otherwise wait for the job timeout
+        env:
+          ASSET: ${{ matrix.asset }}
+        run: |
+          mkdir -p out
+          src=tools/recover/dist/cryoshield-recover
+          [ -f "$src.exe" ] && src="$src.exe"
+          cp "$src" "out/$ASSET"
+          chmod +x "out/$ASSET"
+          "out/$ASSET" --version
+          "out/$ASSET" --help > /dev/null
+          set +e
+          "out/$ASSET" --testnet --timeout 20 --output "$RUNNER_TEMP/never-written.txt" \
+            --vault-id 0x94a68b0b3a014671a1cd07f1ba0d6bcda98306c297ce15a3ccbbe491c1505e87 < /dev/null
+          code=$?
+          set -e
+          [ "$code" -eq 3 ] || { echo "::error::expected exit 3 (no security key), got $code"; exit 1; }
+          [ ! -e "$RUNNER_TEMP/never-written.txt" ] || { echo "::error::an output file was written"; exit 1; }
+      - name: Keep the binary for the publish or dry-run job
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: recover-${{ matrix.asset }}
+          path: out/${{ matrix.asset }}
+          if-no-files-found: error
+          retention-days: 7
+
+  python-dist:
+    name: wheel and source archive
+    needs: detect
+    if: needs.detect.outputs.deploy == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    concurrency: # per run: shared with no other run, so none can hold or replace it
+      group: recover-release-python-${{ github.run_id }}
+      cancel-in-progress: false
+    permissions:
+      contents: read # checkout only
+    defaults:
+      run:
+        working-directory: tools/recover
+    steps:
+      - name: Checkout the release commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.detect.outputs.sha }}
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: false
+      # The release guard: the default network must list registries (tests/test_cli.py, marker `release`).
+      - name: Release guard test
+        run: uv run --locked pytest -q -m release --run-release
+      - name: Build the wheel and source archive
+        run: |
+          SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)" uv build --sdist --wheel --out-dir out
+          ls -l out
+      - name: Keep them for the publish or dry-run job
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: recover-python
+          # only the two files: uv build also writes a .gitignore into the output directory
+          path: |
+            tools/recover/out/*.whl
+            tools/recover/out/*.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: publish
+    needs: [detect, binaries, python-dist]
+    if: needs.detect.outputs.deploy == 'true' && github.event_name == 'release'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    concurrency: # per run: shared with no other run, so none can hold or replace it
+      group: recover-release-publish-${{ github.run_id }}
+      cancel-in-progress: false
+    permissions:
+      contents: write # gh release upload to this release only (never create, edit, delete or replace)
+      id-token: write # build provenance (Sigstore)
+      attestations: write # store the provenance attestations in this repository
+    steps:
+      - name: Checkout (release scripts only)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.detect.outputs.sha }}
+          sparse-checkout: .github/scripts
+      - name: Download the built files
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: recover-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/assets
+      - name: Check the file set, the tool version against the tag, and write the checksums
+        env:
+          DIR: ${{ runner.temp }}/assets
+          TAG: ${{ needs.detect.outputs.tag }}
+        run: node .github/scripts/recover-release.mjs "$DIR" --tag "$TAG"
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            ${{ runner.temp }}/assets/cryoshield-recover-*
+            ${{ runner.temp }}/assets/cryoshield_recover-*
+            !${{ runner.temp }}/assets/*.sha256
+      - name: Upload to the release (the tag must still be the built commit; never replaces a file)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ needs.detect.outputs.tag }}
+          EXPECT_SHA: ${{ needs.detect.outputs.sha }}
+          DIR: ${{ runner.temp }}/assets
+        run: |
+          .github/scripts/deploy/release-ref.sh
+          gh release upload "$TAG" "$DIR"/* --repo "$REPO"
+          gh release view "$TAG" --repo "$REPO" --json assets --jq '.assets[].name'
+
+  dry-run:
+    name: dry run (artifacts only)
+    needs: [detect, binaries, python-dist]
+    if: needs.detect.outputs.deploy == 'true' && github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    concurrency: # per run: shared with no other run, so none can hold or replace it
+      group: recover-release-dry-run-${{ github.run_id }}
+      cancel-in-progress: false
+    permissions:
+      contents: read # checkout only; nothing is published
+    steps:
+      - name: Checkout (release scripts only)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.detect.outputs.sha }}
+          sparse-checkout: .github/scripts
+      - name: Download the built files
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: recover-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/assets
+      - name: Check the file set and write the checksums (no tag on a dry run)
+        env:
+          DIR: ${{ runner.temp }}/assets
+        run: node .github/scripts/recover-release.mjs "$DIR"
+      - name: Keep the would-be release files as one artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: recover-release-dry-run
+          path: ${{ runner.temp }}/assets/
+          if-no-files-found: error
+          retention-days: 7
