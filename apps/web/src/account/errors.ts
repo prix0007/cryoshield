@@ -22,6 +22,7 @@ export type WriteErrorCode =
   | 'LOAD_FAILED' // the lazily loaded write code could not be fetched (offline, or a redeploy replaced the chunk)
   | 'NONCE_CONFLICT' // another save from this account was being processed at the same moment (EntryPoint AA25)
   | 'STALE' // the vault changed on-chain since this session opened it (vault-list-labels-archive D8): nothing signed
+  | 'OUTDATED' // the site now serves a newer app build than this tab runs (reload-on-new-build): nothing signed
   | 'NETWORK';
 
 export class WriteError extends Error {

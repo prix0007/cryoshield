@@ -9,6 +9,7 @@ import type { Sponsor } from '../account/writes';
 import { createMirror } from '../mirror/mirror';
 import type { CredentialsApi } from '../webauthn';
 import type { RegistryVersion } from '../vault/adapter';
+import { checkBuild, type BuildState } from '../lib/build-check';
 
 export interface Services {
   rpId: string;
@@ -30,6 +31,8 @@ export interface Services {
   registries: readonly { version: RegistryVersion; address: Hex }[];
   /** Arweave gateway for the mirror item link. */
   arweaveGatewayUrl: string;
+  /** reload-on-new-build: is the site serving a newer app build than this tab runs? Asked before every write. */
+  buildCheck: () => Promise<BuildState>;
 }
 
 /**
@@ -59,6 +62,7 @@ export function defaultServices(): Services {
     network: config.network,
     registries: config.registries,
     arweaveGatewayUrl: config.arweaveGatewayUrl,
+    buildCheck: () => checkBuild(),
   };
 }
 

@@ -301,6 +301,11 @@ button.group-row:focus-visible {
 .notice-link a {
   color: var(--app-link);
 }
+/* reload-on-new-build: the user-started Reload page, under the message it belongs to. */
+.notice-action,
+.location-failed button {
+  margin: var(--space-xs) 0 0;
+}
 .notice-text {
   margin: 0;
 }

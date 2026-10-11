@@ -11,6 +11,7 @@ import type { RegistryVersion } from '../vault/adapter';
 import { isOlder, WRITE_REGISTRY } from '../config';
 import { notify, WriteError, type ProgressListener } from '../account/errors';
 import { loadWriteStack } from '../account/lazy';
+import { assertCurrentBuild } from '../lib/build-check';
 import { bytesEqual, toHex, wipe } from '../lib/bytes';
 import { MirrorError } from '../mirror/mirror';
 import type { Services } from './services';
@@ -143,6 +144,7 @@ export async function saveNewVault(
   let signerLocator: Uint8Array | undefined;
   try {
     if (keys.some((k) => !k.prf)) throw new KeyError('PRF_UNAVAILABLE');
+    await assertCurrentBuild(svc.buildCheck); // reload-on-new-build D2: never write with an outdated build
     const { newVaultAccount, createVaultOnChain } = await loadWriteStack(); // lazy chunk; LOAD_FAILED before any tap
     const owners = keys.map((k) => ({ credId: k.credId, publicKey: k.publicKey }));
     // Locators don't depend on the vaultId (empty-salt HKDF), so the signer's expected locator is known up front.
@@ -175,6 +177,7 @@ export type WritePath = { rewrite: typeof rewrite; withPayload: typeof withPaylo
 
 export async function rewrite(svc: Services, s: VaultSession, build: (prf: Uint8Array) => Promise<Uint8Array>, onSign: () => void, onProgress?: ProgressListener) {
   if (isReadOnly(s)) throw new WriteError('READ_ONLY');
+  await assertCurrentBuild(svc.buildCheck); // reload-on-new-build D2: edit, name, archive, Archive and clear
   const { assertCurrent, existingVaultAccount, updateVaultOnChain } = await loadWriteStack(); // before the PRF tap: a failed load wastes no tap
   const nonce = await assertCurrent(svc, { vaultId: s.vaultId, base: s.blob, owner: s.owner, nonce: s.nonce });
   const { credId, prf } = await evaluatePrf({ rpId: svc.rpId }, svc.credentials);
@@ -207,6 +210,7 @@ export async function saveAddKey(
   steps: { onInsertNew: () => void | Promise<void>; onNewAgain: () => void; onSign: () => void | Promise<void>; onProgress?: ProgressListener },
 ): Promise<{ session: VaultSession; newLocator: Hex }> {
   if (isReadOnly(s)) throw new WriteError('READ_ONLY');
+  await assertCurrentBuild(svc.buildCheck); // reload-on-new-build D2
   const { assertCurrent, existingVaultAccount, addKeyOnChain } = await loadWriteStack(); // before the PRF tap: a failed load wastes no tap
   const nonce = await assertCurrent(svc, { vaultId: s.vaultId, base: s.blob, owner: s.owner, nonce: s.nonce });
   const current = await evaluatePrf({ rpId: svc.rpId }, svc.credentials);
@@ -263,6 +267,8 @@ export function messageFor(e: unknown, context: 'create' | 'edit' = 'edit', chai
         return S.save.loadFailed;
       case 'STALE':
         return S.save.stale;
+      case 'OUTDATED':
+        return S.save.outdated;
       case 'NONCE_CONFLICT':
         return S.save.nonceConflict;
       case 'KEY':

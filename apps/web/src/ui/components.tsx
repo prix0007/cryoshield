@@ -5,6 +5,7 @@ import { S } from './strings';
 import { ActionBar } from './chrome';
 import { CEREMONY_WAITING, noticeTitle } from './ceremony';
 import { AnimatePresence, Btn, Collapse, Disclosure, Pulse, Shake, SlideIn } from './motionkit';
+import { reloadPage } from '../lib/build-check';
 
 /**
  * A lazily loaded chunk that fails to load (offline, or a redeploy replaced the hashed assets) shows `fallback`
@@ -85,6 +86,11 @@ export function Notice({ kind, title, reference, children }: { kind: 'error' | '
         {heading && <p className="notice-title">{heading}</p>}
         {/* Errors: the card shakes once and the message slides in under the title (all text: no motion-only info). */}
         {kind === 'error' ? <SlideIn>{text}</SlideIn> : text}
+        {offersReload(children) && (
+          <p className="notice-action">
+            <ReloadButton />
+          </p>
+        )}
         {kind === 'error' && pointsToDevices(heading, children) && (
           <p className="notice-link">
             <a href="/devices">See supported devices</a>
@@ -108,6 +114,18 @@ export function Notice({ kind, title, reference, children }: { kind: 'error' | '
     </div>
   );
 }
+
+/** reload-on-new-build D4–D6: the user-started reload, for an outdated build or app code that failed to load. */
+export function ReloadButton() {
+  return (
+    <Btn type="button" className="secondary" onClick={() => reloadPage()}>
+      {S.reloadPage}
+    </Btn>
+  );
+}
+
+const RELOAD_MESSAGES = new Set<ReactNode>([S.save.outdated, S.save.loadFailed, S.chunkFailed, S.updateAvailable]);
+const offersReload = (children: ReactNode) => RELOAD_MESSAGES.has(children);
 
 /** add-supported-devices-page: errors about the key or browser itself link the supported-devices page. */
 const DEVICE_TITLES = new Set(['Key not supported', 'Browser not supported']);

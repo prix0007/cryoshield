@@ -14,6 +14,7 @@ import { keccak256 } from 'viem';
 import { bytesEqual } from '../lib/bytes';
 import { config, isOlder, WRITE_REGISTRY } from '../config';
 import { useAutoLock } from './useAutoLock';
+import { useUpdateAvailable } from './useUpdateAvailable';
 import { VaultView } from './VaultView';
 import { Btn, Loading, MotionRoot, ScreenTransition, useDirection } from './motionkit';
 
@@ -59,6 +60,7 @@ function NetworkStatus({ chainId, rpId }: { chainId: number; rpId: string }) {
 
 function Shell() {
   const svc = useServices();
+  const updateAvailable = useUpdateAvailable(svc.buildCheck);
   const [screen, setScreen] = useState<Screen>({ name: 'home' });
   // vault-list-labels-archive D7: the ONLY place decrypted vaults live (the open one, the list, read-only older vaults).
   // Lock, idle, page hide and 60 s hidden replace it with [] in one assignment.
@@ -180,6 +182,7 @@ function Shell() {
       </header>
       <main id="main" className="app-main" tabIndex={-1}>
         <NetworkStatus chainId={svc.chainId} rpId={svc.rpId} />
+        {updateAvailable && <Notice kind="info">{S.updateAvailable}</Notice>}
         {!allowed && <Notice kind="error">{S.misconfigured}</Notice>}
         {allowed && prf === 'unsupported' && screen.name !== 'vault' && (
           <Notice kind="error" title="Browser not supported">

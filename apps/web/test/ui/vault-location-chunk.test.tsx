@@ -30,6 +30,8 @@ describe('Where your vault is stored: chunk load failure', () => {
     await screen.findByRole('heading', { name: 'Seed' });
     fireEvent.click(screen.getByRole('button', { name: S.location.title }));
     expect(await screen.findByText(S.location.failed)).toBeInTheDocument();
+    // reload-on-new-build D6: after a redeploy only a reload helps, so it is one press away.
+    expect(screen.getByRole('button', { name: S.reloadPage })).toBeInTheDocument();
     // The rest of the vault is still there and works.
     expect(screen.getByRole('heading', { name: 'Seed' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Show Seed' }));

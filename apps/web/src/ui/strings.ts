@@ -223,6 +223,9 @@ export const S = {
     reloadOlder: 'We couldn’t load the latest version yet. Wait a minute, then choose “Reload vault” again.',
     reloadMissing: 'That key didn’t open this vault. Choose “Reload vault” again and use one of this vault’s keys.',
     budget: (n: number) => `About ${n} free saves left`,
+    /** reload-on-new-build D4: this tab runs an older build than the site serves. */
+    outdated:
+      'Nothing was saved. CryoShield was updated since you opened this page. Reload the page to get the new version, then make your change again. Reloading locks your vault and discards unsaved changes.',
     nonceConflict: 'Nothing was saved. Another save for this vault happened at the same moment, or a previous save may still be finishing. Wait a minute, then try again.',
   },
 
@@ -252,6 +255,9 @@ export const S = {
   },
 
   chunkFailed: 'This part of the app didn’t load. Check your connection and try again, or reload the page.',
+  /** reload-on-new-build D5/D6: the user-started reload. */
+  reloadPage: 'Reload page',
+  updateAvailable: 'A new version of CryoShield is available. Reload the page to use it. Reloading locks your vault and discards unsaved changes.',
   continue: 'Continue',
   back: 'Back',
   busy: 'Working…',
