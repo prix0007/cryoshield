@@ -11,7 +11,7 @@ import { ArweaveStub } from '../fixtures/arweave';
 import { VirtualKeys } from '../fixtures/webauthn';
 import { settled } from '../fixtures/motion';
 
-const PAGES = [LANDING, APP, '/privacy', '/terms', '/cookies', '/architecture', '/devices', '/support'];
+const PAGES = [LANDING, APP, '/privacy', '/terms', '/cookies', '/architecture', '/devices', '/support', '/lost-key'];
 const CONTROLS = 'a[href], button, input, select, textarea, summary';
 
 test.beforeEach(({ isMobile, hasTouch }) => {

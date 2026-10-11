@@ -17,6 +17,23 @@ const repo = join(web, '..', '..');
 const md = readFileSync(join(repo, 'docs', 'lost-or-compromised-key.md'), 'utf8');
 const flat = md.replace(/\s+/g, ' ');
 
+const NUM = String.raw`(\d+|one|two|three|four|five|six|seven|eight|nine|ten|twelve)`;
+const NEGATED = /\b(can[’']t|cannot|can not|no way|not|never|nobody|nothing|isn[’']t|doesn[’']t|don[’']t)\b/i;
+/** Sentences that promise what CryoShield can't do (design D2 "Deliberately not claimed"; spec "Honest about what a key can do"). */
+function falseComfort(text: string): string[] {
+  const out: string[] = [];
+  // Link targets are URLs (e.g. …/cryoshield/tree/main/tools/recover), not claims: only the link text is checked.
+  for (const raw of text.replace(/\]\([^)]*\)/g, ']').replace(/\s+/g, ' ').split(/(?<=[.!?])\s+/)) {
+    const s = raw.toLowerCase();
+    const negated = NEGATED.test(s);
+    if (!negated && /\b(remove|revoke|delete|erase|wipe|unenrol+)\b[^.]{0,40}\b(keys?|versions?|it|them)\b/.test(s)) out.push(`removal or deletion: ${raw}`);
+    if (new RegExp(String.raw`\b${NUM}\b[^.]{0,25}\b(wrong|pin|guess(es)?|attempts?|tries)\b|\b(attempts?|tries|guesses)\b[^.]{0,15}\b${NUM}\b`).test(s)) out.push(`PIN count: ${raw}`);
+    if (!negated && /cryoshield[^.]{0,30}\b(recover|restore|unlock|reset|retrieve)\b/.test(s)) out.push(`recovery by CryoShield: ${raw}`);
+    if (/\b(contact|email|write to|message|reach( out to)?) (us|cryoshield|support|the team)\b/.test(s)) out.push(`contact for recovery: ${raw}`);
+  }
+  return out;
+}
+
 describe('docs/lost-or-compromised-key.md content', () => {
   it('has a "Last reviewed" date that is a real date and not in the future', () => {
     const m = md.match(/\*\*Last reviewed:\*\*\s*(\d{4}-\d{2}-\d{2})/);
@@ -57,12 +74,26 @@ describe('docs/lost-or-compromised-key.md content', () => {
   });
 
   it('promises nothing CryoShield can’t do: no key removal, no deletion, no PIN count, no recovery by CryoShield', () => {
-    const lower = flat.toLowerCase();
-    expect(lower).not.toMatch(/\b(you can|choose|use) (remove|delete|revoke)\b/);
-    expect(lower).not.toMatch(/remove (a|the|this) key\b(?! from a vault, lock)/);
-    expect(lower).not.toMatch(/\b\d+\s*(wrong )?(pin )?(attempts|guesses|tries)\b/);
-    expect(lower).not.toMatch(/\b(contact|email|write to|message) (us|cryoshield|support)\b/);
-    expect(lower).not.toMatch(/cryoshield (can|will) (recover|restore)/);
+    expect(falseComfort(md)).toEqual([]);
+  });
+
+  // ECC review of #87, finding 4: the guard itself catches the wordings a later edit could slip in.
+  it('the false-comfort guard catches removal, deletion, PIN-count, recovery and contact promises', () => {
+    for (const bad of [
+      'Open the vault and you can remove it from the key list.',
+      'Then delete old versions of the vault.',
+      'Revoke the lost key under Manage vault.',
+      'A YubiKey allows up to 8 PIN tries before it locks.',
+      'After eight wrong guesses the key locks.',
+      'CryoShield can help you recover the vault.',
+      'If that fails, contact support with your vault ID.',
+    ]) {
+      expect(falseComfort(bad), bad).not.toEqual([]);
+    }
+    // Negated statements are what the guide is for.
+    for (const ok of ['CryoShield can’t remove a key from a vault, lock a key out, delete old versions, or recover a vault for you.', 'There is no way to remove it.', 'Nobody, including CryoShield, can delete them.']) {
+      expect(falseComfort(ok), ok).toEqual([]);
+    }
   });
 
   it('warns never to share secrets, including with someone claiming to be CryoShield (spec "Safe guidance")', () => {
@@ -116,5 +147,18 @@ describe('/lost-key page (built)', () => {
   it('the landing FAQ "What happens if I lose my YubiKey?" links /lost-key', () => {
     const faq = [...doc('index.html').querySelectorAll('#faq details')].find((d) => d.querySelector('summary')?.textContent === 'What happens if I lose my YubiKey?')!;
     expect([...faq.querySelectorAll('a')].map((a) => a.getAttribute('href'))).toContain('/lost-key');
+  });
+});
+
+// ECC review of #87, finding 7: one list of repo documents drives the type, the marker regex and the shells.
+describe('repo documents', () => {
+  it('REPO_DOCS lists each rendered document once, and each has a shell with its marker', async () => {
+    const { REPO_DOCS, repoDocMarker } = await import('../../vite-plugins/legal');
+    expect([...REPO_DOCS]).toEqual(['supported-devices', 'lost-or-compromised-key']);
+    for (const [doc, shell] of [['supported-devices', 'devices'], ['lost-or-compromised-key', 'lost-key']] as const) {
+      const html = readFileSync(join(web, shell, 'index.html'), 'utf8');
+      expect(html.match(repoDocMarker())?.[1], shell).toBe(doc);
+    }
+    expect('<!--doc:not-a-doc-->').not.toMatch(repoDocMarker());
   });
 });

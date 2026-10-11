@@ -12,7 +12,7 @@ import { createVault } from '../fixtures/app';
 import { settled } from '../fixtures/motion';
 
 const KEY = 'cryoshield-theme';
-const PAGES = [LANDING, APP, '/architecture', '/devices', '/support', '/privacy', '/terms', '/cookies'];
+const PAGES = [LANDING, APP, '/architecture', '/devices', '/lost-key', '/support', '/privacy', '/terms', '/cookies'];
 const THEMES = ['light', 'dark'] as const;
 
 const themeSelect = (page: Page) => page.getByRole('navigation', { name: 'Site' }).getByRole('combobox', { name: 'Theme' });
@@ -321,7 +321,7 @@ for (const theme of THEMES) {
     await page.emulateMedia({ colorScheme: theme === 'dark' ? 'light' : 'dark' });
     await page.goto('/privacy');
     await choose(page, theme);
-    for (const p of [LANDING, '/architecture', '/devices', '/support', '/privacy', '/terms', '/cookies']) {
+    for (const p of [LANDING, '/architecture', '/devices', '/lost-key', '/support', '/privacy', '/terms', '/cookies']) {
       await page.goto(p);
       expect(await themeAttr(page)).toBe(theme);
       await axe(page, `${theme} ${p}`);
