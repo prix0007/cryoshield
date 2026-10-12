@@ -251,7 +251,8 @@ All read-only, against `https://mainnet.optimism.io`. Record each value and the 
     - `deploy.yml` passes: `detect`, `config`, the full CI, the chain-10 build, `release` and the smoke test.
     - `curl -s https://cryoshield.app/release.json` shows the tagged commit, chain `10`, registry v2 `0xA622…cB7` and
       `registry: null` (no v1).
-    - The landing page shows "OP Mainnet" and "not been independently audited", with no testnet banner.
+    - The landing page shows "OP Mainnet", with no testnet banner and no "Unaudited" chip; its footer says "not
+      independently audited" (change `trim-landing-cta-audit-note`, 2026-10-13).
     - The same release started `recover-release.yml`: check the recovery tool downloads (3.3).
   - **If it fails:**
     - a build failure deploys nothing;

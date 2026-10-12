@@ -18,7 +18,7 @@
 
 ## Go/no-go (G1–G11)
 
-Status as of 2026-10-12; the owner fills in evidence and dates on launch day (task 7.1). Launch only when every row
+Status as of 2026-10-13; the owner fills in evidence and dates on launch day (task 7.1). Launch only when every row
 is done.
 
 | # | Criterion | Status | Evidence |
@@ -27,13 +27,13 @@ is done.
 | G2 | Dev not under `cryoshield.app` | `dev.cryoshield.app` NXDOMAIN (checked 2026-10-09). **Rechecked 2026-10-12:** no A, AAAA or CNAME record (founder and agent) | |
 | G3 | `harden-gas-sponsorship` review and testnet proof | **Done 2026-10-12.** Review 7.1 APPROVE. 6.2, 6.3 and 6.4 done (#86): create, edits, add-key of a third key (tx `0x6180e582…`, 502,562 gas) and a padded 3-key save (tx `0x8328747f…`, v11, 999 B), all Pimlico-sponsored on dev; UV=0 refusal by fork simulation; v1 items waived. Founder accepted (2026-10-12) that no save is yet signed by the new key alone. D8 values approved by the founder 2026-10-12 with the G9 sign-off; 8.1 closed 2026-10-12: D6 reviewed (no new testnet users, no trigger) and the deploy approved by the founder (`harden-gas-sponsorship` design.md) | `apps/web/docs/hardware-test.md`, `contracts/GAS.md` |
 | G4 | Pimlico mainnet settings | **Done 2026-10-10 (#83).** Policy `sp_mixed_hellion` per D8 (Disabled until runbook step 8); key `cryoshield-mainnet`: origin `cryoshield.app` only, bundler on, "verifying paymaster" off, account APIs and boost off; $120 prepaid, no card. Task 1.1 (a): policy-scoped sponsorship with "verifying paymaster" off verified on the dev key (2026-10-10/11, #86) | `apps/web/docs/paymaster-policy.md` §3–4 |
-| G5 | Recovery tool on mainnet | Open until `10.json` and the regenerated preset (task 7.3/7.4). Branch `feat/mainnet-recovery-default` @ `40b5cc1` pushed to origin 2026-10-12; merges cleanly with `main` | |
+| G5 | Recovery tool on mainnet | **Done 2026-10-12/13.** `10.json` and the `op-mainnet` preset merged (#102, #103). The `recover-release.yml` dry run on `012c084` was green (run 38297212786). `v1.0.0` carries 7 files plus their `.sha256` files and `SHA256SUMS`; all pass `gh attestation verify`. `--version` prints `1.0.0`; with no flag the network is `op-mainnet`, v2 only. The founder unlocked a dev vault with `--testnet`, then the new mainnet vault with no network flag: "Cool recovery tool works and verified" (2026-10-13) | launch-day log below |
 | G6 | Audit decision | **Done**: see Q1 above. The founder's 2026-10-12 sign-off accepts the `mainnet-gate` entry, which restates this decision (the quote does not name G6 separately) | this file |
 | G7 | Monitoring ready | Runbook thresholds in `apps/web/docs/paymaster-policy.md` (task 5.3); founder calendar reminders: added by the founder 2026-10-12: the 2027-10-02 policy end, the daily (14 days), weekly and monthly checks, and the Fly token rotation before 2027-10-05. **Still to confirm:** the September 2027 domain and `security.txt` dates | |
-| G8 | Rollback ready | Open: save the four current `production-build` values offline and the testnet bundler URL from the Pimlico dashboard; `v1.0.0`'s commit green on dev | |
+| G8 | Rollback ready | **Done 2026-10-12.** The founder saved the four testnet `production-build` values offline, including the testnet bundler URL from the Pimlico dashboard (checklist 4.1). `v1.0.0`'s commit `012c084` was green on dev (deploy-dev) before the release | |
 | G9 | Compliance `mainnet-gate` entry | **Signed 2026-10-12** by the founder (entry dated 2026-10-09). The `mainnet-gate` entry in `docs/compliance/review-log.md` is dated 2026-10-09; its CI window ends 2026-11-08. The risk register is re-scored. Both are signed. The entry's launch-day conditions (G7, G8, G5, G10, G11) stay open until closed in this record | [review-log 2026-10-09 entry](../compliance/review-log.md#2026-10-09-mainnet-gate-reviewer-prix0007), [risk register](../compliance/risk-register.md) |
-| G10 | Copy and build | Chain-10 and chain-11155420 builds pass `verify-build` and the section-4 copy tests (6.1 evidence below); confirmed again by CI on `v1.0.0` | |
-| G11 | Chain facts on the day; deployer ≥ 0.001 ETH | Re-run on launch day | |
+| G10 | Copy and build | Chain-10 and chain-11155420 builds pass `verify-build` and the section-4 copy tests (6.1 evidence below); confirmed again by CI on `v1.0.0`: `deploy.yml` run 38307520254 green (full CI, chain-10 build, release, smoke), 2026-10-12 | |
+| G11 | Chain facts on the day; deployer ≥ 0.001 ETH | **Done 2026-10-12.** P-256 precompile checked (block 158113739); the founder checked the other facts ("looks fine"); re-read by the agent at block 158120926, values in the launch-day log | launch-day log below |
 
 ## 6.1 Pre-launch security review
 
@@ -81,7 +81,10 @@ smoke, founder YubiKey smoke, recovery test, Pimlico check, soft-launch monitori
 - **2026-10-12, P-256 precompile (task 1.1, G11), run by the agent:** RIP-7212 at `0x100` on OP Mainnet, block
   158113739, 17:30 UTC. A fresh P-256 key signed a random SHA-256 hash; the 160-byte input returned
   `0x…0001`; the same input with the first hash byte changed returned `0x`. The other G11 chain facts were checked
-  by the founder the same day ("looks fine"); their values are still to be written here.
+  by the founder the same day ("looks fine"). Re-read by the agent, read-only, at block 158120926: chain ID 10;
+  EntryPoint v0.6 `0x5FF137D4…2789` has code (23,689 bytes); the CREATE2 deployer `0x4e59b448…956C` has code (69
+  bytes); Pimlico's paymaster `0x66666666…c68b` has code (15,138 bytes); deployer `0x33144f68…26bf` holds
+  0.00499 ETH (≥ 0.001).
 - **2026-10-12, contract deploy (task 7.2, runbook steps 1–2), by the founder:** simulation showed the three D1
   addresses, `v1: not deployed on op_mainnet (by design)` and "nothing sent"; then broadcast from deployer
   `0x33144f68…26bf` through the CREATE2 deployer:
@@ -100,7 +103,39 @@ smoke, founder YubiKey smoke, recovery test, Pimlico check, soft-launch monitori
   they moved to `arbitrum-sepolia` and stay offline. The broadcast logs hold transaction data only (no key material).
   No CRITICAL or HIGH findings.
 
+- **2026-10-12, recovery tool dry run (task 7.4, checklist 3.2), run by the founder, checked by the agent:**
+  `recover-release.yml` on `main` @ `012c084` (run 38297212786) green. The agent checked the artifact: 7 files, each
+  matching its `.sha256` and `SHA256SUMS`; `--version` prints `cryoshield-recover 1.0.0 (vault format v1)`; the default
+  network is `op-mainnet`; its preset lists only VaultRegistryV2 `0xa622…cb7` from block 158114294 (built-in,
+  trusted), no v1. The founder then unlocked a dev vault on OP Sepolia with the macOS arm64 binary and `--testnet`.
+- **2026-10-12, production values (task 7.5, checklist 4.2), by the founder; names checked by the agent:**
+  `production-build` holds `VITE_CHAIN_ID=10`, `VITE_RPC_URL=https://mainnet.optimism.io`,
+  `VITE_SPONSORSHIP_POLICY_ID=sp_mixed_hellion` and one secret, `VITE_BUNDLER_URL` (value not read); no repository-level
+  `VITE_BUNDLER_URL` or `FLY_API_TOKEN`.
+- **2026-10-12, release (task 7.5, runbook step 7), by the founder:** `v1.0.0` published 20:57 UTC on `012c084`.
+  `deploy.yml` run 38307520254 green (full CI, chain-10 build, `release`, smoke); Fly release v16.
+  `recover-release.yml` run 38307519843 green and attached the 15 files. The agent checked:
+  - `https://cryoshield.app/release.json`: commit `012c084`, `chainId` 10, `rpId` `cryoshield.app`, `registry: null`,
+    v2 `0xA622…cB7` from block 158114294, the D1 factory and implementation;
+  - the landing page names OP Mainnet with no testnet banner;
+  - the release's 7 files match `SHA256SUMS`, and all 7 pass `gh attestation verify`. Six are byte-identical to the
+    dry run. `cryoshield-recover-macos-x86_64` is not (same size, ad-hoc signed, matches its own checksum, prints
+    `1.0.0`, defaults to `op-mainnet`): the Intel macOS build is not yet reproducible. Follow-up, not a launch blocker;
+  - Fly: both machines on v16 (one running and passing `/healthz`, one suspended by `auto_stop`); certificates
+    issued for `cryoshield.app` and `www`; `www`, `http://` and `cryoshield-web.fly.dev` redirect to
+    `https://cryoshield.app/`; strict CSP, HSTS (preload), `X-Frame-Options: DENY`.
+- **2026-10-12, first mainnet vault (task 7.7, part), created by the founder on https://cryoshield.app; checked by the
+  agent:** vault `0x5786f991…2678`, tx `0x66ddb5b3…00a5`, block 158120434, 21:14:05 UTC, status 1. One UserOperation
+  through EntryPoint v0.6, sent by Pimlico's bundler and paid by Pimlico's paymaster `0x66666666…c68b` (policy
+  `sp_mixed_hellion`; about 1.7 × 10⁻⁶ ETH). The same transaction created the passkey wallet `0x174e1a82…1030`
+  (ERC-1967 proxy to the D1 implementation, through the D1 factory). `getVault` returns version 1 and a 1,006-byte
+  blob with the `CRYO` v1 header. Two `LocatorAdded` events, one per key. Edit, add-key and the Arweave mirror are not
+  recorded here yet.
+- **2026-10-13, recovery tool on mainnet (task 7.8, part, G5), by the founder:** the `v1.0.0` binary with no network
+  flag unlocked the new mainnet vault from public RPCs: "Cool recovery tool works and verified". The Arweave path and
+  the Pimlico dashboard check (runbook step 11) are not recorded here yet.
+
 ## Sign-off
 
 - G9 and D8 sign-off (2026-10-12), in the founder's words: "Signed: prix0007, 2026-10-12. I accept this entry and the re-scored risk register, the sanctions stance in §6 holds for mainnet, and I approve the D8 sponsorship values."
-- Founder go decision: _pending (task 7.1: G5, G7, G8, G10 and G11 are open)_
+- Founder go decision: _not recorded in words; the founder published `v1.0.0` on 2026-10-12 (20:57 UTC). G7 is still open (the September 2027 domain and `security.txt` dates)_
