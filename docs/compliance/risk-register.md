@@ -9,7 +9,7 @@
 security-reviewer, CE = crypto-engineer, FE = frontend-engineer, SE = solidity-engineer, RE = recovery-engineer,
 OW = overwatcher.
 
-> **Re-scored 2026-10-09 for OP Mainnet, pending founder signature.** This re-score belongs to the 2026-10-09
+> **Re-scored 2026-10-09 for OP Mainnet, signed by the founder 2026-10-12.** This re-score belongs to the 2026-10-09
 > `mainnet-gate` entry in [`review-log.md`](review-log.md). It draws on
 > [`launch-op-mainnet`](../../openspec/changes/launch-op-mainnet/design.md) → Threat and risk table, which numbers
 > its rows separately; they are cited here as "design R*n*".
@@ -85,4 +85,4 @@ Mainnet (chain 10), on one condition. First, every "before the deploy" step in R
 or accepted in writing. So must every condition in the 2026-10-09 `mainnet-gate` entry of
 [`review-log.md`](review-log.md).
 
-Maintainer: _pending: founder signature and date_
+Maintainer: prix0007 Date: 2026-10-12 (Signed: prix0007, 2026-10-12. I accept this entry and the re-scored risk register, the sanctions stance in §6 holds for mainnet, and I approve the D8 sponsorship values.)
