@@ -8,3 +8,5 @@
       whole-element `net:testnet` blocks.
 - [x] 1.3 Verify: web lint, typecheck and unit/build tests; `openspec validate --all --strict`.
 - [x] 1.4 Security review (honest copy) recorded in `design.md`.
+- [x] 1.5 `docs/launch/op-mainnet-comms.md` ("At the switch"): quote the new mainnet hero and say where the audit
+      statement now lives.

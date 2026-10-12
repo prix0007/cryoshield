@@ -21,9 +21,10 @@ README status line and a GitHub discussion a few days before launch day.
 What the site says on OP Mainnet (built from the chain; tested in `apps/web/test/landing/content.test.ts` and
 `apps/web/test/ui/network-notice.test.tsx`):
 
-- Landing page: "Runs on OP Mainnet. Your vault is encrypted on your device and stored on OP Mainnet, with an extra
-  copy on Arweave when that upload succeeds. CryoShield has not been independently audited, so please keep your
-  existing backups too."
+- Landing page, hero: "Runs on OP Mainnet. Your vault is encrypted on your device and stored on OP Mainnet, with an
+  extra copy on Arweave when that upload succeeds." The audit statement is in the footer ("Runs on OP Mainnet, not
+  independently audited.") and the FAQ "Is it safe to use today?", not next to the calls to action (change
+  `trim-landing-cta-audit-note`, 2026-10-13).
 - App: "CryoShield runs on OP Mainnet and has not been independently audited. Your vault is encrypted on your device and published permanently as ciphertext on a public blockchain, and only your keys can open it: if you lose every key, nobody, including CryoShield, can open it. Please keep your existing backups too."
 - App, when a key has no vault on OP Mainnet (for 90 days after the switch):
 
