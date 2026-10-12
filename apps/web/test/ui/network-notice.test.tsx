@@ -1,7 +1,8 @@
 /**
  * launch-op-mainnet 4.5 / 4.6 (spec vault-web-app "Network status notice in the app"; design D6, Communications, Q4):
  *  - every network shows a status notice: the testnet banner on a test network (and on an unknown chain: fail safe),
- *    an "unaudited" notice on OP Mainnet, with the matching sub-nav chip;
+ *    on OP Mainnet a notice with the network and the all-keys-lost rule, and no sub-nav chip
+ *    (trim-landing-cta-audit-note, founder 2026-10-13: no "Unaudited" tag and no audit clause in /app);
  *  - on OP Mainnet, for 90 days after the switch, the no-vault state explains where testnet-preview vaults are;
  *  - the testnet build shows the dated "moving to OP Mainnet" notice only in its window, and never on the dev site.
  */
@@ -29,13 +30,16 @@ const chip = () => document.querySelector('.sub-nav .chip');
 const PROD = { rpId: 'cryoshield.app', host: 'cryoshield.app' };
 
 describe('network status notice (4.5)', () => {
-  it('OP Mainnet: an unaudited notice with the all-keys-lost rule, the "Unaudited" chip, and no testnet wording', () => {
+  it('OP Mainnet: a notice with the all-keys-lost rule, no chip, no audit clause, and no testnet wording', () => {
     renderApp({ chainId: 10, network: { name: 'OP Mainnet', explorerUrl: 'https://explorer.optimism.io' } });
     expect(note()).toHaveTextContent(
       // Review L4: "published permanently as ciphertext", matching the terms ("What you save is published permanently").
-      'CryoShield runs on OP Mainnet and has not been independently audited. Your vault is encrypted on your device and published permanently as ciphertext on a public blockchain, and only your keys can open it: if you lose every key, nobody, including CryoShield, can open it. Please keep your existing backups too.',
+      'CryoShield runs on OP Mainnet. Your vault is encrypted on your device and published permanently as ciphertext on a public blockchain, and only your keys can open it: if you lose every key, nobody, including CryoShield, can open it. Please keep your existing backups too.',
     );
-    expect(chip()).toHaveTextContent(/^Unaudited$/);
+    expect(chip()).toBeNull();
+    expect(document.querySelector('.sub-nav p:empty')).toBeNull();
+    expect(note()).not.toHaveTextContent(/audited/i);
+    expect(document.querySelector('.site-header')?.textContent).not.toMatch(/unaudited/i);
     expect(screen.queryByText('Testnet')).toBeNull();
     expect(document.body.textContent).not.toMatch(/testnet|test network|OP Sepolia/i);
   });

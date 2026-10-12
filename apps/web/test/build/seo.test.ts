@@ -202,19 +202,24 @@ describe('llms.txt on an OP Mainnet build (launch-op-mainnet 4.2)', () => {
   const metas = publicPageMetas(web, ctx(10));
   const out = llmsTxt(metas, llmsStatus(ctx(10)));
 
-  it('restates the mainnet status: OP Mainnet, unaudited, all keys lost; no testnet wording anywhere', () => {
+  it('restates the mainnet status: OP Mainnet, open source, all keys lost; no testnet or audit wording', () => {
     expect(out).toMatch(/OP Mainnet/);
-    expect(out).toMatch(/not been independently audited/);
+    // trim-landing-cta-audit-note (founder 2026-10-13): the audit status stays in /terms, /privacy and the footer only.
+    expect(out).toMatch(/The code, the vault format and its test vectors are open source\./);
+    // The /terms entry quotes that page's own description, which keeps the audit status.
+    const rest = out.split('\n').filter((l) => !l.includes(`${SITE}/terms)`) && !l.includes(`${SITE}/privacy)`)).join('\n');
+    expect(rest).not.toMatch(/unaudited|independently audited/i);
     expect(out).toMatch(/lose every key/);
     expect(out).not.toMatch(/testnet|OP Sepolia|test network/i);
-    expect(metas[0]!.description).toMatch(/unaudited\.$/);
+    expect(metas[0]!.description).toMatch(/security key\. Free and open source\.$/);
     for (const b of bannedFor(10)) expect(out, String(b)).not.toMatch(b);
   });
 });
 
 describe('share image', () => {
   it('has neutral alt text that matches the card on every chain', () => {
-    expect(OG_IMAGE.alt).toBe('CryoShield: seed phrase backups that outlive the drive. Free and open source, not independently audited.');
+    expect(OG_IMAGE.alt).toBe('CryoShield: seed phrase backups that outlive the drive. Free and open source.');
+    expect(OG_IMAGE.alt).not.toMatch(/audit/i);
     expect(OG_IMAGE.alt).not.toMatch(/testnet|mainnet|sepolia|preview/i);
   });
 
@@ -228,14 +233,16 @@ describe('share image', () => {
   });
 
   // launch-op-mainnet 4.2: one neutral card for every chain. It makes no network claim (the same PNG ships on OP Sepolia
-  // and OP Mainnet), keeps "Not independently audited", and its alt text describes exactly that.
-  it('the source SVG is 1200×630, self-contained, in brand colours, neutral about the network, and says it is unaudited', () => {
+  // and OP Mainnet), and its alt text describes exactly that. trim-landing-cta-audit-note (founder 2026-10-13): the card
+  // no longer carries "Not independently audited"; it says "Free and open source".
+  it('the source SVG is 1200×630, self-contained, in brand colours, neutral about the network, with no audit wording', () => {
     const svg = readFileSync(join(web, 'brand', 'og-image.svg'), 'utf8');
     expect(svg).toMatch(/viewBox="0 0 1200 630" width="1200" height="630"/);
     expect(svg).not.toMatch(/href=|url\(|<image|<script|<(linear|radial)Gradient|<filter/i);
     const visible = [...svg.matchAll(/<(?:text|tspan)[^>]*>([^<]*)/g)].map((m) => m[1]).join(' ');
     expect(visible).not.toMatch(/testnet|mainnet|sepolia|preview|yet/i);
-    expect(visible).toContain('Not independently audited');
+    expect(visible).toContain('cryoshield.app · Free and open source');
+    expect(visible).not.toMatch(/audit/i);
     for (const b of [...BANNED, ...bannedFor(10)]) expect(visible, String(b)).not.toMatch(b);
     const colours = new Set((svg.match(/#[0-9a-f]{6}/gi) ?? []).map((c) => c.toLowerCase()));
     for (const c of colours) expect(['#ffffff', '#f5f5f7', '#0066cc', '#1d1d1f', '#333333', '#7a7a7a', '#e0e0e0']).toContain(c);

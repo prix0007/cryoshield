@@ -40,7 +40,8 @@ export const OG_IMAGE = {
   width: 1200,
   height: 630,
   // launch-op-mainnet 4.2: describes the neutral card (brand/og-image.svg), identical on every chain.
-  alt: 'CryoShield: seed phrase backups that outlive the drive. Free and open source, not independently audited.',
+  // trim-landing-cta-audit-note (founder 2026-10-13): the card and this text no longer carry the audit status.
+  alt: 'CryoShield: seed phrase backups that outlive the drive. Free and open source.',
 } as const;
 
 export const LIMITS = { title: 60, descriptionMin: 150, descriptionMax: 160 } as const;

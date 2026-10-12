@@ -105,7 +105,9 @@ export function llmsStatus(ctx: CopyContext): string {
   if (net.status === 'testnet') {
     return `${intro} It is a testnet preview: vaults are stored on ${net.shortName}, a test network, with an extra copy on Arweave when that upload succeeds. Test networks can be reset, and CryoShield has not been independently audited.`;
   }
-  return `${intro} Vaults are stored on ${net.shortName}, with an extra copy on Arweave when that upload succeeds. CryoShield has not been independently audited. Only the security keys enrolled for a vault can open it: if you lose every key, nobody can open it.`;
+  // trim-landing-cta-audit-note (founder 2026-10-13): on a main network the audit status is in /terms, /privacy and the
+  // footer only; this line states the open-source facts instead.
+  return `${intro} Vaults are stored on ${net.shortName}, with an extra copy on Arweave when that upload succeeds. The code, the vault format and its test vectors are open source. Only the security keys enrolled for a vault can open it: if you lose every key, nobody can open it.`;
 }
 
 /** Resolves the network blocks of every HTML page, after the legal plugin has injected the partials. */
