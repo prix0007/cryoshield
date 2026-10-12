@@ -29,11 +29,28 @@ def term() -> tuple[Console, io.StringIO]:
 
 
 # ------------------------------------------------------------------ 4.1 selection
-def test_default_network_is_op_sepolia() -> None:
-    assert DEFAULT_NETWORK == "op-sepolia"
+def test_default_network_is_op_mainnet() -> None:
+    """launch-op-mainnet 3.2 (founder Q2, 2026-10-09): no network flag means OP Mainnet."""
+    assert DEFAULT_NETWORK == "op-mainnet"
     c = cfg()
-    assert c.network == "op-sepolia" and c.chain_id == 11155420
-    assert c.rpcs == list(NETWORKS["op-sepolia"].rpcs)
+    assert c.network == "op-mainnet" and c.chain_id == 10
+    assert c.rpcs == list(NETWORKS["op-mainnet"].rpcs)
+    assert c.network_defaulted
+    assert config.Config().network == "op-mainnet" and config.Config().chain_id == 10
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["--testnet"],
+        ["--network", "op-mainnet"],
+        ["--network", "op-sepolia"],
+        ["--chain-id", "10"],
+        ["--chain-id", "777", "--rpc", "https://my-node.example/rpc"],
+    ],
+)
+def test_explicit_network_is_not_defaulted(argv: list[str]) -> None:
+    assert not cfg(*argv).network_defaulted
 
 
 def test_testnet_means_op_sepolia() -> None:
@@ -143,6 +160,8 @@ def test_user_supplied_endpoints_are_labelled() -> None:
 
 def test_rpc_override_keeps_preset_chain_id() -> None:
     c = cfg("--rpc", "https://my-node.example/rpc")
+    assert c.chain_id == 10 and c.rpcs == ["https://my-node.example/rpc"]
+    c = cfg("--testnet", "--rpc", "https://my-node.example/rpc")
     assert c.chain_id == 11155420 and c.rpcs == ["https://my-node.example/rpc"]
 
 
@@ -159,14 +178,34 @@ def test_rpc_on_other_chain_without_chain_id_is_refused_with_hint() -> None:
     assert "chain 31337" in text and "--chain-id" in text
 
 
-def test_startup_prints_network_name() -> None:
+def startup_text(*argv: str) -> str:
     console, err = term()
     cli.main(
-        ["--no-arweave", "--no-chain"],  # offline-safe: the op-sepolia registry is live
+        [*argv, "--no-arweave", "--no-chain"],  # offline-safe: no server is contacted
         console=console,
         prf_factory=lambda ui: FakePrfSource([PhysicalKey.named("A")], ui=ui),
     )
-    assert "Network: op-sepolia (chain 11155420)" in err.getvalue()
+    return err.getvalue()
+
+
+def test_startup_prints_default_network_and_testnet_hint() -> None:
+    """deployment-targets "No network flag": op-mainnet, printed, with the way to testnet vaults."""
+    text = startup_text()
+    assert "Network: op-mainnet (chain 10)" in text
+    assert "use --testnet" in text
+
+
+def test_startup_prints_testnet_network_without_hint() -> None:
+    """deployment-targets "Testnet vaults still reachable": --testnet is OP Sepolia, printed."""
+    text = startup_text("--testnet")
+    assert "Network: op-sepolia (chain 11155420)" in text
+    assert "use --testnet" not in text
+
+
+def test_explicit_mainnet_has_no_testnet_hint() -> None:
+    text = startup_text("--network", "op-mainnet")
+    assert "Network: op-mainnet (chain 10)" in text
+    assert "use --testnet" not in text
 
 
 def test_op_sepolia_registry_is_the_live_deployment() -> None:
@@ -174,7 +213,7 @@ def test_op_sepolia_registry_is_the_live_deployment() -> None:
     v1 = NETWORKS["op-sepolia"].registries[-1]
     assert (v1.version, v1.address) == (1, "0xb43f58cf17e64b603ae5588a1dd17e96a0849e44")
     assert v1.deploy_block == 49568053
-    assert cfg().registries[-1] == v1
+    assert cfg("--testnet").registries[-1] == v1
 
 
 def test_op_sepolia_registry_v2_is_the_live_deployment() -> None:
@@ -182,7 +221,7 @@ def test_op_sepolia_registry_v2_is_the_live_deployment() -> None:
     v2 = NETWORKS["op-sepolia"].registries[0]
     assert (v2.version, v2.address) == (2, "0xa622c92d3d5b54aea081cf410224a8a2ecb08cb7")
     assert v2.deploy_block == 49755277
-    assert cfg().registries[0] == v2
+    assert cfg("--testnet").registries[0] == v2
 
 
 @pytest.mark.parametrize("name", ["op-mainnet", "arbitrum-one", "arbitrum-sepolia"])
@@ -225,14 +264,16 @@ def test_presets_match_presets_json() -> None:
     assert {name: p.chain_id for name, p in NETWORKS.items()} == expected
     for p in ref["presets"]:
         assert p["foundryKey"] == p["name"].replace("-", "_")
-    assert ref["defaultTestnet"] == DEFAULT_NETWORK == config.TESTNET
+    # defaultTestnet is what --testnet means; the default network is mainnet (launch-op-mainnet 3.2).
+    assert ref["defaultTestnet"] == config.TESTNET == "op-sepolia"
+    assert DEFAULT_NETWORK == "op-mainnet"
 
 
 # Registry lists vs contracts/deployments/<chainId>.json: see test_registry_versions.py (parity, D4).
 
 
 def test_registry_v2_flags() -> None:
-    c = cfg("--registry-v2", "0x" + "2B" * 20, "--deploy-block-v2", "123")
+    c = cfg("--testnet", "--registry-v2", "0x" + "2B" * 20, "--deploy-block-v2", "123")
     assert c.registries[:2] == list(NETWORKS["op-sepolia"].registries)  # built-ins kept, first
     supplied = c.registries[2]
     assert (supplied.version, supplied.address, supplied.deploy_block) == (2, "0x" + "2b" * 20, 123)
@@ -267,7 +308,7 @@ def test_v2_only_chain_is_configured_and_announced() -> None:
 
 def test_both_registries_announced() -> None:
     console, err = term()
-    cli.startup_summary(cfg("--registry-v2", "0x" + "2b" * 20), console)
+    cli.startup_summary(cfg("--testnet", "--registry-v2", "0x" + "2b" * 20), console)
     text = err.getvalue()
     assert "registry v2 (supplied) 0x" + "2b" * 20 in text and "registry v1 0xb43f58cf" in text
 
@@ -275,7 +316,7 @@ def test_both_registries_announced() -> None:
 def test_overriding_a_registry_without_its_deploy_block_scans_from_genesis() -> None:
     """A preset's deploy block belongs to the preset's address: with another address it could skip that
     deployment's first events and make its history look empty. Use 0 (slower, never wrong) and warn."""
-    c = cfg("--registry-v2", "0x" + "2b" * 20, "--registry", "0x" + "3c" * 20)
+    c = cfg("--testnet", "--registry-v2", "0x" + "2b" * 20, "--registry", "0x" + "3c" * 20)
     supplied = [s for s in c.registries if not s.trusted]
     assert [s.deploy_block for s in supplied] == [0, 0]
     assert not any(s.block_known for s in supplied)
@@ -287,7 +328,7 @@ def test_overriding_a_registry_without_its_deploy_block_scans_from_genesis() -> 
         f"--registry {'0x' + '2b' * 20}@BLOCK:v2" in text
         and f"--registry {'0x' + '3c' * 20}@BLOCK:v1" in text
     )
-    kept = cfg("--registry-v2", "0x" + "2b" * 20, "--deploy-block-v2", "7")
+    kept = cfg("--testnet", "--registry-v2", "0x" + "2b" * 20, "--deploy-block-v2", "7")
     assert kept.registries[-1].deploy_block == 7
-    same = cfg("--registry-v2", NETWORKS["op-sepolia"].registries[0].address)
+    same = cfg("--testnet", "--registry-v2", NETWORKS["op-sepolia"].registries[0].address)
     assert same.registries[0] == NETWORKS["op-sepolia"].registries[0]

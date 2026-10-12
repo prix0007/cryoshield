@@ -208,6 +208,7 @@ def test_tie_non_interactive_exits_12_and_writes_nothing(tmp_path: Any) -> None:
     console = Console(io.StringIO(""), io.StringIO(), err, getpass_fn=lambda _p: "1", interactive=False)
     code = cli.main(
         [
+            "--testnet",
             "--rpc",
             "https://a.example",
             "--rpc",

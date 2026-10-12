@@ -354,9 +354,11 @@ NETWORKS = {
         ),
     ),
 }
-# The single default network. Changes only through an OpenSpec change (deployment-targets spec).
-DEFAULT_NETWORK = "op-sepolia"
-# What --testnet means.
+# The single default network. Changes only through an OpenSpec change (deployment-targets spec):
+# op-mainnet since launch-op-mainnet (founder question Q2, accepted 2026-10-09). Until a release embeds
+# contracts/deployments/10.json, op-mainnet has no registry and blockchain lookup says it is off.
+DEFAULT_NETWORK = "op-mainnet"
+# What --testnet means (testnet-preview vaults).
 TESTNET = "op-sepolia"
 # Network name for a non-preset --chain-id (requires --rpc; never carries a built-in registry).
 CUSTOM_NETWORK = "custom"
@@ -418,6 +420,8 @@ class Config:
     # --trust-custom-registries: supplied registries rank by version and may vouch for a copy (D10).
     trust_custom: bool = False
     rpcs_user_supplied: bool = False
+    # No --network/--testnet/--chain-id/--deployment-file chose the network: DEFAULT_NETWORK was used.
+    network_defaulted: bool = False
 
     @property
     def has_registry(self) -> bool:
