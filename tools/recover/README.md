@@ -152,7 +152,7 @@ The tool prints the vault ID after every unlock. Keep it together with any `--sa
 | `arbitrum-sepolia` | 421614 | sepolia-rollup.arbitrum.io, arbitrum-sepolia-rpc.publicnode.com, arbitrum-sepolia.drpc.org |
 | `anvil` | 31337 | 127.0.0.1:8545 (local development) |
 
-From the OP Mainnet launch, the tool reads OP Mainnet by default; vaults created during the testnet preview need `--testnet`. It always prints the network it uses (`Network: op-mainnet (chain 10)`). Until a release carries the OP Mainnet deployment, blockchain lookup on `op-mainnet` is off and the tool says so (see "Built-in registries" below).
+From the OP Mainnet launch, the tool reads OP Mainnet by default; vaults created during the testnet preview need `--testnet`. It always prints the network it uses (`Network: op-mainnet (chain 10)`).
 
 **Vaults from the testnet preview.** Vaults created on cryoshield.app during the testnet preview live on OP Sepolia (a test network). They do not move to OP Mainnet and stay readable forever: run the tool with `--testnet`. When the network was not chosen explicitly, the tool reminds you of this.
 
@@ -174,7 +174,7 @@ From the OP Mainnet launch, the tool reads OP Mainnet by default; vaults created
 |---|---|
 | `op-sepolia` | v2 `0xa622c92d3d5b54aea081cf410224a8a2ecb08cb7` (from block 49755277), v1 `0xb43f58cf17e64b603ae5588a1dd17e96a0849e44` (from block 49568053) |
 | `anvil` | v2 `0xa622…cb7` (block 2), v1 `0xb43f…9e44` (block 1) |
-| `op-mainnet` | v2 only, from `contracts/deployments/10.json` once it exists; until then none: blockchain lookup is off, and the tool says so |
+| `op-mainnet` | v2 `0xa622c92d3d5b54aea081cf410224a8a2ecb08cb7` (from block 158114294), from `contracts/deployments/10.json`. No v1 |
 | `arbitrum-one`, `arbitrum-sepolia` | none yet: blockchain lookup is off, and the tool says so |
 
 OP Mainnet has only VaultRegistry v2: v1 was never deployed there, so the tool reads only v2 on that network.
