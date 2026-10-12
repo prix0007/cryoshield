@@ -33,9 +33,14 @@ build_native() {
   local out="${1:-dist}"
   local work
   work="$(mktemp -d)"
+  # Git Bash on Windows: hand native programs (uv, PyInstaller) a C:/... path, not /tmp/... (release-recovery-tool-assets 4.1).
+  if command -v cygpath >/dev/null; then work="$(cygpath -m "$work")"; fi
   trap 'rm -rf "$work"' RETURN
   UV_PROJECT_ENVIRONMENT="$work/venv" uv sync --frozen --no-dev --group build --python "$PYTHON_VERSION" --quiet
-  "$work/venv/bin/pyinstaller" \
+  # Windows virtual environments keep their programs in Scripts/, not bin/ (release-recovery-tool-assets 4.1).
+  local pyinstaller="$work/venv/bin/pyinstaller"
+  [[ -x "$pyinstaller" ]] || pyinstaller="$work/venv/Scripts/pyinstaller.exe"
+  "$pyinstaller" \
     --onefile --clean --noconfirm --log-level WARN \
     --name cryoshield-recover \
     --collect-data fido2 \

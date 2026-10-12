@@ -401,7 +401,7 @@ export function checkTrustedAuthors(text) {
 // Current digests of every privileged run step, for a reviewed update of privileged-run-steps.json.
 export function currentDigests(dir) {
   const out = {};
-  for (const name of [...Object.keys(PRIVILEGED), ...Object.keys(DEPLOY_PROFILES)]) {
+  for (const name of [...Object.keys(PRIVILEGED), ...Object.keys(DEPLOY_PROFILES), ...Object.keys(RELEASE_ASSETS)]) {
     const path = join(dir, 'workflows', name);
     if (!existsSync(path)) continue;
     const wf = parse(readFileSync(path, 'utf8'));
@@ -409,6 +409,8 @@ export function currentDigests(dir) {
     for (const [id, job] of Object.entries(isObj(wf?.jobs) ? wf.jobs : {})) {
       // Deploy workflows: only the jobs that hold the Fly token are pinned (ECC review #7).
       if (Object.hasOwn(DEPLOY_PROFILES, name) && !strings(job).some((s) => /FLY_API_TOKEN/i.test(s))) continue;
+      // Release asset workflow: only the job that holds the write token (release-recovery-tool-assets D4).
+      if (Object.hasOwn(RELEASE_ASSETS, name) && id !== RELEASE_ASSETS[name].publish) continue;
       for (const step of Array.isArray(job?.steps) ? job.steps : []) {
         if (isObj(step) && step.run !== undefined) out[name][`${id}/${String(step.name ?? step.uses ?? '?')}`] = runDigest(step.run);
       }
@@ -497,8 +499,11 @@ export function checkWorkflow(file, text) {
       // exception is WRITE_EXCEPTIONS below (deployments-check failure issue), checked by checkWriteException.
       const exception = WRITE_EXCEPTIONS[name]?.job === id;
       if (exception) errors.push(...checkWriteException(file, name, id, job, on));
+      // release-recovery-tool-assets D4: the publish job's three scopes, checked exactly by checkReleaseAssets.
+      const releasePublish = RELEASE_ASSETS[name]?.publish === id ? RELEASE_ASSETS[name].publishPermissions : null;
       for (const [scope, level] of Object.entries(job.permissions)) {
         if (exception && scope === 'issues' && level === 'write') continue;
+        if (releasePublish && releasePublish[scope] === level) continue;
         if (level !== 'read' && level !== 'none') errors.push(`${file}: job '${id}' requests ${scope}: ${level}; only read/none is allowed (no write scopes)`);
       }
     }
@@ -517,6 +522,7 @@ export function checkWorkflow(file, text) {
 
   if (Object.hasOwn(SCHEDULED_READ_ONLY, name)) errors.push(...checkScheduled(file, name, wf, on));
   if (Object.hasOwn(WRITE_EXCEPTIONS, name)) errors.push(...checkWriteExceptionWorkflow(file, name, wf, on));
+  if (Object.hasOwn(RELEASE_ASSETS, name)) errors.push(...checkReleaseAssets(file, name, wf, on));
 
   // Deployments (OpenSpec changes add-continuous-deploy D7, gate-production-deploys, split-dev-and-release-deploys D7).
   const mentionsToken = strings(wf).some((s) => /FLY_API_TOKEN/i.test(s));
@@ -735,6 +741,114 @@ const TOKEN_JOB_ACTIONS = [/^actions\/checkout@[0-9a-f]{40}$/, /^actions\/downlo
 const BUILD_TOOLING = /(^|[\s;&|(`!/])(node|npm|npx|pnpm|yarn|bunx?|deno|vite|tsx|python3?|pip3?|uvx?|make|docker)\b/m;
 const exprsOf = (node) => strings(node).flatMap((s) => [...s.matchAll(/\$\{\{([\s\S]*?)\}\}/g)].map((m) => m[1]));
 const usesSecret = (node, re = /\bsecrets\b/i) => exprsOf(node).some((e) => re.test(e) && !/^\s*secrets\.GITHUB_TOKEN\s*$/i.test(e));
+
+// Release asset workflow (release-recovery-tool-assets D1/D4). The only workflow outside the privileged and deploy files
+// that may write repository contents: its `publish` job uploads the recovery tool to the owner's published v* release.
+// The first job carries the owner gate and either a release at a v* tag or the owner's dry run on main; `publish` runs
+// only for the release. Only `publish` writes (exactly the three scopes), only `detect` and `publish` see the job
+// token, no secrets or environments, no release/tag mutation or asset replacement, and every publish run step is
+// digest-pinned in privileged-run-steps.json.
+const RELEASE_ASSET_GATE =
+  "((github.event_name == 'release' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'))";
+export const RELEASE_ASSETS = {
+  'recover-release.yml': {
+    triggers: ['release', 'workflow_dispatch'],
+    releaseTypes: ['published'],
+    firstJob: [OWNER_GATE, RELEASE_ASSET_GATE],
+    gate: 'detect',
+    publish: 'publish',
+    publishIf: "github.event_name == 'release'",
+    publishPermissions: { contents: 'write', 'id-token': 'write', attestations: 'write' },
+    publishActions: [
+      /^actions\/checkout@[0-9a-f]{40}$/,
+      /^actions\/download-artifact@[0-9a-f]{40}$/,
+      /^actions\/attest-build-provenance@[0-9a-f]{40}$/,
+    ],
+    tokenJobs: ['detect', 'publish'],
+  },
+};
+const RELEASE_MUTATION = /--clobber\b|\bgh\s+release\s+(?:create|edit|delete-asset|delete)\b|\bgit\s+(?:tag|push)\b/;
+// The publish job runs only gh, git-free shell and `node` on this repository's own script (no package managers,
+// interpreters or build tools).
+const PUBLISH_TOOLING = /(^|[\s;&|(`!/])(npm|npx|pnpm|yarn|bunx?|deno|vite|tsx|python3?|pip3?|uvx?|make|docker|pyinstaller)\b/m;
+const TOKEN_EXPR = /\bgithub\s*\.\s*token\b|\bgithub\s*\[\s*['"]token['"]\s*\]/i;
+
+export function checkReleaseAssets(file, name, wf, on) {
+  const p = RELEASE_ASSETS[name];
+  const errors = [];
+  const err = (m) => errors.push(`${file}: ${m}`);
+  for (const t of on) if (!p.triggers.includes(t)) err(`trigger '${t}' is not allowed (${name} runs only on ${p.triggers.join(', ')})`);
+  const types = isObj(wf.on) && isObj(wf.on.release) ? wf.on.release.types : undefined;
+  if (on.includes('release') && JSON.stringify(types) !== JSON.stringify(p.releaseTypes)) {
+    err(`release must be limited to types: [${p.releaseTypes.join(', ')}]`);
+  }
+  const dispatch = isObj(wf.on) ? wf.on.workflow_dispatch : undefined;
+  if (isObj(dispatch) && dispatch.inputs !== undefined) err("workflow_dispatch may not take inputs (the dry run builds main's HEAD)");
+  const secretRefs = exprsOf(wf).filter((e) => /\bsecrets\b/i.test(e)).length + strings(wf).filter((x) => x === 'inherit').length;
+  if (secretRefs) err(`secrets must not be referenced (${secretRefs} reference(s))`);
+  if (exprsOf({ env: wf.env, defaults: wf.defaults }).some((e) => TOKEN_EXPR.test(e))) {
+    err(`github.token may only be referenced in ${p.tokenJobs.join(' and ')}`);
+  }
+  const jobs = isObj(wf.jobs) ? wf.jobs : {};
+  if (!isObj(jobs[p.gate]) || !isObj(jobs[p.publish])) err(`jobs '${p.gate}' and '${p.publish}' are required`);
+  const pinned = digests()[name] ?? {};
+  const seen = new Set();
+
+  for (const [id, job] of Object.entries(jobs)) {
+    if (!isObj(job)) continue;
+    const needs = [].concat(job.needs ?? []);
+    const { conjuncts, topLevelOr } = splitCondition(job.if);
+    const isPublish = id === p.publish;
+    if (topLevelOr) err(`job '${id}': no top-level || in its condition (group alternatives in parentheses)`);
+    if (UNCONDITIONAL.test(String(job.if ?? ''))) err(`job '${id}': always(), failure() and cancelled() are not allowed in a job condition`);
+    if (needs.length === 0) {
+      for (const want of p.firstJob) {
+        if (!conjuncts.includes(norm(want))) err(`job '${id}' has no needs, so its condition must include "${want}" as a top-level conjunct`);
+      }
+    } else if (!needs.includes(p.gate) || !conjuncts.includes("needs.detect.outputs.deploy == 'true'")) {
+      err(`job '${id}' must need '${p.gate}' and include "needs.detect.outputs.deploy == 'true'" as a top-level conjunct`);
+    }
+    if (job.environment !== undefined) err(`job '${id}' may not use an environment`);
+
+    const perms = isObj(job.permissions) ? job.permissions : {};
+    if (isPublish) {
+      const want = JSON.stringify(Object.entries(p.publishPermissions).sort());
+      if (JSON.stringify(Object.entries(perms).sort()) !== want) {
+        err(`job '${id}' must request exactly ${JSON.stringify(p.publishPermissions)}, found ${JSON.stringify(perms)}`);
+      }
+      if (!conjuncts.includes(p.publishIf)) err(`job '${id}' condition must include "${p.publishIf}" (assets are uploaded only for a published release)`);
+    } else if (JSON.stringify(perms) !== JSON.stringify({ contents: 'read' })) {
+      err(`job '${id}' must hold exactly contents: read, found ${JSON.stringify(perms)}`);
+    }
+    if (!p.tokenJobs.includes(id) && exprsOf(job).some((e) => TOKEN_EXPR.test(e))) {
+      err(`job '${id}': github.token may only be referenced in ${p.tokenJobs.join(' and ')}`);
+    }
+
+    for (const step of Array.isArray(job.steps) ? job.steps.filter(isObj) : []) {
+      const stepName = String(step.name ?? step.uses ?? '?');
+      const label = `job '${id}' step '${stepName}'`;
+      const uses = String(step.uses ?? '');
+      if (/^actions\/checkout@/.test(uses) && (!isObj(step.with) || step.with['persist-credentials'] !== false)) {
+        err(`${label}: checkout must set persist-credentials: false`);
+      }
+      const run = step.run === undefined ? null : String(step.run);
+      const mutation = run === null ? null : RELEASE_MUTATION.exec(run);
+      if (mutation) err(`${label}: '${mutation[0]}' is not allowed (assets are only added, never replaced; releases and tags are the owner's)`);
+      if (!isPublish) continue;
+      if (step.uses !== undefined && !p.publishActions.some((re) => re.test(uses))) {
+        err(`${label}: action '${uses}' is not allowed in the publish job (only SHA-pinned checkout, download-artifact and attest-build-provenance)`);
+      }
+      if (run !== null) {
+        if (PUBLISH_TOOLING.test(run)) err(`${label}: build tooling is not allowed in the publish job (it holds the write token)`);
+        const key = `${id}/${stepName}`;
+        seen.add(key);
+        if (pinned[key] !== runDigest(run)) err(`${label}: run step '${stepName}' is not pinned (review it, then update privileged-run-steps.json)`);
+      }
+    }
+  }
+  for (const key of Object.keys(pinned)) if (!seen.has(key)) err(`pinned run step '${key}' is missing (update privileged-run-steps.json after review)`);
+  return errors;
+}
 
 // Split a job condition into its top-level `&&` conjuncts (parentheses respected) and report any top-level `||`,
 // so `a && (b || c)` is fine but `a || true` or `a && b || true` is not (ECC review #3).
