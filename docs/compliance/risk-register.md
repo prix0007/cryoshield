@@ -9,7 +9,7 @@
 security-reviewer, CE = crypto-engineer, FE = frontend-engineer, SE = solidity-engineer, RE = recovery-engineer,
 OW = overwatcher.
 
-> **Re-scored 2026-10-09 for OP Mainnet, pending founder signature.** This re-score belongs to the 2026-10-09
+> **Re-scored 2026-10-09 for OP Mainnet, signed by the founder 2026-10-12.** This re-score belongs to the 2026-10-09
 > `mainnet-gate` entry in [`review-log.md`](review-log.md). It draws on
 > [`launch-op-mainnet`](../../openspec/changes/launch-op-mainnet/design.md) → Threat and risk table, which numbers
 > its rows separately; they are cited here as "design R*n*".

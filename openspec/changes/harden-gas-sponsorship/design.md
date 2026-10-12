@@ -322,7 +322,7 @@ None are blocking. The R1 items marked UNVERIFIED are confirmations for the foun
 
 Recorded at task 7.1 in `docs/reviews/harden-gas-sponsorship.md`.
 
-## Founder approval (task 8.1)
+## Founder approval of the D8 values (for task 8.1)
 
 2026-10-12, recorded with the `mainnet-gate` sign-off in `docs/compliance/review-log.md`, in the founder's words:
 "Signed: prix0007, 2026-10-12. I accept this entry and the re-scored risk register, the sanctions stance in §6 holds
