@@ -184,7 +184,7 @@
   - **Still open.** The add-key step has no on-chain operation, so its gas is an estimate. Tick this task once an
     add-key operation is measured.
 
-- [ ] 6.4 [ow] Re-create the founder's test vault on v2 under a new account. Verify: it unlocks in the app and in the recovery tool.
+- [x] 6.4 [ow] Re-create the founder's test vault on v2 under a new account. Verify: it unlocks in the app and in the recovery tool. Done by the founder, 2026-10-10.
 
 ## 7. Security review [sec]
 
@@ -210,9 +210,9 @@
 - [ ] 8.1 [ow] Founder approval to deploy to OP Mainnet, recorded in design.md. Preconditions:
   - 7.1 is clean;
   - 6.2 and 6.3 passed;
-  - the mainnet Pimlico policy is set to design D2 (a $20/day global cap, $0.10 per operation, 50 operations and $1.00 per sender per month (design D2; corrected from "lifetime" at the 7.1 review));
-  - the mainnet key is restricted per D3;
-  - the account is prepaid at about $140 with no card;
+  - the mainnet Pimlico policy is set to the founder's values in `launch-op-mainnet` design D8, which supersede D2 here: policy `sp_mixed_hellion`, chain 10 only; per user $1 and 10 operations, reset monthly; global $30 and 500 operations, reset daily; $0.50 per operation; 2026-10-10 to 2027-10-02; Disabled until the first chain-10 deploy's smoke test (recorded 2026-10-10, #83);
+  - the mainnet key is restricted per D3 (`cryoshield-mainnet`: origin `cryoshield.app`, bundler on, "verifying paymaster" off, account APIs off);
+  - the account is prepaid ($120, founder 2026-10-10) with no card;
   - the D6 trigger is reviewed against the testnet usage data.
 
   Verify: the approval and the dashboard settings date are in design.md. Only after this may the deploy script target chain 10. The founder's funding of the mainnet deployer does not by itself open the gate.
