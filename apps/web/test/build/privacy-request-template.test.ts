@@ -27,6 +27,12 @@ describe('privacy-request issue form', () => {
     expect(v).not.toMatch(/@cryoshield\.app|mailto:/);
   });
 
+  it('offers only requests that fit a project holding no personal data (trim-privacy-rights-grievance 1.4)', () => {
+    const d = form.body.find((b) => b.type === 'dropdown' && b.id === 'kind')!;
+    expect(d.attributes.options).toEqual(['Deletion or redaction (e.g. of something I posted on GitHub)', 'Question about the privacy policy', 'Other']);
+    expect(String(form.body[0]!.attributes.value)).not.toMatch(/24 hours|15 days|Grievance|DPDP/);
+  });
+
   it('requires the reporter to confirm they posted no secrets', () => {
     const c = form.body.find((b) => b.type === 'checkboxes')!;
     const opts = c.attributes.options as { label: string; required: boolean }[];
