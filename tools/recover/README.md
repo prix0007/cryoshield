@@ -4,7 +4,7 @@ Unlock your CryoShield vault with **only your hardware key**, even if the CryoSh
 
 The tool works in four steps:
 1. It asks your FIDO2 security key (e.g. a YubiKey 5) for the vault's secret-derivation value, using CTAP2 `hmac-secret` with your PIN.
-2. It finds your encrypted vault on public blockchain servers (OP Sepolia by default during the test phase; see "Networks" below). If those can't be reached, it looks in the Arweave permanent archive.
+2. It finds your encrypted vault on public blockchain servers (OP Mainnet by default; see "Networks" below). If those can't be reached, it looks in the Arweave permanent archive.
 3. It decrypts the vault on your computer.
 4. It shows the secret only after you type `show`.
 
@@ -117,9 +117,10 @@ cryoshield-recover --list
 cryoshield-recover --vault-id 0x1111111111111111111111111111111111111111111111111111111111111111
 # Save the encrypted vault for future offline recovery (it is useless without your key):
 cryoshield-recover --save-blob my-vault.bin
+# A vault made during the testnet preview (OP Sepolia) needs --testnet:
+cryoshield-recover --testnet
 # Use your own node, or pick a network explicitly:
 cryoshield-recover --rpc https://my-node.example/rpc
-cryoshield-recover --testnet
 cryoshield-recover --network op-mainnet
 cryoshield-recover --chain-id 10
 # Add a newer registry version next to the built-in ones (see "Override registries" below):
@@ -145,19 +146,21 @@ The tool prints the vault ID after every unlock. Keep it together with any `--sa
 
 | Preset | Chain ID | Built-in public RPCs |
 |---|---|---|
-| `op-sepolia` (**default**, also `--testnet`) | 11155420 | sepolia.optimism.io, optimism-sepolia-rpc.publicnode.com, optimism-sepolia.drpc.org |
-| `op-mainnet` | 10 | mainnet.optimism.io, optimism-rpc.publicnode.com, optimism.drpc.org |
+| `op-mainnet` (**default**) | 10 | mainnet.optimism.io, optimism-rpc.publicnode.com, optimism.drpc.org |
+| `op-sepolia` (`--testnet`) | 11155420 | sepolia.optimism.io, optimism-sepolia-rpc.publicnode.com, optimism-sepolia.drpc.org |
 | `arbitrum-one` | 42161 | arb1.arbitrum.io, arbitrum-one-rpc.publicnode.com, arbitrum.drpc.org |
 | `arbitrum-sepolia` | 421614 | sepolia-rollup.arbitrum.io, arbitrum-sepolia-rpc.publicnode.com, arbitrum-sepolia.drpc.org |
 | `anvil` | 31337 | 127.0.0.1:8545 (local development) |
 
-The mainnet chain (Arbitrum One or OP Mainnet) is not decided yet.
+From the OP Mainnet launch, the tool reads OP Mainnet by default; vaults created during the testnet preview need `--testnet`. It always prints the network it uses (`Network: op-mainnet (chain 10)`). Until a release carries the OP Mainnet deployment, blockchain lookup on `op-mainnet` is off and the tool says so (see "Built-in registries" below).
+
+**Vaults from the testnet preview.** Vaults created on cryoshield.app during the testnet preview live on OP Sepolia (a test network). They do not move to OP Mainnet and stay readable forever: run the tool with `--testnet`. When the network was not chosen explicitly, the tool reminds you of this.
 
 **How the network is chosen,** first match wins:
 1. `--network <preset>`;
 2. `--testnet` (meaning `op-sepolia`);
 3. `--chain-id` matching a preset;
-4. the built-in default, `op-sepolia`.
+4. the built-in default, `op-mainnet`.
 
 **Overrides:**
 - `--rpc` replaces the RPC list but keeps the preset's chain ID. These endpoints are labelled "user-supplied", and an RPC on a different chain is refused, with a hint.
@@ -171,7 +174,10 @@ The mainnet chain (Arbitrum One or OP Mainnet) is not decided yet.
 |---|---|
 | `op-sepolia` | v2 `0xa622c92d3d5b54aea081cf410224a8a2ecb08cb7` (from block 49755277), v1 `0xb43f58cf17e64b603ae5588a1dd17e96a0849e44` (from block 49568053) |
 | `anvil` | v2 `0xa622…cb7` (block 2), v1 `0xb43f…9e44` (block 1) |
-| `op-mainnet`, `arbitrum-one`, `arbitrum-sepolia` | none yet: blockchain lookup is off, and the tool says so |
+| `op-mainnet` | v2 only, from `contracts/deployments/10.json` once it exists; until then none: blockchain lookup is off, and the tool says so |
+| `arbitrum-one`, `arbitrum-sepolia` | none yet: blockchain lookup is off, and the tool says so |
+
+OP Mainnet has only VaultRegistry v2: v1 was never deployed there, so the tool reads only v2 on that network.
 
 They are copied from the project's deployment records (`contracts/deployments/<chainId>.json`) at release time; the tool never reads files at runtime unless you name one.
 

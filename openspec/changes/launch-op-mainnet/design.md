@@ -115,6 +115,7 @@ Because nothing is released on OP Sepolia before the switch, the dated "moving t
 
 - The `op-mainnet` preset is generated from `10.json` (`registry_v2`, `deploy_block_v2`); `registry` (v1) stays the placeholder, and the tool already treats a network with only v2 correctly.
 - The default network becomes `op-mainnet` in the recovery-tool release that ships with `v1.0.0`; `--testnet` keeps selecting `op-sepolia`, and the tool prints the network it uses (existing behaviour). This is founder question Q2; the default is recommended because a user in a hurry runs the tool with no flags, and their real vault is on mainnet.
+- **Assumption (recovery-engineer, task 3.2, 2026-10-09):** when the default network was used (no `--network`, `--testnet`, `--chain-id` or `--deployment-file`), the tool prints one extra line after the network line: "This is the default network. For a vault made during the testnet preview, use --testnet (op-sepolia)." It is shown only for a defaulted run on a network other than `op-sepolia`, contains no secret, and serves R8 / Q4 for testnet users who run the tool with no flags. A preset in the tool is "the `registry` (v1) placeholder" when it lists no v1 entry (the tool has no zero-address entries; `RegistrySpec` refuses the zero address).
 - The launch-day test reads and unlocks the founder's mainnet vault with two YubiKeys, from the public RPCs only (`--no-arweave`), with the released binary or `uvx` package, and a second run from Arweave only (`--no-chain`) proves the mirror.
 
 ### D6. Honest copy, driven by the chain

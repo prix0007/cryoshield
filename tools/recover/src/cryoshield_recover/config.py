@@ -326,7 +326,9 @@ NETWORKS = {
     "op-mainnet": NetworkPreset(
         name="op-mainnet",
         chain_id=10,
-        registries=(),
+        # From contracts/deployments/10.json: v2 tx 0x11f22a39…ff44 (source verified on Sourcify). No v1 on
+        # OP Mainnet, by design.
+        registries=(RegistrySpec(2, "0xa622c92d3d5b54aea081cf410224a8a2ecb08cb7", 158114294),),
         rpcs=(
             "https://mainnet.optimism.io",
             "https://optimism-rpc.publicnode.com",
@@ -354,9 +356,11 @@ NETWORKS = {
         ),
     ),
 }
-# The single default network. Changes only through an OpenSpec change (deployment-targets spec).
-DEFAULT_NETWORK = "op-sepolia"
-# What --testnet means.
+# The single default network. Changes only through an OpenSpec change (deployment-targets spec):
+# op-mainnet since launch-op-mainnet (founder question Q2, accepted 2026-10-09). Its registry comes from
+# contracts/deployments/10.json (deployed 2026-10-12).
+DEFAULT_NETWORK = "op-mainnet"
+# What --testnet means (testnet-preview vaults).
 TESTNET = "op-sepolia"
 # Network name for a non-preset --chain-id (requires --rpc; never carries a built-in registry).
 CUSTOM_NETWORK = "custom"
@@ -418,6 +422,8 @@ class Config:
     # --trust-custom-registries: supplied registries rank by version and may vouch for a copy (D10).
     trust_custom: bool = False
     rpcs_user_supplied: bool = False
+    # No --network/--testnet/--chain-id/--deployment-file chose the network: DEFAULT_NETWORK was used.
+    network_defaulted: bool = False
 
     @property
     def has_registry(self) -> bool:

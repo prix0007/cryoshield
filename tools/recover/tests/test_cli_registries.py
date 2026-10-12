@@ -42,6 +42,11 @@ def cfg(*argv: str) -> config.Config:
     return cli.config_from_args(cli.build_parser().parse_args(list(argv)))
 
 
+def sepolia(*argv: str) -> config.Config:
+    """OP Sepolia (--testnet): the network with both built-in registries (the default is op-mainnet)."""
+    return cfg("--testnet", *argv)
+
+
 def usage(*argv: str) -> str:
     with pytest.raises(RecoveryError) as ei:
         cfg(*argv)
@@ -71,17 +76,17 @@ BUILT = [(s.version, s.address, s.deploy_block, True, "built-in") for s in SEPOL
 
 # ------------------------------------------------------------------ --registry
 def test_defaults_are_the_preset_list() -> None:
-    c = cfg()
+    c = sepolia()
     assert c.registries == SEPOLIA and c.notes == [] and c.dropped_builtin == []
 
 
 def test_a_newer_supplied_version_ranks_after_the_built_ins() -> None:
-    c = cfg("--registry", f"{A3}@500:v3:abi=v2")
+    c = sepolia("--registry", f"{A3}@500:v3:abi=v2")
     assert key(c) == [*BUILT, (3, A3, 500, False, "--registry")]
 
 
 def test_same_version_is_added_beside_the_built_in_and_scans_from_zero() -> None:
-    c = cfg("--registry", f"{B2}:v2")
+    c = sepolia("--registry", f"{B2}:v2")
     assert key(c) == [*BUILT, (2, B2, 0, False, "--registry")]
     text = summary(c)
     assert "block 0" in text and f"{B2}@BLOCK:v2" in text
@@ -89,24 +94,24 @@ def test_same_version_is_added_beside_the_built_in_and_scans_from_zero() -> None
 
 def test_v1_replacement_keeps_scanning_the_built_in_v1() -> None:
     """M3: a genuine v1 vault must not be hidden by --registry X:v1."""
-    c = cfg("--registry", "0x" + "c1" * 20 + "@5:v1")
+    c = sepolia("--registry", "0x" + "c1" * 20 + "@5:v1")
     assert key(c) == [*BUILT, (1, "0x" + "c1" * 20, 5, False, "--registry")]
 
 
 def test_exact_built_in_entry_counts_as_built_in() -> None:
-    assert cfg("--registry", f"{V2_ADDR}@49755277:v2").registries == SEPOLIA
-    assert "SECURITY" not in summary(cfg("--registry", f"{V2_ADDR}@49755277:v2"))
+    assert sepolia("--registry", f"{V2_ADDR}@49755277:v2").registries == SEPOLIA
+    assert "SECURITY" not in summary(sepolia("--registry", f"{V2_ADDR}@49755277:v2"))
 
 
 def test_lower_built_in_block_is_fine_and_raised_is_refused() -> None:
-    c = cfg("--registry", f"{V2_ADDR}@49000000:v2")
+    c = sepolia("--registry", f"{V2_ADDR}@49000000:v2")
     assert key(c)[0] == (2, V2_ADDR, 49000000, True, "built-in")
-    assert "49755277" in usage("--registry", f"{V2_ADDR}@49755278:v2")
-    assert "49755277" in usage("--deploy-block-v2", "50000000")
+    assert "49755277" in usage("--testnet", "--registry", f"{V2_ADDR}@49755278:v2")
+    assert "49755277" in usage("--testnet", "--deploy-block-v2", "50000000")
 
 
 def test_registries_only() -> None:
-    c = cfg("--registries-only", "--registry", f"{B2}@7:v2")
+    c = sepolia("--registries-only", "--registry", f"{B2}@7:v2")
     assert key(c) == [(2, B2, 7, False, "--registry")]
     assert c.dropped_builtin == [2, 1]
     text = summary(c)
@@ -121,14 +126,14 @@ def test_registries_only_needs_a_registry_or_a_file(tmp_path: Path) -> None:
 
 
 def test_bare_unknown_address_is_v1_with_a_note() -> None:
-    c = cfg("--registry", "0x" + "c1" * 20)
+    c = sepolia("--registry", "0x" + "c1" * 20)
     assert key(c)[-1] == (1, "0x" + "c1" * 20, 0, False, "--registry")
     assert len(c.notes) == 1 and ":v2" in c.notes[0]
     assert c.notes[0] in summary(c)
 
 
 def test_bare_known_address_is_that_built_in_with_a_note() -> None:
-    c = cfg("--registry", V2_ADDR)
+    c = sepolia("--registry", V2_ADDR)
     assert c.registries == SEPOLIA
     assert len(c.notes) == 1 and "known registry v2" in c.notes[0]
 
@@ -176,16 +181,16 @@ def test_unknown_version_refused_before_any_request() -> None:
 
 # ------------------------------------------------------------------ --trust-custom-registries
 def test_trust_custom_registries_ranks_supplied_by_version() -> None:
-    c = cfg("--trust-custom-registries", "--registry", f"{A3}@500:v3:abi=v2")
+    c = sepolia("--trust-custom-registries", "--registry", f"{A3}@500:v3:abi=v2")
     assert key(c) == [(3, A3, 500, True, "--registry"), *BUILT]
     text = summary(c)
     assert "--trust-custom-registries is set" in text and "SECURITY" in text
-    assert "--registries-only" in usage("--trust-custom-registries", "--registry", f"{B2}@1:v2")
+    assert "--registries-only" in usage("--testnet", "--trust-custom-registries", "--registry", f"{B2}@1:v2")
 
 
 # ------------------------------------------------------------------ deprecated aliases
 def test_registry_v2_alias() -> None:
-    c = cfg("--registry-v2", B2, "--deploy-block-v2", "1")
+    c = sepolia("--registry-v2", B2, "--deploy-block-v2", "1")
     assert key(c) == [*BUILT, (2, B2, 1, False, "--registry")]
     assert any("deprecated" in n and f"--registry {B2}@1:v2" in n for n in c.notes)
 
@@ -195,7 +200,7 @@ def test_registry_v2_errors_name_the_flag() -> None:
 
 
 def test_deploy_block_aliases_lower_the_built_in_blocks() -> None:
-    c = cfg("--deploy-block-v2", "7", "--deploy-block", "5")
+    c = sepolia("--deploy-block-v2", "7", "--deploy-block", "5")
     assert key(c) == [(2, V2_ADDR, 7, True, "built-in"), (1, V1_ADDR, 5, True, "built-in")]
     assert sum("deprecated" in n for n in c.notes) == 2
 
@@ -246,11 +251,11 @@ def test_deployment_file_raising_a_built_in_block_is_refused(tmp_path: Path) -> 
 def test_release_file_on_a_chain_without_built_ins_is_trusted_with_a_warning(tmp_path: Path) -> None:
     doc = {
         "name": "cryoshield-web",
-        "config": {"chainId": 10, "registry": None, "registryV2": {"address": B2, "deployBlock": 4}},
+        "config": {"chainId": 421614, "registry": None, "registryV2": {"address": B2, "deployBlock": 4}},
     }
     c = cfg("--deployment-file", write(tmp_path, "release.json", doc))
-    assert c.network == "op-mainnet" and key(c) == [(2, B2, 4, True, "from 'release.json'")]
-    assert "no built-in registry for op-mainnet" in summary(c)
+    assert c.network == "arbitrum-sepolia" and key(c) == [(2, B2, 4, True, "from 'release.json'")]
+    assert "no built-in registry for arbitrum-sepolia" in summary(c)
 
 
 def test_deployment_file_chain_conflicts_are_refused(tmp_path: Path) -> None:
@@ -290,7 +295,7 @@ def test_bad_deployment_files_are_usage_errors(tmp_path: Path, content: str) -> 
 
 # ------------------------------------------------------------------ startup summary (D9)
 def test_summary_lists_built_ins_first_with_sources() -> None:
-    text = summary(cfg("--registry", f"{A3}@500:v3:abi=v2"))
+    text = summary(sepolia("--registry", f"{A3}@500:v3:abi=v2"))
     lines = [ln.strip() for ln in text.splitlines() if ln.strip().startswith("registry v")]
     assert lines == [
         f"registry v2 {V2_ADDR} from block 49755277 (built-in)",
@@ -301,7 +306,7 @@ def test_summary_lists_built_ins_first_with_sources() -> None:
 
 
 def test_summary_has_no_security_note_for_built_ins() -> None:
-    text = summary(cfg())
+    text = summary(sepolia())
     assert "SECURITY" not in text and "registry v2" in text
 
 
@@ -321,7 +326,8 @@ def test_summary_comes_before_any_request() -> None:
             console=ui,
             prf_factory=prf,
         )
-    assert seen == [0] and f"registry v1 {node.address}" in err.getvalue()
+    # The default network (op-mainnet) has a built-in v2, so the supplied v1 is labelled untrusted (D10).
+    assert seen == [0] and f"registry v1 (supplied) {node.address}" in err.getvalue()
 
 
 # ------------------------------------------------------------------ HIGH 1 end to end

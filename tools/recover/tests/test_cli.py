@@ -62,7 +62,7 @@ def run_cli(args: list[str], term: Term, keys: list[PhysicalKey] | None = None) 
 def test_defaults_and_overrides() -> None:
     p = cli.build_parser()
     cfg = cli.config_from_args(p.parse_args([]))
-    assert cfg.rp_id == "cryoshield.app" and cfg.chain_id == 11155420 and len(cfg.rpcs) >= 3
+    assert cfg.rp_id == "cryoshield.app" and cfg.chain_id == 10 and len(cfg.rpcs) >= 3  # op-mainnet
     assert len(cfg.arweave_graphql) >= 2 and len(cfg.arweave_gateways) >= 2
     assert all(u.startswith("https://") for u in cfg.rpcs + cfg.arweave_graphql + cfg.arweave_gateways)
     cfg = cli.config_from_args(
@@ -131,8 +131,9 @@ def test_startup_summary_lists_endpoints_before_contact(chain: FakeChain) -> Non
 
 def test_placeholder_registry_warns_and_skips_chain() -> None:
     term = Term()
-    code, _ = run_cli(["--network", "op-mainnet", "--no-arweave"], term)
-    assert "No VaultRegistry deployment is built in" in term.stderr.getvalue()
+    # arbitrum-sepolia still has no deployment record (op-mainnet has a built-in v2 since 2026-10-12).
+    code, _ = run_cli(["--network", "arbitrum-sepolia", "--no-arweave"], term)
+    assert "No VaultRegistry deployment is built in for arbitrum-sepolia" in term.stderr.getvalue()
     assert code == ExitCode.NETWORK_UNAVAILABLE
 
 

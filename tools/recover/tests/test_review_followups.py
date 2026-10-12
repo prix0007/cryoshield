@@ -51,7 +51,15 @@ def blob_for(vid: bytes, data: bytes) -> bytes:
 def main(chain: FakeChain, *extra: str, answer: str = "show\n") -> tuple[int, str, str]:
     out, err = io.StringIO(), io.StringIO()
     console = Console(io.StringIO(answer), out, err, getpass_fn=lambda _p: "1", interactive=True)
-    args = ["--rpc", chain.url, "--registries-only", "--registry", f"{chain.address}@0:v1", "--no-arweave"]
+    args = [
+        "--testnet",
+        "--rpc",
+        chain.url,
+        "--registries-only",
+        "--registry",
+        f"{chain.address}@0:v1",
+        "--no-arweave",
+    ]
     code = cli.main(
         [*args, *extra], console=console, prf_factory=lambda u: FakePrfSource([PhysicalKey.named("A")], ui=u)
     )
@@ -227,7 +235,9 @@ def test_flag_cannot_silently_replace_a_file_entry(tmp_path: Path) -> None:
 
 
 def test_lowering_a_built_in_block_adds_a_note() -> None:
-    a = cli.build_parser().parse_args(["--registry", "0xa622c92d3d5b54aea081cf410224a8a2ecb08cb7@0:v2"])
+    a = cli.build_parser().parse_args(
+        ["--testnet", "--registry", "0xa622c92d3d5b54aea081cf410224a8a2ecb08cb7@0:v2"]
+    )
     cfg = cli.config_from_args(a)
     assert cfg.registries[0].trusted and cfg.registries[0].deploy_block == 0
     assert any("lower" in n and "v2" in n for n in cfg.notes)
