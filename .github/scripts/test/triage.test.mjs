@@ -231,3 +231,9 @@ test('CLI: screen prints only verdict JSON; guard and labels exit codes; text pr
   assert.equal(execFileSync(process.execPath, [script, 'text', 'queued'], { encoding: 'utf8' }), `${TEXTS.queued}\n`);
   mkdirSync(join(dir, 'm'));
 });
+
+test('the privacy-request reply promises no timelines and says no personal data is held (trim-privacy-rights-grievance 1.5)', () => {
+  assert.doesNotMatch(TEXTS.privacy, /timelines/);
+  assert.match(TEXTS.privacy, /holds no personal data/);
+  assert.match(TEXTS.privacy, /https:\/\/cryoshield\.app\/privacy/);
+});

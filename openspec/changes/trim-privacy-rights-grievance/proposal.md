@@ -19,6 +19,8 @@ On 2026-10-12, before the v1.0.0 release, the founder decided:
   - "Retention", "International transfers" and "Children" are reworded to match.
   - The effective date is now 2026-10-12, with a "Changes" entry.
 - The contact links stay in "Who we are": the privacy-request issue template and private advisories.
+- The privacy-request issue form and the triage bot's privacy reply match the policy. The form offers only
+  deletion or redaction, a question, or other, and it promises no grievance timelines.
 - Specs:
   - `project-contact`: the operator requirement no longer requires the controller and Data Fiduciary statement; the
     Grievance Officer requirement is removed;

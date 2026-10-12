@@ -30,7 +30,9 @@ describe('privacy-request issue form', () => {
   it('offers only requests that fit a project holding no personal data (trim-privacy-rights-grievance 1.4)', () => {
     const d = form.body.find((b) => b.type === 'dropdown' && b.id === 'kind')!;
     expect(d.attributes.options).toEqual(['Deletion or redaction (e.g. of something I posted on GitHub)', 'Question about the privacy policy', 'Other']);
-    expect(String(form.body[0]!.attributes.value)).not.toMatch(/24 hours|15 days|Grievance|DPDP/);
+    // The whole form (chooser description and every markdown block), not only the first block (#98 review).
+    const all = [form.description, ...form.body.map((b) => String(b.attributes.value ?? ''))].join('\n');
+    expect(all).not.toMatch(/24 hours|15 days|Grievance|DPDP|correct|personal data .*hold/i);
   });
 
   it('requires the reporter to confirm they posted no secrets', () => {

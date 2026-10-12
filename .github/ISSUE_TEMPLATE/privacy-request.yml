@@ -1,6 +1,6 @@
 {
   "name": "Privacy request",
-  "description": "Ask about, correct or delete personal data CryoShield's maintainers hold (adopt-oss-project-defaults). Issues are PUBLIC.",
+  "description": "Ask a question about the privacy policy, or ask us to delete or redact something you posted on GitHub. CryoShield holds no personal data. Issues are PUBLIC.",
   "title": "Privacy request: ",
   "labels": ["privacy-request"],
   "body": [
