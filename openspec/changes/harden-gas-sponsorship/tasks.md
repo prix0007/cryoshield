@@ -207,7 +207,7 @@
 
 ## 8. Mainnet gate [ow]
 
-- [ ] 8.1 [ow] Founder approval to deploy to OP Mainnet, recorded in design.md. Preconditions:
+- [x] 8.1 [ow] Founder approval to deploy to OP Mainnet, recorded in design.md. Preconditions:
   - 7.1 is clean;
   - 6.2 and 6.3 passed;
   - the mainnet Pimlico policy is set to the founder's values in `launch-op-mainnet` design D8, which supersede D2 here: policy `sp_mixed_hellion`, chain 10 only; per user $1 and 10 operations, reset monthly; global $30 and 500 operations, reset daily; $0.50 per operation; 2026-10-10 to 2027-10-02; Disabled until the first chain-10 deploy's smoke test (recorded 2026-10-10, #83);

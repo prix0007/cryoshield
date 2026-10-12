@@ -25,11 +25,11 @@ is done.
 |---|---|---|---|
 | G1 | Human production gate; CI-H1; owner 2FA | Release gate in place (`release-tags` now `~ALL`, applied 2026-10-09; `apply.sh` in sync). 2FA on GitHub and Cloudflare: hardware security keys (founder, 2026-10-09/10). CI-H1: closed 2026-10-09 (machine account `cryoshield`, Write; probes in the mainnet-gate entry). **Rechecked 2026-10-12:** founder ran `apply.sh --with-ecc-review --environments` (no diff); machine account `cryoshield` has `admin: false, maintain: false, push: true` | |
 | G2 | Dev not under `cryoshield.app` | `dev.cryoshield.app` NXDOMAIN (checked 2026-10-09). **Rechecked 2026-10-12:** no A, AAAA or CNAME record (founder and agent) | |
-| G3 | `harden-gas-sponsorship` review and testnet proof | **Done 2026-10-12.** Review 7.1 APPROVE. 6.2, 6.3 and 6.4 done (#86): create, edits, add-key of a third key (tx `0x6180e582…`, 502,562 gas) and a padded 3-key save (tx `0x8328747f…`, v11, 999 B), all Pimlico-sponsored on dev; UV=0 refusal by fork simulation; v1 items waived. Founder accepted (2026-10-12) that no save is yet signed by the new key alone. D8 values approved by the founder 2026-10-12 with the G9 sign-off; 8.1 (approval to deploy) **open** until the D6 trigger review is recorded | `apps/web/docs/hardware-test.md`, `contracts/GAS.md` |
+| G3 | `harden-gas-sponsorship` review and testnet proof | **Done 2026-10-12.** Review 7.1 APPROVE. 6.2, 6.3 and 6.4 done (#86): create, edits, add-key of a third key (tx `0x6180e582…`, 502,562 gas) and a padded 3-key save (tx `0x8328747f…`, v11, 999 B), all Pimlico-sponsored on dev; UV=0 refusal by fork simulation; v1 items waived. Founder accepted (2026-10-12) that no save is yet signed by the new key alone. D8 values approved by the founder 2026-10-12 with the G9 sign-off; 8.1 closed 2026-10-12: D6 reviewed (no new testnet users, no trigger) and the deploy approved by the founder (`harden-gas-sponsorship` design.md) | `apps/web/docs/hardware-test.md`, `contracts/GAS.md` |
 | G4 | Pimlico mainnet settings | **Done 2026-10-10 (#83).** Policy `sp_mixed_hellion` per D8 (Disabled until runbook step 8); key `cryoshield-mainnet`: origin `cryoshield.app` only, bundler on, "verifying paymaster" off, account APIs and boost off; $120 prepaid, no card. Task 1.1 (a): policy-scoped sponsorship with "verifying paymaster" off verified on the dev key (2026-10-10/11, #86) | `apps/web/docs/paymaster-policy.md` §3–4 |
 | G5 | Recovery tool on mainnet | Open until `10.json` and the regenerated preset (task 7.3/7.4). Branch `feat/mainnet-recovery-default` @ `40b5cc1` pushed to origin 2026-10-12; merges cleanly with `main` | |
-| G6 | Audit decision | **Done**: see Q1 above. Signed 2026-10-12 with the `mainnet-gate` sign-off, which restates the decision | this file |
-| G7 | Monitoring ready | Runbook thresholds in `apps/web/docs/paymaster-policy.md` (task 5.3); founder calendar reminders **to confirm** | |
+| G6 | Audit decision | **Done**: see Q1 above. The founder's 2026-10-12 sign-off accepts the `mainnet-gate` entry, which restates this decision (the quote does not name G6 separately) | this file |
+| G7 | Monitoring ready | Runbook thresholds in `apps/web/docs/paymaster-policy.md` (task 5.3); founder calendar reminders: the 2027-10-02 policy-end reminder added (founder, 2026-10-12). **Still to confirm:** the daily (14 days), weekly and monthly checks, the Fly token rotation before 2027-10-05, and the September 2027 domain and `security.txt` dates | |
 | G8 | Rollback ready | Open: save the four current `production-build` values offline and the testnet bundler URL from the Pimlico dashboard; `v1.0.0`'s commit green on dev | |
 | G9 | Compliance `mainnet-gate` entry | **Signed 2026-10-12** by the founder (entry dated 2026-10-09). The `mainnet-gate` entry in `docs/compliance/review-log.md` is dated 2026-10-09; its CI window ends 2026-11-08. The risk register is re-scored. Both are signed. The entry's launch-day conditions (G7, G8, G5, G10, G11) stay open until closed in this record | [review-log 2026-10-09 entry](../compliance/review-log.md#2026-10-09-mainnet-gate-reviewer-prix0007), [risk register](../compliance/risk-register.md) |
 | G10 | Copy and build | Chain-10 and chain-11155420 builds pass `verify-build` and the section-4 copy tests (6.1 evidence below); confirmed again by CI on `v1.0.0` | |
@@ -77,6 +77,11 @@ Sequencing B's rollback paths work as described; no CryoShield server, admin key
 
 _Filled in on the day (tasks 7.1–7.10): chain facts, deploy and verification transactions, `10.json` PR, release,
 smoke, founder YubiKey smoke, recovery test, Pimlico check, soft-launch monitoring._
+
+- **2026-10-12, P-256 precompile (task 1.1, G11), run by the agent:** RIP-7212 at `0x100` on OP Mainnet, block
+  158113739, 17:30 UTC. A fresh P-256 key signed a random SHA-256 hash; the 160-byte input returned
+  `0x…0001`; the same input with the first hash byte changed returned `0x`. The other G11 chain facts were checked
+  by the founder the same day ("looks fine"); their values are still to be written here.
 
 ## Sign-off
 
