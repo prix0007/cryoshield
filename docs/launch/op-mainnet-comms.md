@@ -22,10 +22,11 @@ What the site says on OP Mainnet (built from the chain; tested in `apps/web/test
 `apps/web/test/ui/network-notice.test.tsx`):
 
 - Landing page, hero: "Runs on OP Mainnet. Your vault is encrypted on your device and stored on OP Mainnet, with an
-  extra copy on Arweave when that upload succeeds." The audit statement is in the footer ("Runs on OP Mainnet, not
-  independently audited.") and the FAQ "Is it safe to use today?", not next to the calls to action (change
-  `trim-landing-cta-audit-note`, 2026-10-13).
-- App: "CryoShield runs on OP Mainnet and has not been independently audited. Your vault is encrypted on your device and published permanently as ciphertext on a public blockchain, and only your keys can open it: if you lose every key, nobody, including CryoShield, can open it. Please keep your existing backups too."
+  extra copy on Arweave when that upload succeeds." There is no "Unaudited" chip and no audit note next to the calls to
+  action. On the site, the audit statement is only in the footer's legal line ("Runs on OP Mainnet, not independently
+  audited."), `/terms` and `/privacy` (change `trim-landing-cta-audit-note`, founder, 2026-10-13).
+- Landing page, FAQ "Is it safe to use today?": "CryoShield runs on OP Mainnet. Your secrets are encrypted on your device before anything is stored, using well-known open-source cryptography libraries (@noble). The code, the vault format and its published test vectors are open source, and our internal security reviews are public in the repository. If this website ever disappears, the open-source recovery tool still opens your vault with one of your keys. As with any backup, keep a second copy somewhere safe."
+- App (no chip): "CryoShield runs on OP Mainnet. Your vault is encrypted on your device and published permanently as ciphertext on a public blockchain, and only your keys can open it: if you lose every key, nobody, including CryoShield, can open it. Please keep your existing backups too."
 - App, when a key has no vault on OP Mainnet (for 90 days after the switch):
 
 > Vaults created during the testnet preview are not on OP Mainnet. They are still there, and you can read yours with the open-source recovery tool and its --testnet option. To use CryoShield on OP Mainnet, create a new vault.
