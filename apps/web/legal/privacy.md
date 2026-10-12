@@ -1,6 +1,6 @@
 # Privacy policy
 
-**Effective date:** 2026-10-09
+**Effective date:** 2026-10-12
 
 <!--legal-note-->
 
@@ -15,10 +15,8 @@
 This website is run by CryoShield, an open-source project maintained by its contributors (github.com/prix0007/cryoshield). There is no company behind it: the source code, its
 history and every decision are public in the [repository](https://github.com/prix0007/cryoshield).
 
-The site itself collects and keeps no personal data (no accounts, no cookies, no server logs of our own). For the
-little personal data that exists, the messages you send us through GitHub, the project maintainers act as the data
-controller under the EU and UK GDPR and as the Data Fiduciary under India's Digital Personal Data Protection Act, 2023
-(DPDP), only for the correspondence they receive.
+CryoShield holds no personal data: no accounts, no cookies, no server logs of our own, and no copy of anything you
+save. Messages you send through GitHub are stored by GitHub under its own privacy statement, not by us.
 
 **How to reach us:** open a [privacy request](https://github.com/prix0007/cryoshield/issues/new?template=privacy-request.yml) on GitHub, or, for
 anything sensitive, a [private security advisory](https://github.com/prix0007/cryoshield/security/advisories/new), which only the maintainers can see.
@@ -139,51 +137,29 @@ donation address on public block explorers. We never ask who you are.
 
 ## Retention
 
-We hold no visitor data ourselves. The GitHub issues and advisories you open stay on GitHub: we delete or redact
+We hold no personal data. The GitHub issues and advisories you open stay on GitHub: we delete or redact
 personal data in them on request, and close private advisories once handled (keeping them at most 3 years after
 closure). Each service above keeps its logs under its own policy. Data published on the blockchain and Arweave is
 permanent. The full table is in our
 [retention statement](https://github.com/prix0007/cryoshield/blob/main/docs/compliance/retention.md).
 
-## Your rights
+## No sale or sharing
 
-You can ask us to access, correct or erase personal data we hold, and to explain how we process it. In practice we
-hold almost nothing: we can delete correspondence and ask the services above to delete their logs, but **nobody can
-delete data published on the blockchain or Arweave** (see crypto-shredding above).
-
-- **India (DPDP Act 2023):** the rights to access information, correction and erasure, grievance redressal, and to
-  nominate someone to act for you; and the right to complain to the Data Protection Board of India once you have used
-  our grievance process.
-- **EU and UK (GDPR):** the rights of access, rectification, erasure, restriction, portability and objection
-  (Articles 15–22), and the right to complain to your data protection authority.
-- **United States:** CryoShield does not sell or share personal information, and does not meet the thresholds of the
-  California Consumer Privacy Act (CCPA/CPRA) or similar state laws. If that changes, we will honour Global Privacy
-  Control as an opt-out of sale or sharing, as we already do for analytics.
-
-To make a request, open a [privacy request](https://github.com/prix0007/cryoshield/issues/new?template=privacy-request.yml) on GitHub. Issues
-are public: for anything sensitive, use a [private security advisory](https://github.com/prix0007/cryoshield/security/advisories/new) instead. If you
-post personal data in a public issue by mistake, tell us and we will delete or redact it. We will never ask for your
-secrets, your keys or your PIN, and we cannot act on a vault: anyone who claims otherwise is not us.
-
-## Grievance Officer
-
-The Grievance Officer is **the project maintainer**, reachable through a
-[private security advisory](https://github.com/prix0007/cryoshield/security/advisories/new) (mark it as a privacy grievance).
-
-We acknowledge grievances within 24 hours and resolve them within 15 days. If you are not satisfied, you can escalate
-to the Data Protection Board of India, or complain to your data protection authority.
+CryoShield does not sell or share personal information, and does not meet the thresholds of the California Consumer
+Privacy Act (CCPA/CPRA) or similar US state laws. If that changes, we will honour Global Privacy Control as an opt-out
+of sale or sharing, as we already do for analytics.
 
 ## International transfers
 
-Your data is handled by the maintainers (via GitHub), in Singapore and the US (hosting), the UK (fee sponsor), the US (archive
+Your requests are handled by GitHub (issues and advisories), in Singapore and the US (hosting), the UK (fee sponsor), the US (archive
 upload, analytics) and the EU (analytics). We rely on the safeguards each provider offers, such as the EU-US Data
 Privacy Framework, standard contractual clauses and the UK adequacy decision.
 
 ## Children
 
 CryoShield is intended only for people aged **18 or over**. The app asks you to confirm this before your first save.
-If you are under 18, please do not use it. Because we hold no account data, the only thing we could delete for a
-child is correspondence; we would explain how to make a vault unreadable by resetting its keys.
+If you are under 18, please do not use it. Because we hold no personal data, there is nothing for us to delete;
+we would explain how to make a vault unreadable by resetting its keys.
 
 ## Security
 
@@ -198,6 +174,8 @@ Our internal security reviews are public in the
 We will update the effective date at the top whenever this policy changes, and record each change below. The full
 history is public in our [source repository](https://github.com/prix0007/cryoshield/commits/main/apps/web/legal/privacy.md).
 
+- 2026-10-12: CryoShield holds no personal data; GitHub stores the messages you send us. Removed the "Your rights" list and the "Grievance Officer" section; the US no-sale statement is now "No sale or
+  sharing".
 - 2026-10-09: the blockchain and blockchain-access rows name the network and the public endpoint this site actually
   uses; "Security" says that nobody can open a vault after all its keys are lost.
 - 2026-10-08 (revision 3): new "On your device" section. The site now has a Theme menu (System, Light, Dark); if you

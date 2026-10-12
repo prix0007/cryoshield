@@ -26,7 +26,11 @@ describe('legal pages', () => {
 
   it('/privacy has the required sections and an effective date', () => {
     const d = page('privacy/index.html');
-    expect(headings(d)).toEqual(expect.arrayContaining(['Who we are', 'What we never see', 'Data held by third parties', 'Public and permanent data', 'Analytics', 'Your rights', 'Grievance Officer', 'Children', 'Changes']));
+    expect(headings(d)).toEqual(expect.arrayContaining(['Who we are', 'What we never see', 'Data held by third parties', 'Public and permanent data', 'Analytics', 'No sale or sharing', 'Children', 'Changes']));
+    // trim-privacy-rights-grievance: no rights list and no Grievance Officer section.
+    expect(headings(d)).not.toEqual(expect.arrayContaining(['Your rights']));
+    expect(headings(d)).not.toEqual(expect.arrayContaining(['Grievance Officer']));
+    expect(d.body.textContent).not.toMatch(/Data Protection Board|Articles 15–22|nominate someone/);
     expect(d.body.textContent).toMatch(/Effective date:\s*\d{4}-\d{2}-\d{2}/);
   });
 
@@ -113,21 +117,21 @@ describe('legal pages', () => {
       expect(t, p).not.toMatch(/registered address|registered office/i);
       expect([...d.querySelectorAll('main a')].map((a) => a.getAttribute('href')), p).toContain('https://github.com/prix0007/cryoshield');
     }
-    expect(page('privacy/index.html').body.textContent!.replace(/\s+/g, ' ')).toMatch(/maintainers act as the data controller .*only for the correspondence/i);
+    expect(page('privacy/index.html').body.textContent!.replace(/\s+/g, ' ')).toMatch(/CryoShield holds no personal data/);
+    expect(page('privacy/index.html').body.textContent!, 'trim-privacy-rights-grievance').not.toMatch(/data controller|Data Fiduciary/i);
   });
 
-  it('/privacy routes requests to GitHub (privacy-request issue or private advisory) and names the maintainer as Grievance Officer', () => {
+  it('/privacy routes requests to GitHub (privacy-request issue or private advisory) and keeps the US no-sale statement', () => {
     const d = page('privacy/index.html');
     const hrefs = [...d.querySelectorAll('main a')].map((a) => a.getAttribute('href'));
     expect(hrefs).toContain('https://github.com/prix0007/cryoshield/issues/new?template=privacy-request.yml');
     expect(hrefs).toContain('https://github.com/prix0007/cryoshield/security/advisories/new');
-    const h = [...d.querySelectorAll('main h2')].find((x) => x.textContent?.trim() === 'Grievance Officer')!;
+    const h = [...d.querySelectorAll('main h2')].find((x) => x.textContent?.trim() === 'No sale or sharing')!;
     let text = '';
     for (let n = h.nextElementSibling; n && n.tagName !== 'H2'; n = n.nextElementSibling) text += ' ' + n.textContent;
-    expect(text).toMatch(/the project maintainer/);
-    expect(text).toMatch(/24 hours/);
-    expect(text).toMatch(/15 days/);
-    expect(text).toMatch(/private security advisory/);
+    expect(text).toMatch(/does not sell or share personal information/);
+    expect(text).toMatch(/CCPA/);
+    expect(text).toMatch(/Global Privacy Control/);
   });
 
   it('/terms mirrors the MIT licence disclaimer and keeps the honest framing', () => {

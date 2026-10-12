@@ -10,13 +10,14 @@ in-app disclosures users must see before their encrypted data is written permane
 
 ### Requirement: Privacy policy page
 The site SHALL serve a static privacy policy at `/privacy` that states: the open-source operator, the GitHub contact
-channels and the Grievance Officer as defined by `project-contact`, what data each third party receives, the public
-and permanent nature of on-chain and Arweave data with every public field listed, retention, user rights and how to
-exercise them, the age statement, and its effective date. It MUST NOT name a company or a registered address.
+channels as defined by `project-contact`, that CryoShield holds no personal data, what data each third party receives,
+the public and permanent nature of on-chain and Arweave data with every public field listed, retention, that CryoShield
+does not sell or share personal information, the age statement, and its effective date (change
+`trim-privacy-rights-grievance`). It MUST NOT name a company or a registered address.
 
 #### Scenario: Required sections present
 - **WHEN** the built `/privacy` page is checked by a test
-- **THEN** it contains the headings Who we are, What we never see, Data held by third parties, Public and permanent data, Analytics, Your rights, Grievance Officer, Children, Changes, and an effective date
+- **THEN** it contains the headings Who we are, What we never see, Data held by third parties, Public and permanent data, Analytics, No sale or sharing, Children, Changes, and an effective date
 
 #### Scenario: Analytics disclosed
 - **WHEN** the built `/privacy` page is checked
