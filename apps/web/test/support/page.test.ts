@@ -106,7 +106,10 @@ describe('the coffee button everywhere', () => {
 
 describe('legal sections', () => {
   it('/terms covers donations: voluntary, non-refundable, nothing in return, and no tax clause', () => {
-    const t = doc('terms/index.html').getElementById('donations')!.parentElement!.textContent!;
+    // Only the Donations section (up to the next h2), so the "Changes" log can't affect the result (#96 review).
+    const h = doc('terms/index.html').getElementById('donations')!;
+    let t = '';
+    for (let n = h.nextElementSibling; n && n.tagName !== 'H2'; n = n.nextElementSibling) t += ' ' + n.textContent;
     for (const w of ['Voluntary', 'Non-refundable', 'no goods, services']) expect(t).toContain(w);
     expect(t, 'trim-terms-tax-and-law').not.toMatch(/Tax:|tax receipts|tax due/i);
   });
