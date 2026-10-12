@@ -33,7 +33,8 @@ exercise them, the age statement, and its effective date. It MUST NOT name a com
 ### Requirement: Terms of service page
 The site SHALL serve static terms at `/terms` covering: testnet and unaudited status, no custody and no recovery after all
 keys are lost, permanence of published data, sponsored gas that may be paused or withdrawn without notice, acceptable
-use, sanctions eligibility, minimum age, MIT software licence, disclaimers, limitation of liability, and governing law.
+use, sanctions eligibility, minimum age, MIT software licence, disclaimers, and limitation of liability. It SHALL NOT include a governing-law clause
+(change `trim-terms-tax-and-law`).
 
 #### Scenario: Testnet warning present
 - **WHEN** the deployment targets a testnet chain

@@ -1,6 +1,6 @@
 # Terms of service
 
-**Effective date:** 2026-10-09
+**Effective date:** 2026-10-12
 
 <!--legal-note-->
 
@@ -51,9 +51,6 @@ published in the project's README.
   obligation for us.
 - **Non-refundable:** blockchain transfers can't be reversed. We can't refund donations or recover anything sent to the
   wrong network or in the wrong asset.
-- **Tax:** donations go to the open-source maintainer personally, not to a company or charity, so we issue no tax
-  receipts. The maintainer is responsible for any tax due on donations received; you're responsible for your own tax
-  position.
 
 ## Acceptable use
 
@@ -95,16 +92,13 @@ OR THE USE OR OTHER DEALINGS IN THE SOFTWARE. The same applies to your use of th
 allows. Nothing here limits liability that cannot be limited by law, or your rights as a consumer under mandatory law
 where you live.
 
-## Governing law
-
-These terms are governed by the laws of India, where the project maintainer is based, without depriving you of the
-protection of mandatory consumer law where you live.
-
 ## Changes
 
 We will post changes here and update the effective date. The full history is public in our
 [source repository](https://github.com/prix0007/cryoshield/commits/main/apps/web/legal/terms.md).
 
+- 2026-10-12: removed the donation tax clause and the governing-law section. CryoShield is MIT-licensed open-source
+  software with no company behind it; the MIT license's warranty disclaimer and limitation of liability still apply.
 - 2026-10-09: the audit-status section is now "Network and audit status" and names the network the site runs on.
   CryoShield still has not been independently audited; don't keep high-value secrets here as your only copy.
 - 2026-10-08: each key needs its PIN to open or change a vault.
