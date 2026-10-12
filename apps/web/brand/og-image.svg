@@ -2,7 +2,8 @@
   <!-- CryoShield share card (improve-landing-seo D8), 1200x630. The brand tile (add-brand-icon) and the landing hero
        type on a white canvas: one accent (Action Blue), Ink text, no gradients, no shadows. Rendered to
        public/og-image.png by scripts/build-og-image.mjs with the self-hosted Inter; no external references.
-       launch-op-mainnet 4.2: neutral about the network (no testnet or mainnet claim), so one card serves every chain. -->
+       launch-op-mainnet 4.2: neutral about the network (no testnet or mainnet claim), so one card serves every chain.
+       trim-landing-cta-audit-note (2026-10-13): no audit wording; the audit status is in /terms, /privacy and the footer. -->
   <rect width="1200" height="630" fill="#ffffff"/>
   <g transform="translate(80 72)">
     <rect width="88" height="88" rx="20" fill="#0066cc"/>
@@ -17,5 +18,5 @@
     <tspan x="76" y="408">that outlive the <tspan fill="#0066cc">drive.</tspan></tspan>
   </text>
   <text x="80" y="484" font-size="29" font-weight="400" letter-spacing="-0.3" fill="#333333">Seed phrases and 2FA backup codes, sealed by the security keys you hold.</text>
-  <text x="80" y="562" font-size="22" font-weight="400" fill="#7a7a7a">cryoshield.app · Free and open source · Not independently audited</text>
+  <text x="80" y="562" font-size="22" font-weight="400" fill="#7a7a7a">cryoshield.app · Free and open source</text>
 </svg>

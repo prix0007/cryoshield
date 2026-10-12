@@ -108,10 +108,11 @@ describe('llms.txt status line', () => {
     expect(s).toMatch(/not been independently audited/);
   });
 
-  it('names OP Mainnet, the audit status and the all-keys-lost rule on OP Mainnet, and no testnet', () => {
+  it('names OP Mainnet, the open-source facts and the all-keys-lost rule on OP Mainnet, and no testnet or audit wording', () => {
     const s = llmsStatus(ctx(10));
     expect(s).toMatch(/OP Mainnet/);
-    expect(s).toMatch(/not been independently audited/);
+    expect(s).toMatch(/The code, the vault format and its test vectors are open source\./);
+    expect(s).not.toMatch(/unaudited|independently audited/i);
     expect(s).toMatch(/lose every key/);
     expect(s).not.toMatch(/testnet|OP Sepolia/i);
   });

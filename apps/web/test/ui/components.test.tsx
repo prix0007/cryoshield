@@ -24,6 +24,12 @@ describe('SubNav', () => {
     expect(screen.getByText('Your vault')).toHaveClass('sub-nav-name');
     expect(screen.getByText('Testnet')).toHaveClass('chip');
   });
+
+  it('shows no chip when chip is null (main network: trim-landing-cta-audit-note)', () => {
+    const { container } = render(<SubNav name="Your vault" chip={null} />);
+    expect(container.querySelector('.chip')).toBeNull();
+    expect(container.querySelector('.sub-nav-inner')?.children).toHaveLength(1);
+  });
 });
 
 describe('ActionBar', () => {

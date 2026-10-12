@@ -82,7 +82,9 @@ describe('legal header, footer and metadata follow the chain', () => {
   it('the header chip and the footer line', () => {
     for (const p of ['terms/index.html', 'privacy/index.html', 'cookies/index.html', 'architecture/index.html', 'devices/index.html', 'support/index.html', 'lost-key/index.html']) {
       expect(testnet.doc(p).querySelector('.sub-nav .chip')?.textContent?.trim(), p).toBe('Testnet preview');
-      expect(mainnet.doc(p).querySelector('.sub-nav .chip')?.textContent?.trim(), p).toBe('Unaudited');
+      // trim-landing-cta-audit-note (founder, 2026-10-13): no "Unaudited" top tag on mainnet; the footer keeps the status.
+      expect(mainnet.doc(p).querySelector('.sub-nav .chip'), p).toBeNull();
+      expect(mainnet.doc(p).querySelector('.sub-nav p:empty'), p).toBeNull();
       expect(testnet.doc(p).querySelector('footer .legal')?.textContent, p).toMatch(/Testnet preview on OP Sepolia, not independently audited\./);
       expect(mainnet.doc(p).querySelector('footer .legal')?.textContent, p).toMatch(/Runs on OP Mainnet, not independently audited\./);
     }

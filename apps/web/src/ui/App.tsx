@@ -176,7 +176,7 @@ function Shell() {
         {/* vault-view-action-layout D4 (review M3): Lock is always reachable while a vault is open. */}
         <SubNav
           name={S.vault.surface}
-          chip={networkFor(svc.chainId).status === 'mainnet' ? S.network.chipMainnet : S.network.chipTestnet}
+          chip={networkFor(svc.chainId).status === 'mainnet' ? null : S.network.chipTestnet}
           action={screen.name === 'vault' && session && <Btn className="secondary sub-nav-action" onClick={lock}>{S.vault.lock}</Btn>}
         />
       </header>

@@ -30,3 +30,29 @@ describe.each([11155420, 10])('chain %i: no audit promise on any public page', (
     for (const r of AUDIT_PROMISES) expect(llms, String(r)).not.toMatch(r);
   });
 });
+
+/**
+ * trim-landing-cta-audit-note (founder 2026-10-13): on a mainnet build the audit status stays only in the footer's legal
+ * line, /terms and /privacy. Every other public page, its metadata and llms.txt say nothing about an audit.
+ */
+describe('chain 10: audit status only in the footer, /terms and /privacy', () => {
+  const others = PUBLIC_PAGES.map((p) => p.html.slice(1)).filter((p) => !/^(terms|privacy)\//.test(p));
+  it.each(others)('%s', (page) => {
+    const d = builds[10]!.doc(page);
+    const legal = d.querySelector('footer .legal');
+    expect(legal?.textContent, page).toMatch(/not independently audited\./);
+    legal?.remove();
+    const metas = [...d.querySelectorAll('meta[content], img[alt]')].map((m) => m.getAttribute('content') ?? m.getAttribute('alt')).join(' ');
+    expect(`${d.documentElement.textContent ?? ''} ${metas}`, page).not.toMatch(/unaudited|independently audited/i);
+  });
+
+  it.each(['terms/index.html', 'privacy/index.html'])('%s keeps the audit status', (page) => {
+    expect(builds[10]!.text(page)).toMatch(/not been independently audited/);
+  });
+
+  it('llms.txt, apart from the /terms and /privacy entries (their own descriptions)', () => {
+    const lines = readFileSync(join(builds[10]!.out, 'llms.txt'), 'utf8').split('\n');
+    const rest = lines.filter((l) => !/\]\(https:\/\/cryoshield\.app\/(terms|privacy)\)/.test(l)).join('\n');
+    expect(rest).not.toMatch(/unaudited|independently audited/i);
+  });
+});

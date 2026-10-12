@@ -186,14 +186,17 @@ describe('honest copy follows the build chain (launch-op-mainnet 4.2)', () => {
   it('OP Mainnet: names OP Mainnet, says unaudited and the all-keys-lost rule outside any collapsible; no testnet wording', () => {
     const t = outsideDetails(mainnet.doc);
     expect(t).toMatch(/OP Mainnet/);
-    // trim-landing-cta-audit-note: on mainnet the audit status outside any collapsible is in the footer and the chip.
+    // trim-landing-cta-audit-note: on mainnet the audit status outside any collapsible is in the footer.
     expect(`${t} ${norm(mainnet.doc.querySelector('footer'))}`).toMatch(/not independently audited/);
     expect(t).toMatch(/If you lose every key, nobody can open the vault/);
     for (const all of [mainnet.text, head(mainnet.doc), mainnet.src]) expect(all).not.toMatch(/OP Sepolia|testnet|test network/i);
   });
 
   it('OP Mainnet: the chips, the hero strip and the calls to action carry the new status', () => {
-    expect(norm(mainnet.doc.querySelector('.sub-nav .chip'))).toBe('Unaudited');
+    // trim-landing-cta-audit-note (founder, 2026-10-13): no "Unaudited" top tag on mainnet, and no empty chip either.
+    expect(mainnet.doc.querySelector('.sub-nav .chip')).toBeNull();
+    expect(mainnet.doc.querySelector('.sub-nav p:empty')).toBeNull();
+    expect(mainnet.text).not.toMatch(/Unaudited/);
     // trim-landing-cta-audit-note (founder, 2026-10-13): no audit/backup note in the hero strip or the CTA fine print.
     expect(norm(mainnet.doc.querySelector('#hero .status-strip'))).toBe(
       'Runs on OP Mainnet. Your vault is encrypted on your device and stored on OP Mainnet, with an extra copy on Arweave when that upload succeeds.',
@@ -202,7 +205,16 @@ describe('honest copy follows the build chain (launch-op-mainnet 4.2)', () => {
       expect(mainnet.doc.querySelector(sel), sel).toBeNull();
     }
     expect(norm(mainnet.doc.querySelector('footer .legal'))).toBe('CryoShield contributors. MIT licensed. Runs on OP Mainnet, not independently audited. YubiKey is a trademark of Yubico.');
-    expect(mainnet.doc.querySelector('meta[name="description"]')?.getAttribute('content')).toMatch(/Free, open source, unaudited\.$/);
+    expect(mainnet.doc.querySelector('meta[name="description"]')?.getAttribute('content')).toMatch(/security key\. Free and open source\.$/);
+  });
+
+  it('OP Sepolia: the FAQ answers keep the testnet and audit wording (trim-landing-cta-audit-note leaves testnet alone)', () => {
+    const answer = (q: string) => norm([...testnet.doc.querySelectorAll('#faq details')].find((x) => x.querySelector('summary')?.textContent === q)?.querySelector('p'));
+    expect(answer('How do I back up my seed phrase forever?')).toMatch(/still works\. CryoShield is a testnet preview, so keep your existing backup too\.$/);
+    expect(answer('Where should I store 2FA backup codes?')).toMatch(/While CryoShield is a testnet preview, keep a printed copy somewhere safe as well\.$/);
+    expect(answer('Is it safe to use today?')).toBe(
+      'CryoShield is a testnet preview on OP Sepolia and has not been independently audited. The code and the vault format are open source, and the encryption uses well-known open-source cryptography libraries (@noble) with published test vectors. Please keep your existing backups too.',
+    );
   });
 
   it('OP Sepolia: the testnet wording is unchanged', () => {
@@ -216,13 +228,14 @@ describe('honest copy follows the build chain (launch-op-mainnet 4.2)', () => {
     expect(testnet.doc.querySelector('meta[name="description"]')?.getAttribute('content')).toMatch(/Free, open source, testnet\.$/);
   });
 
-  it('OP Mainnet: the audit disclaimer stays visible on the landing page (chip, footer, FAQ) (trim-landing-cta-audit-note)', () => {
-    expect(norm(mainnet.doc.querySelector('.sub-nav .chip'))).toBe('Unaudited');
+  it('OP Mainnet: the audit status is only in the footer legal line (trim-landing-cta-audit-note, founder 2026-10-13)', () => {
     const footer = mainnet.doc.querySelector('footer .legal');
     expect(footer?.closest('details')).toBeNull();
     expect(norm(footer)).toMatch(/Runs on OP Mainnet, not independently audited\./);
-    const safe = [...mainnet.doc.querySelectorAll('#faq details')].find((x) => x.querySelector('summary')?.textContent === 'Is it safe to use today?');
-    expect(norm(safe?.querySelector('p'))).toMatch(/has not been independently audited/);
+    const rest = mainnet.doc.cloneNode(true) as Document;
+    rest.querySelector('footer .legal')?.remove();
+    const all = `${rest.documentElement.textContent ?? ''} ${[...rest.querySelectorAll('meta[content]')].map((m) => m.getAttribute('content')).join(' ')}`;
+    expect(all).not.toMatch(/unaudited|independently audited|\baudit/i);
   });
 
   it('OP Mainnet: the FAQ answers name OP Mainnet and the audit status, and "forever" stays honest', () => {
@@ -230,10 +243,12 @@ describe('honest copy follows the build chain (launch-op-mainnet 4.2)', () => {
     const forever = answer('How do I back up my seed phrase forever?');
     expect(forever).toMatch(/^No backup lasts forever/);
     expect(forever).toMatch(/at least one of your keys/);
-    expect(forever).toMatch(/OP Mainnet/);
-    expect(forever).toMatch(/not been independently audited/);
-    expect(answer('Is it safe to use today?')).toMatch(/^CryoShield runs on OP Mainnet and has not been independently audited\./);
-    expect(answer('Where should I store 2FA backup codes?')).toMatch(/not been independently audited, keep a printed copy/);
+    // trim-landing-cta-audit-note (founder 2026-10-13): positive, factual wording; the backup advice stays.
+    expect(forever).toMatch(/CryoShield runs on OP Mainnet\. As with any backup, keep a second copy somewhere safe\.$/);
+    expect(answer('Is it safe to use today?')).toBe(
+      'CryoShield runs on OP Mainnet. Your secrets are encrypted on your device before anything is stored, using well-known open-source cryptography libraries (@noble). The code, the vault format and its published test vectors are open source, and our internal security reviews are public in the repository. If this website ever disappears, the open-source recovery tool still opens your vault with one of your keys. As with any backup, keep a second copy somewhere safe.',
+    );
+    expect(answer('Where should I store 2FA backup codes?')).toMatch(/only your security keys can open it\. As with any backup, keep a printed copy somewhere safe as well\.$/);
     expect(mainnet.text.match(/forever/gi)).toHaveLength(2);
   });
 

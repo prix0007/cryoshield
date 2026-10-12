@@ -83,12 +83,14 @@ export const S = {
   testnet: (network: string) =>
     `Testnet preview: your vault is encrypted on your device and stored on ${network}, a test network, with an extra copy on Arweave when that upload succeeds. Test networks can be reset, and CryoShield has not been independently audited.`,
 
-  /** launch-op-mainnet D6 / 4.5 / 4.6: the network status notice and chip, and the launch notices. */
+  /**
+   * launch-op-mainnet D6 / 4.5 / 4.6: the network status notice and chip, and the launch notices. A main network shows
+   * no chip and no audit clause in the notice (trim-landing-cta-audit-note, founder 2026-10-13).
+   */
   network: {
     chipTestnet: 'Testnet',
-    chipMainnet: 'Unaudited',
     mainnet: (network: string) =>
-      `CryoShield runs on ${network} and has not been independently audited. Your vault is encrypted on your device and published permanently as ciphertext on a public blockchain, and only your keys can open it: if you lose every key, nobody, including CryoShield, can open it. Please keep your existing backups too.`,
+      `CryoShield runs on ${network}. Your vault is encrypted on your device and published permanently as ciphertext on a public blockchain, and only your keys can open it: if you lose every key, nobody, including CryoShield, can open it. Please keep your existing backups too.`,
     moving:
       'CryoShield is moving to OP Mainnet. Vaults created during the testnet preview will not move; you can still read them with the recovery tool. Create a new vault after the switch.',
     testnetVaults:

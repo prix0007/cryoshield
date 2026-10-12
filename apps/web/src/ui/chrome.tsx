@@ -80,13 +80,16 @@ export function GlobalNav() {
   );
 }
 
-/** `chip`: the network status (launch-op-mainnet D6): "Testnet" on a test network, "Unaudited" on a main network. */
-export function SubNav({ name, chip = S.network.chipTestnet, action }: { name: string; chip?: string; action?: ReactNode }) {
+/**
+ * `chip`: the network status (launch-op-mainnet D6): "Testnet" on a test network (the default: fail safe), `null` on a
+ * main network, which shows no chip (trim-landing-cta-audit-note).
+ */
+export function SubNav({ name, chip = S.network.chipTestnet, action }: { name: string; chip?: string | null; action?: ReactNode }) {
   return (
     <div className="sub-nav">
       <div className="sub-nav-inner">
         <p className="sub-nav-name">{name}</p>
-        <p className="chip">{chip}</p>
+        {chip && <p className="chip">{chip}</p>}
         {action}
       </div>
     </div>
