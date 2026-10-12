@@ -7,7 +7,7 @@ Permanent, non-custodial backup for the secrets you can't afford to lose (seed p
 - The encrypted vault lives on an EVM rollup (**OP Mainnet**; currently testnet-only on **OP Sepolia**), mirrored to **Arweave**. Gas is sponsored, so you never need a wallet or crypto.
 - If CryoShield disappears, the open-source **desktop recovery tool** still unlocks your vault, straight from the public chain.
 
-> Status: testnet only (OP Sepolia), at https://cryoshield-web-dev.fly.dev. Not audited.
+> Status: testnet only (OP Sepolia), at https://cryoshield-web-dev.fly.dev. Not audited. Test ETH for local work: [Superchain faucet](https://console.optimism.io/faucet).
 
 ## If you need your vault
 
@@ -42,18 +42,19 @@ pnpm --filter @cryoshield/web test:e2e                       # web: E2E, virtual
 pnpm --filter @cryoshield/web verify-build
 (cd tools/recover && uv sync --locked && uv run pytest -q)   # recovery tool
 pnpm --filter @cryoshield/metrics test                       # metrics
+pnpm metrics --network op-sepolia                            # metrics run (tools/metrics/README.md)
 openspec validate --all --strict
 ```
 
-Real-hardware checklists: `apps/web/docs/hardware-test.md` and `tools/recover/docs/manual-yubikey-test.md`.
+Dependency install scripts are disabled (`pnpm.onlyBuiltDependencies: []`). Real-hardware checklists: `apps/web/docs/hardware-test.md` and `tools/recover/docs/manual-yubikey-test.md`.
 
 ## Contributing / PR workflow
 
-- **OpenSpec first.** Every feature, fix and refactor starts as a change under `openspec/changes/<name>/`. A PR that touches code or CI without one fails the gate (unless labelled `no-spec` with a `No-spec justification:` line).
+- **OpenSpec first.** Every feature, fix and refactor starts as a change under `openspec/changes/<name>/`. A PR that touches code or CI without one (the exact paths are in [`docs/maintainers.md`](docs/maintainers.md#pull-request-rules)) fails the gate (unless labelled `no-spec` with a `No-spec justification:` line).
 - **Branch** as `feat/`, `fix/`, `ci/`, `docs/` or `chore/`. The **PR title** is a Conventional Commit (`fix(recover): handle empty log page`); it becomes the squash commit on `main`.
 - Fill in the PR template. CI and an automated review run on every PR; the owner approves the review and merges PRs from outside contributors.
 
-The full flow is in [`CLAUDE.md`](CLAUDE.md) → "Change flow". CI, branch protection and deployment details are in [`docs/maintainers.md`](docs/maintainers.md) and [`docs/deploy.md`](docs/deploy.md).
+Product requirements: `.claude/PRPs/prds/cryoshield.prd.md`. The full flow is in [`CLAUDE.md`](CLAUDE.md) → "Change flow". CI, branch protection and deployment details are in [`docs/maintainers.md`](docs/maintainers.md) and [`docs/deploy.md`](docs/deploy.md).
 
 ## Support the project
 
@@ -72,8 +73,8 @@ CryoShield is free, open-source software. If it helps you, you can send a volunt
 
 There is no external audit. CryoShield relies on an open specification, cross-implementation test vectors, symmetric-only cryptography and an internal review of every security-relevant change ([`docs/reviews/`](docs/reviews/)).
 
-Report vulnerabilities privately, never in a public issue: see [`SECURITY.md`](SECURITY.md) or use [GitHub private vulnerability reporting](https://github.com/prix0007/cryoshield/security/advisories/new). **Never post seed phrases, recovery codes, PINs or keys in an issue.**
+Report vulnerabilities privately, never in a public issue: see [`SECURITY.md`](SECURITY.md) or use [GitHub private vulnerability reporting](https://github.com/prix0007/cryoshield/security/advisories/new). Also see [`security.txt`](https://cryoshield.app/.well-known/security.txt). New issues get an automatic acknowledgement and a sandboxed first diagnosis ([`CLAUDE.md`](CLAUDE.md) → "Issue triage"). **Never post seed phrases, recovery codes, PINs or keys in an issue.**
 
 ## License
 
-[MIT](LICENSE).
+[MIT](LICENSE), enforced in CI by `scripts/check-licenses.sh`.
