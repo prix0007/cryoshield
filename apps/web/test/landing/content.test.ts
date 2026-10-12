@@ -186,18 +186,20 @@ describe('honest copy follows the build chain (launch-op-mainnet 4.2)', () => {
   it('OP Mainnet: names OP Mainnet, says unaudited and the all-keys-lost rule outside any collapsible; no testnet wording', () => {
     const t = outsideDetails(mainnet.doc);
     expect(t).toMatch(/OP Mainnet/);
-    expect(t).toMatch(/not been independently audited/);
+    // trim-landing-cta-audit-note: on mainnet the audit status outside any collapsible is in the footer and the chip.
+    expect(`${t} ${norm(mainnet.doc.querySelector('footer'))}`).toMatch(/not independently audited/);
     expect(t).toMatch(/If you lose every key, nobody can open the vault/);
     for (const all of [mainnet.text, head(mainnet.doc), mainnet.src]) expect(all).not.toMatch(/OP Sepolia|testnet|test network/i);
   });
 
   it('OP Mainnet: the chips, the hero strip and the calls to action carry the new status', () => {
     expect(norm(mainnet.doc.querySelector('.sub-nav .chip'))).toBe('Unaudited');
+    // trim-landing-cta-audit-note (founder, 2026-10-13): no audit/backup note in the hero strip or the CTA fine print.
     expect(norm(mainnet.doc.querySelector('#hero .status-strip'))).toBe(
-      'Runs on OP Mainnet. Your vault is encrypted on your device and stored on OP Mainnet, with an extra copy on Arweave when that upload succeeds. CryoShield has not been independently audited, so please keep your existing backups too.',
+      'Runs on OP Mainnet. Your vault is encrypted on your device and stored on OP Mainnet, with an extra copy on Arweave when that upload succeeds.',
     );
-    for (const sel of ['#breaches .breach-cta .fine', '#start .fine']) {
-      expect(norm(mainnet.doc.querySelector(sel)), sel).toBe('Runs on OP Mainnet, not independently audited. Please keep your existing backups too.');
+    for (const sel of ['#breaches .breach-cta .fine', '#start .fine', '#breaches .breach-cta p:empty', '#start p:empty']) {
+      expect(mainnet.doc.querySelector(sel), sel).toBeNull();
     }
     expect(norm(mainnet.doc.querySelector('footer .legal'))).toBe('CryoShield contributors. MIT licensed. Runs on OP Mainnet, not independently audited. YubiKey is a trademark of Yubico.');
     expect(mainnet.doc.querySelector('meta[name="description"]')?.getAttribute('content')).toMatch(/Free, open source, unaudited\.$/);
@@ -212,6 +214,15 @@ describe('honest copy follows the build chain (launch-op-mainnet 4.2)', () => {
       expect(norm(testnet.doc.querySelector(sel)), sel).toBe('Testnet preview on OP Sepolia, not independently audited. Please keep your existing backups too.');
     }
     expect(testnet.doc.querySelector('meta[name="description"]')?.getAttribute('content')).toMatch(/Free, open source, testnet\.$/);
+  });
+
+  it('OP Mainnet: the audit disclaimer stays visible on the landing page (chip, footer, FAQ) (trim-landing-cta-audit-note)', () => {
+    expect(norm(mainnet.doc.querySelector('.sub-nav .chip'))).toBe('Unaudited');
+    const footer = mainnet.doc.querySelector('footer .legal');
+    expect(footer?.closest('details')).toBeNull();
+    expect(norm(footer)).toMatch(/Runs on OP Mainnet, not independently audited\./);
+    const safe = [...mainnet.doc.querySelectorAll('#faq details')].find((x) => x.querySelector('summary')?.textContent === 'Is it safe to use today?');
+    expect(norm(safe?.querySelector('p'))).toMatch(/has not been independently audited/);
   });
 
   it('OP Mainnet: the FAQ answers name OP Mainnet and the audit status, and "forever" stays honest', () => {
