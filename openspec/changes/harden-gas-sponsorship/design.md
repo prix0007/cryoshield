@@ -329,5 +329,7 @@ Recorded at task 7.1 in `docs/reviews/harden-gas-sponsorship.md`.
 for mainnet, and I approve the D8 sponsorship values."
 
 The D8 values are those of `launch-op-mainnet` design D8 (policy `sp_mixed_hellion`, recorded in the dashboard
-2026-10-10, #83). Task 8.1 stays unticked until its last precondition, the D6 trigger reviewed against the testnet
-usage data, is recorded.
+2026-10-10, #83). **D6 review and approval to deploy, 2026-10-12**, in the founder's words: "nah we will use pimlico, go ahead. no new
+users opn testnet". No D6 trigger applies: testnet has had no new users, so there is no observed abuse and no scale
+signal, and the policy-scoped key was verified on the dev key (#86). The founder keeps Pimlico (no own paymaster) and
+approves the OP Mainnet deploy. Task 8.1 is closed; the D6 check continues in the weekly dashboard review.
