@@ -8,7 +8,7 @@
 
 | # | Question | Decision |
 |---|---|---|
-| Q1 / G6 | Audit | **Launch unaudited; no contract audit is planned** (founder: "No audit on contracts"). Every page on chain 10 says "not been independently audited", and no page promises an audit (denylist `AUDIT_PROMISES`). |
+| Q1 / G6 | Audit | **Launch unaudited; no contract audit is planned** (founder: "No audit on contracts"). At launch (`v1.0.0`) every page on chain 10 said "not been independently audited". Since `trim-landing-cta-audit-note` (#104, founder 2026-10-13) the mainnet audit status sits in the footer legal line on every page, `/terms` and `/privacy`. No page promises or claims an audit (denylist `AUDIT_PROMISES`). |
 | Q2 | Recovery tool default network | `op-mainnet` from the launch release; `--testnet` reads OP Sepolia; the tool always prints the network. |
 | Q3 | Compliance gate | Answered 2026-10-08 ("It's OSS so no company and legal"): the gate is the `mainnet-gate` review-log entry (G9). |
 | Q4 | Testnet vaults | No migration; a 90-day notice; testnet-preview vaults stay readable with the recovery tool `--testnet`. |
@@ -26,8 +26,8 @@ is done.
 | G1 | Human production gate; CI-H1; owner 2FA | Release gate in place (`release-tags` now `~ALL`, applied 2026-10-09; `apply.sh` in sync). 2FA on GitHub and Cloudflare: hardware security keys (founder, 2026-10-09/10). CI-H1: closed 2026-10-09 (machine account `cryoshield`, Write; probes in the mainnet-gate entry). **Rechecked 2026-10-12:** founder ran `apply.sh --with-ecc-review --environments` (no diff); machine account `cryoshield` has `admin: false, maintain: false, push: true` | |
 | G2 | Dev not under `cryoshield.app` | `dev.cryoshield.app` NXDOMAIN (checked 2026-10-09). **Rechecked 2026-10-12:** no A, AAAA or CNAME record (founder and agent) | |
 | G3 | `harden-gas-sponsorship` review and testnet proof | **Done 2026-10-12.** Review 7.1 APPROVE. 6.2, 6.3 and 6.4 done (#86): create, edits, add-key of a third key (tx `0x6180e582…`, 502,562 gas) and a padded 3-key save (tx `0x8328747f…`, v11, 999 B), all Pimlico-sponsored on dev; UV=0 refusal by fork simulation; v1 items waived. Founder accepted (2026-10-12) that no save is yet signed by the new key alone. D8 values approved by the founder 2026-10-12 with the G9 sign-off; 8.1 closed 2026-10-12: D6 reviewed (no new testnet users, no trigger) and the deploy approved by the founder (`harden-gas-sponsorship` design.md) | `apps/web/docs/hardware-test.md`, `contracts/GAS.md` |
-| G4 | Pimlico mainnet settings | **Done 2026-10-10 (#83).** Policy `sp_mixed_hellion` per D8 (Disabled until runbook step 8); key `cryoshield-mainnet`: origin `cryoshield.app` only, bundler on, "verifying paymaster" off, account APIs and boost off; $120 prepaid, no card. Task 1.1 (a): policy-scoped sponsorship with "verifying paymaster" off verified on the dev key (2026-10-10/11, #86) | `apps/web/docs/paymaster-policy.md` §3–4 |
-| G5 | Recovery tool on mainnet | **Done 2026-10-12/13.** `10.json` and the `op-mainnet` preset merged (#102, #103). The `recover-release.yml` dry run on `012c084` was green (run 38297212786). `v1.0.0` carries 7 files plus their `.sha256` files and `SHA256SUMS`; all pass `gh attestation verify`. `--version` prints `1.0.0`; with no flag the network is `op-mainnet`, v2 only. The founder unlocked a dev vault with `--testnet`, then the new mainnet vault with no network flag: "Cool recovery tool works and verified" (2026-10-13) | launch-day log below |
+| G4 | Pimlico mainnet settings | **Done 2026-10-10 (#83).** Policy `sp_mixed_hellion` per D8 (Disabled until runbook step 8; **in effect on mainnet by 2026-10-12 21:14 UTC**, see the first-vault entry); key `cryoshield-mainnet`: origin `cryoshield.app` only, bundler on, "verifying paymaster" off, account APIs and boost off; $120 prepaid, no card. Task 1.1 (a): policy-scoped sponsorship with "verifying paymaster" off verified on the dev key (2026-10-10/11, #86) | `apps/web/docs/paymaster-policy.md` §3–4 |
+| G5 | Recovery tool on mainnet | **Done for the public-RPC path 2026-10-12/13; the Arweave path is still open (7.8).** `10.json` and the `op-mainnet` preset merged (#102, #103). The `recover-release.yml` dry run on `012c084` was green (run 38297212786). `v1.0.0` carries 7 files plus their `.sha256` files and `SHA256SUMS`; all pass `gh attestation verify`. `--version` prints `1.0.0`; with no flag the network is `op-mainnet`, v2 only. The founder unlocked a dev vault with `--testnet`, then the new mainnet vault with no network flag: "Cool recovery tool works and verified" (2026-10-13) | launch-day log below |
 | G6 | Audit decision | **Done**: see Q1 above. The founder's 2026-10-12 sign-off accepts the `mainnet-gate` entry, which restates this decision (the quote does not name G6 separately) | this file |
 | G7 | Monitoring ready | Runbook thresholds in `apps/web/docs/paymaster-policy.md` (task 5.3); founder calendar reminders: added by the founder 2026-10-12: the 2027-10-02 policy end, the daily (14 days), weekly and monthly checks, and the Fly token rotation before 2027-10-05. **Still to confirm:** the September 2027 domain and `security.txt` dates | |
 | G8 | Rollback ready | **Done 2026-10-12.** The founder saved the four testnet `production-build` values offline, including the testnet bundler URL from the Pimlico dashboard (checklist 4.1). `v1.0.0`'s commit `012c084` was green on dev (deploy-dev) before the release | |
@@ -114,20 +114,24 @@ smoke, founder YubiKey smoke, recovery test, Pimlico check, soft-launch monitori
   `VITE_BUNDLER_URL` or `FLY_API_TOKEN`.
 - **2026-10-12, release (task 7.5, runbook step 7), by the founder:** `v1.0.0` published 20:57 UTC on `012c084`.
   `deploy.yml` run 38307520254 green (full CI, chain-10 build, `release`, smoke); Fly release v16.
-  `recover-release.yml` run 38307519843 green and attached the 15 files. The agent checked:
+  `recover-release.yml` run 38307519843 green and attached 15 files (7 binaries and archives, 7 `.sha256` files and `SHA256SUMS`). The agent checked:
   - `https://cryoshield.app/release.json`: commit `012c084`, `chainId` 10, `rpId` `cryoshield.app`, `registry: null`,
     v2 `0xA622…cB7` from block 158114294, the D1 factory and implementation;
-  - the landing page names OP Mainnet with no testnet banner;
+  - the landing page names OP Mainnet with no testnet banner, and showed "not been independently audited" (7 matches in
+    the served HTML) and "OP Mainnet" (10 matches), as the original 7.5 criterion asked. The copy later moved to the
+    footer, `/terms` and `/privacy` by #104, which ships with the next release;
   - the release's 7 files match `SHA256SUMS`, and all 7 pass `gh attestation verify`. Six are byte-identical to the
     dry run. `cryoshield-recover-macos-x86_64` is not (same size, ad-hoc signed, matches its own checksum, prints
-    `1.0.0`, defaults to `op-mainnet`): the Intel macOS build is not yet reproducible. Follow-up, not a launch blocker;
+    `1.0.0`, defaults to `op-mainnet`): the Intel macOS build is not yet reproducible. Follow-up [#106](https://github.com/prix0007/cryoshield/issues/106), not a launch blocker;
   - Fly: both machines on v16 (one running and passing `/healthz`, one suspended by `auto_stop`); certificates
     issued for `cryoshield.app` and `www`; `www`, `http://` and `cryoshield-web.fly.dev` redirect to
     `https://cryoshield.app/`; strict CSP, HSTS (preload), `X-Frame-Options: DENY`.
 - **2026-10-12, first mainnet vault (task 7.7, part), created by the founder on https://cryoshield.app; checked by the
   agent:** vault `0x5786f991…2678`, tx `0x66ddb5b3…00a5`, block 158120434, 21:14:05 UTC, status 1. One UserOperation
-  through EntryPoint v0.6, sent by Pimlico's bundler and paid by Pimlico's paymaster `0x66666666…c68b` (policy
-  `sp_mixed_hellion`; about 1.7 × 10⁻⁶ ETH). The same transaction created the passkey wallet `0x174e1a82…1030`
+  through EntryPoint v0.6, sent by Pimlico's bundler and paid by Pimlico's paymaster `0x66666666…c68b` (about
+  1.7 × 10⁻⁶ ETH). The app requests policy `sp_mixed_hellion`, so the sponsored operation shows the policy was in
+  effect. Who enabled it, and when, is not recorded here: runbook step 8 planned it after the smoke test, but this
+  sponsored create was itself part of the smoke. The same transaction created the passkey wallet `0x174e1a82…1030`
   (ERC-1967 proxy to the D1 implementation, through the D1 factory). `getVault` returns version 1 and a 1,006-byte
   blob with the `CRYO` v1 header. Two `LocatorAdded` events, one per key. Edit, add-key and the Arweave mirror are not
   recorded here yet.
