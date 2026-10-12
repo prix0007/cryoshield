@@ -7,32 +7,25 @@ Permanent, non-custodial backup for the secrets you can't afford to lose (seed p
 - The encrypted vault lives on an EVM rollup (**OP Mainnet**; currently testnet-only on **OP Sepolia**), mirrored to **Arweave**. Gas is sponsored, so you never need a wallet or crypto.
 - If CryoShield disappears, the open-source **desktop recovery tool** still unlocks your vault, straight from the public chain.
 
-> Status: pre-MVP. Not audited. Not deployed to any public network yet. Testnet target: OP Sepolia (chain 11155420). Get test ETH from the [Superchain faucet](https://console.optimism.io/faucet).
+> Status: testnet only (OP Sepolia), at https://cryoshield-web-dev.fly.dev. Not audited.
 
-## Repository layout
+## If you need your vault
 
-| Path | What | Spec |
-|---|---|---|
-| `packages/vault-crypto` | Vault format v1: PRF → HKDF-SHA256 → AES-256-GCM envelope encryption, vaultId-bound AAD, Shamir option, test vectors | `openspec/specs/vault-crypto` · `docs/spec/vault-format-v1.md` |
-| `contracts` | `VaultRegistry` (Foundry): no admin, no upgrades, append-only locator index | `openspec/specs/vault-registry` |
-| `apps/web` | Static web app: WebAuthn PRF, ERC-4337 passkey smart account, sponsored gas, Arweave mirror | `openspec/specs/vault-web-app` |
-| `tools/recover` | `cryoshield-recover` Python CLI (CTAP2 hmac-secret), an independent second implementation of the format | `openspec/specs/vault-recovery` |
-| `tools/metrics` | Aggregate, identifier-free product metrics from public chain and Arweave data (no tracking, no backend) | `product-metrics` (change `add-privacy-preserving-analytics`) |
-| `docs/reviews` | Security review records | |
+- **Recover without the website:** [`tools/recover/README.md`](tools/recover/README.md) explains how to install or download `cryoshield-recover` and unlock a vault with one of your keys, using only public RPCs or Arweave.
+- **Lost or compromised hardware key:** follow [`docs/lost-or-compromised-key.md`](docs/lost-or-compromised-key.md).
+- **Which keys work:** [`docs/supported-devices.md`](docs/supported-devices.md).
 
-The system design (architecture, key derivation, flows, delivery pipeline) is in [`docs/system-design.md`](docs/system-design.md). The product requirements live in `.claude/PRPs/prds/cryoshield.prd.md`.
+## How it works
 
-## How we work: OpenSpec is mandatory
+The architecture, key derivation and flows are in [`docs/system-design.md`](docs/system-design.md). The vault format is specified in [`docs/spec/vault-format-v1.md`](docs/spec/vault-format-v1.md), with deterministic test vectors in `packages/vault-crypto/test-vectors/`.
 
-Every feature, fix, and refactor starts as an OpenSpec change. No code is written without one.
-
-```sh
-openspec list              # active changes
-openspec view              # dashboard
-openspec validate --all --strict
-```
-
-Workflow: `/opsx:propose`, then implement with TDD via `/opsx:apply`, then a security review (required for any change touching crypto, contracts, the paymaster, or secret handling), then `/opsx:archive`. Project-wide constraints are in `openspec/config.yaml`.
+| Path | What |
+|---|---|
+| `packages/vault-crypto` | Vault format: PRF → HKDF-SHA256 → AES-256-GCM, Shamir option, test vectors |
+| `contracts` | Vault registry and smart wallet (Foundry). No admin, no upgrades |
+| `apps/web` | Static web app: WebAuthn PRF, ERC-4337 passkey account, sponsored gas, Arweave mirror |
+| `tools/recover` | `cryoshield-recover`, the Python desktop recovery tool and a second implementation of the format |
+| `tools/metrics` | Aggregate, identifier-free metrics from public chain and Arweave data |
 
 ## Development
 
@@ -41,152 +34,26 @@ Prerequisites: Node 22 and pnpm 9, Foundry 1.1.0, Python ≥ 3.10 with uv, and t
 ```sh
 pnpm install --frozen-lockfile
 
-# crypto library
-pnpm --filter @cryoshield/vault-crypto test
-
-# contracts
-cd contracts && forge test && forge snapshot --mc GasTest --check
-
-# web app (unit, integration on local anvil, E2E with a virtual authenticator)
-pnpm --filter @cryoshield/web test
-pnpm --filter @cryoshield/web test:int
-pnpm --filter @cryoshield/web test:e2e
+pnpm --filter @cryoshield/vault-crypto test                  # crypto library
+(cd contracts && forge test && forge snapshot --mc GasTest --check)
+pnpm --filter @cryoshield/web test                           # web: unit
+pnpm --filter @cryoshield/web test:int                       # web: integration on local anvil
+pnpm --filter @cryoshield/web test:e2e                       # web: E2E, virtual authenticator
 pnpm --filter @cryoshield/web verify-build
-
-# recovery tool
-cd tools/recover && uv sync --locked && uv run pytest -q
-
-# product metrics (tools/metrics/README.md)
-pnpm --filter @cryoshield/metrics test
-pnpm metrics --network op-sepolia
+(cd tools/recover && uv sync --locked && uv run pytest -q)   # recovery tool
+pnpm --filter @cryoshield/metrics test                       # metrics
+openspec validate --all --strict
 ```
 
-Dependency install scripts are disabled (`pnpm.onlyBuiltDependencies: []`).
-
-Real-hardware checklists:
-- `apps/web/docs/hardware-test.md`
-- `tools/recover/docs/manual-yubikey-test.md`
-
-## Continuous integration
-
-`.github/workflows/ci.yml` runs one job per area. Each job runs only when its paths change:
-- `contracts`: build, tests, gas snapshot, Slither
-- `vault-crypto`: Node and Chromium
-- `recover`: Python 3.10 and 3.12
-- `web`
-- `openspec`: strict validation
-- `workflow-lint`
-
-- `pr-checks` (pull requests only), which runs on every PR event and checks:
-  - the title follows Conventional Commits;
-  - the OpenSpec gate passes;
-  - gitleaks finds no secrets in the PR's commits;
-  - osv-scanner finds no HIGH/CRITICAL vulnerabilities in any lockfile.
-
-A final **`ci-ok`** job aggregates the results. Skipped jobs count as passing; failed or cancelled jobs fail it.
-
-How the workflow is hardened:
-- triggers are `push` (main) and `pull_request` only;
-- `permissions: contents: read` at the top, and every job declares its own minimal permissions and a `timeout-minutes`;
-- no secrets are referenced; PR title, body and labels reach scripts only through `env:`;
-- every action is pinned by commit SHA, and the scanners are pinned by version and SHA-256 (Dependabot keeps them updated);
-- checkouts don't persist credentials, and installs fail on lockfile drift;
-- superseded PR runs are cancelled.
-
-`workflow-lint` enforces these rules with actionlint, zizmor (pedantic persona) and `.github/scripts/workflow-policy.mjs`. Inline `zizmor: ignore` comments are rejected.
-
-The gate scripts live in `.github/scripts` and are tested with `npm ci --ignore-scripts --prefix .github/scripts && npm test --prefix .github/scripts`.
+Real-hardware checklists: `apps/web/docs/hardware-test.md` and `tools/recover/docs/manual-yubikey-test.md`.
 
 ## Contributing / PR workflow
 
-`main` is protected by the ruleset in `.github/rulesets/main.json`. Every change, including the maintainer's, goes through a pull request. The step-by-step flow for agents and humans is in [`CLAUDE.md`](CLAUDE.md) → "Change flow (one PR per change)". AI agents work through a non-admin machine account ([`docs/agent-account.md`](docs/agent-account.md)), so they cannot change protection, environments or secrets.
+- **OpenSpec first.** Every feature, fix and refactor starts as a change under `openspec/changes/<name>/`. A PR that touches code or CI without one fails the gate (unless labelled `no-spec` with a `No-spec justification:` line).
+- **Branch** as `feat/`, `fix/`, `ci/`, `docs/` or `chore/`. The **PR title** is a Conventional Commit (`fix(recover): handle empty log page`); it becomes the squash commit on `main`.
+- Fill in the PR template. CI and an automated review run on every PR; the owner approves the review and merges PRs from outside contributors.
 
-1. **OpenSpec first.** Propose a change under `openspec/changes/<name>/` before writing code (see above).
-   - A PR that touches code or CI configuration (`apps/`, `packages/`, `contracts/src/`, `tools/recover/src/`, `tools/metrics/`, `.github/`, `scripts/`, `.gitleaks.toml`, the root workspace manifests or `contracts/foundry.toml`) must also add or modify something under `openspec/changes/`, archiving included.
-   - The only exception is the `no-spec` label plus a `No-spec justification: <reason>` line in the PR description.
-   - Dependabot PRs that touch only dependency manifests are exempt.
-2. **Branch** from `main` with a prefix: `feat/`, `fix/`, `ci/`, `docs/` or `chore/`, for example `feat/shamir-recovery`.
-3. **PR title** in Conventional Commits form, `type(scope)!: subject`, for example `fix(recover): handle empty log page`. It becomes the commit on `main`.
-4. **Fill in the PR template:**
-   - the OpenSpec change;
-   - the tasks covered;
-   - verification (the tests you ran);
-   - a security-review link, or N/A;
-   - screenshots for UI changes.
-5. **ECC review** (`.github/workflows/ecc-review.yml`):
-   - it runs **automatically only for trusted authors**: the repository owner, or a login in [`.github/trusted-authors.json`](.github/trusted-authors.json) on `main` (OpenSpec change `gate-external-pr-automation`);
-   - for anyone else (Dependabot included), or when an untrusted account pushes to a trusted PR, the `ecc-review` check fails at once with "Awaiting owner approval". The owner reads the PR and comments `/ecc-review <head sha>` (7 or more characters) to run the review for that commit. Every new push, and every re-run, needs a new approval;
-   - each review comes from the ECC reviewer agents chosen by path, once per approved push;
-   - it posts *request changes* on CRITICAL/HIGH findings, *comment* otherwise;
-   - push fixes to re-run it, or, as the owner, comment `/ecc-review`;
-   - fork PRs are refused. To take a fork contribution, the owner reads it and re-pushes its commits to a branch in this repository;
-   - it needs `CLAUDE_CODE_OAUTH_TOKEN` (from `claude setup-token`) or `ANTHROPIC_API_KEY`, as both an Actions secret and a Dependabot secret.
-6. **Auto-merge** (`.github/workflows/auto-merge.yml`):
-   - every same-repo, non-draft PR **by a trusted author** squash-merges by itself once all required checks pass;
-   - PRs by anyone else (Dependabot included) are never auto-merged: the owner merges them by hand after review;
-   - it is active only while `ecc-review` is a required check;
-   - the `hold` label is the owner's veto.
-7. **Merge rules:**
-   - `ci-ok` and `ecc-review` must be green (the branch need not be up to date; `main` is re-tested before deploy);
-   - all conversations must be resolved;
-   - squash merge only, so history stays linear;
-   - force-pushes to `main` and deleting it are blocked;
-   - no approval is required, since the single maintainer cannot approve their own PRs. `.github/CODEOWNERS` still requests the owner on every PR, and the trusted-author gate above stands in for code-owner approval;
-   - nobody can bypass these rules.
-
-8. **Fork PRs** need a maintainer's "Approve and run" before *any* workflow runs, whatever the contributor's history. The repository's fork-PR approval policy is `all_external_contributors` (`.github/rulesets/fork-pr-approval.json`, applied by `apply.sh`). Fork runs of `ci.yml` never get secrets.
-
-Secret-scan exceptions are in `.gitleaks.toml` (public test vectors only). Vulnerability exceptions are in `.github/osv-scanner.toml`; each needs a reason and expires within 90 days. Changing either one needs a security review.
-
-**Applying the ruleset (repository admin, `gh auth login` with admin rights):**
-
-```sh
-.github/rulesets/apply.sh           # dry run: diff of live vs committed (exit 3 on drift)
-.github/rulesets/apply.sh --apply   # create/update only what differs; idempotent
-```
-
-The script syncs:
-- the `main` ruleset;
-- the repository merge settings in `.github/rulesets/repo-settings.json` (squash only, PR title as the commit title, delete the branch on merge);
-- the Actions workflow permissions in `.github/rulesets/actions-permissions.json` (read-only default token; Actions may not approve PRs);
-- the fork-PR workflow approval policy in `.github/rulesets/fork-pr-approval.json` (`all_external_contributors`: every fork PR waits for approval);
-- the managed labels in `.github/rulesets/labels.json`;
-- auto-merge, enabled in the repository settings;
-- with `--environments`: the deploy environments in `.github/rulesets/environments.json` (`production`: the owner as required reviewer, no admin bypass, `main` only; `production-build`: `main` only);
-- with `--founder-hardening` (off by default): Dependabot security updates and "actions must be pinned to a full commit SHA" (`.github/rulesets/actions-hardening.json`).
-
-`ecc-review` is **not** a required check by default, and auto-merge stays off until it is.
-
-To enable both:
-1. Add the `CLAUDE_CODE_OAUTH_TOKEN` secret (or `ANTHROPIC_API_KEY`) twice: as an Actions secret and as a Dependabot secret.
-
-   ```sh
-   claude setup-token
-   gh secret set CLAUDE_CODE_OAUTH_TOKEN
-   gh secret set CLAUDE_CODE_OAUTH_TOKEN --app dependabot
-   ```
-2. Wait until an ECC review has succeeded on a PR.
-3. Run `.github/rulesets/apply.sh --with-ecc-review --apply`.
-
-Keep passing `--with-ecc-review` from then on: without it, `--apply` refuses to drop the requirement.
-
-To change protection, edit those files in a PR and re-run the script after it merges.
-
-## Deployment
-
-There are two targets (OpenSpec change `split-dev-and-release-deploys`):
-
-- **Development, https://cryoshield-web-dev.fly.dev** (OP Sepolia, not indexed). It is served on its own `fly.dev` name, a different registrable domain from `cryoshield.app`, so its RP ID can never reach production vaults. Every new commit on `main` is deployed there automatically by `.github/workflows/deploy-dev.yml`.
-- **Production, https://cryoshield.app.** It is deployed only when the repository owner publishes a release: `gh release create vX.Y.Z --target main --generate-notes`. `.github/workflows/deploy.yml` then deploys that tag. Only admins can create tags, `v*` or any other (ruleset `release-tags`, `~ALL`), and the workflow runs only for the owner.
-
-Both pipelines run the same stages:
-
-1. **detect:** the dev pipeline compares `/release.json` with `main`'s HEAD and skips if they are equal. The production pipeline resolves the tag and refuses a commit that is not on `main`.
-2. **test:** run the **full** `ci.yml` on that exact commit.
-3. **build** (no deploy token): run the guarded `DEPLOY_TARGET=<target> apps/web/deploy/deploy.sh --build-only` in the target's build environment (`development-build` or `production-build`).
-4. **release** (Environment `development` or `production`, no manual approval): run pinned flyctl on the verified build artifact, then check the routes, headers (noindex on dev only), registry address and `/release.json`. On failure, roll back to the previous image automatically in the same job.
-
-Neither pipeline runs on pull requests. To roll production back, run `gh workflow run deploy.yml --ref vX.Y.Z` with an earlier release tag. Production secrets are reachable only from `v*` tags, and only admins can create tags. To redeploy dev, run `gh workflow run deploy-dev.yml --ref main -f force=true`. See [`docs/deploy.md`](docs/deploy.md) for first-time setup and token rotation.
+The full flow is in [`CLAUDE.md`](CLAUDE.md) → "Change flow". CI, branch protection and deployment details are in [`docs/maintainers.md`](docs/maintainers.md) and [`docs/deploy.md`](docs/deploy.md).
 
 ## Support the project
 
@@ -203,10 +70,10 @@ CryoShield is free, open-source software. If it helps you, you can send a volunt
 
 ## Security
 
-There is no external audit for the MVP. Mitigations: an open specification, deterministic cross-implementation test vectors, symmetric-only cryptography, and an internal adversarial review of every security-relevant change (`docs/reviews/`, `apps/web/docs/security-review.md`). Please report vulnerabilities privately, never in public issues: see [`SECURITY.md`](SECURITY.md) (scope, safe harbour, timelines) and [`/.well-known/security.txt`](https://cryoshield.app/.well-known/security.txt), or use [GitHub private vulnerability reporting](https://github.com/prix0007/cryoshield/security/advisories/new).
+There is no external audit. CryoShield relies on an open specification, cross-implementation test vectors, symmetric-only cryptography and an internal review of every security-relevant change ([`docs/reviews/`](docs/reviews/)).
 
-**Issues** get an automatic acknowledgement and, if they pass a no-model screen for secrets and vulnerability reports, a capped, sandboxed first diagnosis. See [`CLAUDE.md`](CLAUDE.md) → "Issue triage". **Never post seed phrases, recovery codes, PINs or keys in an issue.**
+Report vulnerabilities privately, never in a public issue: see [`SECURITY.md`](SECURITY.md) or use [GitHub private vulnerability reporting](https://github.com/prix0007/cryoshield/security/advisories/new). **Never post seed phrases, recovery codes, PINs or keys in an issue.**
 
 ## License
 
-[MIT](LICENSE). Every first-party package declares MIT, and `scripts/check-licenses.sh` enforces this in CI.
+[MIT](LICENSE).
