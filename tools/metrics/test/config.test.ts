@@ -73,8 +73,15 @@ describe('presets', () => {
     expect(loadNetwork('anvil').public).toBe(false);
   });
 
+  it('loads op-mainnet as v2 only, from deployments/10.json (no v1 on mainnet)', () => {
+    const n = loadNetwork('op-mainnet');
+    expect(n.chainId).toBe(10);
+    expect(n.public).toBe(true);
+    expect(n.registries.map((r) => r.address.toLowerCase())).toEqual(['0xa622c92d3d5b54aea081cf410224a8a2ecb08cb7']);
+  });
+
   it('a network without a deployment record is refused, an unknown name too', () => {
-    expect(() => loadNetwork('op-mainnet')).toThrow(/no VaultRegistry deployment/);
+    expect(() => loadNetwork('arbitrum-one')).toThrow(/no VaultRegistry deployment/);
     expect(() => loadNetwork('nope')).toThrow(/unknown network/);
   });
 
