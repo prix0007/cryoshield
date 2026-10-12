@@ -321,3 +321,13 @@ None are blocking. The R1 items marked UNVERIFIED are confirmations for the foun
 ## Security review
 
 Recorded at task 7.1 in `docs/reviews/harden-gas-sponsorship.md`.
+
+## Founder approval (task 8.1)
+
+2026-10-12, recorded with the `mainnet-gate` sign-off in `docs/compliance/review-log.md`, in the founder's words:
+"Signed: prix0007, 2026-10-12. I accept this entry and the re-scored risk register, the sanctions stance in §6 holds
+for mainnet, and I approve the D8 sponsorship values."
+
+The D8 values are those of `launch-op-mainnet` design D8 (policy `sp_mixed_hellion`, recorded in the dashboard
+2026-10-10, #83). Task 8.1 stays unticked until its last precondition, the D6 trigger reviewed against the testnet
+usage data, is recorded.

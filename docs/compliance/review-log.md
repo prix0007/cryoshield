@@ -36,10 +36,10 @@ review re-checks everything in a six-monthly review, plus the items listed under
 
 ## 2026-10-09: mainnet-gate (reviewer: prix0007)
 
-> **Draft, not signed.** An agent drafted this entry for the maintainer (`prix0007`) to check, edit and sign. It is
-> not a launch decision. CI's mainnet gate (`.github/scripts/mainnet-gate.mjs`) reads only the heading above, not the
-> sign-off line, so **merging this entry opens the CI gate**. Merge it only once it is signed. Its 30-day window ends
-> on **2026-11-08**: if the PR that adds `contracts/deployments/10.json` has not merged by then, it needs a new entry.
+> **Signed by the maintainer, 2026-10-12** (sign-off at the end of this entry). CI's mainnet gate
+> (`.github/scripts/mainnet-gate.mjs`) reads only the heading above. Its 30-day window ends on **2026-11-08**: if the PR
+> that adds `contracts/deployments/10.json` has not merged by then, it needs a new entry. Conditions 4, 6, 7 and 8 below
+> are launch-day steps and stay open until the launch record shows them closed.
 
 **Scope.** The compliance gate G9 of [`launch-op-mainnet`](../../openspec/changes/launch-op-mainnet/design.md)
 (Go/no-go → G9) for moving https://cryoshield.app from OP Sepolia (11155420) to OP Mainnet (10): the six-monthly
@@ -133,7 +133,7 @@ and design D3, D7 and D8; this review records them and does not make them):
      that usecase");
    - the v1 items stay **waived for mainnet** (founder, 2026-10-10): v1 is OP Sepolia only.
 
-   `harden-gas-sponsorship` 8.1 (the founder's approval, against the D8 values `sp_mixed_hellion`) stays open with
+   `harden-gas-sponsorship` 8.1 (the founder's approval, against the D8 values `sp_mixed_hellion`) was given with
    this sign-off.
 3. **G1.** 2FA is on for the GitHub owner account and for Cloudflare (founder's statement, 2026-10-09). The founder
    confirmed on 2026-10-10 that the method is hardware security keys on both accounts. **CI-H1 closed 2026-10-09:** agents now push and
@@ -211,7 +211,7 @@ GoDaddy, Fly, GitHub settings), running the incident runbook's commands, and the
 **Next review due:** a new `mainnet-gate` entry if `10.json` has not merged by 2026-11-08; otherwise the six-monthly
 review by 2027-04-08.
 
-**Sign-off:** _pending: founder signature and date_
+**Sign-off:** Signed: prix0007, 2026-10-12. I accept this entry and the re-scored risk register, the sanctions stance in §6 holds for mainnet, and I approve the D8 sponsorship values.
 
 ## 2026-10-08: claims-check (reviewer: frontend engineer agent, add-theme-switch)
 
