@@ -6,4 +6,5 @@
   - "CryoShield holds no personal data", with no controller or Data Fiduciary wording;
   - the US no-sale section keeps CCPA and GPC.
 - [x] 1.2 Edit `apps/web/legal/privacy.md`; effective date 2026-10-12; "Changes" entry.
+- [x] 1.4 The privacy-request issue form (#97 review, MEDIUM) now offers only "Deletion or redaction", "Question about the privacy policy" and "Other". The Access, Correction, Objection and Grievance (DPDP) options and the 24-hour and 15-day promise are removed. Test: `test/build/privacy-request-template.test.ts`.
 - [x] 1.3 Specs: `project-contact` delta here; `legal-pages` edited in `add-privacy-and-compliance`.
