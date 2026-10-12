@@ -224,7 +224,16 @@ def test_op_sepolia_registry_v2_is_the_live_deployment() -> None:
     assert cfg("--testnet").registries[0] == v2
 
 
-@pytest.mark.parametrize("name", ["op-mainnet", "arbitrum-one", "arbitrum-sepolia"])
+def test_op_mainnet_registry_is_the_live_v2_only_deployment() -> None:
+    """VaultRegistry v2 on OP Mainnet (contracts/deployments/10.json, contracts.vaultRegistryV2, deployed
+    2026-10-12). There is no v1 on OP Mainnet, by design."""
+    (v2,) = NETWORKS["op-mainnet"].registries
+    assert (v2.version, v2.address) == (2, "0xa622c92d3d5b54aea081cf410224a8a2ecb08cb7")
+    assert v2.deploy_block == 158114294 and v2.trusted and v2.source == config.BUILT_IN
+    assert cfg().registries == [v2] and cfg("--network", "op-mainnet").registries == [v2]
+
+
+@pytest.mark.parametrize("name", ["arbitrum-one", "arbitrum-sepolia"])
 def test_undeployed_presets_stay_placeholders(name: str) -> None:
     assert NETWORKS[name].registries == ()
 
@@ -232,12 +241,12 @@ def test_undeployed_presets_stay_placeholders(name: str) -> None:
 def test_preset_without_deployment_refuses_chain_mode() -> None:
     console, err = term()
     code = cli.main(
-        ["--network", "op-mainnet", "--no-arweave"],
+        ["--network", "arbitrum-sepolia", "--no-arweave"],
         console=console,
         prf_factory=lambda ui: FakePrfSource([PhysicalKey.named("A")], ui=ui),
     )
     text = err.getvalue()
-    assert "No VaultRegistry deployment is built in for op-mainnet" in text
+    assert "No VaultRegistry deployment is built in for arbitrum-sepolia" in text
     assert "--registry" in text and "--registry-v2" in text
     assert code == ExitCode.NETWORK_UNAVAILABLE
 
@@ -296,14 +305,21 @@ def test_custom_chain_has_no_built_in_v2_registry() -> None:
 
 
 def test_v2_only_chain_is_configured_and_announced() -> None:
-    """OP Mainnet will carry only v2: chain lookup is on with a v2 address and no v1 address."""
-    c = cfg("--network", "op-mainnet", "--registry-v2", "0x" + "2b" * 20)
+    """OP Mainnet carries only v2: chain lookup is on with its built-in v2 address and no v1 address."""
+    v2 = NETWORKS["op-mainnet"].registries[0].address
+    c = cfg("--network", "op-mainnet")
     assert [s.version for s in c.registries] == [2] and c.chain_configured
     console, err = term()
     cli.startup_summary(c, console)
     text = err.getvalue()
     assert "lookup is off" not in text
-    assert "registry v2 0x" + "2b" * 20 in text and "registry v1" not in text
+    assert f"registry v2 {v2}" in text and "registry v1" not in text
+    # A supplied v2 sits BESIDE the built-in one, untrusted (D10); it never replaces it.
+    c2 = cfg("--network", "op-mainnet", "--registry-v2", "0x" + "2b" * 20)
+    assert [(s.version, s.address, s.trusted) for s in c2.registries] == [
+        (2, v2, True),
+        (2, "0x" + "2b" * 20, False),
+    ]
 
 
 def test_both_registries_announced() -> None:

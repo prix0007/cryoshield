@@ -71,7 +71,12 @@ def test_readme_git_installs_are_pinned_to_a_release_tag() -> None:
     urls = re.findall(r"git\+https://[^\s\"']+", text)
     assert urls, "the README documents a source install"
     for url in urls:
-        assert re.fullmatch(
-            r"git\+https://github\.com/prix0007/cryoshield@<release-tag>#subdirectory=tools/recover", url
-        ), url
-    assert "replace `<release-tag>`" in text.lower()
+        # A concrete release tag (vX.Y.Z) or the <release-tag> placeholder; never a branch or no ref.
+        m = re.fullmatch(
+            r"git\+https://github\.com/prix0007/cryoshield@(<release-tag>|v\d+\.\d+\.\d+)"
+            r"#subdirectory=tools/recover",
+            url,
+        )
+        assert m, url
+        if m.group(1) == "<release-tag>":
+            assert "replace `<release-tag>`" in text.lower()

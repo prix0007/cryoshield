@@ -216,4 +216,4 @@
   - the D6 trigger is reviewed against the testnet usage data.
 
   Verify: the approval and the dashboard settings date are in design.md. Only after this may the deploy script target chain 10. The founder's funding of the mainnet deployer does not by itself open the gate.
-- [ ] 8.2 [ow] After 8.1, deploy to OP Mainnet **only** VaultRegistry v2 and the `cryoshield.app` wallet implementation and factory. **VaultRegistry v1 is NOT deployed to mainnet**, and neither is the dev RP ID's pair. Verify: `contracts/deployments/10.json` has no top-level v1 address, only `contracts.vaultRegistryV2` and `contracts.wallets["cryoshield.app"]`; Blockscout verification passes; the bytecode-parity check passes.
+- [x] 8.2 [ow] After 8.1, deploy to OP Mainnet **only** VaultRegistry v2 and the `cryoshield.app` wallet implementation and factory. **VaultRegistry v1 is NOT deployed to mainnet**, and neither is the dev RP ID's pair. Verify: `contracts/deployments/10.json` has no top-level v1 address, only `contracts.vaultRegistryV2` and `contracts.wallets["cryoshield.app"]`; Blockscout verification passes; the bytecode-parity check passes.

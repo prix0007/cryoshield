@@ -1,0 +1,22 @@
+{
+  "chainId": 10,
+  "contracts": {
+    "vaultRegistryV2": {
+      "abiHash": "0xacb135ccf895846a59981b20545041660e21942c6108c000d9f1c46f552cb95c",
+      "address": "0xA622c92d3D5b54aeA081Cf410224a8A2eCb08cB7",
+      "deployBlock": 158114294,
+      "txHash": "0x11f22a396d467850e7ac401646602426ce3096ff4ebfb3902f3ed357d513ff44"
+    },
+    "wallets": {
+      "cryoshield.app": {
+        "abiHash": "0x0e5bb9f7e1882471ecae54132e4b32506172c68dba8d7e94574d3a6fe42d72eb",
+        "deployBlock": 158114295,
+        "factory": "0x775dc816594262274E78Ae75D97C8EdB0df5DfED",
+        "factoryAbiHash": "0x74a8afa9fd58d116006bb501c8a7a50b1e1ace55ae342ad73eac1002f30a3a95",
+        "implementation": "0x8aA76FaA6629cA1EA8ccC3F9Edf0E8D98816Acd7",
+        "rpIdHash": "0xb14ad9e287e85374ad73c3d305858294a7afc28d13b9b924606b7a2d1af03d7f",
+        "txHash": "0x7de814ffe0f6ba75953f1e54c9f95a18914bf9d0119b7c8942b2ff5062ced358"
+      }
+    }
+  }
+}

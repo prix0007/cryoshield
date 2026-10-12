@@ -251,11 +251,11 @@ def test_deployment_file_raising_a_built_in_block_is_refused(tmp_path: Path) -> 
 def test_release_file_on_a_chain_without_built_ins_is_trusted_with_a_warning(tmp_path: Path) -> None:
     doc = {
         "name": "cryoshield-web",
-        "config": {"chainId": 10, "registry": None, "registryV2": {"address": B2, "deployBlock": 4}},
+        "config": {"chainId": 421614, "registry": None, "registryV2": {"address": B2, "deployBlock": 4}},
     }
     c = cfg("--deployment-file", write(tmp_path, "release.json", doc))
-    assert c.network == "op-mainnet" and key(c) == [(2, B2, 4, True, "from 'release.json'")]
-    assert "no built-in registry for op-mainnet" in summary(c)
+    assert c.network == "arbitrum-sepolia" and key(c) == [(2, B2, 4, True, "from 'release.json'")]
+    assert "no built-in registry for arbitrum-sepolia" in summary(c)
 
 
 def test_deployment_file_chain_conflicts_are_refused(tmp_path: Path) -> None:
@@ -326,7 +326,8 @@ def test_summary_comes_before_any_request() -> None:
             console=ui,
             prf_factory=prf,
         )
-    assert seen == [0] and f"registry v1 {node.address}" in err.getvalue()
+    # The default network (op-mainnet) has a built-in v2, so the supplied v1 is labelled untrusted (D10).
+    assert seen == [0] and f"registry v1 (supplied) {node.address}" in err.getvalue()
 
 
 # ------------------------------------------------------------------ HIGH 1 end to end

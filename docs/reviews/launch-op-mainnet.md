@@ -29,7 +29,7 @@ is done.
 | G4 | Pimlico mainnet settings | **Done 2026-10-10 (#83).** Policy `sp_mixed_hellion` per D8 (Disabled until runbook step 8); key `cryoshield-mainnet`: origin `cryoshield.app` only, bundler on, "verifying paymaster" off, account APIs and boost off; $120 prepaid, no card. Task 1.1 (a): policy-scoped sponsorship with "verifying paymaster" off verified on the dev key (2026-10-10/11, #86) | `apps/web/docs/paymaster-policy.md` §3–4 |
 | G5 | Recovery tool on mainnet | Open until `10.json` and the regenerated preset (task 7.3/7.4). Branch `feat/mainnet-recovery-default` @ `40b5cc1` pushed to origin 2026-10-12; merges cleanly with `main` | |
 | G6 | Audit decision | **Done**: see Q1 above. The founder's 2026-10-12 sign-off accepts the `mainnet-gate` entry, which restates this decision (the quote does not name G6 separately) | this file |
-| G7 | Monitoring ready | Runbook thresholds in `apps/web/docs/paymaster-policy.md` (task 5.3); founder calendar reminders: the 2027-10-02 policy-end reminder added (founder, 2026-10-12). **Still to confirm:** the daily (14 days), weekly and monthly checks, the Fly token rotation before 2027-10-05, and the September 2027 domain and `security.txt` dates | |
+| G7 | Monitoring ready | Runbook thresholds in `apps/web/docs/paymaster-policy.md` (task 5.3); founder calendar reminders: added by the founder 2026-10-12: the 2027-10-02 policy end, the daily (14 days), weekly and monthly checks, and the Fly token rotation before 2027-10-05. **Still to confirm:** the September 2027 domain and `security.txt` dates | |
 | G8 | Rollback ready | Open: save the four current `production-build` values offline and the testnet bundler URL from the Pimlico dashboard; `v1.0.0`'s commit green on dev | |
 | G9 | Compliance `mainnet-gate` entry | **Signed 2026-10-12** by the founder (entry dated 2026-10-09). The `mainnet-gate` entry in `docs/compliance/review-log.md` is dated 2026-10-09; its CI window ends 2026-11-08. The risk register is re-scored. Both are signed. The entry's launch-day conditions (G7, G8, G5, G10, G11) stay open until closed in this record | [review-log 2026-10-09 entry](../compliance/review-log.md#2026-10-09-mainnet-gate-reviewer-prix0007), [risk register](../compliance/risk-register.md) |
 | G10 | Copy and build | Chain-10 and chain-11155420 builds pass `verify-build` and the section-4 copy tests (6.1 evidence below); confirmed again by CI on `v1.0.0` | |
@@ -82,6 +82,23 @@ smoke, founder YubiKey smoke, recovery test, Pimlico check, soft-launch monitori
   158113739, 17:30 UTC. A fresh P-256 key signed a random SHA-256 hash; the 160-byte input returned
   `0x…0001`; the same input with the first hash byte changed returned `0x`. The other G11 chain facts were checked
   by the founder the same day ("looks fine"); their values are still to be written here.
+- **2026-10-12, contract deploy (task 7.2, runbook steps 1–2), by the founder:** simulation showed the three D1
+  addresses, `v1: not deployed on op_mainnet (by design)` and "nothing sent"; then broadcast from deployer
+  `0x33144f68…26bf` through the CREATE2 deployer:
+  - VaultRegistryV2 `0xA622c92d3D5b54aeA081Cf410224a8A2eCb08cB7`, tx `0x11f22a39…ff44`, block 158114294, status 1;
+  - `cryoshield.app` factory `0x775dc816594262274E78Ae75D97C8EdB0df5DfED` and implementation
+    `0x8aA76FaA6629cA1EA8ccC3F9Edf0E8D98816Acd7`, tx `0x7de814ff…d358`, block 158114295, status 1.
+- **2026-10-12, post-deploy checks (task 7.2), by the agent, read-only:**
+  - runtime code at all three addresses is byte-identical to the reviewed OP Sepolia deployment at the same
+    addresses (4,944, 1,798 and 16,722 bytes); `10.json`'s ABI hashes and `rpIdHash` equal `11155420.json`'s;
+  - Sourcify: exact match for all three. Blockscout: all three fully verified (VaultRegistryV2 indexed at
+    2026-10-12 17:53 UTC, after a short lag); Etherscan: not run (optional).
+- **2026-10-12, security review of the `10.json` PR (task 7.3), by the agent:** the record matches the chain (above)
+  and holds no v1; the CI mainnet gate passes on the 2026-10-09 entry. The recovery tool's `op-mainnet` preset lists
+  exactly that v2 registry and block, marked built-in and trusted, and a user-supplied registry stays untrusted. Two
+  recovery tests that used to target op-mainnet as an empty network would now reach the public OP Mainnet RPCs, so
+  they moved to `arbitrum-sepolia` and stay offline. The broadcast logs hold transaction data only (no key material).
+  No CRITICAL or HIGH findings.
 
 ## Sign-off
 

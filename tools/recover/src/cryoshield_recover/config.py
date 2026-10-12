@@ -326,7 +326,9 @@ NETWORKS = {
     "op-mainnet": NetworkPreset(
         name="op-mainnet",
         chain_id=10,
-        registries=(),
+        # From contracts/deployments/10.json: v2 tx 0x11f22a39…ff44 (source verified on Sourcify). No v1 on
+        # OP Mainnet, by design.
+        registries=(RegistrySpec(2, "0xa622c92d3d5b54aea081cf410224a8a2ecb08cb7", 158114294),),
         rpcs=(
             "https://mainnet.optimism.io",
             "https://optimism-rpc.publicnode.com",
@@ -355,8 +357,8 @@ NETWORKS = {
     ),
 }
 # The single default network. Changes only through an OpenSpec change (deployment-targets spec):
-# op-mainnet since launch-op-mainnet (founder question Q2, accepted 2026-10-09). Until a release embeds
-# contracts/deployments/10.json, op-mainnet has no registry and blockchain lookup says it is off.
+# op-mainnet since launch-op-mainnet (founder question Q2, accepted 2026-10-09). Its registry comes from
+# contracts/deployments/10.json (deployed 2026-10-12).
 DEFAULT_NETWORK = "op-mainnet"
 # What --testnet means (testnet-preview vaults).
 TESTNET = "op-sepolia"
