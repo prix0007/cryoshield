@@ -88,7 +88,8 @@ describe('legal pages', () => {
 
   it('/terms covers testnet/unaudited, no recovery, permanence, sponsorship, eligibility and the licence', () => {
     const t = page('terms/index.html').body.textContent!.replace(/\s+/g, ' ');
-    for (const s of ['test network', 'not been independently audited', 'nobody', 'cannot be removed', 'paused, limited or withdrawn', '18 or over', 'sanctions', 'MIT license', 'Limitation of liability', 'Governing law']) expect(t, s).toMatch(new RegExp(s, 'i'));
+    for (const s of ['test network', 'not been independently audited', 'nobody', 'cannot be removed', 'paused, limited or withdrawn', '18 or over', 'sanctions', 'MIT license', 'Limitation of liability']) expect(t, s).toMatch(new RegExp(s, 'i'));
+    expect(t, 'no governing-law clause (trim-terms-tax-and-law)').not.toMatch(/Governing law|laws of India/i);
   });
 
   it('every legal page shows the not-legal-advice note right under the effective date, and no draft banner (adopt-oss 1.2)', () => {

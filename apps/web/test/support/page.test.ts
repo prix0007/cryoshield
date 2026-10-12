@@ -105,9 +105,10 @@ describe('the coffee button everywhere', () => {
 });
 
 describe('legal sections', () => {
-  it('/terms covers donations: voluntary, non-refundable, nothing in return, tax', () => {
+  it('/terms covers donations: voluntary, non-refundable, nothing in return, and no tax clause', () => {
     const t = doc('terms/index.html').getElementById('donations')!.parentElement!.textContent!;
-    for (const w of ['Voluntary', 'Non-refundable', 'no goods, services', 'tax']) expect(t).toContain(w);
+    for (const w of ['Voluntary', 'Non-refundable', 'no goods, services']) expect(t).toContain(w);
+    expect(t, 'trim-terms-tax-and-law').not.toMatch(/Tax:|tax receipts|tax due/i);
   });
   it('/privacy says donations are not tracked and the chain is public', () => {
     const t = doc('privacy/index.html').body.textContent!.replace(/\s+/g, ' ');
