@@ -16,7 +16,8 @@ CI, branch protection and deployment details, moved out of the README. The agent
   - the title follows Conventional Commits;
   - the OpenSpec gate passes;
   - gitleaks finds no secrets in the PR's commits;
-  - osv-scanner finds no HIGH/CRITICAL vulnerabilities in any lockfile.
+  - osv-scanner finds no HIGH/CRITICAL vulnerabilities in any lockfile;
+  - Trivy finds no CRITICAL, HIGH or unscored vulnerability in any lockfile, in the web Dockerfile's digest-pinned base image or in the Dockerfile itself (`add-trivy-scan`).
 
 A final **`ci-ok`** job aggregates the results. Skipped jobs count as passing; failed or cancelled jobs fail it.
 
@@ -71,7 +72,7 @@ The gate scripts live in `.github/scripts` and are tested with `npm ci --ignore-
 
 8. **Fork PRs** need a maintainer's "Approve and run" before *any* workflow runs, whatever the contributor's history. The repository's fork-PR approval policy is `all_external_contributors` (`.github/rulesets/fork-pr-approval.json`, applied by `apply.sh`). Fork runs of `ci.yml` never get secrets.
 
-Secret-scan exceptions are in `.gitleaks.toml` (public test vectors only). Vulnerability exceptions are in `.github/osv-scanner.toml`; each needs a reason and expires within 90 days. Changing either one needs a security review.
+Secret-scan exceptions are in `.gitleaks.toml` (public test vectors only). Vulnerability exceptions are in `.github/osv-scanner.toml` and `.github/trivyignore.yaml`; each needs a reason and expires within 90 days, and every Trivy exception must be listed in the README's "Known vulnerabilities" table (CI checks it). Changing any of them needs a security review.
 
 **Applying the ruleset (repository admin, `gh auth login` with admin rights):**
 
