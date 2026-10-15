@@ -6,7 +6,7 @@ verified `dist/`. There are no secrets in the image or in `fly.toml`.
 | File | Purpose |
 |---|---|
 | `fly.toml` | App `cryoshield-web`, region `sin`, port 8080, `force_https`, health check `/healthz`, one warm machine |
-| `deploy/Dockerfile` | Caddy 2.11.4 (alpine), pinned by digest, non-root; copies only `deploy/.build/` |
+| `deploy/Dockerfile` | Caddy 2.11.7 (alpine), pinned by digest, non-root; copies only `deploy/.build/`. Trivy scans the base image and the Dockerfile on every PR (`add-trivy-scan`) |
 | `.dockerignore` | Whitelists `deploy/.build/` only (no `.env`, no sources) |
 | `deploy/gen-context.mjs` | Writes `deploy/.build/site` (= `dist/` minus `_headers`) and a `Caddyfile` whose CSP is taken from the built `index.html` meta tag, plus `frame-ancestors 'none'` |
 | `deploy/deploy.sh` | Guarded deploy (below) |
