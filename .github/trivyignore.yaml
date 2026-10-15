@@ -1,0 +1,58 @@
+# Reviewed Trivy exceptions (OpenSpec change add-trivy-scan, design D4/D6). Trivy reads this file itself
+# (--ignorefile); .github/scripts/trivy-gate.mjs lints it: only the `vulnerabilities` and `misconfigurations`
+# lists, each entry with an id, a statement and an expired_at at most 90 days ahead; no anchors, aliases or tags.
+# Trivy drops an expired entry, so the finding counts again and fails CI. Every id below must also be listed in
+# README.md -> "Known vulnerabilities" (the gate checks it). Changing this file needs a security review.
+#
+# 2026-10-16 baseline. The Caddy entries are all in the Go toolchain compiled into /usr/bin/caddy of
+# caddy:2.11.7-alpine (Go 1.26.8, golang.org/x/net 0.59.0): fixed upstream in Go 1.26.9 and x/net 0.60.0
+# (2026-10-08), not yet in a Caddy image. Fly terminates TLS and talks plain HTTP to Caddy, which serves only
+# static files (file_server, admin API off, no templates). Remove each entry as soon as Dependabot's docker bump
+# moves the digest to an image built with Go 1.26.9 or later.
+vulnerabilities:
+  # braces (all versions, no fixed release): mirrors GHSA-vfj7-8cjw-p6xm in .github/osv-scanner.toml.
+  - id: CVE-2026-93687
+    paths:
+      - .github/openspec-cli/package-lock.json
+    statement: braces stack-exhaustion DoS, no fix released; CI-only tooling (openspec-cli) expanding repo-authored globs only; not shipped
+    expired_at: 2026-12-31
+  - id: CVE-2026-78667
+    paths:
+      - usr/bin/caddy
+    statement: net/http Range-header DoS; a static site behind Fly's proxy, a crash restarts the machine and no data is at risk; wait for a Caddy image with Go 1.26.9
+    expired_at: 2026-12-31
+  - id: CVE-2026-78669
+    paths:
+      - usr/bin/caddy
+    statement: HTTP/2 SETTINGS flood DoS; Fly terminates TLS and talks HTTP/1.1 to Caddy, so the HTTP/2 server is not exposed; wait for Go 1.26.9 / x/net 0.60.0
+    expired_at: 2026-12-31
+  - id: CVE-2026-78659
+    paths:
+      - usr/bin/caddy
+    statement: HTTP trailer handling (no severity yet); denial of service at most on a static server that Fly restarts; wait for Go 1.26.9 / x/net 0.60.0
+    expired_at: 2026-12-31
+  - id: CVE-2026-78660
+    paths:
+      - usr/bin/caddy
+    statement: malformed HTTP framing (no severity yet); denial of service at most on a static server that Fly restarts; wait for Go 1.26.9 / x/net 0.60.0
+    expired_at: 2026-12-31
+  - id: CVE-2026-97031
+    paths:
+      - usr/bin/caddy
+    statement: crypto/tls ECH outer-extension DoS; TLS is terminated by Fly and Caddy's TLS server is off (auto-HTTPS disabled), so the code is not reachable; wait for Go 1.26.9
+    expired_at: 2026-12-31
+  - id: CVE-2026-94440
+    paths:
+      - usr/bin/caddy
+    statement: mime/multipart memory-limit bypass (no severity yet); file_server parses no request bodies or forms; wait for Go 1.26.9
+    expired_at: 2026-12-31
+  - id: CVE-2026-97030
+    paths:
+      - usr/bin/caddy
+    statement: html/template escaping (no severity yet); the Caddy templates directive is not enabled, the site is static files only; wait for Go 1.26.9
+    expired_at: 2026-12-31
+  - id: GO-2026-5932
+    paths:
+      - usr/bin/caddy
+    statement: golang.org/x/crypto/openpgp is unmaintained (no fix will be released); compiled in through a Caddy dependency and not reachable from any request
+    expired_at: 2026-12-31

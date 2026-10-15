@@ -1,4 +1,4 @@
-# CryoShield CI (OpenSpec changes: add-ci, adopt-pr-workflow).
+# CryoShield CI (OpenSpec changes: add-ci, adopt-pr-workflow, add-trivy-scan).
 #
 # Hardening (add-ci design decision 7, adopt-pr-workflow decision 9), enforced by
 # .github/scripts/workflow-policy.mjs and zizmor (pedantic) in `workflow-lint`:
@@ -51,6 +51,9 @@ env:
   GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb # gitleaks_8.30.1_linux_x64.tar.gz
   OSV_SCANNER_VERSION: "2.6.0"
   OSV_SCANNER_SHA256: ca69b3d3cd08f889a49dc0a383122f71cc528b83803671df5fd874d97485b108 # osv-scanner_linux_amd64
+  # add-trivy-scan D2: lockfiles, the web base image and its Dockerfile (trivy_<v>_checksums.txt from the release).
+  TRIVY_VERSION: "0.76.0"
+  TRIVY_SHA256: e24b1c51293c1b15e4ba8d45bbc7891ba053f90278ec2698f3562c993e145fe7 # trivy_0.76.0_Linux-64bit.tar.gz
   FORCE_COLOR: "1"
 
 jobs:
@@ -214,6 +217,38 @@ jobs:
           set -e
           node .github/scripts/osv-gate.mjs --config .github/osv-scanner.toml \
             --report "${RUNNER_TEMP}/osv.json" --scanner-exit "${code}"
+      - name: Install trivy (pinned, checksum-verified)
+        run: |
+          curl -fsSL --retry 3 -o "${RUNNER_TEMP}/trivy.tar.gz" \
+            "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+          echo "${TRIVY_SHA256}  ${RUNNER_TEMP}/trivy.tar.gz" | sha256sum -c -
+          tar -xzf "${RUNNER_TEMP}/trivy.tar.gz" -C "${RUNNER_TEMP}" trivy
+          "${RUNNER_TEMP}/trivy" --version
+      # add-trivy-scan D3/D4: every lockfile, the web image's digest-pinned base image (the built image adds only static
+      # files to it) and the Dockerfile. Findings never fail trivy itself (--exit-code 0), so a non-zero exit is a scanner
+      # error; the gate fails on CRITICAL/HIGH/unknown. Exceptions: .github/trivyignore.yaml, mirrored in README.md.
+      - name: trivy (lockfiles, web base image, Dockerfile; fail on CRITICAL/HIGH/unknown)
+        env:
+          DOCKERFILE: apps/web/deploy/Dockerfile
+          IGNORE_FILE: .github/trivyignore.yaml
+        run: |
+          image="$(awk '/^FROM /{print $2; exit}' "${DOCKERFILE}")"
+          case "${image}" in
+            *@sha256:*) echo "base image: ${image}" ;;
+            *) echo "::error title=trivy::${DOCKERFILE}: FROM must be pinned by digest (got '${image}')"; exit 1 ;;
+          esac
+          out="${RUNNER_TEMP}/trivy-reports"
+          mkdir -p "${out}"
+          scan() {
+            sub="$1"; shift
+            "${RUNNER_TEMP}/trivy" "${sub}" --exit-code 0 --format json \
+              --ignorefile "${IGNORE_FILE}" --cache-dir "${RUNNER_TEMP}/trivy-cache" "$@"
+          }
+          scan fs --no-progress --scanners vuln --skip-dirs '**/node_modules' --skip-dirs '**/.venv' -o "${out}/fs.json" .
+          scan image --no-progress --scanners vuln --skip-db-update -o "${out}/image.json" "${image}"
+          scan config -o "${out}/config.json" "${DOCKERFILE}"
+          node .github/scripts/trivy-gate.mjs --ignore "${IGNORE_FILE}" --readme README.md \
+            "${out}/fs.json" "${out}/image.json" "${out}/config.json"
 
   workflow-lint:
     name: workflow-lint
