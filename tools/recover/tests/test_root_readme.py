@@ -42,9 +42,9 @@ def documented_commands() -> list[list[str]]:
     cmds = []
     if not ROOT_README_PATH.is_file():  # parametrize runs at collection; test_drill_has_commands reports it
         return []
-    for block in re.findall(r"```sh\n(.*?)```", _readme(), re.S):
+    for block in re.findall(r"```(?:sh|bash|shell)\n(.*?)```", _readme(), re.S):
         for raw in block.splitlines():
-            line = raw.split("#")[0].strip()
+            line = " ".join(shlex.split(raw, comments=True))
             m = re.fullmatch(r"(?:\./)?cryoshield-recover(?:-[a-z0-9_-]+)?(\s.*)?", line)
             if m:
                 cmds.append(shlex.split(m.group(1) or ""))
@@ -67,6 +67,8 @@ def test_documented_command_parses(argv: list[str], tmp_path: Path, monkeypatch:
     cfg = cli.config_from_args(args)
     if "--testnet" in argv:
         assert cfg.network == TESTNET
+        if "--rp-id" not in argv:
+            assert cfg.rp_id == DEFAULT_RP_ID  # "--testnet only picks the chain"
     if "--rp-id" in argv:
         assert cfg.rp_id == argv[argv.index("--rp-id") + 1] != DEFAULT_RP_ID
     if "--offline" in argv:
@@ -106,9 +108,12 @@ def test_rp_id_binding_is_explained() -> None:
 
 
 def _web_string(key: str) -> str:
-    m = re.search(rf"^\s+{key}: '([^']+)',?$", WEB_STRINGS.read_text(encoding="utf-8"), re.M)
+    """The value of ``key: '…'`` or ``key: "…"`` in strings.ts, across a line break, with escapes removed."""
+    assert WEB_STRINGS.is_file(), f"{WEB_STRINGS} missing: run from a full checkout"
+    source = WEB_STRINGS.read_text(encoding="utf-8")
+    m = re.search(rf"^\s+{key}:\s*(['\"])((?:[^\\]|\\.)*?)\1,?$", source, re.M | re.S)
     assert m, f"{key} not found in {WEB_STRINGS}"
-    return m.group(1)
+    return re.sub(r"\\(.)", r"\1", m.group(2))
 
 
 def test_sponsored_gas_is_a_listed_caveat() -> None:
@@ -126,7 +131,7 @@ def test_recovery_drill_blocks_the_site_and_ends_with_show() -> None:
     body = _section("Recovery drill")
     assert "ten minutes" in body.lower()
     assert "hosts" in body
-    assert "127.0.0.1 cryoshield.app" in body and "::1       cryoshield.app" in body
+    assert "127.0.0.1 cryoshield.app" in body and re.search(r"^\s*::1\s+cryoshield\.app", body, re.M)
     assert "`show`" in body
     assert "--testnet" in body
     assert "--rp-id cryoshield-web-dev.fly.dev" in body  # the development site has its own RP ID
@@ -135,4 +140,4 @@ def test_recovery_drill_blocks_the_site_and_ends_with_show() -> None:
     # Readers are told to drill with a throwaway vault, since the secret appears on screen.
     assert re.search(r"test vault|throwaway|dummy", body, re.I)
     # The steps are numbered and the site is blocked before the tool runs and before the secret is shown.
-    assert body.index("127.0.0.1 cryoshield.app") < body.index("`show`")
+    assert body.index("127.0.0.1 cryoshield.app") < body.index("**Type `show`.**")

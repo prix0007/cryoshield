@@ -22,7 +22,7 @@ breaks and what survives; that is the question the issue asks.
 | `--testnet` selects the chain only; the development site has its own RP ID (`cryoshield-web-dev.fly.dev`), so a vault made there needs `--rp-id` too | `cli.py` `--testnet`; `CLAUDE.md` → Deploy ("Its RP ID is that host") |
 | The quoted sponsorship messages are the app's `paused` and `pausedCreate` strings | `apps/web/src/ui/strings.ts` |
 | The checksum checks integrity only; `gh attestation verify` checks the release workflow built the file | `tools/recover/README.md` "Verifying a download" |
-| The key refuses without user verification | credProtect level 3 at enrolment (`enforce-credprotect-uv`); `authdata.py` |
+| The tool always requires UV; keys enrolled with credProtect level 3 (every enrolment since `enforce-credprotect-uv`, so every mainnet key) refuse without it; a non-UV PRF output is a different value that opens nothing | `authenticator.py`, `authdata.py` (CredRandomWithoutUV); `apps/web/src/webauthn/index.ts` credProtect 3 |
 | Pimlico is the bundler and paymaster; there is no unsponsored fallback; "Saving is paused" message | `docs/system-design.md` ("Writes go through Pimlico"); `sponsored-vault-writes` "Cap reached" scenario; `apps/web/.env.example` |
 | Reads, unlocks and recovery never touch Pimlico or Fly | `docs/system-design.md` ("Reads, unlocks and recovery never touch Pimlico or Fly") |
 | Three public RPCs per network, `--rpc` override, Arweave fallback, `--offline` from a file | `tools/recover/README.md` "Networks", "Other ways in"; `vault-recovery` "Built-in defaults with overrides" |
@@ -81,6 +81,13 @@ vault" instead of "after you create" one; `gh attestation verify --repo` is desc
 repository built the file; the wallet contracts' baked-in RP ID hash is named as a write-path dependency on the
 domain; "no website outside `cryoshield.app`" and the local-program case; the development-site command is a parsed
 shell line and the test asserts the parsed `rp_id`; the README is read lazily in the test.
+
+**Third review (4b0ae13), six advisories, applied before archiving:** the UV sentence names what enforces it
+(the tool, credProtect level 3 since the launch, and the non-UV output being a different value); the drill notes
+secure DNS and cached copies, and that a test vault is permanent public ciphertext created with a sponsored write
+(drill against an existing vault and stop at the list instead); the test reads `strings.ts` across line breaks and
+either quote style, strips comments with `shlex`, scans `sh`, `bash` and `shell` fences, asserts `--testnet` keeps
+the default RP ID, and matches the `::1` line without exact whitespace.
 
 ## Security review (2026-10-16)
 
