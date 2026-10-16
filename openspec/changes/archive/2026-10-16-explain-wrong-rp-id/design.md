@@ -67,7 +67,9 @@ cause.
   for '<rp>'.") can come from an untrusted blob header, since anyone can tag an Arweave copy with a victim's vault
   ID; that line predates this change and is left as it was, `NOT_LISTED` says "site(s)" because several may have
   been tried, no message tells the user to act on such a name, and both READMEs say an Arweave copy is untrusted
-  until it opens (ECC review of f0f7646).
+  until it opens, for the "was created for the site" line as well. Invariant to keep: every `--rp-id` hint
+  (`NO_DISCOVERABLE_CREDENTIAL`, the "check --rp-id" sentence) names only the configured `cfg.rp_id`, never a
+  header-derived name (ECC reviews of #117 and #118).
 - **README accuracy.** Every claim has a source (D5). The README quotes the messages through the test, so a reworded
   message breaks CI rather than the documentation.
 
