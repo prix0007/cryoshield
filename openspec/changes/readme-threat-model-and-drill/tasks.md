@@ -33,3 +33,14 @@
 ## 4. Review
 
 - [x] 4.1 Security review recorded in `design.md` (claims and sources, social-engineering surface, drift).
+
+## 5. ECC review follow-ups (review of #109)
+
+- [x] 5.1 RP ID precedence worded as the code does it (finding 1); test asserts "tries the configured RP ID first".
+- [x] 5.2 `--testnet` line scoped to pre-launch vaults; development-site vaults get `--rp-id` (finding 2); step 6
+  keeps the step-3 flags (finding 3).
+- [x] 5.3 Exact `paused` and `pausedCreate` strings, read from `strings.ts` by the test (finding 4).
+- [x] 5.4 `gh attestation verify` in step 1, with what the checksum does not prove (finding 5).
+- [x] 5.5 Test hardening: no `try`, temporary cwd, config assertions, placeholder guard, `--testnet` assert, UTF-8
+  (findings 6–9); anchored status-line match for the CodeQL alert.
+- [x] 5.6 Optional suggestions: `::1` hosts line, PIN-lock warning without a count, "stop using `cryoshield.app`".
