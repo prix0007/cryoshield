@@ -46,3 +46,5 @@
 - [x] 5.6 Optional suggestions: `::1` hosts line, PIN-lock warning without a count, "stop using `cryoshield.app`".
 - [x] 5.7 Second review (e3f34c0): RP ID order condition, "once you have a vault", attestation wording, wallet RP ID
   hash as a write dependency, subdomain and local-program wording, parsed `--rp-id` command, lazy README read.
+- [x] 5.8 Third review (4b0ae13), in the archive PR: UV wording, secure-DNS note, test-vault cost note, robust
+  `strings.ts` match, `shlex` comments and more fences, `--testnet` RP ID assertion, `::1` regex.
