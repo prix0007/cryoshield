@@ -324,7 +324,8 @@ Enabled after the chain-10 smoke test is green, and before your smoke test, whic
 - [ ] **8.3 Agent with the security reviewer: final security review (task 8.1).** The live bytecode, the verifications,
   `10.json`, `/release.json`, CSP, copy, the Pimlico settings (no secrets) and the recovery-tool hashes match what was
   reviewed.
-- [ ] **8.4 Founder: recovery check again** on day 7, then monthly (§7a).
+- [ ] **8.4 Founder: recovery check again** on day 7, then monthly (§7a), as the README's "Recovery drill" (the
+  site blocked in the hosts file, ending with the secret on screen).
 - [ ] **8.5 Agent: archive the finished OpenSpec changes,** in follow-up PRs (`/opsx:archive`): `launch-op-mainnet`
   after 8.3, and `harden-gas-sponsorship` before it (archive order in the proposal).
 - [ ] **8.6 Founder: dev Pimlico key hardening.** On the `ct5x` key: account APIs off, origin

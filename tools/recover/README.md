@@ -86,6 +86,8 @@ cryoshield-recover
 
 The tool lists the public servers it will contact. It then asks you to touch the key and enter its PIN, and finds every vault the key opens. It asks you to type `show` before it prints any secret. Anything other than `show` exits without displaying it.
 
+To rehearse this with the website blocked on your computer, follow the ten-minute [recovery drill](../../README.md#recovery-drill) in the project README.
+
 ### Several vaults, names and archived vaults
 
 One key can open several vaults (one per vault you created with it).
