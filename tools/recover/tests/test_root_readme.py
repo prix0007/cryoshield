@@ -145,6 +145,12 @@ def test_wrong_rp_id_is_a_named_failure() -> None:
     assert "AES-256-GCM" in body  # the per-credential wrap tag is the key check
     assert "Shamir" in body  # a Shamir vault wraps a 33-byte share, not the data key
     assert "never a name someone else gives you" in body
+    # The two header-derived lines are quoted from the tool, and the reader is told the key is asked next.
+    for constant in (recover.OTHER_SITE_COPY, recover.NO_CREDENTIAL_FOR_SITE):
+        phrase, sep, _ = constant.partition(" '{rp_id}'")
+        assert sep, constant
+        assert f'"{phrase.split("{where} ")[-1]}"' in body
+    assert "ask your key about that name" in body and "Ctrl-C" in body
 
 
 def _web_string(key: str) -> str:
