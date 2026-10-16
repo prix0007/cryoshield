@@ -27,7 +27,8 @@
 
   2026-10-16: the new test failed 5 of 6 on the old README, then the whole recovery suite passed (962 tests, 7 opt-in
   skips); ruff and mypy clean; 48 OpenSpec items valid.
-- [ ] 3.2 Reply on #107 (marked `<!-- claude-pr-flow -->`): the library is python-fido2, with the PR link.
+- [x] 3.2 Reply on #107 (marked `<!-- claude-pr-flow -->`): the library is python-fido2, with the PR link.
+  Posted 2026-10-16 (issuecomment-6209021770), pointing at PR #109.
 
 ## 4. Review
 
