@@ -125,6 +125,7 @@ def _paragraph(lead: str) -> str:
 
 
 def _quoted_first_sentence(message: str) -> str:
+    """The message's first sentence as the README quotes it: in double quotes, with its period."""
     first, sep, _ = message.partition(". ")
     assert sep, message
     return f'"{first}."'

@@ -42,7 +42,10 @@ NO_DISCOVERABLE_CREDENTIAL = (
 # --vault-id / --blob-file: no RP ID tried produced an assertion. From the client side, a key with no credential
 # for the vault's site and a key whose credentials are not in the allow list look the same, so the message covers
 # both; the line printed just before names the site tried ("This key has no credential for '<rp>'.").
-NOT_LISTED = "This key holds none of the credentials that vault lists for the site named above. Try another enrolled key."
+NOT_LISTED = (
+    "This key holds none of the credentials that vault lists for the site(s) named above. "
+    "Try another enrolled key."
+)
 # --vault-id / --blob-file: the key answered for a listed credential, but no wrapped key authenticated. The RP ID
 # came from the vault's own header and the credential ID from the key, so for a file the one input that can break
 # the wrap is the vault ID (bound into the wrap's additional data); otherwise the copy is damaged (explain-wrong-rp-id).
