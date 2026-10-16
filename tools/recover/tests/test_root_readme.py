@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from cryoshield_recover import cli
+from cryoshield_recover import cli, derive, recover
 from cryoshield_recover.config import DEFAULT_RP_ID, TESTNET
 
 REPO = Path(__file__).resolve().parents[3]
@@ -105,6 +105,31 @@ def test_rp_id_binding_is_explained() -> None:
     # The order the tool really uses (recover.py _rp_id_order): the configured RP ID first, then the vaults'.
     assert "tries the configured RP ID first when any copy it found records it" in body
     assert "which wins" not in body
+
+
+def test_salt_mapping_has_its_own_line() -> None:
+    """A CTAP2 client must hash the PRF input as browsers do (vault-format-v1 §3); the README states the formula."""
+    body = _section("What CryoShield depends on")
+    assert 'SHA-256("WebAuthn PRF" || 0x00 ||' in body
+    assert f'SHA-256("{derive.LOCATOR_SALT_INPUT.decode()}")' in body
+    assert "docs/spec/vault-format-v1.md#3-single-prf-input-and-ctap-salt-mapping" in body
+    assert "derive.py" in body
+    assert "test-vectors" in body
+
+
+def _first_sentence(message: str) -> str:
+    return message.split(". ")[0]
+
+
+def test_wrong_rp_id_is_a_named_failure() -> None:
+    """A wrong RP ID never looks like a bad key: the README explains each path with the tool's own messages."""
+    body = _section("What CryoShield depends on")
+    assert "A wrong RP ID does not look like a bad key" in body
+    assert recover.NO_DISCOVERABLE_CREDENTIAL.split(" '{rp_id}'")[0] in body
+    assert _first_sentence(recover.NOT_LISTED) in body
+    assert _first_sentence(recover.DID_NOT_UNLOCK) in body
+    assert "--vault-id" in body
+    assert "AES-256-GCM" in body  # the per-credential wrap tag is the key check
 
 
 def _web_string(key: str) -> str:

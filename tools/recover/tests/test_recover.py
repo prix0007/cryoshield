@@ -16,7 +16,7 @@ from cryoshield_recover.candidates import Freshness
 from cryoshield_recover.config import Config, RegistrySpec
 from cryoshield_recover.derive import derive_wrap_key
 from cryoshield_recover.errors import ExitCode, RecoveryError
-from cryoshield_recover.recover import Recovery
+from cryoshield_recover.recover import NOT_LISTED, Recovery
 
 VAULTS = {v["name"]: v for v in vectors.cases("vaults")}
 V2 = VAULTS["any-of-2"]
@@ -146,6 +146,14 @@ def test_vault_id_flow_non_discoverable(chain: FakeChain) -> None:
     res, prf, _ = run(cfg_for(chain, vault_id=VID), [key])
     assert bytes(res.secret) == h(V2["secret"])
     assert prf.calls == [("cryoshield.app", [h(c["id"]) for c in V2["credentials"]])]
+
+
+def test_vault_id_flow_key_not_listed(chain: FakeChain) -> None:
+    """explain-wrong-rp-id: a key the vault does not list gets its own message, not the "did not unlock" one."""
+    with pytest.raises(RecoveryError) as ei:
+        run(cfg_for(chain, vault_id=VID), [PhysicalKey.named("C")])
+    assert ei.value.exit_code == ExitCode.NO_CREDENTIAL
+    assert ei.value.message == NOT_LISTED
 
 
 def test_vault_id_flow_unknown_vault(chain: FakeChain) -> None:

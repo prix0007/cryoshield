@@ -261,6 +261,7 @@ If the vault needs several keys, the tool asks for them one at a time: "Remove t
 - **Windows.** Windows only lets administrators talk to security keys directly. As a normal user, the tool uses the Windows security-key dialog (`webauthn.dll`) instead, and Windows asks for your PIN itself.
 - **"did not verify your PIN" / exit 8.** CryoShield vaults are bound to PIN-verified use of the key: with and without a PIN, a key produces different secrets. Set the same PIN you used when creating the vault.
 - **Older YubiKeys.** Firmware below 5.2 has no `hmac-secret` and cannot be used.
+- **"This key is listed in that vault but did not unlock it" / exit 7.** The key answered for a credential the vault lists, but no wrapped key authenticated. With `--blob-file`, the usual cause is a wrong `--vault-id`: a vault only decrypts under the ID it was registered under, which the tool printed when the vault was unlocked or saved. Otherwise the copy is damaged; try another enrolled key or another source. "This key is not listed in that vault" (exit 5) is the other case: the vault lists none of this key's credentials.
 
 ## Privacy
 

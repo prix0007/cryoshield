@@ -32,6 +32,24 @@ VAULT_ID_FOR_FILE = (
 # Distinct RP IDs tried in --vault-id/--blob-file mode (each costs a tap).
 MAX_RP_IDS = 3
 
+# Messages the root README quotes (test_root_readme.py), so a reworded message fails CI, not a reader.
+NO_DISCOVERABLE_CREDENTIAL = (
+    "This key has no discoverable CryoShield credential for '{rp_id}'.\n"
+    "If your vault was created without one, recover with --vault-id <id>, "
+    "--credential-id <id>, or --blob-file <saved vault file>. "
+    "If you used a different site address, pass --rp-id."
+)
+# --vault-id / --blob-file: the allow list held no credential this key has.
+NOT_LISTED = "This key is not listed in that vault. Try another enrolled key."
+# --vault-id / --blob-file: the key answered for a listed credential, but no wrapped key authenticated. The RP ID
+# came from the vault's own header and the credential ID from the key, so for a file the one input that can break
+# the wrap is the vault ID (bound into the wrap's additional data); otherwise the copy is damaged (explain-wrong-rp-id).
+DID_NOT_UNLOCK = (
+    "This key is listed in that vault but did not unlock it. With --blob-file, check --vault-id: a vault only "
+    "decrypts under the vault ID it was registered under (printed when the vault was unlocked or saved, and shown "
+    "in the web app). Otherwise this copy of the vault may be damaged; try another enrolled key or another source."
+)
+
 
 class UI(Protocol):
     def info(self, msg: str) -> None: ...
@@ -597,10 +615,8 @@ class Recovery:
         if merged:
             return list(merged.values()), all_cands
         if not tapped_any:
-            raise RecoveryError(
-                ExitCode.NO_CREDENTIAL, "This key is not enrolled in that vault. Try another enrolled key."
-            )
-        raise RecoveryError(ExitCode.NO_MATCHING_VAULT, "The key did not unlock that vault.")
+            raise RecoveryError(ExitCode.NO_CREDENTIAL, NOT_LISTED)
+        raise RecoveryError(ExitCode.NO_MATCHING_VAULT, DID_NOT_UNLOCK)
 
     # ------------------------------------------------------------------ main flow
     def run(self) -> Result:
@@ -652,13 +668,7 @@ class Recovery:
 
         got = self._tap(cfg.rp_id, cfg.credential_ids or None)
         if not got:
-            raise RecoveryError(
-                ExitCode.NO_CREDENTIAL,
-                f"This key has no discoverable CryoShield credential for '{cfg.rp_id}'.\n"
-                "If your vault was created without one, recover with --vault-id <id>, "
-                "--credential-id <id>, or --blob-file <saved vault file>. "
-                "If you used a different site address, pass --rp-id.",
-            )
+            raise RecoveryError(ExitCode.NO_CREDENTIAL, NO_DISCOVERABLE_CREDENTIAL.format(rp_id=cfg.rp_id))
         locators = [derive_locator(a.prf) for a in got]
         log.debug("derived %d locator(s)", len(locators))
 
