@@ -14,7 +14,7 @@ from test_recover import RecUI, cfg_for
 
 from cryoshield_recover import cli
 from cryoshield_recover.errors import ExitCode, RecoveryError
-from cryoshield_recover.recover import Recovery
+from cryoshield_recover.recover import DID_NOT_UNLOCK, Recovery
 from cryoshield_recover.ui import Console
 
 V2 = {v["name"]: v for v in vectors.cases("vaults")}["any-of-2"]
@@ -105,8 +105,13 @@ def test_blob_file_with_vault_id_offline(tmp_path: Path) -> None:
 def test_blob_file_with_wrong_vault_id_shows_nothing(tmp_path: Path) -> None:
     f = tmp_path / "vault.bin"
     f.write_bytes(BLOB)
-    code, out, _ = _cli(["--blob-file", str(f), "--vault-id", ATTACKER_VID.hex(), "--offline"])
+    code, out, err = _cli(["--blob-file", str(f), "--vault-id", ATTACKER_VID.hex(), "--offline"])
     assert code == ExitCode.NO_MATCHING_VAULT and out == ""
+    # explain-wrong-rp-id: the key answered for a listed credential, so the message names the one input that
+    # can break the wrap on this path, the vault ID, and never sends the user to --rp-id.
+    assert DID_NOT_UNLOCK in err
+    assert "listed in that vault but did not unlock" in err and "--vault-id" in err
+    assert "--rp-id" not in err
 
 
 def test_zero_vault_id_rejected() -> None:
