@@ -63,7 +63,11 @@ cause.
   with the new constants, and `vault.py` and the wiping are untouched.
 - **Social-engineering surface.** The message sends the user to `--vault-id` and to another enrolled key or source. It
   never tells the user to re-enter the PIN, to use a different site, or to pass `--rp-id`, so it cannot be used to
-  steer a victim toward a phishing RP ID.
+  steer a victim toward a phishing RP ID. The RP ID echoed just before `NOT_LISTED` ("This key has no credential
+  for '<rp>'.") can come from an untrusted blob header, since anyone can tag an Arweave copy with a victim's vault
+  ID; that line predates this change and is left as it was, `NOT_LISTED` says "site(s)" because several may have
+  been tried, no message tells the user to act on such a name, and both READMEs say an Arweave copy is untrusted
+  until it opens (ECC review of f0f7646).
 - **README accuracy.** Every claim has a source (D5). The README quotes the messages through the test, so a reworded
   message breaks CI rather than the documentation.
 
