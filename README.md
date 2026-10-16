@@ -4,16 +4,17 @@ Permanent, non-custodial backup for the secrets you can't afford to lose (seed p
 
 - Secrets are encrypted **in your browser**. CryoShield never sees them and runs no servers.
 - Only your **FIDO2 hardware keys** (YubiKey 5, firmware ≥ 5.2) can unlock a vault. You enrol at least two, and any one of them opens it.
-- The encrypted vault lives on an EVM rollup (**OP Mainnet**; currently testnet-only on **OP Sepolia**), mirrored to **Arweave**. Gas is sponsored, so you never need a wallet or crypto.
+- The encrypted vault lives on **OP Mainnet** (an EVM rollup), mirrored to **Arweave**. Gas is sponsored, so you never need a wallet or crypto.
 - If CryoShield disappears, the open-source **desktop recovery tool** still unlocks your vault, straight from the public chain.
 
-> Status: testnet only (OP Sepolia), at https://cryoshield-web-dev.fly.dev. Not audited. Test ETH for local work: [Superchain faucet](https://console.optimism.io/faucet).
+> Status: live on **OP Mainnet** at https://cryoshield.app since `v1.0.0` (2026-10-12). A development copy runs at https://cryoshield-web-dev.fly.dev (OP Sepolia, with its own RP ID; test ETH for local work from the [Superchain faucet](https://console.optimism.io/faucet)). No external audit: see [Security](#security).
 
 ## If you need your vault
 
 - **Recover without the website:** [`tools/recover/README.md`](tools/recover/README.md) explains how to install or download `cryoshield-recover` and unlock a vault with one of your keys, using only public RPCs or Arweave.
 - **Lost or compromised hardware key:** follow [`docs/lost-or-compromised-key.md`](docs/lost-or-compromised-key.md).
 - **Which keys work:** [`docs/supported-devices.md`](docs/supported-devices.md).
+- **Practise before you need it:** the [recovery drill](#recovery-drill) below takes ten minutes and ends with your secret on screen, with the website blocked.
 
 ## How it works
 
@@ -26,6 +27,92 @@ The architecture, key derivation and flows are in [`docs/system-design.md`](docs
 | `apps/web` | Static web app: WebAuthn PRF, ERC-4337 passkey account, sponsored gas, Arweave mirror |
 | `tools/recover` | `cryoshield-recover`, the Python desktop recovery tool and a second implementation of the format |
 | `tools/metrics` | Aggregate, identifier-free metrics from public chain and Arweave data |
+
+## Recovery drill
+
+Ten minutes, with the website blocked on your computer, ending with your secret decrypted on screen. Run it once you have a vault, and again whenever you want proof that recovery does not depend on CryoShield. The maintainer runs it before every release and monthly after it ([`docs/launch/mainnet-release-checklist.md`](docs/launch/mainnet-release-checklist.md), steps 3.2, 7.2 and 8.4); the runs are recorded in [`docs/reviews/launch-op-mainnet.md`](docs/reviews/launch-op-mainnet.md).
+
+**You need:** a vault you created on https://cryoshield.app, one of its hardware keys, that key's PIN, and a computer with a USB port. **Use a test vault with throwaway contents.** Step 5 prints the secret on the screen, and your terminal keeps scrollback.
+
+1. **Get the tool (3 minutes).** Download the single-file program for your computer and check its checksum ([`tools/recover/README.md` → Download](tools/recover/README.md#download) has every platform). On a Mac with Apple silicon:
+
+   ```sh
+   curl -LO https://github.com/prix0007/cryoshield/releases/latest/download/cryoshield-recover-macos-arm64
+   curl -LO https://github.com/prix0007/cryoshield/releases/latest/download/cryoshield-recover-macos-arm64.sha256
+   shasum -a 256 -c cryoshield-recover-macos-arm64.sha256
+   gh attestation verify cryoshield-recover-macos-arm64 --repo prix0007/cryoshield
+   chmod +x cryoshield-recover-macos-arm64
+   ./cryoshield-recover-macos-arm64 --version
+   ```
+
+   The checksum detects a corrupt download, not a replaced release: both files come from the same place. The `gh attestation verify` line (GitHub CLI) checks that a GitHub Actions workflow of this repository built the file, and prints which workflow and commit; see [`tools/recover/README.md` → Verifying a download](tools/recover/README.md#verifying-a-download).
+
+2. **Block the website (1 minute).** Add this line to your hosts file (`/etc/hosts` on macOS and Linux, `C:\Windows\System32\drivers\etc\hosts` on Windows; editing it needs administrator rights):
+
+   ```text
+   127.0.0.1 cryoshield.app www.cryoshield.app
+   ::1       cryoshield.app www.cryoshield.app
+   ```
+
+   Flush the DNS cache (macOS: `sudo dscacheutil -flushcache; sudo killall -HUP mDNSResponder`; Windows: `ipconfig /flushdns`), then check that the block took: `curl -sS --max-time 5 https://cryoshield.app` must fail to connect, and the site must not load in your browser.
+
+3. **Run the tool (1 minute).** Plug in the key and start the tool. It prints the servers it will contact: public OP Mainnet RPCs and Arweave gateways, and `cryoshield.app` is not among them.
+
+   ```sh
+   ./cryoshield-recover-macos-arm64             # a vault created on cryoshield.app
+   ./cryoshield-recover-macos-arm64 --testnet   # a vault created on cryoshield.app before the launch (OP Sepolia)
+   ./cryoshield-recover-macos-arm64 --testnet --rp-id cryoshield-web-dev.fly.dev   # a vault made on the development site
+   ```
+
+   `--testnet` only picks the chain. The development site has its own RP ID, so a vault made there needs `--rp-id` as well, and everything below then applies to that name instead of `cryoshield.app`.
+
+4. **Touch the key and enter its PIN** when asked. Type it carefully: a key allows only a few wrong attempts before it locks. If the key opens several vaults, pick one by number.
+
+5. **Type `show`.** The secret is on screen, decrypted on your computer, with the website unreachable. That is the drill.
+
+6. **Optional, three more minutes, with no network at all.** Save the encrypted vault, note the vault ID the tool prints, disconnect from the internet, and open the file. Add the flags you used in step 3 (`--testnet`, `--rp-id`) to both commands:
+
+   ```sh
+   ./cryoshield-recover-macos-arm64 --save-blob my-vault.bin
+   ./cryoshield-recover-macos-arm64 --blob-file my-vault.bin --vault-id <vault-id> --offline
+   ```
+
+7. **Clean up.** Remove the hosts line and close the terminal window, because its scrollback holds the secret. Keep `my-vault.bin` together with the vault ID if you want an offline copy; it is useless without your key.
+
+**What the drill proves:**
+- the tool never needed the website: for the whole run, the name `cryoshield.app` pointed at your own computer;
+- your key produced the PRF output for the RP ID `cryoshield.app` on request from a program that is not a browser, with nothing from CryoShield involved (see [below](#your-vault-is-bound-to-the-name-cryoshieldapp-not-to-the-website));
+- the vault was read from public servers (step 6: from a file) and decrypted locally, and the result is the secret you stored.
+
+**What it does not prove:** that today's public RPCs or Arweave gateways will exist in twenty years (the tool takes `--rpc` for any OP Mainnet node, including your own, and `--offline` for a saved copy), or that you will still have the tool (keep a copy of the program or the source; it is MIT-licensed, and the format is specified in [`docs/spec/vault-format-v1.md`](docs/spec/vault-format-v1.md) with test vectors, so anyone can reimplement it).
+
+## What CryoShield depends on
+
+The promise is that your vault outlives the project. These are the dependencies that remain, what each one's loss stops, and what keeps working.
+
+### Your vault is bound to the name `cryoshield.app`, not to the website
+
+A WebAuthn PRF output is your hardware key's `hmac-secret` over a salt, computed with a secret that never leaves the key and that belongs to one credential. A credential is scoped to one **RP ID**, here `cryoshield.app`. The key returns the PRF output only for an assertion request that names that RP ID. In a browser, the RP ID comes from the page's origin, which is why no website outside `cryoshield.app` can derive your vault key. A program running on your computer can ask the key directly, as the recovery tool does, and still needs your PIN.
+
+The recovery tool is not a browser. It is a CTAP2 client built on [python-fido2](https://github.com/Yubico/python-fido2) (Yubico's library; `fido2>=2.0,<3` in [`tools/recover/pyproject.toml`](tools/recover/pyproject.toml), used in [`authenticator.py`](tools/recover/src/cryoshield_recover/authenticator.py)). It sends the RP ID string straight to the key inside the `hmac-secret` request, over USB or NFC. The key does not resolve the name, open a connection or check who owns the domain: the RP ID is a label it compares with the credential's. So the tool never contacts `cryoshield.app`. It presents the RP ID offline, reads the encrypted vault from public OP Mainnet RPCs or Arweave (or from a file), and decrypts on your computer. python-fido2 maps the PRF input to the CTAP2 salt exactly as browsers do; a test pins that mapping, and the cross-implementation vectors in `packages/vault-crypto/test-vectors/` show the Python tool and the browser deriving the same keys. The tool's built-in RP ID is `cryoshield.app`, and `--rp-id` overrides it. Every vault also records the RP ID it was created for: with `--vault-id` or `--blob-file`, the tool tries the configured RP ID first when any copy it found records it, then the RP IDs recorded in the other copies (on-chain copies before your file, then Arweave), one tap each and at most three, so a copy made for another site is never silently skipped and never gets to choose ahead of the configured name.
+
+If the domain expires or changes hands, your vault is unaffected: recovery needs your key, its PIN (the key refuses without user verification) and the public ciphertext, none of which a domain owner has. The residual risk is phishing. A future owner of the name could run a site under the same RP ID, and if you used your key and PIN there, that site would get your PRF output and could decrypt your public vault. So treat the end of the domain like the end of the project: recover with the tool, stop using `cryoshield.app` at all, and never present a CryoShield key with its PIN to a site you did not verify.
+
+### The one company in the write path: gas sponsorship
+
+Writes (creating a vault, saving changes, adding a key, archiving) are ERC-4337 user operations sent through **Pimlico**'s bundler and paid by its paymaster under CryoShield's sponsorship policy ([`apps/web/docs/paymaster-policy.md`](apps/web/docs/paymaster-policy.md)). This is the single-company dependency in the system, and it is in the write path only. If sponsorship stops, because a policy cap is hit, the prepaid balance runs out, Pimlico is down or CryoShield stops paying, **writes stop**: when you save, the app says "Saving is paused right now. Your existing vault is safe; please try again later."; when you create a vault, it says "Nothing was saved. Please try again later." It never falls back to an unsponsored operation or charges you. Reads survive: unlocking in the app, the recovery tool and every existing vault never touch Pimlico, because a vault is read straight from the chain or Arweave. The contracts themselves have no admin and need no sponsor, so a future client could pay its own gas; the CryoShield app does not offer that. Each vault's wallet contract also has the RP ID hash baked in: every write is signed by a key under `cryoshield.app`, so writes depend on that name too, while reads and recovery do not.
+
+### Everything else
+
+| Dependency | If it goes away | What keeps working |
+|---|---|---|
+| Pimlico (bundler and paymaster) | writes stop; the app shows "Saving is paused" | unlocking in the app, the recovery tool, every existing vault |
+| The website (static files on Fly.io) | no new vaults and no in-browser unlock | the recovery tool, as in the drill |
+| The domain `cryoshield.app` | the website; the RP ID is a label the tool keeps presenting (above), and the name the wallet contracts expect on every write | the recovery tool |
+| Public OP Mainnet RPCs | the tool ships three independent endpoints and takes `--rpc` for any node, including your own | reading from any node that has the chain |
+| Arweave gateways | the chain copy is primary; Arweave is the fallback (and the chain is read with `--no-arweave`) | reading from the chain |
+| OP Mainnet | the Arweave copy and any `--save-blob` file hold the same bytes; this is the one loss that needs them | reading from Arweave or from a file |
+| GitHub (downloads and source) | the tool is MIT-licensed source that runs from any copy at a release tag with `uv`; the format is specified, so it can be reimplemented | recovery from a saved copy of the tool |
 
 ## Development
 
