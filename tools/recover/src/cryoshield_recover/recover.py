@@ -39,6 +39,13 @@ NO_DISCOVERABLE_CREDENTIAL = (
     "--credential-id <id>, or --blob-file <saved vault file>. "
     "If you used a different site address, pass --rp-id."
 )
+# --vault-id / --blob-file: a copy's header names another site than the configured one. The name is header-derived
+# (an Arweave copy can carry any name), the key is asked about it next, and the READMEs tell users to cancel instead
+# of entering a PIN for a name they do not recognise (ECC review of #119).
+OTHER_SITE_COPY = (
+    "The vault copy from {where} was created for the site '{rp_id}'; trying that instead of '{configured}'."
+)
+NO_CREDENTIAL_FOR_SITE = "This key has no credential for '{rp_id}'."
 # --vault-id / --blob-file: no RP ID tried produced an assertion. From the client side, a key with no credential
 # for the vault's site and a key whose credentials are not in the allow list look the same, so the message covers
 # both; the line printed just before names the site tried ("This key has no credential for '<rp>'.").
@@ -596,13 +603,10 @@ class Recovery:
                     where = {"chain": "on-chain", "file": "your file", "arweave": "an Arweave copy"}[
                         group[0][0].source
                     ]
-                    self.ui.info(
-                        f"The vault copy from {where} was created for the site '{rp_id}'; "
-                        f"trying that instead of '{self.cfg.rp_id}'."
-                    )
+                    self.ui.info(OTHER_SITE_COPY.format(where=where, rp_id=rp_id, configured=self.cfg.rp_id))
                 allow = list(dict.fromkeys(e.cred_id for _, d in group for e in d.entries))
                 if not self._tap(rp_id, allow):
-                    self.ui.info(f"This key has no credential for '{rp_id}'.")
+                    self.ui.info(NO_CREDENTIAL_FOR_SITE.format(rp_id=rp_id))
                     continue
                 tapped_any = True
                 cands = [c for c, _ in group]
