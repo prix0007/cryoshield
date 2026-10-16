@@ -75,6 +75,13 @@ clause is gone. The optional suggestions were taken too: an `::1` hosts line, a 
 in text` assertion (URL-substring sanitisation pattern, a false positive in a test) is avoided by matching the
 whole status line with an anchored regular expression.
 
+**Second review (e3f34c0), seven advisories, all applied:** the RP ID order states its condition (the configured
+RP ID goes first when any found copy records it; then chain, file, Arweave; at most three); "run it once you have a
+vault" instead of "after you create" one; `gh attestation verify --repo` is described as proving a workflow of this
+repository built the file; the wallet contracts' baked-in RP ID hash is named as a write-path dependency on the
+domain; "no website outside `cryoshield.app`" and the local-program case; the development-site command is a parsed
+shell line and the test asserts the parsed `rp_id`; the README is read lazily in the test.
+
 ## Security review (2026-10-16)
 
 Scope: documentation only; no code, CI or configuration change beyond one test file.

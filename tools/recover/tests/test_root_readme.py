@@ -18,15 +18,21 @@ from cryoshield_recover import cli
 from cryoshield_recover.config import DEFAULT_RP_ID, TESTNET
 
 REPO = Path(__file__).resolve().parents[3]
-ROOT_README = (REPO / "README.md").read_text(encoding="utf-8")
+ROOT_README_PATH = REPO / "README.md"
 WEB_STRINGS = REPO / "apps" / "web" / "src" / "ui" / "strings.ts"
 
 VAULT_ID = "0x" + "11" * 32
 
 
+def _readme() -> str:
+    """Read lazily, so collection does not fail in a partial checkout (only these tests do)."""
+    assert ROOT_README_PATH.is_file(), f"{ROOT_README_PATH} missing: run from a full checkout"
+    return ROOT_README_PATH.read_text(encoding="utf-8")
+
+
 def _section(heading: str) -> str:
     """The body of the ``## <heading>`` section, up to the next ``##`` heading."""
-    m = re.search(rf"^## {re.escape(heading)}\n(.*?)(?=^## |\Z)", ROOT_README, re.S | re.M)
+    m = re.search(rf"^## {re.escape(heading)}\n(.*?)(?=^## |\Z)", _readme(), re.S | re.M)
     assert m, f"README has no '## {heading}' section"
     return m.group(1)
 
@@ -34,7 +40,9 @@ def _section(heading: str) -> str:
 def documented_commands() -> list[list[str]]:
     """Every shell line that runs the tool (the command is the first word, with or without ``./``)."""
     cmds = []
-    for block in re.findall(r"```sh\n(.*?)```", ROOT_README, re.S):
+    if not ROOT_README_PATH.is_file():  # parametrize runs at collection; test_drill_has_commands reports it
+        return []
+    for block in re.findall(r"```sh\n(.*?)```", _readme(), re.S):
         for raw in block.splitlines():
             line = raw.split("#")[0].strip()
             m = re.fullmatch(r"(?:\./)?cryoshield-recover(?:-[a-z0-9_-]+)?(\s.*)?", line)
@@ -44,7 +52,7 @@ def documented_commands() -> list[list[str]]:
 
 
 def test_drill_has_commands() -> None:
-    assert len(documented_commands()) >= 4
+    assert len(documented_commands()) >= 5
 
 
 @pytest.mark.parametrize("argv", documented_commands(), ids=lambda a: " ".join(a) or "(no args)")
@@ -59,6 +67,8 @@ def test_documented_command_parses(argv: list[str], tmp_path: Path, monkeypatch:
     cfg = cli.config_from_args(args)
     if "--testnet" in argv:
         assert cfg.network == TESTNET
+    if "--rp-id" in argv:
+        assert cfg.rp_id == argv[argv.index("--rp-id") + 1] != DEFAULT_RP_ID
     if "--offline" in argv:
         assert cfg.offline and cfg.blob_file is not None and cfg.vault_id == bytes.fromhex(VAULT_ID[2:])
     if "--save-blob" in argv:
@@ -67,12 +77,13 @@ def test_documented_command_parses(argv: list[str], tmp_path: Path, monkeypatch:
 
 def test_status_line_is_current() -> None:
     """The launch happened on 2026-10-12 (v1.0.0); the README must not still call the project testnet-only."""
-    lowered = ROOT_README.lower()
+    text = _readme()
+    lowered = text.lower()
     assert "testnet only" not in lowered
     assert "testnet-only" not in lowered
     assert re.search(
         r"^> Status: live on \*\*OP Mainnet\*\* at https://cryoshield\.app since `v1\.0\.0`",
-        ROOT_README,
+        text,
         re.M,
     )
 
@@ -90,7 +101,7 @@ def test_rp_id_binding_is_explained() -> None:
         r"never (contacts|talks to|connects to) (the website|cryoshield\.app|`cryoshield\.app`)", body
     )
     # The order the tool really uses (recover.py _rp_id_order): the configured RP ID first, then the vaults'.
-    assert "tries the configured RP ID first" in body
+    assert "tries the configured RP ID first when any copy it found records it" in body
     assert "which wins" not in body
 
 

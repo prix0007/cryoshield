@@ -44,3 +44,5 @@
 - [x] 5.5 Test hardening: no `try`, temporary cwd, config assertions, placeholder guard, `--testnet` assert, UTF-8
   (findings 6–9); anchored status-line match for the CodeQL alert.
 - [x] 5.6 Optional suggestions: `::1` hosts line, PIN-lock warning without a count, "stop using `cryoshield.app`".
+- [x] 5.7 Second review (e3f34c0): RP ID order condition, "once you have a vault", attestation wording, wallet RP ID
+  hash as a write dependency, subdomain and local-program wording, parsed `--rp-id` command, lazy README read.

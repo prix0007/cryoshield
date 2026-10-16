@@ -30,7 +30,7 @@ The architecture, key derivation and flows are in [`docs/system-design.md`](docs
 
 ## Recovery drill
 
-Ten minutes, with the website blocked on your computer, ending with your secret decrypted on screen. Run it once after you create a vault, and again whenever you want proof that recovery does not depend on CryoShield. The maintainer runs it before every release and monthly after it ([`docs/launch/mainnet-release-checklist.md`](docs/launch/mainnet-release-checklist.md), steps 3.2, 7.2 and 8.4); the runs are recorded in [`docs/reviews/launch-op-mainnet.md`](docs/reviews/launch-op-mainnet.md).
+Ten minutes, with the website blocked on your computer, ending with your secret decrypted on screen. Run it once you have a vault, and again whenever you want proof that recovery does not depend on CryoShield. The maintainer runs it before every release and monthly after it ([`docs/launch/mainnet-release-checklist.md`](docs/launch/mainnet-release-checklist.md), steps 3.2, 7.2 and 8.4); the runs are recorded in [`docs/reviews/launch-op-mainnet.md`](docs/reviews/launch-op-mainnet.md).
 
 **You need:** a vault you created on https://cryoshield.app, one of its hardware keys, that key's PIN, and a computer with a USB port. **Use a test vault with throwaway contents.** Step 5 prints the secret on the screen, and your terminal keeps scrollback.
 
@@ -45,7 +45,7 @@ Ten minutes, with the website blocked on your computer, ending with your secret 
    ./cryoshield-recover-macos-arm64 --version
    ```
 
-   The checksum detects a corrupt download, not a replaced release: both files come from the same place. The `gh attestation verify` line (GitHub CLI) checks that this repository's release workflow built the file from the tagged commit; see [`tools/recover/README.md` → Verifying a download](tools/recover/README.md#verifying-a-download).
+   The checksum detects a corrupt download, not a replaced release: both files come from the same place. The `gh attestation verify` line (GitHub CLI) checks that a GitHub Actions workflow of this repository built the file, and prints which workflow and commit; see [`tools/recover/README.md` → Verifying a download](tools/recover/README.md#verifying-a-download).
 
 2. **Block the website (1 minute).** Add this line to your hosts file (`/etc/hosts` on macOS and Linux, `C:\Windows\System32\drivers\etc\hosts` on Windows; editing it needs administrator rights):
 
@@ -61,9 +61,10 @@ Ten minutes, with the website blocked on your computer, ending with your secret 
    ```sh
    ./cryoshield-recover-macos-arm64             # a vault created on cryoshield.app
    ./cryoshield-recover-macos-arm64 --testnet   # a vault created on cryoshield.app before the launch (OP Sepolia)
+   ./cryoshield-recover-macos-arm64 --testnet --rp-id cryoshield-web-dev.fly.dev   # a vault made on the development site
    ```
 
-   `--testnet` only picks the chain. A vault made on the development site needs its RP ID as well, `--testnet --rp-id cryoshield-web-dev.fly.dev`, and everything below then applies to that name instead of `cryoshield.app`.
+   `--testnet` only picks the chain. The development site has its own RP ID, so a vault made there needs `--rp-id` as well, and everything below then applies to that name instead of `cryoshield.app`.
 
 4. **Touch the key and enter its PIN** when asked. Type it carefully: a key allows only a few wrong attempts before it locks. If the key opens several vaults, pick one by number.
 
@@ -91,15 +92,15 @@ The promise is that your vault outlives the project. These are the dependencies 
 
 ### Your vault is bound to the name `cryoshield.app`, not to the website
 
-A WebAuthn PRF output is your hardware key's `hmac-secret` over a salt, computed with a secret that never leaves the key and that belongs to one credential. A credential is scoped to one **RP ID**, here `cryoshield.app`. The key returns the PRF output only for an assertion request that names that RP ID. In a browser, the RP ID comes from the page's origin, which is why no other website can derive your vault key.
+A WebAuthn PRF output is your hardware key's `hmac-secret` over a salt, computed with a secret that never leaves the key and that belongs to one credential. A credential is scoped to one **RP ID**, here `cryoshield.app`. The key returns the PRF output only for an assertion request that names that RP ID. In a browser, the RP ID comes from the page's origin, which is why no website outside `cryoshield.app` can derive your vault key. A program running on your computer can ask the key directly, as the recovery tool does, and still needs your PIN.
 
-The recovery tool is not a browser. It is a CTAP2 client built on [python-fido2](https://github.com/Yubico/python-fido2) (Yubico's library; `fido2>=2.0,<3` in [`tools/recover/pyproject.toml`](tools/recover/pyproject.toml), used in [`authenticator.py`](tools/recover/src/cryoshield_recover/authenticator.py)). It sends the RP ID string straight to the key inside the `hmac-secret` request, over USB or NFC. The key does not resolve the name, open a connection or check who owns the domain: the RP ID is a label it compares with the credential's. So the tool never contacts `cryoshield.app`. It presents the RP ID offline, reads the encrypted vault from public OP Mainnet RPCs or Arweave (or from a file), and decrypts on your computer. python-fido2 maps the PRF input to the CTAP2 salt exactly as browsers do; a test pins that mapping, and the cross-implementation vectors in `packages/vault-crypto/test-vectors/` show the Python tool and the browser deriving the same keys. The tool's built-in RP ID is `cryoshield.app`, and `--rp-id` overrides it. Every vault also records the RP ID it was created for: with `--vault-id` or `--blob-file`, the tool tries the configured RP ID first, then the RP IDs recorded in the vault copies it found, one tap each, so a copy made for another site is never silently skipped and never gets to choose first.
+The recovery tool is not a browser. It is a CTAP2 client built on [python-fido2](https://github.com/Yubico/python-fido2) (Yubico's library; `fido2>=2.0,<3` in [`tools/recover/pyproject.toml`](tools/recover/pyproject.toml), used in [`authenticator.py`](tools/recover/src/cryoshield_recover/authenticator.py)). It sends the RP ID string straight to the key inside the `hmac-secret` request, over USB or NFC. The key does not resolve the name, open a connection or check who owns the domain: the RP ID is a label it compares with the credential's. So the tool never contacts `cryoshield.app`. It presents the RP ID offline, reads the encrypted vault from public OP Mainnet RPCs or Arweave (or from a file), and decrypts on your computer. python-fido2 maps the PRF input to the CTAP2 salt exactly as browsers do; a test pins that mapping, and the cross-implementation vectors in `packages/vault-crypto/test-vectors/` show the Python tool and the browser deriving the same keys. The tool's built-in RP ID is `cryoshield.app`, and `--rp-id` overrides it. Every vault also records the RP ID it was created for: with `--vault-id` or `--blob-file`, the tool tries the configured RP ID first when any copy it found records it, then the RP IDs recorded in the other copies (on-chain copies before your file, then Arweave), one tap each and at most three, so a copy made for another site is never silently skipped and never gets to choose ahead of the configured name.
 
 If the domain expires or changes hands, your vault is unaffected: recovery needs your key, its PIN (the key refuses without user verification) and the public ciphertext, none of which a domain owner has. The residual risk is phishing. A future owner of the name could run a site under the same RP ID, and if you used your key and PIN there, that site would get your PRF output and could decrypt your public vault. So treat the end of the domain like the end of the project: recover with the tool, stop using `cryoshield.app` at all, and never present a CryoShield key with its PIN to a site you did not verify.
 
 ### The one company in the write path: gas sponsorship
 
-Writes (creating a vault, saving changes, adding a key, archiving) are ERC-4337 user operations sent through **Pimlico**'s bundler and paid by its paymaster under CryoShield's sponsorship policy ([`apps/web/docs/paymaster-policy.md`](apps/web/docs/paymaster-policy.md)). This is the single-company dependency in the system, and it is in the write path only. If sponsorship stops, because a policy cap is hit, the prepaid balance runs out, Pimlico is down or CryoShield stops paying, **writes stop**: when you save, the app says "Saving is paused right now. Your existing vault is safe; please try again later."; when you create a vault, it says "Nothing was saved. Please try again later." It never falls back to an unsponsored operation or charges you. Reads survive: unlocking in the app, the recovery tool and every existing vault never touch Pimlico, because a vault is read straight from the chain or Arweave. The contracts themselves have no admin and need no sponsor, so a future client could pay its own gas; the CryoShield app does not offer that.
+Writes (creating a vault, saving changes, adding a key, archiving) are ERC-4337 user operations sent through **Pimlico**'s bundler and paid by its paymaster under CryoShield's sponsorship policy ([`apps/web/docs/paymaster-policy.md`](apps/web/docs/paymaster-policy.md)). This is the single-company dependency in the system, and it is in the write path only. If sponsorship stops, because a policy cap is hit, the prepaid balance runs out, Pimlico is down or CryoShield stops paying, **writes stop**: when you save, the app says "Saving is paused right now. Your existing vault is safe; please try again later."; when you create a vault, it says "Nothing was saved. Please try again later." It never falls back to an unsponsored operation or charges you. Reads survive: unlocking in the app, the recovery tool and every existing vault never touch Pimlico, because a vault is read straight from the chain or Arweave. The contracts themselves have no admin and need no sponsor, so a future client could pay its own gas; the CryoShield app does not offer that. Each vault's wallet contract also has the RP ID hash baked in: every write is signed by a key under `cryoshield.app`, so writes depend on that name too, while reads and recovery do not.
 
 ### Everything else
 
@@ -107,7 +108,7 @@ Writes (creating a vault, saving changes, adding a key, archiving) are ERC-4337 
 |---|---|---|
 | Pimlico (bundler and paymaster) | writes stop; the app shows "Saving is paused" | unlocking in the app, the recovery tool, every existing vault |
 | The website (static files on Fly.io) | no new vaults and no in-browser unlock | the recovery tool, as in the drill |
-| The domain `cryoshield.app` | the website; the RP ID is a label the tool keeps presenting (above) | the recovery tool |
+| The domain `cryoshield.app` | the website; the RP ID is a label the tool keeps presenting (above), and the name the wallet contracts expect on every write | the recovery tool |
 | Public OP Mainnet RPCs | the tool ships three independent endpoints and takes `--rpc` for any node, including your own | reading from any node that has the chain |
 | Arweave gateways | the chain copy is primary; Arweave is the fallback (and the chain is read with `--no-arweave`) | reading from the chain |
 | OP Mainnet | the Arweave copy and any `--save-blob` file hold the same bytes; this is the one loss that needs them | reading from Arweave or from a file |
