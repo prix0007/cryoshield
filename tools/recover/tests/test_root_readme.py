@@ -117,19 +117,33 @@ def test_salt_mapping_has_its_own_line() -> None:
     assert "test-vectors" in body
 
 
-def _first_sentence(message: str) -> str:
-    return message.split(". ")[0]
+def _paragraph(lead: str) -> str:
+    """The one-line README paragraph that starts with ``**<lead>**``."""
+    m = re.search(rf"^\*\*{re.escape(lead)}\*\*.*$", _section("What CryoShield depends on"), re.M)
+    assert m, f"README has no paragraph starting with '{lead}'"
+    return m.group(0)
+
+
+def _quoted_first_sentence(message: str) -> str:
+    first, sep, _ = message.partition(". ")
+    assert sep, message
+    return f'"{first}."'
 
 
 def test_wrong_rp_id_is_a_named_failure() -> None:
     """A wrong RP ID never looks like a bad key: the README explains each path with the tool's own messages."""
-    body = _section("What CryoShield depends on")
-    assert "A wrong RP ID does not look like a bad key" in body
-    assert recover.NO_DISCOVERABLE_CREDENTIAL.split(" '{rp_id}'")[0] in body
-    assert _first_sentence(recover.NOT_LISTED) in body
-    assert _first_sentence(recover.DID_NOT_UNLOCK) in body
-    assert "--vault-id" in body
+    body = _paragraph("A wrong RP ID does not look like a bad key.")
+    prefix, sep, _ = recover.NO_DISCOVERABLE_CREDENTIAL.partition(" '{rp_id}'")
+    assert sep, recover.NO_DISCOVERABLE_CREDENTIAL
+    assert f'"{prefix}"' in body
+    assert "--rp-id" in recover.NO_DISCOVERABLE_CREDENTIAL and "`--rp-id`" in body
+    assert _quoted_first_sentence(recover.NOT_LISTED) in body
+    assert _quoted_first_sentence(recover.DID_NOT_UNLOCK) in body
+    assert "--vault-id" in recover.DID_NOT_UNLOCK and "`--vault-id`" in body
+    assert "--rp-id" not in recover.DID_NOT_UNLOCK  # the one input that is never the cause on that path
     assert "AES-256-GCM" in body  # the per-credential wrap tag is the key check
+    assert "Shamir" in body  # a Shamir vault wraps a 33-byte share, not the data key
+    assert "never a name someone else gives you" in body
 
 
 def _web_string(key: str) -> str:
