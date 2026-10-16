@@ -31,3 +31,11 @@
 ## 4. Review
 
 - [x] 4.1 Security review recorded in `design.md` D6.
+
+## 5. ECC review follow-ups (review of b928f20)
+
+- [x] 5.1 Shamir wording (data key or share, 48 or 49 bytes) in the README, D1 and D5.
+- [x] 5.2 `NOT_LISTED` covers a key with no credential for the vault's site; README, spec delta, tool README and D2 updated.
+- [x] 5.3 Try-every-entry fallback named in the README; "the vault did not open" in the spec delta and the tool README.
+- [x] 5.4 README tests pin quoted sentences, the flag hints in the constants, and the paragraph (`_paragraph`, `partition`).
+- [x] 5.5 D6 wording; `--rp-id` guardrail sentence in the README (D7).

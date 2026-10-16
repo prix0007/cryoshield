@@ -200,6 +200,8 @@ Following vault-format-v1 §4.1, each candidate SHALL be opened under the vault 
 
 Copies without a valid vault ID SHALL be ignored. Candidates SHALL be distinguished by (vault ID, blob), so a byte-identical clone never replaces the genuine copy.
 
+When a key answers for a credential that a candidate lists but no candidate opens, the tool SHALL say that the key is listed in that vault but did not unlock it, SHALL name `--vault-id` as the thing to check for a file (a vault only decrypts under the vault ID it was registered under), and SHALL say that the copy may otherwise be damaged. That message SHALL be distinct from the one for a key that produced no assertion for any RP ID tried (a key that holds none of the listed credentials, or none for the vault's site), which SHALL follow the line naming the site tried. Neither case SHALL show plaintext or change the exit code.
+
 #### Scenario: Clone listed before the genuine vault
 - **WHEN** a locator resolves first to an attacker's vault ID holding a byte-identical copy of the victim's blob, then to the victim's vault ID
 - **THEN** the clone fails authentication and is ignored, and the genuine vault is recovered and reported with its own vault ID
@@ -210,7 +212,11 @@ Copies without a valid vault ID SHALL be ignored. Candidates SHALL be distinguis
 
 #### Scenario: Wrong vault ID for a file
 - **WHEN** `--blob-file` is used with a vault ID other than the one the blob was created for
-- **THEN** no plaintext is shown
+- **THEN** no plaintext is shown, the exit code is "no matching vault", and the message says the key is listed in that vault but did not unlock it and names `--vault-id`
+
+#### Scenario: Key not listed in the vault
+- **WHEN** `--vault-id` names a vault whose entries list none of the key's credentials
+- **THEN** the key returns no assertion, the tool names the site it tried, the exit code is "no credential", and the message says the key holds none of the credentials that vault lists
 
 ### Requirement: Candidate selection
 Given all candidates from every source and every derived PRF output, the tool SHALL select the candidates whose wrapped key authenticates. If several authenticate, it SHALL prefer the on-chain current blob, then the latest verified Arweave blob. Junk and malformed candidates SHALL be ignored silently, except for a count.
