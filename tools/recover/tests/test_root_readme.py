@@ -20,6 +20,7 @@ from cryoshield_recover.config import DEFAULT_RP_ID, TESTNET
 REPO = Path(__file__).resolve().parents[3]
 ROOT_README_PATH = REPO / "README.md"
 WEB_STRINGS = REPO / "apps" / "web" / "src" / "ui" / "strings.ts"
+TOOL_README = REPO / "tools" / "recover" / "README.md"
 
 VAULT_ID = "0x" + "11" * 32
 
@@ -145,12 +146,23 @@ def test_wrong_rp_id_is_a_named_failure() -> None:
     assert "AES-256-GCM" in body  # the per-credential wrap tag is the key check
     assert "Shamir" in body  # a Shamir vault wraps a 33-byte share, not the data key
     assert "never a name someone else gives you" in body
-    # The two header-derived lines are quoted from the tool, and the reader is told the key is asked next.
-    for constant in (recover.OTHER_SITE_COPY, recover.NO_CREDENTIAL_FOR_SITE):
+    # The two header-derived lines are quoted from the tool in both READMEs, and the reader is told that the
+    # first is printed before the key is asked (so cancel there) and the second after it has answered.
+    tool_readme = TOOL_README.read_text(encoding="utf-8")
+    for constant, lead in (
+        (recover.OTHER_SITE_COPY, "was created for the site"),
+        (recover.NO_CREDENTIAL_FOR_SITE, "no credential for"),
+    ):
         phrase, sep, _ = constant.partition(" '{rp_id}'")
         assert sep, constant
-        assert f'"{phrase.split("{where} ")[-1]}"' in body
-    assert "ask your key about that name" in body and "Ctrl-C" in body
+        assert phrase.endswith(lead), constant
+        assert f'"{lead}"' in body
+        assert f'"{lead}"' in tool_readme
+    for text in (body, tool_readme):
+        assert "before the key is asked" in text
+        assert "Ctrl-C" in text
+        assert "Windows" in text
+        assert "after the key has answered" in text
 
 
 def _web_string(key: str) -> str:
