@@ -306,7 +306,7 @@ jobs:
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 2>/dev/null || true
           bwrap --ro-bind / / --dev /dev --proc /proc --unshare-pid true
       - name: ECC triage
-        uses: anthropics/claude-code-action@ed670b4cf9de2a5a570d130d2f6197b9e543cd64 # v1.0.240
+        uses: anthropics/claude-code-action@1d6de8cb0c237e7c15e9e1bdf973826ebae490cc # v1.0.248
         env:
           CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1"
           ECC_HOOKS_ENABLED: "false"

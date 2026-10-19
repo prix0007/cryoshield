@@ -93,7 +93,7 @@ jobs:
           ref: ${{ needs.detect.outputs.sha }}
       - name: Set up uv
         if: matrix.docker != 'true'
-        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
           version: ${{ env.UV_VERSION }}
           enable-cache: false
@@ -128,7 +128,7 @@ jobs:
           [ "$code" -eq 3 ] || { echo "::error::expected exit 3 (no security key), got $code"; exit 1; }
           [ ! -e "$RUNNER_TEMP/never-written.txt" ] || { echo "::error::an output file was written"; exit 1; }
       - name: Keep the binary for the publish or dry-run job
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: recover-${{ matrix.asset }}
           path: out/${{ matrix.asset }}
@@ -156,7 +156,7 @@ jobs:
           persist-credentials: false
           ref: ${{ needs.detect.outputs.sha }}
       - name: Set up uv
-        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
           version: ${{ env.UV_VERSION }}
           enable-cache: false
@@ -168,7 +168,7 @@ jobs:
           SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)" uv build --sdist --wheel --out-dir out
           ls -l out
       - name: Keep them for the publish or dry-run job
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: recover-python
           # only the two files: uv build also writes a .gitignore into the output directory
@@ -199,7 +199,7 @@ jobs:
           ref: ${{ needs.detect.outputs.sha }}
           sparse-checkout: .github/scripts
       - name: Download the built files
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: recover-*
           merge-multiple: true
@@ -247,7 +247,7 @@ jobs:
           ref: ${{ needs.detect.outputs.sha }}
           sparse-checkout: .github/scripts
       - name: Download the built files
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: recover-*
           merge-multiple: true
@@ -257,7 +257,7 @@ jobs:
           DIR: ${{ runner.temp }}/assets
         run: node .github/scripts/recover-release.mjs "$DIR"
       - name: Keep the would-be release files as one artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: recover-release-dry-run
           path: ${{ runner.temp }}/assets/
