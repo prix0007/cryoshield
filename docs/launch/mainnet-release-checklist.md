@@ -190,8 +190,9 @@ All read-only, against `https://mainnet.optimism.io`. Record each value and the 
   `v1.0.0` release, change `release-recovery-tool-assets`).** The files are built and uploaded by
   `.github/workflows/recover-release.yml` when you publish the release in 5.2; nothing is published here.
   - **Before:** GitHub "immutable releases" stays **off** for this repository (assets are added after publishing). The
-    tool's version must equal the tag: `tools/recover` is `1.0.0` for `v1.0.0` (bump `pyproject.toml`, `__init__.py`
-    and `uv.lock` before any later release; the workflow refuses a mismatch).
+    tool's version must equal the tag: `tools/recover` is `1.0.0` for `v1.0.0` (before any later release bump
+    `pyproject.toml`, `__init__.py`, `uv.lock` and the README's pinned install lines; `tests/test_release_version.py`
+    checks all four, and the workflow refuses a mismatch).
   - **Do:** `gh workflow run recover-release.yml --ref main`, then download the `recover-release-dry-run` artifact from
     the run.
   - **Check:**

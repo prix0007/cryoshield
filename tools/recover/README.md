@@ -21,14 +21,14 @@ With Python 3.10 or newer you can instead install it from a release, or run it f
 
 ```sh
 # with pipx, from the wheel attached to a release (copy its exact URL from the release page)
-pipx install "https://github.com/prix0007/cryoshield/releases/download/v1.0.0/cryoshield_recover-1.0.0-py3-none-any.whl"
+pipx install "https://github.com/prix0007/cryoshield/releases/download/v1.0.3/cryoshield_recover-1.0.3-py3-none-any.whl"
 # NFC readers (PC/SC) also need pyscard in the same environment
 pipx inject cryoshield-recover pyscard
 # with uv, run from the source at a release tag without installing
-uvx --from "git+https://github.com/prix0007/cryoshield@v1.0.0#subdirectory=tools/recover" cryoshield-recover --version
+uvx --from "git+https://github.com/prix0007/cryoshield@v1.0.3#subdirectory=tools/recover" cryoshield-recover --version
 ```
 
-The tool's version is the release it ships with: the files on release `v1.0.0` print `cryoshield-recover 1.0.0`.
+The tool's version is the release it ships with: the files on release `v1.0.3` print `cryoshield-recover 1.0.3`.
 
 **Dependency pinning.** `pipx` and `uvx` resolve dependencies themselves. They do **not** use this project's `uv.lock`, so they install the newest `fido2` and `cryptography` releases allowed by `pyproject.toml`.
 

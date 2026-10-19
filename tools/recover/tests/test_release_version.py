@@ -32,6 +32,12 @@ def test_lockfile_records_the_same_version() -> None:
     assert own == [__version__]
 
 
-def test_release_version_is_1_0_0() -> None:
-    # The first production release is v1.0.0 (founder, 2026-10-12); its assets carry this tool version.
-    assert __version__ == "1.0.0"
+def test_readme_install_lines_name_the_version() -> None:
+    # The README's pinned install lines (pipx wheel URL, uvx tag, the "files on release" sentence) move with every
+    # release (design D8), so they must name the current version and nothing older.
+    readme = (ROOT / "README.md").read_text()
+    assert f"releases/download/v{__version__}/cryoshield_recover-{__version__}-py3-none-any.whl" in readme
+    assert f"cryoshield@v{__version__}#subdirectory=tools/recover" in readme
+    assert f"release `v{__version__}` print `cryoshield-recover {__version__}`" in readme
+    stale = {m for m in re.findall(r"cryoshield_recover-(\d+\.\d+\.\d+)|cryoshield@v(\d+\.\d+\.\d+)", readme) for m in m if m}
+    assert stale == {__version__}
