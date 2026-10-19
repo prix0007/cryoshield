@@ -42,7 +42,7 @@ Both workflows share one shape. Each stage runs only if the previous one passed:
 
 Neither pipeline runs on pull requests, and `workflow-policy.mjs` enforces that in CI.
 
-**Which commit is live?** `curl -s https://cryoshield-web-dev.fly.dev/release.json` and `curl -s https://cryoshield.app/release.json` return the commit, the `treeHash` and the public config (chain, RP ID, registry).
+**Which commit is live?** `curl -s https://cryoshield-web-dev.fly.dev/release.json` and `curl -s https://cryoshield.app/release.json` return the commit, the release name (`release`: the tag on production, `null` on dev), the `treeHash` and the public config (chain, RP ID, registry). The landing page and `/app` show the same thing at the end of their footers, as `Version v1.2.3` on production and `Version dev <commit>` on dev; the smoke test fails a production deploy whose live `release` is not the run's tag, and a dev deploy whose `release` is not `null`.
 
 ## Releasing to production [owner]
 

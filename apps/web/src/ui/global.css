@@ -751,6 +751,20 @@ dd {
 .app-footer a:hover {
   opacity: 0.72;
 }
+/* footer-release-version D4: the Version line under the links; not rendered while the release is unknown. */
+.app-footer .release {
+  margin: var(--space-sm) 0 0;
+  font-size: var(--fine-size);
+  color: var(--app-muted);
+  font-variant-numeric: tabular-nums;
+}
+.app-footer .release a {
+  display: inline;
+  min-height: 0;
+  min-width: 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
 
 /* Permanence + 18+ acknowledgement (add-privacy-and-compliance 4.1). */
 .ack legend {

@@ -9,8 +9,9 @@ import { describe, expect, it } from 'vitest';
 const SCRIPT = join(__dirname, '..', 'deploy.sh');
 
 // Hermetic (L5): no inherited VITE_* (would override .env), DEPLOY_* (would change the target) or GIT_* (GIT_DIR,
-// GIT_WORK_TREE, GIT_INDEX_FILE... would point git at another repository, e.g. when run from a git hook).
-const HERMETIC = Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^(VITE|DEPLOY|GIT)_/.test(k)));
+// GIT_WORK_TREE, GIT_INDEX_FILE... would point git at another repository, e.g. when run from a git hook) or GITHUB_*
+// (GITHUB_REF_TYPE=tag names the release in Actions; footer-release-version D2).
+const HERMETIC = Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^(VITE|DEPLOY|GIT|GITHUB)_/.test(k)));
 
 function repo(rpId = 'cryoshield.app') {
   const root = mkdtempSync(join(tmpdir(), 'cs-deploy-'));
@@ -32,6 +33,9 @@ function repo(rpId = 'cryoshield.app') {
   git('init', '-q');
   git('-c', 'user.email=t@t', '-c', 'user.name=t', 'add', '-A');
   git('-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'init');
+  // footer-release-version D2: a production build names the v* tag at HEAD; the fixture is "at a release" by default.
+  const tag = (name = 'v1.2.3') => git('tag', '-f', name);
+  tag();
   const run = (env: Record<string, string> = {}, args: string[] = []) => {
     const clean = HERMETIC;
     return spawnSync('bash', [join(web, 'deploy', 'deploy.sh'), ...args], {
@@ -47,7 +51,7 @@ function repo(rpId = 'cryoshield.app') {
       return [];
     }
   };
-  return { root, web, bin, run, calls };
+  return { root, web, bin, run, calls, git, tag };
 }
 
 describe('deploy.sh guards', () => {
@@ -110,7 +114,7 @@ describe('deploy.sh guards', () => {
     expect(r.calls()).toEqual([
       'node scripts/verify-build.mjs --real-env --expect-host cryoshield.app',
       'node deploy/gen-context.mjs --dist dist --out deploy/.build --host cryoshield.app',
-      expect.stringMatching(/^node deploy\/release-manifest\.mjs --site deploy\/\.build\/site --out deploy\/\.build\/release-manifest\.json --commit [0-9a-f]{40} --env \.env --contracts .+\/contracts --caddyfile deploy\/\.build\/Caddyfile --site-release$/),
+      expect.stringMatching(/^node deploy\/release-manifest\.mjs --site deploy\/\.build\/site --out deploy\/\.build\/release-manifest\.json --commit [0-9a-f]{40} --env \.env --contracts .+\/contracts --caddyfile deploy\/\.build\/Caddyfile --site-release --release v1\.2\.3$/),
       'fly deploy --config fly.toml --remote-only --app cryoshield-web',
     ]);
   });
@@ -119,6 +123,7 @@ describe('deploy.sh guards', () => {
     const r = repo();
     rmSync(join(r.bin, 'fly'));
     spawnSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qam', 'no fly'], { cwd: r.root, env: HERMETIC });
+    r.tag();
     const out = r.run({}, ['--build-only']);
     expect(out.status, out.stderr).toBe(0);
     expect(r.calls().some((c) => c.startsWith('fly'))).toBe(false);
@@ -185,5 +190,55 @@ describe('deploy.sh targets (split-dev-and-release-deploys)', () => {
       expect(out.stderr).toMatch(/DEPLOY_TARGET|DEPLOY_HOST/);
       expect(r.calls()).toEqual([]);
     }
+  });
+});
+
+describe('deploy.sh release name (footer-release-version D2)', () => {
+  const manifestCall = (r: ReturnType<typeof repo>) => r.calls().find((c) => c.includes('release-manifest.mjs')) ?? '';
+
+  it('production names the single v* tag at HEAD', () => {
+    const r = repo();
+    expect(r.run({}, ['--build-only']).status).toBe(0);
+    expect(manifestCall(r)).toMatch(/ --site-release --release v1\.2\.3$/);
+  });
+
+  it('in Actions at a tag ref (GITHUB_REF_TYPE=tag, a checkout by SHA with no tags) the run\'s own tag names it', () => {
+    const r = repo();
+    r.git('tag', '-d', 'v1.2.3');
+    const out = r.run({ GITHUB_REF_TYPE: 'tag', GITHUB_REF_NAME: 'v2.0.0-rc.1' }, ['--build-only']);
+    expect(out.status, out.stderr).toBe(0);
+    expect(manifestCall(r)).toMatch(/ --release v2\.0\.0-rc\.1$/);
+  });
+
+  it('refuses a production build with no v* tag at HEAD, with two, or with a malformed name, before the manifest', () => {
+    const none = repo();
+    none.git('tag', '-d', 'v1.2.3');
+    let out = none.run({}, ['--build-only']);
+    expect(out.status).not.toBe(0);
+    expect(out.stderr).toMatch(/release tag/);
+    expect(manifestCall(none)).toBe('');
+    const two = repo();
+    two.tag('v1.2.4');
+    out = two.run({}, ['--build-only']);
+    expect(out.status).not.toBe(0);
+    expect(out.stderr).toMatch(/v1\.2\.3.*v1\.2\.4|v1\.2\.4.*v1\.2\.3/s);
+    const bad = repo();
+    bad.git('tag', '-d', 'v1.2.3');
+    bad.tag('v1.2');
+    out = bad.run({}, ['--build-only']);
+    expect(out.status).not.toBe(0);
+    expect(out.stderr).toMatch(/release tag/);
+    const branchRef = repo();
+    branchRef.git('tag', '-d', 'v1.2.3');
+    out = branchRef.run({ GITHUB_REF_TYPE: 'branch', GITHUB_REF_NAME: 'main' }, ['--build-only']);
+    expect(out.status).not.toBe(0);
+    expect(manifestCall(branchRef)).toBe('');
+  });
+
+  it('development never names a release, tag or not', () => {
+    const r = repo('cryoshield-web-dev.fly.dev');
+    expect(r.run({ DEPLOY_TARGET: 'development', GITHUB_REF_TYPE: 'tag', GITHUB_REF_NAME: 'v1.2.3' }, ['--build-only']).status).toBe(0);
+    expect(manifestCall(r)).toMatch(/ --site-release$/);
+    expect(manifestCall(r)).not.toContain('--release');
   });
 });

@@ -15,6 +15,10 @@
 #                        set, /release.json's treeHash must equal it),
 #      EXPECT_NOINDEX (true on the development site: every page must send X-Robots-Tag: noindex, nofollow;
 #                      false, the default, on production: no page may send a noindex X-Robots-Tag),
+#      EXPECT_RELEASE (production only, footer-release-version D3: the vX.Y.Z[-prerelease] tag /release.json's
+#                      `release` must equal; defaults to the run's own tag when GITHUB_REF_TYPE=tag, which every
+#                      production run is. Without one, `release` must still be a well-formed name. On development
+#                      it must be null, and EXPECT_RELEASE is a usage error),
 #      SMOKE_ATTEMPTS (default 10), SMOKE_SLEEP seconds (default 15)
 set -euo pipefail
 
@@ -36,6 +40,12 @@ EXPECT_TREE_HASH="${EXPECT_TREE_HASH:-}"
 [[ "$DONATION_ADDRESS" =~ ^0x[0-9a-fA-F]{40}$ ]] || { echo "smoke: DONATION_ADDRESS must be 0x + 40 hex" >&2; exit 2; }
 [[ "$EXPECT_NOINDEX" =~ ^(true|false)$ ]] || { echo "smoke: EXPECT_NOINDEX must be true or false" >&2; exit 2; }
 [ -z "$EXPECT_TREE_HASH" ] || [[ "$EXPECT_TREE_HASH" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "smoke: EXPECT_TREE_HASH must be empty or sha256:<64 lower-case hex>" >&2; exit 2; }
+# footer-release-version D3: the pipeline's tag grammar (release-ref.sh); the run's own tag is the default expectation.
+TAG_RE='^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z.-]*)?$'
+EXPECT_RELEASE="${EXPECT_RELEASE:-}"
+if [ -z "$EXPECT_RELEASE" ] && [ "${GITHUB_REF_TYPE:-}" = "tag" ] && [ "$EXPECT_NOINDEX" != "true" ]; then EXPECT_RELEASE="${GITHUB_REF_NAME:-}"; fi
+[ -z "$EXPECT_RELEASE" ] || [[ "$EXPECT_RELEASE" =~ $TAG_RE ]] || { echo "smoke: EXPECT_RELEASE must be empty or vX.Y.Z[-prerelease]" >&2; exit 2; }
+[ -z "$EXPECT_RELEASE" ] || [ "$EXPECT_NOINDEX" != "true" ] || { echo "smoke: EXPECT_RELEASE is for production; the development site names no release" >&2; exit 2; }
 REG_ITEM='v[1-9][0-9]{0,2}=0x[0-9a-fA-F]{40}'
 [ -z "$REGISTRIES" ] || [[ "$REGISTRIES" =~ ^$REG_ITEM( $REG_ITEM)*$ ]] || { echo "smoke: REGISTRIES must be 'vN=0x<40 hex>' entries separated by single spaces" >&2; exit 2; }
 
@@ -146,6 +156,16 @@ check_once() {
   if [ -n "$EXPECT_TREE_HASH" ]; then
     tree="$(jq -r '.treeHash // empty' "$TMP/b" 2>/dev/null || true)"
     [ "$tree" = "$EXPECT_TREE_HASH" ] || errors+=("/release.json treeHash is ${tree:-missing}, expected $EXPECT_TREE_HASH (the build job's output)")
+  fi
+  # footer-release-version D3: the release name the footers show. Production: a well-formed tag, and the run's tag when
+  # known. Development: null (a dev site claiming a release name is wrong, whatever the name).
+  rel="$(jq -r 'if .release == null then "null" else (.release | tostring) end' "$TMP/b" 2>/dev/null || echo unreadable)"
+  if [ "$EXPECT_NOINDEX" = "true" ]; then
+    [ "$rel" = "null" ] || errors+=("/release.json release is $rel, expected null on the development site")
+  elif ! [[ "$rel" =~ $TAG_RE ]]; then
+    errors+=("/release.json release is $rel, expected a vX.Y.Z release name on production")
+  elif [ -n "$EXPECT_RELEASE" ] && [ "$rel" != "$EXPECT_RELEASE" ]; then
+    errors+=("/release.json release is $rel, expected $EXPECT_RELEASE (the tag this run deployed)")
   fi
   # The live build's contracts equal the deployment record (v2 and this RP ID's wallet always; v1 only where it exists).
   v2="$(release_field .config.registryV2.address)"

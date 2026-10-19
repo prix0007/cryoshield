@@ -23,8 +23,10 @@ const REGISTRIES = [
   { version: 'v2', address: V2, deployBlock: 9, abiHash: '0x' + '22'.repeat(32) },
   { version: 'v1', address: ADDRESS, deployBlock: 7, abiHash: '0x' + '11'.repeat(32) },
 ];
-const releaseBody = (config = { registry: { address: ADDRESS }, registryV2: { address: V2 }, registries: REGISTRIES, wallet: { factory: FACTORY } }, commit = SHA) =>
-  JSON.stringify({ name: 'cryoshield-web', commit, treeHash: 'sha256:' + 'c'.repeat(64), config });
+// footer-release-version D3: `release` is the tag on production and null on development.
+const RELEASE = 'v1.2.3';
+const releaseBody = (config = { registry: { address: ADDRESS }, registryV2: { address: V2 }, registries: REGISTRIES, wallet: { factory: FACTORY } }, commit = SHA, release = RELEASE) =>
+  JSON.stringify({ name: 'cryoshield-web', commit, release, treeHash: 'sha256:' + 'c'.repeat(64), config });
 const IMAGE = 'registry.fly.io/cryoshield-web:deployment-01M41Z2MXSZQKZWXR97MSQG02X';
 const GOOD_HEADERS = {
   'content-security-policy': "default-src 'none'; frame-ancestors 'none'",
@@ -470,7 +472,7 @@ test('rollback: refuses an unexpected image ref, and fails if fly or /healthz fa
 // ---- split-dev-and-release-deploys: per-target parameters ----
 const DEV_IMAGE = 'registry.fly.io/cryoshield-web-dev:deployment-01M41Z2MXSZQKZWXR97MSQG02X';
 const NOINDEX = 'noindex, nofollow';
-const devSite = () => ({ ...healthySite(), headers: { ...GOOD_HEADERS, 'x-robots-tag': NOINDEX } });
+const devSite = () => ({ ...healthySite(), headers: { ...GOOD_HEADERS, 'x-robots-tag': NOINDEX }, release: { status: 200, body: releaseBody(undefined, SHA, null) } });
 
 test('smoke: EXPECT_NOINDEX=true (dev) passes only with X-Robots-Tag: noindex, nofollow on every page (robots.txt is not used)', async () => {
   site = devSite();
@@ -502,6 +504,43 @@ test('smoke: production (EXPECT_NOINDEX=false, the default) fails if any page sa
   site = healthySite();
   assert.equal((await run('smoke.sh', smokeEnv({ EXPECT_NOINDEX: 'false' }))).status, 0);
   assert.equal((await run('smoke.sh', smokeEnv({ EXPECT_NOINDEX: 'yes' }))).status, 2);
+});
+
+// ---- footer-release-version D3: the live release name per target ----
+test('smoke: production requires a well-formed release name; EXPECT_RELEASE (or the run\'s tag ref) must equal it', async () => {
+  site = healthySite();
+  assert.equal((await run('smoke.sh', smokeEnv())).status, 0);
+  assert.equal((await run('smoke.sh', smokeEnv({ EXPECT_RELEASE: RELEASE }))).status, 0);
+  assert.equal((await run('smoke.sh', smokeEnv({ GITHUB_REF_TYPE: 'tag', GITHUB_REF_NAME: RELEASE }))).status, 0);
+  // a branch ref never sets an expectation
+  assert.equal((await run('smoke.sh', smokeEnv({ GITHUB_REF_TYPE: 'branch', GITHUB_REF_NAME: 'main' }))).status, 0);
+  const cases = [
+    [{ release: { status: 200, body: releaseBody(undefined, SHA, null) } }, {}, /release\.json release is null/],
+    [{ release: { status: 200, body: releaseBody(undefined, SHA, '1.2.3') } }, {}, /release\.json release is 1\.2\.3/],
+    [{ release: { status: 200, body: JSON.stringify({ ...JSON.parse(releaseBody()), release: undefined }) } }, {}, /release\.json release is null/],
+    [{}, { EXPECT_RELEASE: 'v9.9.9' }, /release\.json release is v1\.2\.3, expected v9\.9\.9/],
+    [{}, { GITHUB_REF_TYPE: 'tag', GITHUB_REF_NAME: 'v9.9.9' }, /expected v9\.9\.9/],
+    [{}, { EXPECT_RELEASE: 'v9.9.9', GITHUB_REF_TYPE: 'tag', GITHUB_REF_NAME: RELEASE }, /expected v9\.9\.9/], // explicit wins
+  ];
+  for (const [over, env, why] of cases) {
+    site = { ...healthySite(), ...over };
+    const r = await run('smoke.sh', smokeEnv(env));
+    assert.notEqual(r.status, 0, JSON.stringify([over, env]));
+    assert.match(r.stdout + r.stderr, why, JSON.stringify([over, env]));
+  }
+});
+
+test('smoke: development requires release null; a malformed EXPECT_RELEASE is a usage error (exit 2)', async () => {
+  site = devSite();
+  assert.equal((await run('smoke.sh', smokeEnv({ EXPECT_NOINDEX: 'true' }))).status, 0);
+  site = { ...devSite(), release: { status: 200, body: releaseBody() } };
+  const r = await run('smoke.sh', smokeEnv({ EXPECT_NOINDEX: 'true' }));
+  assert.notEqual(r.status, 0);
+  assert.match(r.stdout + r.stderr, /release\.json release is v1\.2\.3, expected null on the development site/);
+  site = healthySite();
+  for (const bad of ['1.2.3', 'v1', 'v1.2.3 x', 'v1.2.3;rm']) {
+    assert.equal((await run('smoke.sh', smokeEnv({ EXPECT_RELEASE: bad }))).status, 2, bad);
+  }
 });
 
 test('previous-image and rollback work for the dev app and config, and refuse the other app\'s images', async () => {

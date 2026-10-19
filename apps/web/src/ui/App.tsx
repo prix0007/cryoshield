@@ -15,6 +15,7 @@ import { bytesEqual } from '../lib/bytes';
 import { config, isOlder, WRITE_REGISTRY } from '../config';
 import { useAutoLock } from './useAutoLock';
 import { useUpdateAvailable } from './useUpdateAvailable';
+import { useRelease } from './useRelease';
 import { VaultView } from './VaultView';
 import { Btn, Loading, MotionRoot, ScreenTransition, useDirection } from './motionkit';
 
@@ -61,6 +62,7 @@ function NetworkStatus({ chainId, rpId }: { chainId: number; rpId: string }) {
 function Shell() {
   const svc = useServices();
   const updateAvailable = useUpdateAvailable(svc.buildCheck);
+  const release = useRelease(svc.release);
   const [screen, setScreen] = useState<Screen>({ name: 'home' });
   // vault-list-labels-archive D7: the ONLY place decrypted vaults live (the open one, the list, read-only older vaults).
   // Lock, idle, page hide and 60 s hidden replace it with [] in one assignment.
@@ -276,7 +278,7 @@ function Shell() {
           )}
         </ScreenTransition>
       </main>
-      <AppFooter />
+      <AppFooter release={release} />
     </div>
   );
 }

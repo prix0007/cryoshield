@@ -1,5 +1,6 @@
 /** App chrome in the visual-language grammar (redesign-landing-and-app-ui D7). Presentational only. */
 import { useEffect, type ReactNode } from 'react';
+import type { ReleaseLabel } from '../lib/release';
 import { S } from './strings';
 
 const REPO = 'https://github.com/prix0007/cryoshield';
@@ -130,8 +131,12 @@ export function useFocusClearOfActionBar() {
   }, []);
 }
 
-/** Slim app footer: legal links (add-privacy-and-compliance "Linked everywhere"). */
-export function AppFooter() {
+/**
+ * Slim app footer: legal links (add-privacy-and-compliance "Linked everywhere") and, once known, the release line
+ * (footer-release-version D4: "Version v1.0.3" on production, "Version dev <commit>" on development; the shell fetches
+ * it through useRelease, this stays presentational).
+ */
+export function AppFooter({ release = null }: { release?: ReleaseLabel | null }) {
   return (
     <footer className="app-footer">
       <ul>
@@ -167,6 +172,14 @@ export function AppFooter() {
           </a>
         </li>
       </ul>
+      {release && (
+        <p className="release">
+          Version{' '}
+          <a href={release.href} rel="noopener noreferrer">
+            {release.text}
+          </a>
+        </p>
+      )}
     </footer>
   );
 }

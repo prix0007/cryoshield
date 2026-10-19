@@ -935,6 +935,21 @@
   letter-spacing: -0.12px;
   color: var(--ink-muted-48);
 }
+/* footer-release-version D4: the Version line under the legal line; the HTML ships it hidden, the page shows it once
+   /release.json is known. The link is underlined: it sits inside running text (axe link-in-text-block). */
+.site-footer .release {
+  margin: var(--space-xs) 0 0;
+  font-size: var(--fine-size);
+  line-height: 1.5;
+  letter-spacing: -0.12px;
+  color: var(--ink-muted-48);
+  font-variant-numeric: tabular-nums;
+}
+.site-footer .release a {
+  color: var(--ink-muted-80);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
 
 /* ---- Responsive (hero 56 -> 40 -> 34 -> 28) ---- */
 @media (max-width: 1068px) {
