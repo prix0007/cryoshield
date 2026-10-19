@@ -6,7 +6,7 @@ downloaded asset that ships on cryoshield.app, with its source and license. Ever
 
 | Item | Version | Source | License | Where it is used |
 |---|---|---|---|---|
-| Motion (`motion`, with its dependencies `motion-dom`, `motion-utils`, `framer-motion`, `tslib`) | `motion@13.5.0` (exact pin; lockfile integrity in `pnpm-lock.yaml`) | https://www.npmjs.com/package/motion · https://github.com/motiondivision/motion | MIT (`tslib`: 0BSD) | Landing page only (`apps/web/src/landing/scenes/runtime.ts`), lazy-loaded with the first scroll scene. Only `scroll` is imported (cinematic-landing). |
+| Motion (`motion`, with its dependencies `motion-dom`, `motion-utils`, `framer-motion`, `tslib`) | `motion@14.0.0` (exact pin; lockfile integrity in `pnpm-lock.yaml`) | https://www.npmjs.com/package/motion · https://github.com/motiondivision/motion | MIT (`tslib`: 0BSD) | Landing page: `scroll` in `apps/web/src/landing/scenes/runtime.ts` (lazy, with the first scroll scene) and `animate` from `motion/mini` in `apps/web/src/landing/coffee.ts` (lazy). `/app`: `motion/react` through `LazyMotion` + `domAnimation` in `apps/web/src/ui/motionkit.tsx` (app-motion-ux). |
 | Inter, variable weight, latin subset (`inter-latin-wght-normal.woff2`) | from `@fontsource-variable/inter@5.3.0` | https://www.npmjs.com/package/@fontsource-variable/inter · upstream https://github.com/rsms/inter | SIL Open Font License 1.1 (full text in `apps/web/src/ui/fonts/OFL.txt`) | `apps/web/src/ui/fonts/`, the font fallback after the system UI stack, on both pages |
 
 ## Integrity
@@ -21,6 +21,8 @@ downloaded asset that ships on cryoshield.app, with its source and license. Ever
 - **Motion:** we grepped the ESM dists of `motion`, `motion-dom`, `motion-utils` and `framer-motion` for `innerHTML`,
   `insertAdjacentHTML`, `document.write`, `eval(`, `new Function` and `WebAssembly`, and found none. Motion writes
   styles through the CSSOM, which `style-src 'self'` does not restrict.
+  - 2026-10-19, `motion@14.0.0` (bump-motion-14): the same grep over the four packages' `dist` trees (940 files) found
+    none.
 - **Fonts:** fonts load under `font-src 'self'` from `/assets/` (content-hashed by Vite).
 
 ## Considered and rejected
