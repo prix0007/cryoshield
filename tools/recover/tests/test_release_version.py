@@ -32,6 +32,6 @@ def test_lockfile_records_the_same_version() -> None:
     assert own == [__version__]
 
 
-def test_release_version_is_1_0_0() -> None:
-    # The first production release is v1.0.0 (founder, 2026-10-12); its assets carry this tool version.
-    assert __version__ == "1.0.0"
+def test_release_version_is_1_0_3() -> None:
+    # The tool version is the release it ships with (design D8); bump it before every release. v1.0.3 is next.
+    assert __version__ == "1.0.3"

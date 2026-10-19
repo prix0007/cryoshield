@@ -200,7 +200,7 @@ wheels = [
 
 [[package]]
 name = "cryoshield-recover"
-version = "1.0.0"
+version = "1.0.3"
 source = { editable = "." }
 dependencies = [
     { name = "cryptography" },
