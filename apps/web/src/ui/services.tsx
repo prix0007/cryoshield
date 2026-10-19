@@ -10,6 +10,7 @@ import { createMirror } from '../mirror/mirror';
 import type { CredentialsApi } from '../webauthn';
 import type { RegistryVersion } from '../vault/adapter';
 import { checkBuild, type BuildState } from '../lib/build-check';
+import type { ReleaseLabel } from '../lib/release';
 
 export interface Services {
   rpId: string;
@@ -33,6 +34,8 @@ export interface Services {
   arweaveGatewayUrl: string;
   /** reload-on-new-build: is the site serving a newer app build than this tab runs? Asked before every write. */
   buildCheck: () => Promise<BuildState>;
+  /** footer-release-version D4: the footer's Version line ("v1.0.3" or "dev <commit>"), or null while unknown. */
+  release: () => Promise<ReleaseLabel | null>;
 }
 
 /**
@@ -63,6 +66,8 @@ export function defaultServices(): Services {
     registries: config.registries,
     arweaveGatewayUrl: config.arweaveGatewayUrl,
     buildCheck: () => checkBuild(),
+    // D5: fetched and parsed in a lazy chunk, so the initial /app JavaScript stays inside its budget.
+    release: () => import('../lib/release').then((m) => m.fetchRelease().then((info) => (info ? m.releaseLink(info) : null))),
   };
 }
 

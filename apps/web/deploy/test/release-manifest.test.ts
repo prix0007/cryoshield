@@ -110,7 +110,7 @@ describe('release manifest', () => {
     const rel = JSON.parse(pub);
     expect(after.treeHash).toBe(before.treeHash);
     expect(after.files.map((f: { path: string }) => f.path)).not.toContain('release.json');
-    expect(rel).toEqual({ name: 'cryoshield-web', commit: 'c'.repeat(40), treeHash: before.treeHash, config: before.config });
+    expect(rel).toEqual({ name: 'cryoshield-web', commit: 'c'.repeat(40), release: null, treeHash: before.treeHash, config: before.config });
     expect(pub).not.toMatch(/pim_|apikey|sp_hidden/);
   });
 
@@ -174,6 +174,26 @@ describe('release manifest', () => {
   it('refuses a registry version the app does not know instead of publishing it', () => {
     const d = fixture(['index.html', 'assets/index-abc.js', 'assets/index-def.css'], { vaultRegistries: { v3: { address: A3, deployBlock: 12, txHash: '0x', abiHash: '0x' + '99'.repeat(32) } } });
     expect(() => run(d)).toThrow(/doesn't know VaultRegistry v3/);
+  });
+
+  // footer-release-version D1: the release name is deploy-time data next to the commit, never part of the tree.
+  it('--release records the tag after commit in the manifest and in site/release.json; absent it is null; malformed is refused', () => {
+    const d = fixture(['index.html', 'assets/index-abc.js', 'assets/index-def.css']);
+    const out = join(d, 'release-manifest.json');
+    const base = ['--site', join(d, 'site'), '--out', out, '--commit', 'f'.repeat(40), '--env', join(d, '.env'), '--contracts', join(d, 'contracts'), '--site-release'];
+    execFileSync('node', [SCRIPT, ...base, '--release', 'v1.2.3-rc.1'], { encoding: 'utf8' });
+    const m = JSON.parse(readFileSync(out, 'utf8'));
+    const rel = JSON.parse(readFileSync(join(d, 'site', 'release.json'), 'utf8'));
+    expect(m.release).toBe('v1.2.3-rc.1');
+    expect(Object.keys(m).slice(0, 3)).toEqual(['name', 'commit', 'release']);
+    expect(Object.keys(rel).slice(0, 3)).toEqual(['name', 'commit', 'release']);
+    expect(rel.release).toBe('v1.2.3-rc.1');
+    expect(m.treeHash).toBe(JSON.parse(run(fixture(['index.html', 'assets/index-abc.js', 'assets/index-def.css']), 'f'.repeat(40)).json).treeHash);
+    expect(JSON.parse(run(fixture(['index.html', 'assets/index-abc.js', 'assets/index-def.css'])).json).release).toBeNull();
+    for (const bad of ['1.2.3', 'v1.2', 'v1.2.3 ', 'v1.2.3-<b>', 'main', '']) {
+      const e = fixture(['index.html', 'assets/index-abc.js', 'assets/index-def.css']);
+      expect(() => execFileSync('node', [SCRIPT, '--site', join(e, 'site'), '--out', join(e, 'm.json'), '--commit', 'f'.repeat(40), '--env', join(e, '.env'), '--contracts', join(e, 'contracts'), '--release', bad], { encoding: 'utf8', stdio: 'pipe' }), bad).toThrow(/--release/);
+    }
   });
 
   it('refuses to run twice into a site that already has release.json (it would hash itself)', () => {

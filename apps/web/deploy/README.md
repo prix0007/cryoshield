@@ -57,13 +57,18 @@ DEPLOY_TARGET=development apps/web/deploy/deploy.sh    # development: cryoshield
 
 Only then does it:
 1. generate `deploy/.build/`;
-2. write the release manifest, plus `site/release.json`, which is served as `/release.json` and names the deployed commit;
+2. write the release manifest, plus `site/release.json`, which is served as `/release.json` and names the deployed commit
+   and release (`release`: the `vX.Y.Z` tag a production build is made at, `null` on development; both footers show it
+   as `Version v1.2.3` or `Version dev <commit>`). A production build refuses to proceed unless exactly one well-formed
+   `v*` tag names it: the run's own tag ref in Actions, or the tag at `HEAD` locally;
 3. run `fly deploy --config fly.toml --remote-only --app cryoshield-web`.
 
 ### Publish the release manifest (every deploy)
 
 `deploy.sh` writes `deploy/.build/release-manifest.json` and prints its `treeHash`. The manifest holds:
 - the git commit;
+- `release`: the release tag (production) or `null` (development); deploy-time data like the commit, never part of the
+  built files, so the same commit builds to the same tree on both targets;
 - `treeHash` = sha256 over the `shasum -a 256` lines of every served file, sorted (`LC_ALL=C`);
 - the per-file hashes;
 - a config summary (chain ID, RP ID, registry address and deploy block, and connect-src **origins only**; no API key,

@@ -3,6 +3,7 @@ import '../ui/chrome.css';
 import './landing.css';
 import { loadBeacon } from './analytics';
 import { bootCompareReveal, bootCounters, bootLanding, bootScenes, wireCoffee, wireMagnetic, wireSubnavTheme } from './boot';
+import { wireRelease } from './release';
 
 const matchMedia = (q: string) => window.matchMedia(q);
 const IO = typeof IntersectionObserver === 'undefined' ? undefined : IntersectionObserver;
@@ -29,3 +30,5 @@ wireCoffee(document, matchMedia);
 wireSubnavTheme(document, window);
 // Cloudflare Web Analytics (landing only): gated on GPC/DNT/host; inert unless the build shipped the beacon template.
 loadBeacon(document, window);
+// footer-release-version D4: the footer's Version line, from /release.json (same origin); hidden until known.
+void wireRelease(document, (u, i) => fetch(u, i));

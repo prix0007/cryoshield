@@ -18,6 +18,7 @@ export function fakeServices(over: Partial<Services> = {}): Services {
     registries: [{ version: 'v2', address: '0x00000000000000000000000000000000000000a2' }],
     arweaveGatewayUrl: 'https://arweave.net',
     buildCheck: async () => 'current',
+    release: async () => null,
     ...over,
   };
 }

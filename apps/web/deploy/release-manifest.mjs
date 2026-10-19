@@ -6,7 +6,9 @@
  * Anyone can rebuild the tagged commit with the published config and compare (see deploy/README.md).
  * Never records key values: only chain ID, RP ID, registry records (every version, newest first, in `registries`; v1 and
  * v2 also in the legacy `registry`/`registryV2` fields), this RP ID's wallet pair, and connect-src ORIGINS.
- * Usage: node deploy/release-manifest.mjs --site deploy/.build/site --out <file> --commit <sha> --env .env --contracts ../../contracts [--site-release]
+ * Usage: node deploy/release-manifest.mjs --site deploy/.build/site --out <file> --commit <sha> --env .env --contracts ../../contracts [--site-release] [--release vX.Y.Z]
+ *   --release <tag> (footer-release-version D1): the release name, recorded as `release` next to the commit (null when
+ *   absent, i.e. on development). Deploy-time data like the commit: never part of the built files or the tree hash.
  *   --site-release also writes <site>/release.json (served as /release.json; excluded from treeHash).
  *   --caddyfile <path> records the sha256 of the generated Caddyfile (CSP and every response header).
  */
@@ -25,6 +27,10 @@ const site = arg('site');
 const out = arg('out');
 const commit = arg('commit');
 if (!/^[0-9a-f]{40}$/.test(commit)) throw new Error('--commit must be a full 40-hex git commit');
+// The pipeline's tag grammar (.github/scripts/deploy/release-ref.sh).
+const TAG_RE = /^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z.-]*)?$/;
+const release = process.argv.includes('--release') ? arg('release') : null;
+if (release !== null && !TAG_RE.test(release)) throw new Error(`--release must look like v1.2.3 or v1.2.3-rc.1, got ${JSON.stringify(release)}`);
 
 function walk(dir) {
   return readdirSync(dir).flatMap((f) => {
@@ -79,6 +85,7 @@ const caddyfile = caddyIdx >= 0 ? `sha256:${sha256(readFileSync(arg('caddyfile')
 const manifest = {
   name: 'cryoshield-web',
   commit,
+  release,
   treeHash,
   ...(caddyfile ? { caddyfile } : {}),
   config: {
@@ -99,7 +106,7 @@ writeFileSync(out, JSON.stringify(manifest, null, 2) + '\n');
 if (process.argv.includes('--site-release')) {
   // Served as /release.json (add-continuous-deploy D3): which commit is live, its treeHash and the public config.
   // No file list (that stays in the full manifest) and, like the manifest, no key values.
-  const identity = { name: manifest.name, commit: manifest.commit, treeHash: manifest.treeHash, ...(caddyfile ? { caddyfile } : {}), config: manifest.config };
+  const identity = { name: manifest.name, commit: manifest.commit, release, treeHash: manifest.treeHash, ...(caddyfile ? { caddyfile } : {}), config: manifest.config };
   writeFileSync(join(site, 'release.json'), JSON.stringify(identity, null, 2) + '\n');
 }
 console.log(`release ${commit.slice(0, 12)} treeHash ${treeHash} (${files.length} files) -> ${out}`);

@@ -84,9 +84,27 @@ NODE_ENV=production node scripts/verify-build.mjs --real-env --expect-host "$HOS
 # Development adds X-Robots-Tag: noindex, nofollow to every response (never on production).
 node deploy/gen-context.mjs --dist dist --out deploy/.build --host "$HOST" ${NOINDEX[@]+"${NOINDEX[@]}"} || die "context generation failed"
 
-# 6. Publishable release manifest: commit, deterministic tree hash, config summary (no key values).
+# 6. The release name (footer-release-version D2): a production build names the vX.Y.Z tag it is made at; the footers
+#    show it. In Actions deploy.yml runs AT the tag ref while the build job checks out by SHA (no tag objects), so the
+#    run's own ref names it; locally it is the single v* tag at HEAD. No tag, two tags or a malformed name refuses the
+#    build. Development never names a release (its footer shows the commit), tagged or not.
+TAG_RE='^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z.-]*)?$'
+RELEASE_ARGS=()
+if [[ "$TARGET" == "production" ]]; then
+  if [[ "${GITHUB_REF_TYPE:-}" == "tag" ]]; then
+    RELEASE="${GITHUB_REF_NAME:-}"
+  else
+    RELEASE="$(git -C "$ROOT" tag --list 'v*' --points-at HEAD)"
+    [ "$(printf '%s\n' "$RELEASE" | grep -c .)" -le 1 ] || die "release tag: several v* tags at HEAD ($(echo "$RELEASE" | tr '\n' ' ')); it must be exactly one"
+  fi
+  [[ -n "$RELEASE" ]] || die "a production build must be made at a release tag (one vX.Y.Z tag at HEAD, or GITHUB_REF_TYPE=tag); none found"
+  [[ "$RELEASE" =~ $TAG_RE ]] || die "release tag '$RELEASE' is not exactly one vX.Y.Z[-prerelease] name (two tags at HEAD, or a malformed tag)"
+  RELEASE_ARGS=(--release "$RELEASE")
+fi
+
+# 7. Publishable release manifest: commit, release name, deterministic tree hash, config summary (no key values).
 node deploy/release-manifest.mjs --site deploy/.build/site --out deploy/.build/release-manifest.json \
-  --commit "$(git -C "$ROOT" rev-parse HEAD)" --env .env --contracts "$ROOT/contracts" --caddyfile deploy/.build/Caddyfile --site-release || die "release manifest failed"
+  --commit "$(git -C "$ROOT" rev-parse HEAD)" --env .env --contracts "$ROOT/contracts" --caddyfile deploy/.build/Caddyfile --site-release ${RELEASE_ARGS[@]+"${RELEASE_ARGS[@]}"} || die "release manifest failed"
 # --site-release also publishes deploy/.build/site/release.json, served as /release.json (add-continuous-deploy D3).
 echo "deploy: the site serves /release.json; keep deploy/.build/release-manifest.json (CI uploads it as an artifact)"
 
