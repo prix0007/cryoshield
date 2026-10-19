@@ -61,6 +61,15 @@ describe('wireRelease', () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
+  it('gives up after the timeout (aborts the request) and leaves the line hidden', async () => {
+    const p = footer();
+    const fetch = vi.fn((_u: string, init?: RequestInit) => new Promise<Response>((_r, reject) => init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')))));
+    await wireRelease(document, fetch as unknown as typeof globalThis.fetch, 10);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(p.hidden).toBe(true);
+    expect(p.childNodes).toHaveLength(0);
+  });
+
   it('never throws (the page is complete without it)', async () => {
     footer();
     await expect(wireRelease(document, (() => { throw new Error('sync'); }) as unknown as typeof fetch)).resolves.toBeUndefined();
@@ -76,8 +85,26 @@ describe('parity with the app reader (D5: two modules, one behaviour)', () => {
     { commit: 'B'.repeat(40), release: null },
     { commit: SHA, release: '1.0.3' },
     { commit: SHA, release: 'v1.0.3 x' },
+    // the prerelease part of the tag grammar, where two copies of TAG_RE could drift
+    { commit: SHA, release: 'v1.0.3-' },
+    { commit: SHA, release: 'v1.0.3-.x' },
+    { commit: SHA, release: 'v1.0.3--x' },
+    { commit: SHA, release: 'v1.0.3-rc.1.beta-2' },
+    { commit: SHA, release: 'v1.0.3\n' },
+    { commit: SHA, release: 'v01.0.3' },
+    { commit: SHA, release: 'V1.0.3' },
+    { commit: SHA, release: 'v1.0.3-ü' },
+    // the commit grammar
+    { commit: SHA.slice(0, 39), release: null },
+    { commit: `${SHA}b`, release: null },
+    { commit: 'g'.repeat(40), release: null },
+    { commit: 42, release: null },
+    { commit: null, release: 'v1.0.3' },
+    { release: 'v1.0.3' },
+    [SHA],
     'v1.0.3',
     null,
+    undefined,
   ])('labels %j the same', (body) => {
     const info = parseRelease(body);
     expect(labelFor(body)).toEqual(info ? releaseLink(info) : null);

@@ -11,7 +11,9 @@ export function useRelease(release: () => Promise<ReleaseLabel | null>): Release
   useEffect(() => {
     let live = true;
     release().then(
-      (l) => live && l && setLabel(l),
+      (l) => {
+        if (live && l) setLabel(l);
+      },
       () => undefined,
     );
     return () => {

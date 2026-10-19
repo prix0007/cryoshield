@@ -100,4 +100,4 @@ No crypto, contract or paymaster path changes. Two points were considered:
   leaves untouched. A spoofed site could print any version, exactly as it could print anything else.
 
 Security review: the change touches `.github/scripts/deploy/smoke.sh` (CI); the review is this section plus the
-smoke-test tests. Recorded 2026-10-19.
+smoke-test tests. Recorded 2026-10-20, with the bundle measurement above.

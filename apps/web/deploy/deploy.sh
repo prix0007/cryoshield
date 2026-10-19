@@ -94,7 +94,8 @@ if [[ "$TARGET" == "production" ]]; then
   if [[ "${GITHUB_REF_TYPE:-}" == "tag" ]]; then
     RELEASE="${GITHUB_REF_NAME:-}"
   else
-    RELEASE="$(git -C "$ROOT" tag --list 'v*' --points-at HEAD | tr '\n' ' ' | sed 's/ $//')"
+    RELEASE="$(git -C "$ROOT" tag --list 'v*' --points-at HEAD)"
+    [ "$(printf '%s\n' "$RELEASE" | grep -c .)" -le 1 ] || die "release tag: several v* tags at HEAD ($(echo "$RELEASE" | tr '\n' ' ')); it must be exactly one"
   fi
   [[ -n "$RELEASE" ]] || die "a production build must be made at a release tag (one vX.Y.Z tag at HEAD, or GITHUB_REF_TYPE=tag); none found"
   [[ "$RELEASE" =~ $TAG_RE ]] || die "release tag '$RELEASE' is not exactly one vX.Y.Z[-prerelease] name (two tags at HEAD, or a malformed tag)"

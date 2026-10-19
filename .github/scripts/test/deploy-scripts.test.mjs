@@ -517,6 +517,9 @@ test('smoke: production requires a well-formed release name; EXPECT_RELEASE (or 
   const cases = [
     [{ release: { status: 200, body: releaseBody(undefined, SHA, null) } }, {}, /release\.json release is null/],
     [{ release: { status: 200, body: releaseBody(undefined, SHA, '1.2.3') } }, {}, /release\.json release is 1\.2\.3/],
+    [{ release: { status: 200, body: releaseBody(undefined, SHA, 'v1.2.3\n') } }, {}, /release\.json release is v1\.2\.3, expected a vX/], // a trailing newline never passes (checked inside jq; the shell strips it when printing)
+    [{ release: { status: 200, body: releaseBody(undefined, SHA, 'v1.2.3\n::error::injected') } }, {}, /release is v1\.2\.3\?\?\?error\?\?\?injected,/],
+    [{ release: { status: 200, body: releaseBody(undefined, SHA, 7) } }, {}, /release\.json release is 7, expected a vX/],
     [{ release: { status: 200, body: JSON.stringify({ ...JSON.parse(releaseBody()), release: undefined }) } }, {}, /release\.json release is null/],
     [{}, { EXPECT_RELEASE: 'v9.9.9' }, /release\.json release is v1\.2\.3, expected v9\.9\.9/],
     [{}, { GITHUB_REF_TYPE: 'tag', GITHUB_REF_NAME: 'v9.9.9' }, /expected v9\.9\.9/],

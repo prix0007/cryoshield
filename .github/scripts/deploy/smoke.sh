@@ -159,13 +159,16 @@ check_once() {
   fi
   # footer-release-version D3: the release name the footers show. Production: a well-formed tag, and the run's tag when
   # known. Development: null (a dev site claiming a release name is wrong, whatever the name).
+  # The shape is checked inside jq (a command substitution would strip a trailing newline), and only a sanitised
+  # copy of the live value is printed (review: a mis-served body must not write workflow commands into the log).
   rel="$(jq -r 'if .release == null then "null" else (.release | tostring) end' "$TMP/b" 2>/dev/null || echo unreadable)"
+  shown="${rel//[^A-Za-z0-9._-]/?}"
   if [ "$EXPECT_NOINDEX" = "true" ]; then
-    [ "$rel" = "null" ] || errors+=("/release.json release is $rel, expected null on the development site")
-  elif ! [[ "$rel" =~ $TAG_RE ]]; then
-    errors+=("/release.json release is $rel, expected a vX.Y.Z release name on production")
+    jq -e '.release == null' "$TMP/b" >/dev/null 2>&1 || errors+=("/release.json release is $shown, expected null on the development site")
+  elif ! jq -e '.release | strings | test("^v[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z.-]*)?$") and (contains("\n") | not)' "$TMP/b" >/dev/null 2>&1; then
+    errors+=("/release.json release is $shown, expected a vX.Y.Z release name on production")
   elif [ -n "$EXPECT_RELEASE" ] && [ "$rel" != "$EXPECT_RELEASE" ]; then
-    errors+=("/release.json release is $rel, expected $EXPECT_RELEASE (the tag this run deployed)")
+    errors+=("/release.json release is $shown, expected $EXPECT_RELEASE (the tag this run deployed)")
   fi
   # The live build's contracts equal the deployment record (v2 and this RP ID's wallet always; v1 only where it exists).
   v2="$(release_field .config.registryV2.address)"

@@ -60,6 +60,15 @@ describe('fetchRelease', () => {
     await expect(fetchRelease({ fetch: async () => { throw new TypeError('offline'); } })).resolves.toBeNull();
   });
 
+  it('gives up when the body read stalls after the headers arrived', async () => {
+    const fetch = vi.fn(async (_u: string, init?: RequestInit) => ({
+      ok: true,
+      status: 200,
+      json: () => new Promise<unknown>((_r, reject) => init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')))),
+    }) as unknown as Response);
+    await expect(fetchRelease({ fetch, timeoutMs: 10 })).resolves.toBeNull();
+  });
+
   it('gives up after the timeout (aborts the request) and returns null', async () => {
     const fetch = vi.fn((_u: string, init?: RequestInit) => new Promise<Response>((_r, reject) => init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')))));
     await expect(fetchRelease({ fetch, timeoutMs: 10 })).resolves.toBeNull();
