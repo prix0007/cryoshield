@@ -1,6 +1,6 @@
 [project]
 name = "cryoshield-recover"
-version = "1.0.3"
+version = "1.0.4"
 description = "Recover a CryoShield vault with only your FIDO2 hardware key and public infrastructure."
 readme = "README.md"
 license = { text = "MIT" }
