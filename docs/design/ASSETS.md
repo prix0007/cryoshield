@@ -21,8 +21,10 @@ downloaded asset that ships on cryoshield.app, with its source and license. Ever
 - **Motion:** we grepped the ESM dists of `motion`, `motion-dom`, `motion-utils` and `framer-motion` for `innerHTML`,
   `insertAdjacentHTML`, `document.write`, `eval(`, `new Function` and `WebAssembly`, and found none. Motion writes
   styles through the CSSOM, which `style-src 'self'` does not restrict.
-  - 2026-10-19, `motion@14.0.0` (bump-motion-14): the same grep over the four packages' `dist` trees (940 files) found
-    none.
+  - 2026-10-19, `motion@14.0.0` (bump-motion-14): the same check over the four packages' `dist` trees (940 files)
+    found none. From the repository root, after `pnpm install --frozen-lockfile`:
+    `for p in motion motion-dom motion-utils framer-motion; do grep -rlE 'innerHTML|insertAdjacentHTML|document\.write|eval\(|new Function|WebAssembly' node_modules/.pnpm/${p}@14.0.0*/node_modules/${p}/dist; done`
+    (prints nothing).
 - **Fonts:** fonts load under `font-src 'self'` from `/assets/` (content-hashed by Vite).
 
 ## Considered and rejected

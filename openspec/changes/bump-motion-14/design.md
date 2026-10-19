@@ -14,7 +14,10 @@ The pin is enforced by `motion-pin.test.ts` (package.json and the four lockfile 
 newer internals, a combination the pin test forbids here. Pinning 13.5.1 would take the fixes and stay on a line
 that gets no further releases. The imports the app uses (`scroll`, `animate` from `motion/mini`, `LazyMotion`,
 `domAnimation`, `AnimatePresence`, `MotionConfig`, `PresenceContext`, `useIsPresent`, `useReducedMotion`,
-`motion/react-m`) are all public API, unchanged between 13.5.0 and 14.0.0.
+`motion/react-m`) are all public API. That they are unchanged between 13.5.0 and 14.0.0 is the upstream
+changelog's claim; the unit suite runs with `MotionGlobalConfig.skipAnimations = true` and cannot confirm exit
+timing or presence behaviour, so the `web-e2e` check (the motion E2E spec under the real CSP) is the verification
+of it, and this change does not merge without it.
 
 ### D2. The exact pin stays; only its value moves
 
@@ -37,7 +40,8 @@ Supply chain only; no crypto, contract or paymaster path changes.
   --frozen-lockfile` in CI refuses any drift.
 - **CSP-hostile code:** the four packages' `dist` trees (940 files) were grepped on 2026-10-19 for `innerHTML`,
   `insertAdjacentHTML`, `document.write`, `eval(`, `new Function` and `WebAssembly`: no match, as for 13.5.0.
-  Motion still writes styles through the CSSOM, which `style-src 'self'` does not restrict.
+  The exact command is recorded in `docs/design/ASSETS.md` (CSP compatibility checks). Motion still writes styles
+  through the CSSOM, which `style-src 'self'` does not restrict.
 - **Bundle growth:** `verify-build` on 14.0.0 reports the `/app` initial JavaScript at 207,631 B gzip against the
   187,521 B baseline (+20,110 B, allowance +20,480 B) and the landing total at 11.16 KB of 120 KB, with no
   React or Motion React code in the landing graph. On `main` at #114 (13.5.0) the same figure was 207,745 B, so
