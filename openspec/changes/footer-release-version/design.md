@@ -48,8 +48,8 @@ run's ref, and a free-form input would be one more thing the tag re-check must c
 Both footers carry a `Version` line that is hidden in the HTML and shown only after a successful fetch:
 - `GET /release.json` from the page's own origin, `cache: 'no-store'`, `credentials: 'same-origin'`, 4 s timeout;
 - the body must be an object whose `commit` is 40 lower-case hex and whose `release` is `null` or a tag matching the
-  grammar above; anything else (404 on the Vite dev server and E2E preview, a non-JSON body, an unexpected shape)
-  leaves the line hidden;
+  grammar above; anything else (a 404 from a host that does not publish the file, a non-JSON body, an unexpected
+  shape) leaves the line hidden;
 - the line's text and link are built from the validated values only, with `textContent` and `href`, never HTML;
   the CSP's Trusted Types requirement is untouched (no `innerHTML`, no `DOMParser`).
 
@@ -75,6 +75,15 @@ the `/app` entry into four shared chunks (`errors`, `localBatchGatewayRequest`, 
 on the initial graph and over budget, although no module was added; with the prop it is one entry chunk again,
 +133 B over `main`. The footer must not import `services.tsx`.
 
+### D7. The local servers answer `/release.json` too
+
+`vite dev` and `vite preview` serve `/release.json` from a middleware (`vite-plugins/release-preview.ts`): the
+checked-out commit and `release: null`, uncached, the development site's shape. So a developer and the E2E suite
+see `Version dev <commit>`, and no page logs a 404 for the fetch: Chromium reports a 404 response as a console
+error, and several E2E specs fail on any console error (found on the first CI run of this change). It is server
+middleware only; the built files never contain the file (`gen-context.mjs` refuses one), and a deploy publishes the
+real one next to the site.
+
 ### D6. Tests
 
 - `release-manifest.test.ts`: `--release v1.2.3` lands in both files after `commit`; without it the field is `null`;
@@ -87,6 +96,8 @@ on the initial graph and over budget, although no module was added; with the pro
   `GITHUB_REF_*`; development passes only with `null`.
 - `test/lib/release.test.ts`, `test/landing/release.test.ts`, `test/ui/release-tag.test.tsx`: validation, labels,
   the hidden-until-known behaviour, the 404 and timeout cases, and the app footer rendering through a fake service.
+- `test/build/release-preview.test.ts`: the local servers' identity and middleware (D7); `e2e/specs/23-release-version.spec.ts`:
+  both footers show `Version dev <commit>` under the real CSP with no console error.
 
 ## Threat / abuse
 

@@ -946,6 +946,11 @@
   font-variant-numeric: tabular-nums;
 }
 .site-footer .release a {
+  /* WCAG 2.2 target size (axe target-size): a 24 px box around the short inline value. */
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  min-width: 24px;
   color: var(--ink-muted-80);
   text-decoration: underline;
   text-underline-offset: 2px;

@@ -19,5 +19,5 @@ fetch MUST NOT delay or alter anything else on the page. The release name MUST N
 - **THEN** the footer shows "Version dev <7 hex>", linking to that commit on GitHub
 
 #### Scenario: Unknown release
-- **WHEN** `/release.json` is missing (the dev server, the E2E preview), times out, or has an unexpected shape
+- **WHEN** `/release.json` is missing, times out, or has an unexpected shape
 - **THEN** the line stays hidden and nothing else changes

@@ -16,6 +16,8 @@
   shows the label and link with one; parity with `lib/release.ts` on the same inputs.
 - [x] 1.6 `apps/web/test/ui/release-tag.test.tsx`: the app footer shows the line from the `release` service and
   nothing when it resolves to `null`.
+- [x] 1.7 `apps/web/test/build/release-preview.test.ts`: the local servers' `/release.json` (D7);
+  `e2e/specs/23-release-version.spec.ts`: both footers show `Version dev <commit>` with no console error.
 
 ## 2. Implementation
 
@@ -26,6 +28,7 @@
 - [x] 2.5 App: `src/lib/release.ts`, `release` service (lazy), `ReleaseLine` in `AppFooter`, styles (D4, D5).
 - [x] 2.6 Docs: `apps/web/deploy/README.md` and `docs/deploy.md` describe the field and the footer line.
 - [x] 2.7 Spec deltas: `web-hosting`, `continuous-deployment`, `landing-page`, `vault-web-app`.
+- [x] 2.8 `vite-plugins/release-preview.ts` in `vite.config.ts` (D7): dev and preview answer `/release.json`.
 
 ## 3. Verification
 

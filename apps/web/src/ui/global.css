@@ -759,9 +759,9 @@ dd {
   font-variant-numeric: tabular-nums;
 }
 .app-footer .release a {
-  display: inline;
-  min-height: 0;
-  min-width: 0;
+  /* WCAG 2.2 target size (axe target-size): a 24 px box, smaller than the nav links' so the line stays one line. */
+  min-height: 24px;
+  min-width: 24px;
   text-decoration: underline;
   text-underline-offset: 2px;
 }

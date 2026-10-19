@@ -24,6 +24,8 @@ place the release name can live without changing the build. Both footers read it
   validated it; it links the tag to the GitHub release, or on development the short commit to the commit page.
 - `/app`: the same line in the app footer, fetched lazily through the services container so the initial `/app`
   JavaScript does not grow.
+- `vite dev` and `vite preview` answer `/release.json` with the checked-out commit and `release: null`, so the
+  footers work locally and in E2E and no page logs a 404 for the fetch (server middleware; the build is unchanged).
 - Specs: `web-hosting` (release identity carries `release`), `continuous-deployment` (smoke test checks it),
   `landing-page` and `vault-web-app` (the footer line).
 
@@ -55,9 +57,10 @@ static site. Nothing is operated by CryoShield beyond the existing static host.
 - **Changed:** `apps/web/deploy/deploy.sh`, `apps/web/deploy/release-manifest.mjs`, `.github/scripts/deploy/smoke.sh`,
   `apps/web/index.html`, `apps/web/src/landing/{main,release}.ts`, `apps/web/src/lib/release.ts`,
   `apps/web/src/ui/{App.tsx,chrome.tsx,services.tsx,useRelease.ts}`, `apps/web/src/landing/landing.css`, `apps/web/src/ui/global.css`,
-  `apps/web/deploy/README.md`, `docs/deploy.md`, the four specs.
+  `apps/web/vite.config.ts`, `apps/web/vite-plugins/release-preview.ts`, `apps/web/deploy/README.md`, `docs/deploy.md`, the four specs.
 - **Tests:** `apps/web/deploy/test/{deploy-sh,release-manifest}.test.ts`, `.github/scripts/test/deploy-scripts.test.mjs`,
-  `apps/web/test/landing/release.test.ts`, `apps/web/test/lib/release.test.ts`, `apps/web/test/ui/release-tag.test.tsx`.
+  `apps/web/test/landing/release.test.ts`, `apps/web/test/lib/release.test.ts`, `apps/web/test/ui/release-tag.test.tsx`,
+  `apps/web/test/build/release-preview.test.ts`, `apps/web/e2e/specs/23-release-version.spec.ts`.
 - **CI:** `web`, `web-e2e` (footer link reachability on `/`), `ci-scripts` (`npm test --prefix .github/scripts`).
 - **Pipelines:** the next dev deploy serves `"release": null`; the next owner release serves its tag. Until then the
   live sites serve no `release` field and the footers simply stay without the line.

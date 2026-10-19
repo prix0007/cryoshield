@@ -7,6 +7,7 @@ import { donationPlugin } from './vite-plugins/donation.ts';
 import { seoPlugin } from './vite-plugins/seo.ts';
 import { themePlugin } from './vite-plugins/theme.ts';
 import { buildTime, copyContext, networkCopyPlugin, readOriginsInventory } from './vite-plugins/network-copy.ts';
+import { releasePreviewPlugin } from './vite-plugins/release-preview.ts';
 
 export default defineConfig(({ mode }) => {
   const root = import.meta.dirname;
@@ -16,7 +17,7 @@ export default defineConfig(({ mode }) => {
   return {
     // Multi-page: unknown paths are 404 (no SPA fallback), as in production.
     appType: 'mpa',
-    plugins: [appMotionIsolation(`${root}/src/ui/`), react(), legalPagesPlugin(root, copy), networkCopyPlugin(copy), donationPlugin(root), seoPlugin(root, copy), themePlugin(root), cryoshield(env, process.env.CRYOSHIELD_CONTRACTS_DIR ?? defaultContractsDir(root), mode, root)],
+    plugins: [appMotionIsolation(`${root}/src/ui/`), react(), legalPagesPlugin(root, copy), networkCopyPlugin(copy), donationPlugin(root), seoPlugin(root, copy), themePlugin(root), releasePreviewPlugin(root), cryoshield(env, process.env.CRYOSHIELD_CONTRACTS_DIR ?? defaultContractsDir(root), mode, root)],
     // Always build against the vault-crypto source (never a stale dist/).
     resolve: { alias: [{ find: /^@cryoshield\/vault-crypto$/, replacement: `${root}/../../packages/vault-crypto/src/index.ts` }] },
     build: {
