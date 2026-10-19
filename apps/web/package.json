@@ -22,7 +22,7 @@
   },
   "dependencies": {
     "@cryoshield/vault-crypto": "workspace:*",
-    "motion": "14.0.0",
+    "motion": "14.1.0",
     "permissionless": "0.4.1",
     "react": "19.3.0",
     "react-dom": "19.3.0",
