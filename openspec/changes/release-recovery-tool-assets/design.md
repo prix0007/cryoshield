@@ -119,7 +119,10 @@ doubt they have the right download, so:
   (`recover-release.mjs --tag`), naming the three files to bump.
 
 Cost, accepted: every later release (`v1.0.1`, …) needs the tool's version bumped first, even when only the web app
-changed. The checklist says so. If it is forgotten, `deploy.yml` still deploys the site and only the asset upload
+changed. The checklist says so. The bump points are `pyproject.toml`, `__init__.__version__`, the `cryoshield-recover`
+entry in `uv.lock`, and the README's pinned install lines (pipx wheel URL, `uvx … @vX.Y.Z`, the "files on release"
+sentence); `tests/test_release_version.py` fails when any of them disagree, so a forgotten one cannot reach a tag
+(2026-10-19, after `v1.0.1` and `v1.0.2` shipped with no assets). If it is forgotten, `deploy.yml` still deploys the site and only the asset upload
 fails; bump, then publish a new patch release (the old release keeps no assets, and `releases/latest` moves on).
 Rejected: an independent tool version (confusing on a `v1.0.0` download page); deriving the version from the tag at
 build time (the source at the tag would then disagree with the files built from it).
