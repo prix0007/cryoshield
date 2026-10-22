@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-10-22
+# Tooling and records only: no requirement changes (see proposal.md, "Capabilities").
+skip_specs: true
