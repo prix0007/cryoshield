@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-10-22
+# Base-image digest and a reviewed scanner exception: no requirement changes (proposal.md, "Capabilities").
+skip_specs: true

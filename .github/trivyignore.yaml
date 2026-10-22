@@ -8,7 +8,7 @@
 # caddy:2.11.7-alpine (Go 1.26.8, golang.org/x/net 0.59.0): fixed upstream in Go 1.26.9 and x/net 0.60.0
 # (2026-10-08), not yet in a Caddy image. Fly terminates TLS and talks plain HTTP to Caddy, which serves only
 # static files (file_server, admin API off, no templates). Remove each entry as soon as Dependabot's docker bump
-# moves the digest to an image built with Go 1.26.9 or later.
+# moves the digest to an image built with Go 1.26.9 or later (1.26.10 for CVE-2026-111943).
 vulnerabilities:
   # braces (all versions, no fixed release): mirrors GHSA-vfj7-8cjw-p6xm in .github/osv-scanner.toml.
   - id: CVE-2026-93687
@@ -35,6 +35,11 @@ vulnerabilities:
     paths:
       - usr/bin/caddy
     statement: malformed HTTP framing (no severity yet); denial of service at most on a static server that Fly restarts; wait for Go 1.26.9 / x/net 0.60.0
+    expired_at: 2026-12-31
+  - id: CVE-2026-111943
+    paths:
+      - usr/bin/caddy
+    statement: crypto/x509 denylist for a distrusted CA (HIGH per Trivy's selected severity source; Red Hat scores it 6.8); Caddy verifies no certificate here, TLS is terminated by Fly, auto-HTTPS and ACME are off and there is no reverse_proxy, so Verify is never called; wait for a Caddy image with Go 1.26.10
     expired_at: 2026-12-31
   - id: CVE-2026-97031
     paths:
