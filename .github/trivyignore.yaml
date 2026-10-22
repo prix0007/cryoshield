@@ -36,6 +36,11 @@ vulnerabilities:
       - usr/bin/caddy
     statement: malformed HTTP framing (no severity yet); denial of service at most on a static server that Fly restarts; wait for Go 1.26.9 / x/net 0.60.0
     expired_at: 2026-12-31
+  - id: CVE-2026-111943
+    paths:
+      - usr/bin/caddy
+    statement: crypto/x509 denylist for a distrusted CA (HIGH per Trivy, 6.8 per Red Hat); Caddy verifies no certificate here, TLS is terminated by Fly, auto-HTTPS and ACME are off and there is no reverse_proxy, so Verify is never called; wait for a Caddy image with Go 1.26.10
+    expired_at: 2026-12-31
   - id: CVE-2026-97031
     paths:
       - usr/bin/caddy

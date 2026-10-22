@@ -170,13 +170,14 @@ Report vulnerabilities privately, never in a public issue: see [`SECURITY.md`](S
 
 Every pull request is scanned by gitleaks (secrets, every commit), osv-scanner (every lockfile) and [Trivy](https://trivy.dev) (every lockfile, the Caddy base image that serves the site, and its Dockerfile). A CRITICAL, HIGH or unscored finding fails CI. Exceptions live in `.github/osv-scanner.toml` and `.github/trivyignore.yaml`, each with a reason and an expiry of at most 90 days, and CI fails if a Trivy exception is missing from the table below.
 
-As of 2026-10-16: the browser app (`pnpm-lock.yaml`) and the recovery tool (`tools/recover/uv.lock`) have no known vulnerability. The web server image carries HIGH-rated denial-of-service findings in the Go toolchain compiled into Caddy, fixed upstream on 2026-10-08 and waiting for a Caddy image built with Go 1.26.9. The accepted findings are:
+As of 2026-10-16: the browser app (`pnpm-lock.yaml`) and the recovery tool (`tools/recover/uv.lock`) have no known vulnerability. The web server image carries HIGH-rated denial-of-service findings in the Go toolchain compiled into Caddy, fixed upstream in Go 1.26.9 and 1.26.10 and waiting for a Caddy image built with Go 1.26.10 or later; the base image digest follows the tag's rebuilds (2026-10-21: musl 1.2.5-r24, which closed CVE-2026-107891). The accepted findings are:
 
 | Advisory | Where | Severity | Why it is accepted | Until |
 |---|---|---|---|---|
 | CVE-2026-93687 (GHSA-vfj7-8cjw-p6xm) | `braces`, in the CI-only OpenSpec CLI | HIGH, no fix | it expands only glob patterns written in this repository and is never shipped | 2026-12-31 |
 | CVE-2026-78667, CVE-2026-78669, CVE-2026-78659, CVE-2026-78660 | Go `net/http` and `x/net` in the Caddy 2.11.7 binary | HIGH / unscored | denial of service only, against a static site behind Fly's proxy, which restarts it; no data at risk | 2026-12-31 |
 | CVE-2026-97031 | Go `crypto/tls` (ECH) in the Caddy binary | HIGH | TLS is terminated by Fly and Caddy's TLS server is off, so the code is not reachable | 2026-12-31 |
+| CVE-2026-111943 | Go `crypto/x509` in the Caddy binary (fixed in Go 1.26.10) | HIGH | a denylist for a distrusted certificate authority, applied when Go verifies a certificate; this Caddy verifies none (TLS ends at Fly, auto-HTTPS, ACME and `reverse_proxy` are off) | 2026-12-31 |
 | CVE-2026-94440, CVE-2026-97030, GO-2026-5932 | Go `mime/multipart`, `html/template`, `x/crypto/openpgp` in the Caddy binary | unscored | code paths a static file server never runs: no forms, no templates, no OpenPGP | 2026-12-31 |
 
 Medium and low findings are printed in the CI log and do not block.
