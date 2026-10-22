@@ -59,7 +59,8 @@ None.
 ### Modified Capabilities
 
 None. `ci-pipeline` ("Dependency vulnerability audit", "Container image and filesystem vulnerability scan") already
-requires that exceptions expire and be recorded; removing one that is no longer needed is that requirement working.
+requires that exceptions expire and be recorded; updating an exception's reason when a fix appears but cannot yet be
+adopted is that requirement working.
 `landing-analytics` ("Integrity-pinned beacon") already requires a reviewer-approved, committed hash and a manual
 bump after drift; this change performs that bump. No behaviour changes, so `.openspec.yaml` sets `skip_specs: true`.
 

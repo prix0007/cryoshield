@@ -24,8 +24,9 @@
   2026-10-22: done and verified (0 matches, `npm ci` ok, `found 0 vulnerabilities`), then **reverted** after 3.2: the
   pin stays at 1.14.0 (D2). No file under `.github/openspec-cli` changes in this PR.
 - [x] 2.3 Exceptions (D2, D4): the `braces` entries stay in `.github/osv-scanner.toml` and `.github/trivyignore.yaml`;
-  the TOML comment and the README row name the fix (1.14.3) and the blocker (84 over-long requirements); the README
-  "As of" line is re-dated to 2026-10-22. Verify `npm test --prefix .github/scripts` passes and `trivy-gate.mjs`'s
+  the TOML comments and `reason`, the trivyignore comment and `statement`, and the README row name the fix (1.14.3)
+  and the blocker (84 over-long requirements, issue #128, due before the 2026-12-31 expiry); the README "As of" line
+  is re-dated to 2026-10-22. Verify `npm test --prefix .github/scripts` passes and `trivy-gate.mjs`'s
   README mirror check still finds `CVE-2026-93687`.
 
   2026-10-22: 442/442; mirror check passes.

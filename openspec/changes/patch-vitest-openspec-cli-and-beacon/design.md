@@ -103,8 +103,12 @@ No crypto, contract or paymaster path changes. Supply chain only:
 
 - **Tampered package:** pnpm installs from lockfile integrity hashes with install scripts disabled
   (`pnpm.onlyBuiltDependencies: []`); `npm ci --ignore-scripts` for the CI tool. Vitest 5.0.5 and OpenSpec 1.14.3
-  were published 2026-10-15 and 2026-10-17, over Dependabot's 7-day cooldown, and the Shai-Hulud marker files
-  (`setup.mjs`, `Math_Symbol.js`, `preinstall` hooks) are absent from the installed trees (re-checked after install).
+  were published 2026-10-15 and 2026-10-17, over Dependabot's 7-day cooldown. The lockfile also moves three
+  packages used only by `vitest`: `obug` 2.2.1 → 3.0.0 (published 2026-09-09, 43 days before this change; 2.2.1 was
+  published the same day), `magic-string` 1.4.2 → 1.4.3 (2026-10-05, 17 days) and `tinybench` 6.2.0 → 6.2.2
+  (2026-10-10, 12 days): all past the 7-day cooldown. The Shai-Hulud marker files (`setup.mjs`, `Math_Symbol.js`,
+  `bun_environment.js`, `preinstall`/`postinstall` hooks) are absent from the installed trees of every `vitest`,
+  `@vitest/*`, `obug`, `magic-string` and `tinybench` package (checked after install). No package was added.
 - **Beacon:** the pin moves from one reviewed byte string to another; SRI still refuses anything else. A future
   Cloudflare change turns analytics off again rather than running unreviewed code. The landing CSP is unchanged.
 - **Keeping the `braces` exception** leaves a CI-only stack-exhaustion DoS reachable only through glob patterns written
@@ -114,7 +118,7 @@ No crypto, contract or paymaster path changes. Supply chain only:
 
 | # | Area | Check | Result |
 |---|---|---|---|
-| 1 | Supply chain | Exact pins `5.0.5`; one version of each of the seven `@vitest/*` packages in the lockfile; integrity hashes; `pnpm install --frozen-lockfile` clean; no install scripts; no `setup.mjs`/`Math_Symbol.js`/`preinstall` in the installed Vitest trees; `pnpm audit` 0 findings | Pass |
+| 1 | Supply chain | Exact pins `5.0.5`; one version of each of the seven `@vitest/*` packages in the lockfile; integrity hashes; `pnpm install --frozen-lockfile` clean; no install scripts; transitive moves `obug` 3.0.0, `magic-string` 1.4.3, `tinybench` 6.2.2 all published 12–43 days earlier; no `setup.mjs`/`Math_Symbol.js`/`bun_environment.js`/install hooks in the installed Vitest, `@vitest/*`, `obug`, `magic-string` or `tinybench` trees; `pnpm audit` 0 findings | Pass |
 | 2 | CI tool | 1.14.3 attempted: lockfile free of `braces`, `npm audit` clean, but `validate --all --strict` fails 84 items; reverted to 1.14.0; README row, TOML `reason` and trivyignore `statement` reworded (no longer "no fix released"); `npm test --prefix .github/scripts` 442/442 and `trivy-gate.mjs` README mirror check pass | Held (D2) |
 | 3 | Beacon | Diff against the exact previous bytes; sink/storage/network grep identical; `spa` gate unchanged; CSP unchanged; `beacon-drift.mjs` exits 0 | Pass (D3) |
 | 4 | Behaviour | `web` 107 files / 1,563 tests, eslint and tsc clean, `verify-build` PASS (beacon pinned to the lock, `/app` +20,265 B of +20,480 B); `vault-crypto` 381 Node tests with typecheck and 370 Browser Mode tests; `metrics` 55 tests and tsc clean; analytics E2E 9/9 | Pass |

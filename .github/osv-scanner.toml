@@ -6,7 +6,7 @@
 # was resolved in redesign-landing-and-app-ui by replacing the arbundles test oracle with a checked-in
 # vector and removing the dependency.
 
-# 2026-10-03: braces (all versions; no fixed release yet). Reached only via the CI-only OpenSpec CLI
+# 2026-10-03: braces (all versions; no fixed release as of 2026-10-03). Reached only via the CI-only OpenSpec CLI
 # (.github/openspec-cli, transitively through its glob dependencies). It never ships to users and only
 # expands glob patterns written in this repo, so an attacker cannot supply the deeply nested pattern
 # the DoS needs. Re-check on expiry; upgrade or override as soon as a fixed version exists.
