@@ -18,8 +18,8 @@ next scheduled development deploy (first seen on PR #127, run 39763035052, after
   (`d8542f48…`) to the 2026-10-21 rebuild (`24ec7b05…`). Same tag, same Caddy 2.11.7, same Go 1.26.8.
 - `.github/trivyignore.yaml`: one new entry, `CVE-2026-111943`, path `usr/bin/caddy`, with a statement and the same
   2026-12-31 expiry as the other Caddy entries.
-- `README.md` → "Known vulnerabilities": a row for `CVE-2026-111943`; the paragraph above the table says the image now
-  waits for Go 1.26.10 and that the digest follows the tag's rebuilds.
+- `README.md` → "Known vulnerabilities": a row for `CVE-2026-111943`; the paragraph above the table is re-dated to
+  2026-10-22 and says the image now waits for Go 1.26.10 and that the digest follows the tag's rebuilds.
 
 ## Out of scope
 

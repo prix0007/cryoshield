@@ -170,7 +170,7 @@ Report vulnerabilities privately, never in a public issue: see [`SECURITY.md`](S
 
 Every pull request is scanned by gitleaks (secrets, every commit), osv-scanner (every lockfile) and [Trivy](https://trivy.dev) (every lockfile, the Caddy base image that serves the site, and its Dockerfile). A CRITICAL, HIGH or unscored finding fails CI. Exceptions live in `.github/osv-scanner.toml` and `.github/trivyignore.yaml`, each with a reason and an expiry of at most 90 days, and CI fails if a Trivy exception is missing from the table below.
 
-As of 2026-10-16: the browser app (`pnpm-lock.yaml`) and the recovery tool (`tools/recover/uv.lock`) have no known vulnerability. The web server image carries HIGH-rated denial-of-service findings in the Go toolchain compiled into Caddy, fixed upstream in Go 1.26.9 and 1.26.10 and waiting for a Caddy image built with Go 1.26.10 or later; the base image digest follows the tag's rebuilds (2026-10-21: musl 1.2.5-r24, which closed CVE-2026-107891). The accepted findings are:
+As of 2026-10-22: the browser app (`pnpm-lock.yaml`) and the recovery tool (`tools/recover/uv.lock`) have no known vulnerability. The web server image carries HIGH-rated denial-of-service findings in the Go toolchain compiled into Caddy, fixed upstream in Go 1.26.9 and 1.26.10 and waiting for a Caddy image built with Go 1.26.10 or later; the base image digest follows the tag's rebuilds (2026-10-21: musl 1.2.5-r24, which closed CVE-2026-107891). The accepted findings are:
 
 | Advisory | Where | Severity | Why it is accepted | Until |
 |---|---|---|---|---|
