@@ -31,7 +31,7 @@
 
   2026-10-22: 442/442; mirror check passes.
 - [x] 2.4 Beacon (D3, D4): update `apps/web/analytics/beacon.lock.json` (`sha384`, `bytes`, `version`, `reviewedAt`,
-  `reviewNotes`). Verify `node apps/web/scripts/beacon-drift.mjs` prints `ok   beacon unchanged` and exits 0.
+  `reviewNotes`, and the wording of `reviewedBy`). Verify `node apps/web/scripts/beacon-drift.mjs` prints `ok   beacon unchanged` and exits 0.
 
   2026-10-22: `ok   beacon unchanged: sha384-DSBfgE0s… (ETag W/"2026.10.1", 31853 bytes)`, exit 0.
 
