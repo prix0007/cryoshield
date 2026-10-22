@@ -27,8 +27,8 @@ weekly automation would otherwise reach late or never:
 - `.github/openspec-cli`: the move to `@fission-ai/openspec` 1.14.3 was attempted and **held at 1.14.0** (design D2):
   1.14.3's `validate --all --strict` fails 84 requirements over 500 characters across 19 main specs and 9 in-flight
   changes (a rule added in 1.14.1), and splitting them is its own change. The `braces` exception stays in
-  `.github/osv-scanner.toml` and `.github/trivyignore.yaml`; its README row and the TOML comment now say the fix
-  exists and what blocks it, and the "as of" line is re-dated.
+  `.github/osv-scanner.toml` and `.github/trivyignore.yaml`; its README row, the TOML comment and `reason`, and the
+  trivyignore comment and `statement` now say the fix exists and what blocks it, and the "as of" line is re-dated.
 - `apps/web/analytics/beacon.lock.json`: reviewed bump to beacon 2026.10.1 (`sha384`, `bytes`, `version`,
   `reviewedBy`, `reviewedAt`, `reviewNotes`). The diff review is recorded in `design.md`.
 
@@ -39,8 +39,9 @@ weekly automation would otherwise reach late or never:
 - Splitting the 84 over-long requirements that block OpenSpec CLI 1.14.3 (a follow-up change; see design D2), and
   the globally installed `openspec` CLI on developer machines.
 - Any change to how tests run (Browser Mode stays, no `server.fs.deny` override: the upgrade is the fix).
-- The pending human security-reviewer sign-off on the beacon (`add-privacy-preserving-analytics` 6.1) and the
-  self-hosting question (3.2); `reviewedBy` keeps saying the human sign-off is pending.
+- The pending human security-reviewer sign-off on the beacon and the self-hosting question
+  (`add-privacy-preserving-analytics` 3.2); `reviewedBy` keeps saying the human sign-off is pending and now points at
+  `apps/web/docs/security-review-analytics.md`.
 - Dependabot's own future PRs for the same versions; GitHub closes them once `main` carries the versions.
 
 ## Runtime dependencies
@@ -65,7 +66,8 @@ bump after drift; this change performs that bump. No behaviour changes, so `.ope
 ## Impact
 
 - **Changed:** `apps/web/package.json`, `packages/vault-crypto/package.json`, `tools/metrics/package.json`,
-  `pnpm-lock.yaml`, `.github/osv-scanner.toml` (comment only), `README.md`, `apps/web/analytics/beacon.lock.json`.
+  `pnpm-lock.yaml`, `.github/osv-scanner.toml` and `.github/trivyignore.yaml` (comments and reasons only),
+  `README.md`, `apps/web/analytics/beacon.lock.json`, `apps/web/docs/security-review-analytics.md`.
 - **CI:** `web`, `vault-crypto`, `metrics` and the scan steps (osv-scanner, trivy) run; `verify-build` re-checks the
   beacon pin against the lock. `beacon-drift` passes again on its next schedule. `contracts` and `recover` are
   unaffected.

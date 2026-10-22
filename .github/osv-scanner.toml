@@ -16,4 +16,4 @@
 [[IgnoredVulns]]
 id = "GHSA-vfj7-8cjw-p6xm"
 ignoreUntil = 2026-12-31
-reason = "braces stack-exhaustion DoS, no fix released; CI-only tooling (openspec-cli) expanding repo-authored globs only; not shipped"
+reason = "braces stack-exhaustion DoS; the fix (OpenSpec CLI 1.14.3) is not adopted yet, its strict validation blocks it (see note); CI-only tooling (openspec-cli) expanding repo-authored globs only; not shipped"

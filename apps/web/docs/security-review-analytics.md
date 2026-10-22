@@ -41,3 +41,17 @@
     CSP blocks inline script and other endpoints.
 
   Details are in `analytics/beacon.lock.json`. Human security-reviewer sign-off is still pending.
+
+- **2026-10-22, 2026.10.1** (31,853 bytes, `sha384-DSBfgE…83LLBv`), diffed against the exact 2026.10.0 bytes (Wayback
+  capture `20261001000800id_`, gunzipped, SHA-384 equal to the previous pin); both pretty-printed with prettier 3.6.2,
+  103 changed lines. **Pass.** No new sink, storage, endpoint, fingerprinting API or payload field; the same
+  `navigator`, `performance`, `referrer` and `location` reads. Changes:
+  - LCP attribution requires the matching resource entry to start before the LCP entry;
+  - the WebKit user-agent branch matches `AppleWebKit/` alone and derives the iOS version from the same user-agent
+    string when the existing regexes miss;
+  - the Navigation API hook returns early for same-document navigations to the current URL (one new
+    `window.location.href` read); it is still installed only when `spa` is not `false`, which we set;
+  - version strings `2026.10.1`; one statement reordered.
+
+  Full notes: `analytics/beacon.lock.json` and OpenSpec change `patch-vitest-openspec-cli-and-beacon`, design D3.
+  Agent-run review; human security-reviewer sign-off is still pending for both 2026.10.0 and 2026.10.1.

@@ -46,7 +46,8 @@ reports 84 warnings, every one "Requirement text is very long (>500 characters)"
 warning and `--strict` fails on warnings; the CI `openspec` job runs exactly that command and also asserts the
 version. There is no intermediate release: 1.14.1 and 1.14.2 have the rule and still carry `braces`.
 
-Splitting 84 requirements is a spec-wide edit that needs its own review, so it is a follow-up change. Alternatives
+Splitting 84 requirements is a spec-wide edit that needs its own review, so it is a follow-up change, tracked as
+issue #128 (lists every affected spec and change, and the steps). Alternatives
 rejected: dropping `--strict` in CI (weakens every other check); an npm `overrides` for `braces` (no fixed version
 exists to override to); keeping the bump and the red CI job. Until the follow-up lands, the exception keeps its
 2026-12-31 expiry, and the README row and the TOML comment say what the fix is and what blocks it, so the next
@@ -88,10 +89,13 @@ pending and the pin is the same mechanism; delaying only loses aggregate data wi
 
 - `README.md` "Known vulnerabilities": the `braces` row's severity column drops "no fix" and its reason names the fix
   and the blocker; the "As of" line is re-dated to 2026-10-22 (the Caddy rows remain).
-- `.github/osv-scanner.toml` keeps its entry and gains a dated note naming the fix and the blocker. `trivyignore.yaml`
-  is unchanged.
+- `.github/osv-scanner.toml` keeps its entry, gains a dated note naming the fix and the blocker, and its `reason` no
+  longer says "no fix released". `trivyignore.yaml`'s `braces` comment and `statement` say the same (a wording change
+  to an exception file; recorded in the security-review table, row 2).
 - `beacon.lock.json`: `sha384`, `bytes` 31853, `version` "2026.10.1 (ETag W/"2026.10.1", Last-Modified Thu, 15 Oct 2026
-  18:26:54 GMT)", `reviewedAt` 2026-10-22, `reviewNotes` summarising D3; `reviewedBy` unchanged in substance.
+  18:26:54 GMT)", `reviewedAt` 2026-10-22, `reviewNotes` summarising D3; `reviewedBy` still says the human sign-off is
+  pending, now for both versions and pointing at `apps/web/docs/security-review-analytics.md`, which gains a
+  2026.10.1 entry.
 
 ## Threat / abuse
 
@@ -110,8 +114,8 @@ No crypto, contract or paymaster path changes. Supply chain only:
 
 | # | Area | Check | Result |
 |---|---|---|---|
-| 1 | Supply chain | Exact pins `5.0.5`; one version of each of the eight `@vitest/*` packages in the lockfile; integrity hashes; `pnpm install --frozen-lockfile` clean; no install scripts; no `setup.mjs`/`Math_Symbol.js`/`preinstall` in the installed Vitest trees; `pnpm audit` 0 findings | Pass |
-| 2 | CI tool | 1.14.3 attempted: lockfile free of `braces`, `npm audit` clean, but `validate --all --strict` fails 84 items; reverted to 1.14.0; README and TOML reasons updated; `npm test --prefix .github/scripts` 442/442 and `trivy-gate.mjs` README mirror check pass | Held (D2) |
+| 1 | Supply chain | Exact pins `5.0.5`; one version of each of the seven `@vitest/*` packages in the lockfile; integrity hashes; `pnpm install --frozen-lockfile` clean; no install scripts; no `setup.mjs`/`Math_Symbol.js`/`preinstall` in the installed Vitest trees; `pnpm audit` 0 findings | Pass |
+| 2 | CI tool | 1.14.3 attempted: lockfile free of `braces`, `npm audit` clean, but `validate --all --strict` fails 84 items; reverted to 1.14.0; README row, TOML `reason` and trivyignore `statement` reworded (no longer "no fix released"); `npm test --prefix .github/scripts` 442/442 and `trivy-gate.mjs` README mirror check pass | Held (D2) |
 | 3 | Beacon | Diff against the exact previous bytes; sink/storage/network grep identical; `spa` gate unchanged; CSP unchanged; `beacon-drift.mjs` exits 0 | Pass (D3) |
 | 4 | Behaviour | `web` 107 files / 1,563 tests, eslint and tsc clean, `verify-build` PASS (beacon pinned to the lock, `/app` +20,265 B of +20,480 B); `vault-crypto` 381 Node tests with typecheck and 370 Browser Mode tests; `metrics` 55 tests and tsc clean; analytics E2E 9/9 | Pass |
 
@@ -120,6 +124,7 @@ No crypto, contract or paymaster path changes. Supply chain only:
 - [Vitest 5.0.5 changes test behaviour] → patch release; the three unit suites and Browser Mode run before the push,
   and CI runs them again.
 - [OpenSpec 1.14.3 `--strict` flags warnings 1.14.0 did not] → realised: 84 warnings, none trivial; the pin is held at
-  1.14.0 (D2) and the follow-up change is the fix.
-- [Beacon review is agent-run] → recorded in the lock and here, with the exact prior bytes identified by hash; the
-  human sign-off task (6.1) stays open in `add-privacy-preserving-analytics`.
+  1.14.0 (D2) and the follow-up change, issue #128, is the fix, due before the exception expires on 2026-12-31.
+- [Beacon review is agent-run] → recorded in the lock, in `apps/web/docs/security-review-analytics.md` ("Beacon
+  re-reviews") and here, with the exact prior bytes identified by hash; the human security-reviewer sign-off is still
+  pending for 2026.10.0 and 2026.10.1, and the lock's `reviewedBy` says so.

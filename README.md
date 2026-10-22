@@ -174,7 +174,7 @@ As of 2026-10-22: the browser app (`pnpm-lock.yaml`) and the recovery tool (`too
 
 | Advisory | Where | Severity | Why it is accepted | Until |
 |---|---|---|---|---|
-| CVE-2026-93687 (GHSA-vfj7-8cjw-p6xm) | `braces`, in the CI-only OpenSpec CLI | HIGH | it expands only glob patterns written in this repository and is never shipped. OpenSpec CLI 1.14.3 drops `braces`, but its strict validation rejects 84 requirements over 500 characters in this repository, so the pin moves once those are split (OpenSpec change `patch-vitest-openspec-cli-and-beacon`, D2) | 2026-12-31 |
+| CVE-2026-93687 (GHSA-vfj7-8cjw-p6xm) | `braces`, in the CI-only OpenSpec CLI | HIGH | it expands only glob patterns written in this repository and is never shipped. OpenSpec CLI 1.14.3 drops `braces`, but its strict validation rejects 84 requirements over 500 characters in this repository, so the pin moves once those are split (issue #128; OpenSpec change `patch-vitest-openspec-cli-and-beacon`, D2) | 2026-12-31 |
 | CVE-2026-78667, CVE-2026-78669, CVE-2026-78659, CVE-2026-78660 | Go `net/http` and `x/net` in the Caddy 2.11.7 binary | HIGH / unscored | denial of service only, against a static site behind Fly's proxy, which restarts it; no data at risk | 2026-12-31 |
 | CVE-2026-97031 | Go `crypto/tls` (ECH) in the Caddy binary | HIGH | TLS is terminated by Fly and Caddy's TLS server is off, so the code is not reachable | 2026-12-31 |
 | CVE-2026-111943 | Go `crypto/x509` in the Caddy binary (fixed in Go 1.26.10) | HIGH | a denylist for a distrusted certificate authority, applied when Go verifies a certificate; this Caddy verifies none (TLS ends at Fly, auto-HTTPS, ACME and `reverse_proxy` are off) | 2026-12-31 |

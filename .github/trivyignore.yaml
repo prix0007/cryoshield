@@ -10,11 +10,12 @@
 # static files (file_server, admin API off, no templates). Remove each entry as soon as Dependabot's docker bump
 # moves the digest to an image built with Go 1.26.9 or later (1.26.10 for CVE-2026-111943).
 vulnerabilities:
-  # braces (all versions, no fixed release): mirrors GHSA-vfj7-8cjw-p6xm in .github/osv-scanner.toml.
+  # braces (all versions): mirrors GHSA-vfj7-8cjw-p6xm in .github/osv-scanner.toml. The fix is OpenSpec CLI 1.14.3,
+  # not adopted yet because its strict validation fails 84 over-long requirements here (see the TOML note).
   - id: CVE-2026-93687
     paths:
       - .github/openspec-cli/package-lock.json
-    statement: braces stack-exhaustion DoS, no fix released; CI-only tooling (openspec-cli) expanding repo-authored globs only; not shipped
+    statement: braces stack-exhaustion DoS; the fix (OpenSpec CLI 1.14.3) is not adopted yet, its strict validation blocks it; CI-only tooling (openspec-cli) expanding repo-authored globs only; not shipped
     expired_at: 2026-12-31
   - id: CVE-2026-78667
     paths:

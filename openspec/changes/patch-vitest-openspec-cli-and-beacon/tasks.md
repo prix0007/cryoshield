@@ -15,7 +15,7 @@
   Verify the three `package.json` files and `pnpm-lock.yaml` name only 5.0.5 for `vitest` and every `@vitest/*`,
   `pnpm install --frozen-lockfile` succeeds, and `pnpm audit --audit-level=moderate` reports 0 vulnerabilities.
 
-  2026-10-22: eight `@vitest/*` entries all at 5.0.5; frozen install clean; `pnpm audit`: "No known vulnerabilities".
+  2026-10-22: seven `@vitest/*` entries (browser-playwright, browser, mocker, pretty-format, spy, ui, utils) all at 5.0.5; frozen install clean; `pnpm audit`: "No known vulnerabilities".
 - [x] 2.2 OpenSpec CLI (D2): set `@fission-ai/openspec` to `1.14.3` in `.github/openspec-cli/package.json` and run
   `npm install --ignore-scripts --package-lock-only --no-audit --no-fund --prefix .github/openspec-cli`. Verify the
   lockfile has no `braces`, `micromatch` or `fast-glob` entry, `npm ci --ignore-scripts --prefix .github/openspec-cli`
