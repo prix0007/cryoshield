@@ -18,7 +18,7 @@ importers:
         version: 14.0.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       permissionless:
         specifier: 0.4.1
-        version: 0.4.1(viem@2.57.4(typescript@5.9.3)(zod@4.6.5))
+        version: 0.4.1(viem@2.57.4(typescript@5.9.3)(zod@4.6.6))
       react:
         specifier: 19.3.0
         version: 19.3.0
@@ -27,7 +27,7 @@ importers:
         version: 19.3.0(react@19.3.0)
       viem:
         specifier: 2.57.4
-        version: 2.57.4(typescript@5.9.3)(zod@4.6.5)
+        version: 2.57.4(typescript@5.9.3)(zod@4.6.6)
     devDependencies:
       '@axe-core/playwright':
         specifier: 4.13.0
@@ -87,8 +87,8 @@ importers:
         specifier: 5.0.5
         version: 5.0.5(@types/node@22.20.5)(@vitest/browser-playwright@5.0.5)(@vitest/ui@5.0.5)(jsdom@30.1.2(@noble/hashes@2.4.0))(vite@8.3.4(@types/node@22.20.5))
       zod:
-        specifier: 4.6.5
-        version: 4.6.5
+        specifier: 4.6.6
+        version: 4.6.6
 
   packages/vault-crypto:
     dependencies:
@@ -128,7 +128,7 @@ importers:
     dependencies:
       viem:
         specifier: 2.57.4
-        version: 2.57.4(typescript@5.9.3)(zod@4.6.5)
+        version: 2.57.4(typescript@5.9.3)(zod@4.6.6)
     devDependencies:
       '@types/node':
         specifier: 22.20.5
@@ -1578,8 +1578,8 @@ packages:
     peerDependencies:
       zod: ^3.25.0 || ^4.0.0
 
-  zod@4.6.5:
-    resolution: {integrity: sha512-v5l/aFXZQeai4awLbOpSoHecE9UiMrnfx75tEXLjNonXVARxQ5mOeipTjROUchszUNCqnE+hqAMujRsRHsut2Q==}
+  zod@4.6.6:
+    resolution: {integrity: sha512-4UmzQUF5fxvfcYHlbjBmejU+w+hbDnWFx4aS8kBx7nPBHcO2SqPbpAG8snbdg+Xse4pRefR98hgjFgIMCI/UhA==}
 
 snapshots:
 
@@ -2132,10 +2132,10 @@ snapshots:
       convert-source-map: 2.0.0
       tinyrainbow: 3.2.0
 
-  abitype@1.2.3(typescript@5.9.3)(zod@4.6.5):
+  abitype@1.2.3(typescript@5.9.3)(zod@4.6.6):
     optionalDependencies:
       typescript: 5.9.3
-      zod: 4.6.5
+      zod: 4.6.6
 
   acorn-jsx@5.3.2(acorn@8.19.0):
     dependencies:
@@ -2254,8 +2254,8 @@ snapshots:
       '@babel/parser': 7.29.9
       eslint: 10.12.0
       hermes-parser: 0.25.1
-      zod: 4.6.5
-      zod-validation-error: 4.0.2(zod@4.6.5)
+      zod: 4.6.6
+      zod-validation-error: 4.0.2(zod@4.6.6)
     transitivePeerDependencies:
       - supports-color
 
@@ -2578,7 +2578,7 @@ snapshots:
       type-check: 0.4.0
       word-wrap: 1.2.5
 
-  ox@0.14.54(typescript@5.9.3)(zod@4.6.5):
+  ox@0.14.54(typescript@5.9.3)(zod@4.6.6):
     dependencies:
       '@adraffy/ens-normalize': 1.11.1
       '@noble/ciphers': 1.3.0
@@ -2586,7 +2586,7 @@ snapshots:
       '@noble/hashes': 1.8.0
       '@scure/bip32': 1.7.0
       '@scure/bip39': 1.6.0
-      abitype: 1.2.3(typescript@5.9.3)(zod@4.6.5)
+      abitype: 1.2.3(typescript@5.9.3)(zod@4.6.6)
       eventemitter3: 5.0.1
     optionalDependencies:
       typescript: 5.9.3
@@ -2611,9 +2611,9 @@ snapshots:
 
   pathe@2.0.3: {}
 
-  permissionless@0.4.1(viem@2.57.4(typescript@5.9.3)(zod@4.6.5)):
+  permissionless@0.4.1(viem@2.57.4(typescript@5.9.3)(zod@4.6.6)):
     dependencies:
-      viem: 2.57.4(typescript@5.9.3)(zod@4.6.5)
+      viem: 2.57.4(typescript@5.9.3)(zod@4.6.6)
 
   picocolors@1.1.1: {}
 
@@ -2784,15 +2784,15 @@ snapshots:
     dependencies:
       punycode: 2.3.1
 
-  viem@2.57.4(typescript@5.9.3)(zod@4.6.5):
+  viem@2.57.4(typescript@5.9.3)(zod@4.6.6):
     dependencies:
       '@noble/curves': 1.9.1
       '@noble/hashes': 1.8.0
       '@scure/bip32': 1.7.0
       '@scure/bip39': 1.6.0
-      abitype: 1.2.3(typescript@5.9.3)(zod@4.6.5)
+      abitype: 1.2.3(typescript@5.9.3)(zod@4.6.6)
       isows: 1.0.7(ws@8.21.0)
-      ox: 0.14.54(typescript@5.9.3)(zod@4.6.5)
+      ox: 0.14.54(typescript@5.9.3)(zod@4.6.6)
       ws: 8.21.0
     optionalDependencies:
       typescript: 5.9.3
@@ -2872,8 +2872,8 @@ snapshots:
 
   yocto-queue@0.1.0: {}
 
-  zod-validation-error@4.0.2(zod@4.6.5):
+  zod-validation-error@4.0.2(zod@4.6.6):
     dependencies:
-      zod: 4.6.5
+      zod: 4.6.6
 
-  zod@4.6.5: {}
+  zod@4.6.6: {}
